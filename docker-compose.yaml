@@ -9,15 +9,13 @@ services:
     ports:
       - "8888:8888" # Jupyter notebook is nice to have there
 #      - "8888:8888" # Dask ports for multi-node stuff?
-    environment:
-      - RUN_DIR=runs/selfcal
-      - DATA_DIR=$HOME/data
     env_file:
       - .env
     volumes:
       - /dev/shm:/dev/shm
-      - $DATA_DIR/logs:/logs
-      - $DATA_DIR/gains:/gains
+      - $RUN_DIR/logs:/logs
+      - $RUN_DIR/gains:/gains
+      - $DATA_DIR:/data
     networks:
       - safe-tier
 networks:
