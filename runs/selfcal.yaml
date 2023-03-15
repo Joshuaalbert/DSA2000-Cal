@@ -1,0 +1,38 @@
+input_ms:
+    path: path/to.ms
+    data_column: DATA
+    sigma_column: SIGMA_WEIGHT # Preferred over weight_column
+#    weight_column: WEIGHT_SPECTRUM
+    time_chunk: 1 # Controls how much RAM is used, can be unit or number per chunk
+    freq_chunk: 80 # can be unit or number per chunk
+#    is_bda: False # If baseline averaging has happened turn on
+#    group_by: [SCAN_NUMBER, FIELD_ID, DATA_DESC_ID] # Unsure when to use
+    select_corr: [0,1,2,3] # All correlations
+    select_fields: [0]
+    select_ddids: [0] # spectral windows of MS
+    select_uv_range: [100, 0] # use 0 as open end
+
+input_model:
+    recipe: LSM1@dE
+#    beam: beam_$(corr)_$(reim).fits # if beam needs to be applied
+#    beam_l_axis:
+#    beam_m_axis:
+#    invert_uvw: True # True by default for CASA convention
+    source_chunks: 1 # big impact on RAM
+#    apply_p_jones: False # Only important for polarisation
+#Q_corr = Q * cos(2P) + U * sin(2P)
+#U_corr = -Q * sin(2P) + U * cos(2P)
+
+output:
+    gain_directory: /gains
+    log_directory: /logs
+    log_to_terminal: True
+    overwrite: False
+    products: [residual, corrected_residual]
+    columns: [COL1, COL1] # one for each product
+    flags: True
+#    apply_p_jones_inv: False # not sure about this
+    net_gains: ["G"]
+#    subtract_directions:
+#    compute_baseline_corrections: False # Might be interesting to see
+#    apply_baseline_corrections: False

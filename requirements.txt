@@ -1,0 +1,8 @@
+quartical
+astropy
+numpy
+scipy
+astLib
+python-casacore
+future
+astro-kittens
