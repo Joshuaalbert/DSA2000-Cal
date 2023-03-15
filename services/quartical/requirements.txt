@@ -6,3 +6,4 @@ astLib
 python-casacore
 future
 astro-kittens
+jupyter

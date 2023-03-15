@@ -1,0 +1,26 @@
+version: "3"
+services:
+  quartical:
+    image: quartical:local
+    container_name: quartical
+    build:
+      context: .
+      dockerfile: services/quartical/Dockerfile
+    ports:
+      - "8888:8888" # Jupyter notebook is nice to have there
+#      - "8888:8888" # Dask ports for multi-node stuff?
+    environment:
+      - RUN_DIR=runs/selfcal
+      - DATA_DIR=$HOME/data
+    env_file:
+      - .env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $DATA_DIR/logs:/logs
+      - $DATA_DIR/gains:/gains
+    networks:
+      - safe-tier
+networks:
+  safe-tier:
+
+
