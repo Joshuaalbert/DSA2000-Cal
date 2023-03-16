@@ -6,7 +6,7 @@
 input_ms:
   path: /data/W-32chan-10-5s.ms
   data_column: DATA
-  weight_column: WEIGHT_SPECTRUM
+  weight_column: WEIGHT
   time_chunk: 1 # Controls how much RAM is used, can be unit or number per chunk
   freq_chunk: 1 # can be unit or number per chunk
   select_corr: [ 0,1,2,3 ] # All correlations
@@ -23,8 +23,8 @@ output:
   log_directory: /logs/W-32chan-10-5s
   log_to_terminal: True
   overwrite: False
-  products: [ corrected_residual, corrected_weight ]
-  columns: [ CORRECTED_DATA, WEIGHT_SPECTRUM ] # one for each product
+  products: [ corrected_residual ]
+  columns: [ CORRECTED_DATA ] # one for each product
   flags: True
 
 dask:
