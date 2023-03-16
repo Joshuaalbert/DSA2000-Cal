@@ -7,11 +7,11 @@ RUN mkdir /gains && mkdir /logs && /data
 
 # Install quartical and LSM stuff
 
-ADD requirements.txt /code
+ADD services/quartical/requirements.txt /code
 
 RUN pip install -r requirements.txt
 
-COPY src/entrypoint.sh .
+COPY services/quartical/src/entrypoint.sh .
 COPY $PARSET .
 
 ENTRYPOINT [ "/bin/bash", "entrypoint.sh" ]
