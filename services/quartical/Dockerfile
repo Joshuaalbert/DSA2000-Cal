@@ -14,4 +14,6 @@ RUN pip install -r requirements.txt
 COPY services/quartical/src/entrypoint.sh .
 COPY $PARSET .
 
+RUN pip freeze
+
 ENTRYPOINT [ "/bin/bash", "entrypoint.sh" ]
