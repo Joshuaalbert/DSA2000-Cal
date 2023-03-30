@@ -1,22 +1,20 @@
 #!/bin/bash
 
-# Assert that SKY_MODEL_TIGGER is a valid filename
-if [[ ! -f $SKY_MODEL_TIGGER ]]; then
-  echo "SKY_MODEL_TIGGER is not a valid filename"
-  exit 1
-fi
-
-# Assert that SKY_MODEL_BBS is a valid filename
-if [[ ! -f $SKY_MODEL_BBS ]]; then
-  echo "SKY_MODEL_BBS is not a valid filename"
-  exit 1
-fi
+set -euo pipefail
 
 # Check if SKY_MODEL_TIGGER doesn't exist
-if [[ ! -f $SKY_MODEL_TIGGER ]]; then
+if [[ ! -f "$SKY_MODEL_TIGGER" ]]; then
+
+  # Check if SKY_MODEL_BBS is empty
+  if [[ -z "$SKY_MODEL_BBS" ]]; then
+    echo "SKY_MODEL_BBS is empty. Aborting conversion."
+    exit 1
+  fi
+
+  echo "$SKY_MODEL_TIGGER doesn't exist. Converting from $SKY_MODEL_BBS."
 
   # Check if SKY_MODEL_BBS already exists
-  if [[ -f $SKY_MODEL_BBS ]]; then
+  if [[ -f "$SKY_MODEL_BBS" ]]; then
     echo "SKY_MODEL_BBS already exists. Aborting conversion."
     exit 1
   fi
