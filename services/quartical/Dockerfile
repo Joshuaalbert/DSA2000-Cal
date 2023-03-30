@@ -13,6 +13,7 @@ RUN pip install -r requirements.txt
 
 COPY services/quartical/src/entrypoint.sh .
 COPY $PARSET .
+COPY $SKY_MODEL_TIGGER .
 
 RUN pip freeze
 

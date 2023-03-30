@@ -16,7 +16,7 @@ input_ms:
   select_uv_range: [ 100, 0 ] # use 0 as open end
 
 input_model:
-  recipe: MODEL_DATA
+  recipe: skymodel.lsm.html
   source_chunks: 1 # big impact on RAM
 
 output:
