@@ -7,15 +7,13 @@ if [[ ! -f "$SKY_MODEL_TIGGER" ]]; then
 
   # Check if SKY_MODEL_BBS is empty
   if [[ -z "$SKY_MODEL_BBS" ]]; then
-    echo "SKY_MODEL_BBS is empty. Aborting conversion."
+    echo "$SKY_MODEL_BBS is empty. Aborting conversion."
     exit 1
   fi
 
-  echo "$SKY_MODEL_TIGGER doesn't exist. Converting from $SKY_MODEL_BBS."
-
   # Check if SKY_MODEL_BBS already exists
-  if [[ -f "$SKY_MODEL_BBS" ]]; then
-    echo "SKY_MODEL_BBS already exists. Aborting conversion."
+  if [[ ! -f "$SKY_MODEL_BBS" ]]; then
+    echo "$SKY_MODEL_BBS doesn't exist. Aborting conversion."
     exit 1
   fi
 
