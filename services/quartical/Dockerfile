@@ -1,20 +1,22 @@
 FROM python:3.10.8
 
-WORKDIR /code
-
 # container directories that will be mounted
-RUN mkdir /gains && mkdir /logs && mkdir /data
+RUN mkdir /dsa/gains && mkdir /dsa/logs && mkdir /dsa/data && mkdir /dsa/input
 
 # Install quartical and LSM stuff
 
-ADD services/quartical/requirements.txt /code
+WORKDIR /dsa/code
+
+ADD services/quartical/requirements.txt .
 
 RUN pip install -r requirements.txt
 
 COPY services/quartical/src/entrypoint.sh .
-COPY $PARSET .
-COPY $SKY_MODEL_TIGGER .
+
+# Copy input params
+
+WORKDIR /dsa/input
 
 RUN pip freeze
 
-ENTRYPOINT [ "/bin/bash", "entrypoint.sh" ]
+ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]

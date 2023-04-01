@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+SKY_MODEL_BBS=skymodel.bbs
+SKY_MODEL_TIGGER=skymodel.lsm.html
+
 # Check if SKY_MODEL_TIGGER doesn't exist
 if [[ ! -f "$SKY_MODEL_TIGGER" ]]; then
 
@@ -23,4 +26,4 @@ fi
 
 # Run Quartical
 
-goquartical $PARSET
+goquartical parset.yaml
