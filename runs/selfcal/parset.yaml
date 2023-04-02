@@ -24,7 +24,7 @@ output:
   gain_directory: /dsa/run/output/gains
   log_directory: /dsa/run/output/logs
   log_to_terminal: True
-  overwrite: False
+  overwrite: True
   products: [ corrected_residual ]
   columns: [ CORRECTED_DATA ] # one for each product
   flags: True
