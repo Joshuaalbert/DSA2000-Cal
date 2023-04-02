@@ -28,13 +28,10 @@ MS_NAME=$(basename "$MS_NAME")
 RUN_NAME=$(echo "$MS_NAME" | rev | cut -f2- -d'.' | rev)
 RUN_DIR=/dsa/run/$RUN_NAME
 mkdir -p $RUN_DIR
-mkdir -p $RUN_DIR/gains
-mkdir -p $RUN_DIR/logs
 
 # Links to standard names for parset.yaml to use
 ln -s /dsa/data/$MS_NAME /dsa/run/input.ms
-ln -s $RUN_DIR/gains /dsa/run/gains
-ln -s $RUN_DIR/logs /dsa/run/logs
+ln -s $RUN_DIR /dsa/run/output
 
 export MS_NAME
 export RUN_NAME
