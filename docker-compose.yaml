@@ -8,19 +8,15 @@ services:
       dockerfile: services/quartical/Dockerfile
     ports:
       - "8888:8888" # Jupyter notebook is nice to have there
-#      - "8888:8888" # Dask ports for multi-node stuff?
     env_file:
       - .env
     volumes:
       - /dev/shm:/dev/shm
-      - dsa_dir:/dsa
-      - $RUN_DIR_HOST/logs:/dsa/run
+      - $RUN_DIR_HOST:/dsa/run
       - $DATA_DIR_HOST:/dsa/data
-      - $PWD/$INPUT_DIR_HOST:/dsa/input
+      - $(realpath $INPUT_DIR_HOST):/dsa/input # relative path, hence we add $PWD, else should be absolution.
     networks:
       - safe-tier
 networks:
   safe-tier:
 
-volumes:
-  dsa_dir:
