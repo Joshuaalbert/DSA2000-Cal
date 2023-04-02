@@ -16,7 +16,7 @@ services:
       - dsa_dir:/dsa
       - $RUN_DIR_HOST/logs:/dsa/run
       - $DATA_DIR_HOST:/dsa/data
-      - $INPUT_DIR_HOST:/dsa/input
+      - $PWD/$INPUT_DIR_HOST:/dsa/input
     networks:
       - safe-tier
 networks:
