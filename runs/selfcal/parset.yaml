@@ -21,8 +21,8 @@ input_model:
   source_chunks: 1 # big impact on RAM
 
 output:
-  gain_directory: /dsa/run/output/gains
-  log_directory: /dsa/run/output/logs
+  gain_directory: /dsa/output/gains
+  log_directory: /dsa/output/logs
   log_to_terminal: True
   overwrite: True
   products: [ corrected_residual ]
