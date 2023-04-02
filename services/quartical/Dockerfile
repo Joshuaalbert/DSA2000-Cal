@@ -1,7 +1,7 @@
 FROM python:3.10.8
 
 # container directories that will be mounted
-RUN mkdir /dsa/gains && mkdir /dsa/logs && mkdir /dsa/data && mkdir /dsa/input
+RUN mkdir -p /dsa/run && mkdir /dsa/data && mkdir /dsa/input
 
 # Install quartical and LSM stuff
 
@@ -11,12 +11,13 @@ ADD services/quartical/requirements.txt .
 
 RUN pip install -r requirements.txt
 
+RUN pip freeze
+
 COPY services/quartical/src/entrypoint.sh .
 
-# Copy input params
+# We run from within input folder
 
 WORKDIR /dsa/input
 
-RUN pip freeze
 
 ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]

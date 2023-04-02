@@ -13,10 +13,9 @@ services:
       - .env
     volumes:
       - /dev/shm:/dev/shm
-      - $RUN_DIR/logs:/dsa/logs
-      - $RUN_DIR/gains:/dsa/gains
-      - $DATA_DIR:/dsa/data
-      - $INPUT_DIR:/dsa/input
+      - $RUN_DIR_HOST/logs:/dsa/run
+      - $DATA_DIR_HOST:/dsa/data
+      - $INPUT_DIR_HOST:/dsa/input
     networks:
       - safe-tier
 networks:

@@ -6,7 +6,7 @@
 
 # columns that exist: UVW FLAG FLAG_CATEGORY WEIGHT SIGMA ANTENNA1 ANTENNA2 ARRAY_ID DATA_DESC_ID EXPOSURE FEED1 FEED2 FIELD_ID FLAG_ROW INTERVAL OBSERVATION_ID PROCESSOR_ID SCAN_NUMBER STATE_ID TIME TIME_CENTROID DATA
 input_ms:
-  path: /dsa/data/W-32chan-10-5s.ms
+  path: /dsa/data/input.ms
   data_column: DATA
   weight_column: WEIGHT
   time_chunk: 1 # Controls how much RAM is used, can be unit or number per chunk
@@ -21,8 +21,8 @@ input_model:
   source_chunks: 1 # big impact on RAM
 
 output:
-  gain_directory: /dsa/gains
-  log_directory: /dsa/logs
+  gain_directory: /dsa/run/gains
+  log_directory: /dsa/run/logs
   log_to_terminal: True
   overwrite: False
   products: [ corrected_residual ]
