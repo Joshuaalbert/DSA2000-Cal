@@ -3,6 +3,7 @@
 # Run from /dsa/input
 
 set -euo pipefail
+set -x
 
 ## These should match parset.yaml
 SKY_MODEL_BBS=skymodel.bbs
