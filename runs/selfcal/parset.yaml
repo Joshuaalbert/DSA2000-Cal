@@ -9,23 +9,23 @@ input_ms:
   path: /dsa/input/input.ms
   data_column: DATA
   weight_column: WEIGHT
-  time_chunk: 1 # Controls how much RAM is used, can be unit or number per chunk
+  time_chunk: 0 # Controls how much RAM is used, can be unit or number per chunk
   freq_chunk: 0 # can be unit or number per chunk, 0 is all
-  select_corr: [ 0,1,2,3 ] # All correlations
-  select_fields: [ 0 ]
-  select_ddids: [ 0 ] # spectral windows of MS
+#  select_corr: [ 0,1,2,3 ] # All correlations
+#  select_fields: [ 0 ]
+#  select_ddids: [ 0 ] # spectral windows of MS
 
 input_model:
   recipe: skymodel.lsm.html
-  source_chunks: 1 # big impact on RAM
+#  source_chunks: 1 # big impact on RAM
 
 output:
   gain_directory: /dsa/output/gains
   log_directory: /dsa/output/logs
   log_to_terminal: True
   overwrite: True
-  products: [ corrected_residual ]
-  columns: [ CORRECTED_DATA ] # one for each product
+#  products: [ corrected_residual ]
+#  columns: [ CORRECTED_DATA ] # one for each product
   flags: True
 
 dask:
@@ -44,5 +44,5 @@ solver:
 
 G:
   type: phase
-  time_interval: "1"
+  time_interval: "0"
   freq_interval: "0"
