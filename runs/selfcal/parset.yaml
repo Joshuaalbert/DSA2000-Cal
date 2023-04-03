@@ -44,5 +44,5 @@ solver:
 
 G:
   type: phase
-  time_interval: "0"
+  time_interval: "1"
   freq_interval: "0"
