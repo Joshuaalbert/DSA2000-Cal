@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: services/inspect/Dockerfile
     ports:
-      - "8888:8890" # Jupyter notebook is nice to have there
+      - "8890:8888" # Jupyter notebook is nice to have there
     env_file:
       - .env
     volumes:
