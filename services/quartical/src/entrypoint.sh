@@ -31,6 +31,6 @@ mkdir -p $RUN_DIR
 
 # Links to standard names for parset.yaml to use
 ln -s $RUN_DIR /dsa/output # for output solutions and logs
-ln -s /dsa/data/$MS_NAME /dsa/data/input.ms # for ms input
+ln -s /dsa/data/$MS_NAME /dsa/input/input.ms # for ms input
 
 goquartical parset.yaml
