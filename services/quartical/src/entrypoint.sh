@@ -25,8 +25,8 @@ fi
 # Run Quartical
 
 MS_NAME=$(basename "$MS_NAME")
-RUN_NAME=$(echo "$MS_NAME" | rev | cut -f2- -d'.' | rev)
-RUN_DIR=/dsa/run/$RUN_NAME
+RUN_NAME_MS=$(echo "$MS_NAME" | rev | cut -f2- -d'.' | rev)
+RUN_DIR=/dsa/run/$RUN_NAME_MS/$RUN_NAME
 mkdir -p $RUN_DIR
 
 # Links to standard names for parset.yaml to use
