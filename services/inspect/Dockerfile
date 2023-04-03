@@ -13,18 +13,18 @@ RUN mkdir -p /dsa/notebooks/output && mkdir /dsa/notebooks/data
 
 WORKDIR /dsa/code
 
-ADD services/quartical/requirements.txt .
+ADD services/inspect/requirements.txt .
 
 RUN pip install --verbose -r requirements.txt
 
 RUN pip freeze
 
-COPY services/quartical/src/entrypoint.sh .
+COPY services/inspect/src/entrypoint.sh .
 
 # We run from within input folder
 
 WORKDIR /dsa/notebooks
-COPY services/quartical/src/notebooks/ .
+COPY services/inspect/src/notebooks/ .
 
 
 ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]
