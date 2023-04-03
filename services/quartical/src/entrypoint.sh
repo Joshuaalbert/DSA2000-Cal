@@ -33,4 +33,7 @@ mkdir -p $RUN_DIR
 ln -s $RUN_DIR /dsa/output # for output solutions and logs
 ln -s /dsa/data/$MS_NAME /dsa/input/input.ms # for ms input
 
+# for clarity
+cp parset.yaml /dsa/output
+
 goquartical parset.yaml
