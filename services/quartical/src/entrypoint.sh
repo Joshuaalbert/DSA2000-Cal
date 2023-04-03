@@ -30,10 +30,11 @@ RUN_DIR=/dsa/run/$RUN_NAME_MS/$RUN_NAME
 mkdir -p $RUN_DIR
 
 # Links to standard names for parset.yaml to use
-ln -sf $RUN_DIR /dsa/output # for output solutions and logs
+ln -sf $RUN_DIR /dsa/output                   # for output solutions and logs
 ln -sf /dsa/data/$MS_NAME /dsa/input/input.ms # for ms input
 
 # for clarity
 cp parset.yaml /dsa/output
+cp $SKY_MODEL_TIGGER /dsa/output
 
 goquartical parset.yaml
