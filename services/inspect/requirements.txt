@@ -8,3 +8,4 @@ future
 astro-kittens
 matplotlib
 jupyter
+scikit-learn

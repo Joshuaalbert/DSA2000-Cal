@@ -1,13 +1,27 @@
 version: "3"
 services:
+  inspect:
+    image: inspect
+    container_name: inspect
+    build:
+      context: .
+      dockerfile: services/inspect/Dockerfile
+    ports:
+      - "8888:8890" # Jupyter notebook is nice to have there
+    env_file:
+      - .env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/notebooks/output
+      - $DATA_DIR_HOST:/dsa/notebooks/data
+    networks:
+      - safe-tier
   quartical:
     image: quartical
     container_name: quartical
     build:
       context: .
       dockerfile: services/quartical/Dockerfile
-    ports:
-      - "8888:8888" # Jupyter notebook is nice to have there
     env_file:
       - .env
     volumes:
