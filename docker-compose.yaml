@@ -10,6 +10,7 @@ services:
       - "8890:8888" # Jupyter notebook is nice to have there
     env_file:
       - .env
+      - run_inspect.env
     volumes:
       - /dev/shm:/dev/shm
       - $RUN_DIR_HOST:/dsa/notebooks/output
@@ -24,11 +25,26 @@ services:
       dockerfile: services/quartical/Dockerfile
     env_file:
       - .env
+      - quartical.env
     volumes:
       - /dev/shm:/dev/shm
       - $RUN_DIR_HOST:/dsa/run
       - $DATA_DIR_HOST:/dsa/data
       - $PWD/$INPUT_DIR_HOST:/dsa/input # relative path, hence we add $PWD, else should be absolution.
+    networks:
+      - safe-tier
+  simulate_ionosphere:
+    image: simulate_ionosphere
+    container_name: simulate_ionosphere
+    build:
+      context: .
+      dockerfile: services/simulate_ionosphere/Dockerfile
+    env_file:
+      - .env
+      - simulate_ionosphere.env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/run
     networks:
       - safe-tier
 networks:
