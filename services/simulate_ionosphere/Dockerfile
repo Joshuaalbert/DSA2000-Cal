@@ -25,7 +25,5 @@ COPY services/simulate_ionosphere/src/entrypoint.sh .
 
 WORKDIR /dsa/run
 
-RUN cp /dsa/coda/tomographic_kernel/bin/dsa2000*.cfg .
-
 
 ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]
