@@ -7,11 +7,13 @@ set -x
 
 # Run Simulate Ionosphere
 
-RUN_DIR=/dsa/run/sim_dsa2000W_1000m_grid_"$DURATION"_"$RESOLUTION"
+RUN_DIR=/dsa/run/sim_dsa2000W_1000m_grid_"$SPECIFICATION"_"$DURATION"_"$RESOLUTION"
 mkdir -p $RUN_DIR
 
 ln -sf $RUN_DIR /dsa/output                                                  # for output simulation
-OUTPUT_NAME=/dsa/output/sim_dsa2000W_1000m_grid_"$DURATION"_"$RESOLUTION".h5 # output h5parm
+OUTPUT_NAME=/dsa/output/sim_dsa2000W_1000m_grid_"$SPECIFICATION"_"$DURATION"_"$RESOLUTION".h5 # output h5parm
+
+cd /dsa/output
 
 cp /dsa/code/tomographic_kernel/bin/*.cfg .
 
@@ -24,7 +26,7 @@ python /dsa/code/tomographic_kernel/bin/simulate_ionosphere_phase_screen.py \
   --duration="$DURATION" \
   --field_of_view_diameter=4.0 \
   --avg_direction_spacing=10000.0 \
-  --specification="simple" \
+  --specification="$SPECIFICATION" \
   --ncpu=6
 
 # Followup with interpolating onto DSA2000 array
