@@ -7,7 +7,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # container directories that will be mounted
-RUN mkdir -p /dsa/run && mkdir /dsa/data && mkdir /dsa/input
+RUN mkdir -p /dsa/run && mkdir /dsa/data
 
 # Install quartical and LSM stuff
 
@@ -20,10 +20,7 @@ RUN pip install --verbose -r requirements.txt
 RUN pip freeze
 
 COPY services/quartical/src/entrypoint.sh .
-
-# We run from within input folder
-
-WORKDIR /dsa/input
+COPY services/quartical/src/"$RUN_NAME"/ .
 
 
 ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]

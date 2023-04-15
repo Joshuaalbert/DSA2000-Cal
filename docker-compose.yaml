@@ -30,7 +30,6 @@ services:
       - /dev/shm:/dev/shm
       - $RUN_DIR_HOST:/dsa/run
       - $DATA_DIR_HOST:/dsa/data
-      - $PWD/$INPUT_DIR_HOST:/dsa/input # relative path, hence we add $PWD, else should be absolution.
     networks:
       - safe-tier
   simulate_ionosphere:
