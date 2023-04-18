@@ -1,5 +1,8 @@
 FROM python:3.10.8
 
+ARG RUN_NAME
+ENV RUN_NAME=${RUN_NAME}
+
 # install extras
 
 RUN apt-get update && \
@@ -21,8 +24,7 @@ RUN pip freeze
 
 COPY services/quartical/src/entrypoint.sh .
 
-ARG RUN_NAME
-ENV RUN_NAME=${RUN_NAME}
+
 COPY services/quartical/src/"$RUN_NAME" input
 
 
