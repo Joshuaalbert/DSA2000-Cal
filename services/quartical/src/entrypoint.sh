@@ -6,8 +6,8 @@ set -euo pipefail
 set -x
 
 ## These should match parset.yaml
-SKY_MODEL_BBS=skymodel.bbs
-SKY_MODEL_TIGGER=skymodel.lsm.html
+SKY_MODEL_BBS=input/skymodel.bbs
+SKY_MODEL_TIGGER=input/skymodel.lsm.html
 
 # Check if SKY_MODEL_TIGGER doesn't exist
 if [[ ! -f "$SKY_MODEL_TIGGER" ]]; then
@@ -34,7 +34,7 @@ ln -sf $RUN_DIR /dsa/output                   # for output solutions and logs
 ln -sf /dsa/data/$MS_NAME /dsa/output/input.ms # for ms input
 
 # for clarity
-cp parset.yaml /dsa/output
-cp $SKY_MODEL_TIGGER /dsa/output
+cp input/parset.yaml /dsa/output
+cp input/$SKY_MODEL_TIGGER /dsa/output
 
 goquartical parset.yaml

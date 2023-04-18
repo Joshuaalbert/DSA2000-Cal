@@ -20,7 +20,7 @@ RUN pip install --verbose -r requirements.txt
 RUN pip freeze
 
 COPY services/quartical/src/entrypoint.sh .
-COPY services/quartical/src/"$RUN_NAME"/ .
+COPY services/quartical/src/"$RUN_NAME" input
 
 
 ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]
