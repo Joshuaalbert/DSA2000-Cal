@@ -22,5 +22,7 @@ RUN pip freeze
 COPY services/quartical/src/entrypoint.sh .
 COPY services/quartical/src/"$RUN_NAME" input
 
+RUN ls
+
 
 ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]
