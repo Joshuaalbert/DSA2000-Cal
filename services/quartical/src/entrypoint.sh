@@ -31,7 +31,7 @@ mkdir -p $RUN_DIR
 
 # Links to standard names for parset.yaml to use
 ln -sf $RUN_DIR /dsa/output                   # for output solutions and logs
-ln -sf /dsa/data/$MS_NAME /dsa/code/input.ms # for ms input
+ln -sf /dsa/data/$MS_NAME /dsa/output/input.ms # for ms input
 
 # for clarity
 cp parset.yaml /dsa/output
