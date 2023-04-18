@@ -22,6 +22,7 @@ RUN pip freeze
 COPY services/quartical/src/entrypoint.sh .
 
 ARG RUN_NAME
+ENV RUN_NAME=${RUN_NAME}
 COPY services/quartical/src/"$RUN_NAME" input
 
 
