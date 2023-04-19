@@ -25,9 +25,11 @@ services:
       dockerfile: services/quartical/Dockerfile
       args:
         RUN_NAME: ${RUN_NAME}
+    environment:
+      - RUN_NAME=${RUN_NAME}
     env_file:
-      - .env
       - quartical.env
+      - .env
     volumes:
       - /dev/shm:/dev/shm
       - $RUN_DIR_HOST:/dsa/run

@@ -1,8 +1,5 @@
 FROM python:3.10.8
 
-ARG RUN_NAME
-ENV RUN_NAME=${RUN_NAME}
-
 # install extras
 
 RUN apt-get update && \
