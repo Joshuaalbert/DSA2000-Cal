@@ -5,6 +5,8 @@
 set -euo pipefail
 set -x
 
+ln -s $PWD/$RUN_NAME $PWD/input
+
 ## These should match parset.yaml
 SKY_MODEL_BBS=input/skymodel.bbs
 SKY_MODEL_TIGGER=input/skymodel.lsm.html
