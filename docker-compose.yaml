@@ -23,10 +23,6 @@ services:
     build:
       context: .
       dockerfile: services/quartical/Dockerfile
-      args:
-        RUN_NAME: ${RUN_NAME}
-    environment:
-      - RUN_NAME=${RUN_NAME}
     env_file:
       - quartical.env
       - .env
