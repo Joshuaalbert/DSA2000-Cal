@@ -37,6 +37,8 @@ ln -sf /dsa/data/$MS_NAME /dsa/output/input.ms # for ms input
 
 # for clarity
 cp input/parset.yaml /dsa/output
-cp input/$SKY_MODEL_TIGGER /dsa/output
+cp $SKY_MODEL_TIGGER /dsa/output
+
+cd /dsa/output
 
 goquartical parset.yaml

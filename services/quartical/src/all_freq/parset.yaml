@@ -16,7 +16,7 @@ input_ms:
 #  select_ddids: [ 0 ] # spectral windows of MS
 
 input_model:
-  recipe: skymodel.lsm.html
+  recipe: /dsa/output/skymodel.lsm.html
 #  source_chunks: 1 # big impact on RAM
 
 output:
