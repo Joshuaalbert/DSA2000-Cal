@@ -9,3 +9,5 @@ astro-kittens
 matplotlib
 jupyter
 scikit-learn
+h5parm
+tables

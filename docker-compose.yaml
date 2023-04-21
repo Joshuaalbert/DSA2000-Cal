@@ -10,7 +10,7 @@ services:
       - "8890:8888" # Jupyter notebook is nice to have there
     env_file:
       - .env
-      - run_inspect.env
+      - inspect.env
     volumes:
       - /dev/shm:/dev/shm
       - $RUN_DIR_HOST:/dsa/notebooks/output
