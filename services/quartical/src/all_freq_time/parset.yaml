@@ -37,7 +37,7 @@ solver:
   iter_recipe: [ 1000 ] # Using a zero would just "interpolate" the solutions into appropriate gains, e.g. G (independent) -> dE (dependent)
   propagate_flags: True
   robust: False # reweight visibilties using residuals (or something) Ask about it.
-  threads: 6 # The total number of threads used will be dask.threads*solver.threads; if this product exceeds the number of available threads, performance will suffer.
+  threads: 32 # The total number of threads used will be dask.threads*solver.threads; if this product exceeds the number of available threads, performance will suffer.
 #  convergence_criteria: 1e-8 # Like x_tol. The change in the value of the gain below which it considered to have converged. Set to zero to iterate for the number of interations specified in solver.iter_recipe.
 #  convergence_fraction: 1.0 # The fraction of gain values which must converge before a solver will exit prematurely.
   reference_antenna: 0 # reference antenna. No gaurantee that it'll be zero.
