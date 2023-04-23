@@ -9,7 +9,7 @@ input_ms:
   path: /dsa/output/input.ms
   data_column: DATA
   weight_column: WEIGHT
-  time_chunk: 0 # Controls how much RAM is used, can be unit or number per chunk
+  time_chunk: 7 # Controls how much RAM is used, can be unit or number per chunk
   freq_chunk: 0 # can be unit or number per chunk, 0 is all
 #  select_corr: [ 0,1,2,3 ] # All correlations
 #  select_fields: [ 0 ]
