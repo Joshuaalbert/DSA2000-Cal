@@ -27,6 +27,9 @@ python /dsa/code/tomographic_kernel/bin/simulate_ionosphere_phase_screen.py \
   --field_of_view_diameter=4.0 \
   --avg_direction_spacing=10000.0 \
   --specification="$SPECIFICATION" \
-  --ncpu=6
+  --ncpu=6 \
+  --Nf=64 \
+  --min_freq=700 \
+  --max_freq=710.239
 
 # Followup with interpolating onto DSA2000 array
