@@ -34,7 +34,7 @@ dask:
 
 solver:
   terms: [ "G" ]
-  iter_recipe: [ 1000 ] # Using a zero would just "interpolate" the solutions into appropriate gains, e.g. G (independent) -> dE (dependent)
+  iter_recipe: [ 10000 ] # Using a zero would just "interpolate" the solutions into appropriate gains, e.g. G (independent) -> dE (dependent)
   propagate_flags: True
   robust: False # reweight visibilties using residuals (or something) Ask about it.
   threads: 32 # The total number of threads used will be dask.threads*solver.threads; if this product exceeds the number of available threads, performance will suffer.
