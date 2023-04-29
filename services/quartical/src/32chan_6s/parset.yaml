@@ -9,8 +9,8 @@ input_ms:
   path: /dsa/output/input.ms
   data_column: DATA
   weight_column: WEIGHT
-  time_chunk: 2 # Controls how much RAM is used, can be unit or number per chunk
-  freq_chunk: 0 # can be unit or number per chunk, 0 is all
+  time_chunk: 4 # Controls how much RAM is used, can be unit or number per chunk
+  freq_chunk: 32 # can be unit or number per chunk, 0 is all
 #  select_corr: [ 0,1,2,3 ] # All correlations
 #  select_fields: [ 0 ]
 #  select_ddids: [ 0 ] # spectral windows of MS
@@ -44,5 +44,5 @@ solver:
 
 G:
   type: phase
-  time_interval: "2"
-  freq_interval: "0"
+  time_interval: "4"
+  freq_interval: "32"
