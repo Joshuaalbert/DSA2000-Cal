@@ -17,7 +17,7 @@ cd /dsa/output
 
 cp /dsa/code/tomographic_kernel/bin/*.cfg .
 
-python /dsa/code/tomographic_kernel/bin/simulate_ionosphere_phase_screen.py \
+time python /dsa/code/tomographic_kernel/bin/simulate_ionosphere_phase_screen.py \
   --output_h5parm="$OUTPUT_NAME" \
   --phase_tracking='00h00m0.0s +37d07m47.400s' \
   --array_name=dsa2000W_1000m_grid \

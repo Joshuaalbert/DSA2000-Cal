@@ -41,4 +41,4 @@ cp $SKY_MODEL_TIGGER /dsa/output
 
 cd /dsa/output
 
-goquartical parset.yaml
+time goquartical parset.yaml
