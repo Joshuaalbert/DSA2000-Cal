@@ -28,11 +28,11 @@ for SKY_MODEL_BBS in $SKY_MODEL_BBS_FILES; do
   # Replace the file .bbs suffix with .lsm.html
   SKY_MODEL_TIGGER="${SKY_MODEL_BBS%.bbs}.lsm.html"
 
-  # store it in run dir for posterity
-  cp $SKY_MODEL_TIGGER /dsa/output
-
   # Run the convert script
   tigger-convert -t BBS -o Tigger $SKY_MODEL_BBS $SKY_MODEL_TIGGER
+
+  # store it in run dir for posterity
+  cp $SKY_MODEL_TIGGER /dsa/output
 done
 
 # Run Quartical
