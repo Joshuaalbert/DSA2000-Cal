@@ -32,7 +32,7 @@ for SKY_MODEL_BBS in $SKY_MODEL_BBS_FILES; do
   cp $SKY_MODEL_TIGGER /dsa/output
 
   # Run the convert script
-  convert-script "$SKY_MODEL_BBS" "$SKY_MODEL_TIGGER"
+  tigger-convert -t BBS -o Tigger $SKY_MODEL_BBS $SKY_MODEL_TIGGER
 done
 
 # Run Quartical
