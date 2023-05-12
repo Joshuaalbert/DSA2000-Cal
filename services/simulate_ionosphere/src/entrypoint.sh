@@ -11,7 +11,7 @@ RUN_DIR=/dsa/run/sim_dsa2000W_1000m_grid_"$SPECIFICATION"_"$DURATION"_"$RESOLUTI
 mkdir -p $RUN_DIR
 
 ln -sf $RUN_DIR /dsa/output                                                  # for output simulation
-OUTPUT_NAME=/dsa/output/sim_dsa2000W_1000m_grid_"$SPECIFICATION"_"$DURATION"_"$RESOLUTION".h5 # output h5parm
+OUTPUT_NAME=/dsa/output/sim_dsa2000W_1000m_grid_"$SPECIFICATION"_"$DURATION"_"$RESOLUTION"_"$SUFFIX".h5 # output h5parm
 
 cd /dsa/output
 
