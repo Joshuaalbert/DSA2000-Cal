@@ -16,6 +16,7 @@ OUTPUT_NAME=/dsa/output/sim_dsa2000W_1000m_grid_"$SPECIFICATION"_"$DURATION"_"$R
 cd /dsa/output
 
 cp /dsa/code/tomographic_kernel/bin/*.cfg .
+cp /dsa/code/sky_model.bbs .
 
 time python /dsa/code/tomographic_kernel/bin/simulate_ionosphere_phase_screen.py \
   --output_h5parm="$OUTPUT_NAME" \
@@ -30,6 +31,7 @@ time python /dsa/code/tomographic_kernel/bin/simulate_ionosphere_phase_screen.py
   --ncpu=6 \
   --Nf=64 \
   --min_freq=700 \
-  --max_freq=710.239
+  --max_freq=710.239 \
+  --sky_model=/dsa/code/sky_model.bbs
 
 # Followup with interpolating onto DSA2000 array

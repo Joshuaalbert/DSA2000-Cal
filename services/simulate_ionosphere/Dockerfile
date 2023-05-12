@@ -20,6 +20,7 @@ RUN git clone https://github.com/Joshuaalbert/tomographic_kernel.git \
 RUN pip freeze
 
 COPY services/simulate_ionosphere/src/entrypoint.sh .
+COPY services/simulate_ionosphere/src/sky_model.bbs .
 
 # We run from within input folder
 
