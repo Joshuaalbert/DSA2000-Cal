@@ -44,5 +44,6 @@ solver:
 
 G:
   type: phase
+  direction_dependent: True
   time_interval: "4"
   freq_interval: "32"
