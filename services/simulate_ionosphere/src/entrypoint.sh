@@ -24,12 +24,12 @@ time python /dsa/code/tomographic_kernel/bin/simulate_ionosphere_phase_screen.py
   --array_name=dsa2000W \
   --start_time='2019-03-19T19:58:14.9' \
   --time_resolution="$RESOLUTION" \
-  --grid_res_m=500. \
+  --grid_res_m=1000. \
   --duration="$DURATION" \
   --field_of_view_diameter=4.0 \
   --avg_direction_spacing=10000.0 \
   --specification="$SPECIFICATION" \
-  --ncpu=32 \
+  --ncpu=64 \
   --Nf=64 \
   --min_freq=700 \
   --max_freq=710.239 \
