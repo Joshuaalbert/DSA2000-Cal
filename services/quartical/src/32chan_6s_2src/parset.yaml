@@ -45,5 +45,6 @@ solver:
 G:
   type: phase
   direction_dependent: True
+  pinned_directions: []
   time_interval: "4"
   freq_interval: "32"
