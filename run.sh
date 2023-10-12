@@ -13,7 +13,7 @@ source "$SCRIPT_DIR"/run_simulate_ionosphere.sh
 #echo source $"SCRIPT_DIR"/run_simulate_instrumental.sh
 
 # Simulate visibilities: DFT
-source "$SCRIPT_DIR"/run_predict_dft.sh
+source "$SCRIPT_DIR"/run_dft_predict.sh
 #
 ## Simulate visibilities: FFT
 #echo source $"SCRIPT_DIR"/run_predict_fft.sh

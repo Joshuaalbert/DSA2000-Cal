@@ -17,3 +17,4 @@ def test_extract_itrs_coords():
     assert antenna_coords[0].y == -5042001.67655 * au.m
     assert antenna_coords[0].z == 3554652.4556 * au.m
     assert stations == ['vla-00', 'vla-01', 'vla-02', 'vla-03']
+    os.remove('test_array.txt')

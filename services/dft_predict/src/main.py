@@ -28,8 +28,8 @@ def main(run_config: RunConfig):
 
     bbs_sky_model = BBSSkyModel(bbs_sky_model=run_config.bright_sky_model_bbs,
                                 pointing_centre=run_config.pointing_centre,
-                                chan0=run_config.start_freq_hz * au.hz,
-                                chan_width=run_config.channel_width_hz * au.hz,
+                                chan0=run_config.start_freq_hz * au.Hz,
+                                chan_width=run_config.channel_width_hz * au.Hz,
                                 num_channels=run_config.num_channels
                                 )
 
