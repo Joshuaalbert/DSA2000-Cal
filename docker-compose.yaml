@@ -24,12 +24,10 @@ services:
       context: .
       dockerfile: services/quartical/Dockerfile
     env_file:
-      - quartical.env
       - .env
     volumes:
       - /dev/shm:/dev/shm
       - $RUN_DIR_HOST:/dsa/run
-      - $DATA_DIR_HOST:/dsa/data
     networks:
       - safe-tier
   simulate_ionosphere:
@@ -40,10 +38,23 @@ services:
       dockerfile: services/simulate_ionosphere/Dockerfile
     env_file:
       - .env
-      - simulate_ionosphere.env
     volumes:
       - /dev/shm:/dev/shm
       - $RUN_DIR_HOST:/dsa/run
+    networks:
+      - safe-tier
+  prepare_run:
+    image: prepare_run
+    container_name: prepare_run
+    build:
+      context: .
+      dockerfile: services/prepare_run/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/run
+      - $DATA_DIR_HOST:/dsa/data
     networks:
       - safe-tier
 networks:

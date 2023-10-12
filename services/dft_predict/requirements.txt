@@ -1,0 +1,11 @@
+simms
+codex-africanus[complete]
+astropy
+numpy
+scipy
+astLib
+python-casacore
+future
+astro-kittens
+matplotlib
+jupyter

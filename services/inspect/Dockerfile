@@ -17,6 +17,12 @@ ADD services/inspect/requirements.txt .
 
 RUN pip install --verbose -r requirements.txt
 
+
+WORKDIR /dsa/code
+COPY dsa2000_cal .
+RUN pip install -r dsa2000_cal/requirments.txt && \
+    pip install dsa2000_cal
+
 RUN pip freeze
 
 COPY services/inspect/src/entrypoint.sh .
