@@ -7,13 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 source "$SCRIPT_DIR"/run_prepare_run.sh
 
 # Compute gains: Ionosphere simulation
-echo source "$SCRIPT_DIR"/run_simulate_ionosphere.sh
+source "$SCRIPT_DIR"/run_simulate_ionosphere.sh
 
 # Compute gains: Instrumental effects
 #echo source $"SCRIPT_DIR"/run_simulate_instrumental.sh
-#
-## Simulate visibilities: DFT
-#echo source $"SCRIPT_DIR"/run_predict_dft.sh
+
+# Simulate visibilities: DFT
+source "$SCRIPT_DIR"/run_predict_dft.sh
 #
 ## Simulate visibilities: FFT
 #echo source $"SCRIPT_DIR"/run_predict_fft.sh

@@ -10,7 +10,6 @@ RUN apt-get update && \
 
 
 # install dsa2000_cal
-RUN echo "A"
 WORKDIR /dsa/code
 COPY dsa2000_cal dsa2000_cal
 RUN pip install -r dsa2000_cal/requirements.txt && \

@@ -30,6 +30,19 @@ services:
       - $RUN_DIR_HOST:/dsa/run
     networks:
       - safe-tier
+  dft_predict:
+    image: dft_predict
+    container_name: dft_predict
+    build:
+      context: .
+      dockerfile: services/dft_predict/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/run
+    networks:
+      - safe-tier
   simulate_ionosphere:
     image: simulate_ionosphere
     container_name: simulate_ionosphere

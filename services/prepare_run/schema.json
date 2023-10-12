@@ -1,0 +1,119 @@
+{
+  "title": "PrepareRunConfig",
+  "description": "Represents the configuration for preparing a run.",
+  "type": "object",
+  "properties": {
+    "array_name": {
+      "title": "Array Name",
+      "description": "The name of the array to use.",
+      "example": "dsa2000W",
+      "type": "string"
+    },
+    "start_dt": {
+      "title": "Start Dt",
+      "description": "The start datetime of the run.",
+      "example": "2023-10-10T12:00:00",
+      "type": "string",
+      "format": "date-time"
+    },
+    "alt_deg": {
+      "title": "Alt Deg",
+      "description": "The altitude of the pointing direction in degrees, measured from horizon to zenith.",
+      "example": 90,
+      "minimum": 0,
+      "maximum": 90,
+      "type": "number"
+    },
+    "az_deg": {
+      "title": "Az Deg",
+      "description": "The azimuth of the pointing direction in degrees measured East from North.",
+      "example": 0,
+      "minimum": 0,
+      "maximum": 360,
+      "type": "number"
+    },
+    "num_bright_sources": {
+      "title": "Num Bright Sources",
+      "description": "The number of bright sources to use in the simulation, if any.",
+      "example": 10,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "spacing_deg": {
+      "title": "Spacing Deg",
+      "description": "The spacing between bright sources in degrees",
+      "example": 1.0,
+      "minimum": 0,
+      "type": "number"
+    },
+    "faint_sky_model_fits": {
+      "title": "Faint Sky Model Fits",
+      "description": "The path to the faint sky model fits file, if given.",
+      "example": "\/home\/albert\/git\/DSA2000-Cal\/dsa2000_cal\/dsa2000_cal\/assets\/mocks\/mock_faint_sky_model.fits",
+      "type": "string"
+    },
+    "start_freq_hz": {
+      "title": "Start Freq Hz",
+      "description": "The start frequency of the simulation in Hz.",
+      "example": 800000000.0,
+      "exclusiveMinimum": 0,
+      "type": "number"
+    },
+    "channel_width_hz": {
+      "title": "Channel Width Hz",
+      "description": "The channel width of the simulation in Hz.",
+      "example": 2000000.0,
+      "exclusiveMinimum": 0,
+      "type": "number"
+    },
+    "num_channels": {
+      "title": "Num Channels",
+      "description": "The number of channels in the simulation.",
+      "example": 32,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "num_times": {
+      "title": "Num Times",
+      "description": "The number of times in the simulation.",
+      "example": 10,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "integration_time_s": {
+      "title": "Integration Time S",
+      "description": "The integration time of the simulation in seconds.",
+      "example": 1.5,
+      "exclusiveMinimum": 0,
+      "type": "number"
+    },
+    "ionosphere_specification": {
+      "title": "Ionosphere Specification",
+      "description": "The ionosphere specification, one of ['simple', 'light_dawn', 'dawn', 'dusk', 'dawn_challenge', 'dusk_challenge']",
+      "example": "light_dawn",
+      "enum": [
+        "simple",
+        "light_dawn",
+        "dawn",
+        "dusk",
+        "dawn_challenge",
+        "dusk_challenge"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "array_name",
+    "start_dt",
+    "alt_deg",
+    "az_deg",
+    "num_bright_sources",
+    "spacing_deg",
+    "start_freq_hz",
+    "channel_width_hz",
+    "num_channels",
+    "num_times",
+    "integration_time_s",
+    "ionosphere_specification"
+  ]
+}

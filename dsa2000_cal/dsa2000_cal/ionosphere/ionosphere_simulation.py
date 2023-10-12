@@ -377,7 +377,7 @@ class Simulation:
         antennas_grid_labels = list(map(lambda i: f"grid-ant-{i}", range(len(antennas_grid))))
         save_array_file(gridded_array_name, antennas=antennas_grid, labels=antennas_grid_labels)
 
-        gridded_h5parm = f"gridded_{output_h5parm}"
+        gridded_h5parm = f"{output_h5parm}.gridded"
 
         dp_grid = create_empty_datapack(Nd, Nf, Nt,
                                         pols=None,

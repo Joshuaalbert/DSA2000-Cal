@@ -1,0 +1,15 @@
+{
+  "array_name": "dsa2000W_small",
+  "start_dt": "2023-10-10T12:00:00",
+  "alt_deg": 90.0,
+  "az_deg": 0.0,
+  "num_bright_sources": 10,
+  "spacing_deg": 1.0,
+  "faint_sky_model_fits": "mock_faint_sky_model.fits",
+  "start_freq_hz": 800000000.0,
+  "channel_width_hz": 2000000.0,
+  "num_channels": 32,
+  "num_times": 10,
+  "integration_time_s": 1.5,
+  "ionosphere_specification": "light_dawn"
+}

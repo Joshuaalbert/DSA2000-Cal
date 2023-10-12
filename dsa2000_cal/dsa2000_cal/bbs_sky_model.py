@@ -172,13 +172,13 @@ class BBSSkyModel(AbstractSkyModel):
             axis=1
         )  # [source, corr]
 
-        output_corrs = ['XX', 'XY', 'YX', 'YY']
+        output_corrs = [['XX', 'XY'], ['YX', 'YY']]
         image_corr = convert(
             stokes_image,
             ['I', 'Q', 'U', 'V'],
             output_corrs
         )  # [source, corr]
-        image_corr = np.tile(image_corr[:, None, :], [1, len(self.channels), 1])  # [source, chan, corr]
+        image_corr = np.tile(image_corr[:, None, :], [1, len(self.channels), 1])  # [source, chan, 2, 2]
         if 'ReferenceFrequency' in data_dict and 'SpectralIndex' in data_dict:
             ## TODO: Add spectral model if necessary
             pass
@@ -186,7 +186,8 @@ class BBSSkyModel(AbstractSkyModel):
         return SourceModel(
             image=image_corr,
             lm=direction_cosines,
-            corrs=output_corrs
+            corrs=output_corrs,
+            freqs=self.channels
         )
 
 
@@ -200,6 +201,7 @@ def create_sky_model(
     Create a sky model with a given number of sources, spacing, and pointing centre.
 
     Args:
+        filename: the name of the file to write the sky model to
         num_sources: the number of sources to generate
         spacing_deg: the spacing between sources in degrees
         pointing_centre: the pointing centre of the observation

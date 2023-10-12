@@ -1,6 +1,5 @@
 from typing import Literal
 
-from africanus.dft import im_to_vis
 from jax import numpy as jnp, vmap
 
 from dsa2000_cal.jax_utils import chunked_pmap
@@ -10,6 +9,7 @@ c = 2.99792458e8
 
 two_pi_over_c = 2 * jnp.pi / c
 minus_two_pi_over_c = -two_pi_over_c
+
 
 def im_to_vis(
         image: jnp.ndarray,
@@ -21,7 +21,7 @@ def im_to_vis(
         chunksize: int = 1
 ) -> jnp.ndarray:
     """
-    Convert an image to visibilities.
+    Convert an image to visibilities for ideal interferometer. Assumes no instrumental effects.
 
     Args:
         image: [source, chan, corr]
@@ -77,6 +77,7 @@ def im_to_vis_with_gains(
         gains: jnp.ndarray,
         antenna_1: jnp.ndarray,
         antenna_2: jnp.ndarray,
+        time_idx: jnp.ndarray,
         uvw: jnp.ndarray,
         lm: jnp.ndarray,
         frequency: jnp.ndarray,
@@ -89,9 +90,10 @@ def im_to_vis_with_gains(
 
     Args:
         image: [source, chan, 2, 2]
-        gains: [ant, source, chan, 2, 2]
+        gains: [time, ant, source, chan, 2, 2]
         antenna_1: [row]
         antenna_2: [row]
+        time_idx: [row]
         uvw: [row, 3]
         lm: [source, 2]
         frequency: [chan]
@@ -102,6 +104,8 @@ def im_to_vis_with_gains(
     Returns:
         visibilities: [row, chan, 2, 2]
     """
+    # Do shape checks
+    check_shapes(antenna_1, antenna_2, frequency, gains, image, lm, time_idx, uvw)
     if convention == 'fourier':
         constant = minus_two_pi_over_c
     elif convention == 'casa':
@@ -110,11 +114,11 @@ def im_to_vis_with_gains(
         raise ValueError("convention not in ('fourier', 'casa')")
 
     # We scan over UVW coordinates, and then compute output
-    def body(uvw, antenna_1, antenna_2):
+    def body(uvw, antenna_1, antenna_2, time_idx):
         u, v, w = uvw
 
-        g1 = gains[antenna_1, :, :, :, :]  # [source, chan, 2, 2]
-        g2 = gains[antenna_2, :, :, :, :]  # [source, chan, 2, 2]
+        g1 = gains[time_idx, antenna_1, :, :, :, :]  # [source, chan, 2, 2]
+        g2 = gains[time_idx, antenna_2, :, :, :, :]  # [source, chan, 2, 2]
 
         @vmap
         def sum_over_source(lm, im_chan_corr, g1_chan_corr, g2_chan_corr):
@@ -138,6 +142,56 @@ def im_to_vis_with_gains(
         f=body,
         chunksize=chunksize,
         batch_size=uvw.shape[0]
-    )(uvw, antenna_1, antenna_2)  # [row, chan, 2, 2]
+    )(uvw, antenna_1, antenna_2, time_idx)  # [row, chan, 2, 2]
 
     return vis
+
+
+def check_shapes(antenna_1: jnp.ndarray, antenna_2: jnp.ndarray, frequency: jnp.ndarray, gains: jnp.ndarray,
+                 image: jnp.ndarray, lm: jnp.ndarray, time_idx: jnp.ndarray, uvw: jnp.ndarray):
+    """
+    Check that the shapes of the inputs are correct.
+
+    Args:
+        antenna_1: [row]
+        antenna_2: [row]
+        frequency: [chan]
+        gains: [time, ant, source, chan, 2, 2]
+        image: [source, chan, 2, 2]
+        lm: [source, 2]
+        time_idx: [row]
+        uvw: [row, 3]
+
+    Raises:
+        ValueError: if any of the shapes are incorrect.
+    """
+    # Check num dims
+    if len(image.shape) != 4:
+        raise ValueError("image must have shape [source, chan, 2, 2]")
+    if len(gains.shape) != 6:
+        raise ValueError("gains must have shape [time, ant, source, chan, 2, 2]")
+    if len(antenna_1.shape) != 1:
+        raise ValueError("antenna_1 must have shape [row]")
+    if len(antenna_2.shape) != 1:
+        raise ValueError("antenna_2 must have shape [row]")
+    if len(time_idx.shape) != 1:
+        raise ValueError("time_idx must have shape [row]")
+    if len(uvw.shape) != 2:
+        raise ValueError("uvw must have shape [row, 3]")
+    if len(lm.shape) != 2:
+        raise ValueError("lm must have shape [source, 2]")
+    if len(frequency.shape) != 1:
+        raise ValueError("frequency must have shape [chan]")
+    # Check shapes
+    if image.shape[2] != 2 or image.shape[3] != 2:
+        raise ValueError("image must have shape [source, chan, 2, 2]")
+    if gains.shape[4] != 2 or gains.shape[5] != 2:
+        raise ValueError("gains must have shape [time, ant, source, chan, 2, 2]")
+    if antenna_1.shape[0] != antenna_2.shape[0]:
+        raise ValueError("antenna_1 and antenna_2 must have same length")
+    if antenna_1.shape[0] != time_idx.shape[0]:
+        raise ValueError("antenna_1 and time_idx must have same length")
+    if uvw.shape[0] != antenna_1.shape[0]:
+        raise ValueError("uvw and antenna_1 must have same length")
+    if lm.shape[0] != image.shape[0]:
+        raise ValueError("lm and image must have same length")

@@ -3,23 +3,24 @@ FROM python:3.10.8
 # install extras
 
 RUN apt-get update && \
-    apt-get install -y vim && \
+    apt-get install -y vim less ffmpeg git htop feh build-essential wget && \
     rm -rf /var/lib/apt/lists/*
 
 # container directories that will be mounted
-RUN mkdir -p /dsa/run && mkdir /dsa/data
 
-# Install quartical and LSM stuff
 
+# install dsa2000_cal
 WORKDIR /dsa/code
-
-ADD services/dft_predict/requirements.txt .
-
-RUN pip install --verbose -r requirements.txt
-
-RUN pip freeze
-
-COPY services/dft_predict/src/ .
+COPY dsa2000_cal dsa2000_cal
+RUN pip install -r dsa2000_cal/requirements.txt && \
+    pip install ./dsa2000_cal
 
 
-ENTRYPOINT [ "/bin/bash", "/dsa/code/entrypoint.sh" ]
+COPY services/dft_predict/src src
+
+# Directies that will be mounted
+RUN mkdir -p /dsa/run
+WORKDIR /dsa/run
+
+
+ENTRYPOINT [ "/bin/bash", "/dsa/code/src/entrypoint.sh" ]

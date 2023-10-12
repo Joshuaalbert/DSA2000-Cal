@@ -9,4 +9,4 @@ export RUN_CONFIG=prepare_run_config.json
 # Copy data from data dir to run dir
 rsync -avP /dsa/data/ /dsa/run/
 
-python3 /dsa/code/src/main.py
+time python3 /dsa/code/src/main.py

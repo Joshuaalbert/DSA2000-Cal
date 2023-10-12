@@ -24,6 +24,7 @@ def test_bbs_sky_model_I_only():
     assert len(source_model.corrs) == 4
     assert source_model.image.shape == (2, 2, 4)
     assert source_model.lm.shape == (2, 2)
+    assert source_model.freqs.shape == (2,)
     os.remove(sky_model_file)
 
 
