@@ -6,7 +6,7 @@
 
 # columns that exist: UVW FLAG FLAG_CATEGORY WEIGHT SIGMA ANTENNA1 ANTENNA2 ARRAY_ID DATA_DESC_ID EXPOSURE FEED1 FEED2 FIELD_ID FLAG_ROW INTERVAL OBSERVATION_ID PROCESSOR_ID SCAN_NUMBER STATE_ID TIME TIME_CENTROID DATA
 input_ms:
-  path: /dsa/output/input.ms
+  path: visibilities.ms # The summed visibilities
   data_column: DATA
   weight_column: WEIGHT
   time_chunk: 2 # Controls how much RAM is used, can be unit or number per chunk
@@ -16,12 +16,12 @@ input_ms:
 #  select_ddids: [ 0 ] # spectral windows of MS
 
 input_model:
-  recipe: /dsa/output/skymodel.lsm.html
+  recipe: bright_sky_model.lsm.html # Don't touch
 #  source_chunks: 1 # big impact on RAM
 
 output:
-  gain_directory: /dsa/output/gains
-  log_directory: /dsa/output/logs
+  gain_directory: calibration/gains
+  log_directory: calibration/logs
   log_to_terminal: True
   overwrite: True
 #  products: [ corrected_residual ]

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # gets the script dir, should work with bash <script> and source <script>
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 
@@ -31,7 +33,7 @@ source "$SCRIPT_DIR"/run_sum_visibilities.sh
 #echo source $"SCRIPT_DIR"/run_calibrate_prepare.sh
 #
 ## Calibrate: run quartical and create subtracted visibilities
-#echo source $"SCRIPT_DIR"/run_quartical.sh
+#echo source $"SCRIPT_DIR"/run_calibration.sh
 #
 ## Image: image the subtracted visibilities
 #echo source $"SCRIPT_DIR"/run_image.sh

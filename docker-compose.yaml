@@ -17,12 +17,12 @@ services:
       - $DATA_DIR_HOST:/dsa/notebooks/data
     networks:
       - safe-tier
-  quartical:
-    image: quartical
-    container_name: quartical
+  calibration:
+    image: calibration
+    container_name: calibration
     build:
       context: .
-      dockerfile: services/quartical/Dockerfile
+      dockerfile: services/calibration/Dockerfile
     env_file:
       - .env
     volumes:

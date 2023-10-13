@@ -82,7 +82,7 @@ class RunConfig(SerialisableBaseModel):
         description="The RFI simulation configuration.",
         example=RFISimConfig()
     )
-    noise_sigma: float = Field(
-        description="The noise sigma to use in the simulation.",
-        example=0.1
+    calibration_parset: str = Field(
+        description="The path to the calibration parset.",
+        example="parset.yaml",
     )

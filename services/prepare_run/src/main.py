@@ -85,6 +85,10 @@ class PrepareRunConfig(SerialisableBaseModel):
         description="The RFI simulation configuration.",
         example=RFISimConfig()
     )
+    calibration_parset: str = Field(
+        description="The path to the calibration parset.",
+        example="parset.yaml",
+    )
 
 
 def main(prepare_run_config: PrepareRunConfig):
@@ -157,6 +161,8 @@ def main(prepare_run_config: PrepareRunConfig):
 
     ionosphere_h5parm = os.path.abspath('ionosphere.h5parm')
 
+    calibration_parset = os.path.abspath(prepare_run_config.calibration_parset)
+
     run_config = RunConfig(
         array_name=prepare_run_config.array_name,
         start_dt=prepare_run_config.start_dt,
@@ -174,7 +180,8 @@ def main(prepare_run_config: PrepareRunConfig):
         dft_visibilities_path=dft_ms_file,
         fft_visibilities_path=fft_ms_file,
         rfi_visibilities_path=rfi_ms_file,
-        rfi_sim_config=prepare_run_config.rfi_sim_config
+        rfi_sim_config=prepare_run_config.rfi_sim_config,
+        calibration_parset=calibration_parset
     )
     with open('run_config.json', 'w') as f:
         f.write(run_config.json(indent=2))

@@ -15,5 +15,8 @@ tomographic_kernel
 jupyter
 utm
 tqdm
+quartical
+astro-kittens
+astLib
 
 

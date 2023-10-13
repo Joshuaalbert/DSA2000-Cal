@@ -1,18 +1,16 @@
 import os
 
-from dsa2000_cal.assets.content_registry import fill_registries
-
-fill_registries()
-from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.ionosphere.ionosphere_simulation import Simulation
-
 if 'num_cpus' not in os.environ:
     num_cpus = os.cpu_count()
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={num_cpus}"
 else:
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.environ.get('num_cpus')}"
+from dsa2000_cal.assets.content_registry import fill_registries
 
+fill_registries()
 from dsa2000_cal.run_config import RunConfig
+from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.ionosphere.ionosphere_simulation import Simulation
 import astropy.time as at
 
 
