@@ -13,17 +13,17 @@ source "$SCRIPT_DIR"/run_simulate_ionosphere.sh
 #echo source $"SCRIPT_DIR"/run_simulate_instrumental.sh
 
 # Simulate visibilities: DFT
-source "$SCRIPT_DIR"/run_dft_predict.sh
+source "$SCRIPT_DIR"/run_predict_dft.sh
 #
 ## Simulate visibilities: FFT
 #echo source $"SCRIPT_DIR"/run_predict_fft.sh
-#
-## Simulate visibilities: RFI
-#echo source $"SCRIPT_DIR"/run_predict_rfi.sh
-#
-## Sum visibilities and add noise
-#echo source $"SCRIPT_DIR"/run_predict_sum.sh
-#
+
+# Simulate visibilities: RFI
+source "$SCRIPT_DIR"/run_simulate_rfi.sh
+
+# Sum visibilities and add noise
+source "$SCRIPT_DIR"/run_sum_visibilities.sh
+
 ## Image: Create dirty image using WSClean
 #echo source $"SCRIPT_DIR"/run_predict_image.sh
 #

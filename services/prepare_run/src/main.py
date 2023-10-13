@@ -17,6 +17,7 @@ from dsa2000_cal.astropy_utils import mean_itrs
 from dsa2000_cal.bbs_sky_model import create_sky_model
 from dsa2000_cal.create_ms_cfg import create_makems_config
 from dsa2000_cal.faint_sky_model import repoint_fits
+from dsa2000_cal.rfi.rfi_simulation import RFISimConfig
 from dsa2000_cal.run_config import RunConfig
 from dsa2000_cal.utils import SerialisableBaseModel
 
@@ -57,11 +58,11 @@ class PrepareRunConfig(SerialisableBaseModel):
     )
     start_freq_hz: confloat(gt=0) = Field(
         description="The start frequency of the simulation in Hz.",
-        example=800e6,
+        example=700e6,
     )
     channel_width_hz: confloat(gt=0) = Field(
         description="The channel width of the simulation in Hz.",
-        example=2e6,
+        example=162.5e3,
     )
     num_channels: conint(ge=1) = Field(
         description="The number of channels in the simulation.",
@@ -78,6 +79,11 @@ class PrepareRunConfig(SerialisableBaseModel):
     ionosphere_specification: SPECIFICATION = Field(
         description="The ionosphere specification, one of ['simple', 'light_dawn', 'dawn', 'dusk', 'dawn_challenge', 'dusk_challenge']",
         example="light_dawn"
+    )
+    rfi_sim_config: RFISimConfig = Field(
+        default_factory=RFISimConfig,
+        description="The RFI simulation configuration.",
+        example=RFISimConfig()
     )
 
 
@@ -167,7 +173,8 @@ def main(prepare_run_config: PrepareRunConfig):
         visibilities_path=output_ms_file,
         dft_visibilities_path=dft_ms_file,
         fft_visibilities_path=fft_ms_file,
-        rfi_visibilities_path=rfi_ms_file
+        rfi_visibilities_path=rfi_ms_file,
+        rfi_sim_config=prepare_run_config.rfi_sim_config
     )
     with open('run_config.json', 'w') as f:
         f.write(run_config.json(indent=2))

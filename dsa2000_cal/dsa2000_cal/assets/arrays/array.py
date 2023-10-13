@@ -124,3 +124,23 @@ class AbstractArray(ABC, BaseContent):
             station name
         """
         ...
+
+    @abstractmethod
+    def system_equivalent_flux_density(self) -> float:
+        """
+        Get system equivalent flux density (Jy)
+
+        Returns:
+            system equivalent flux density
+        """
+        ...
+
+    @abstractmethod
+    def system_efficency(self) -> float:
+        """
+        Get system efficiency
+
+        Returns:
+            system efficiency
+        """
+        ...

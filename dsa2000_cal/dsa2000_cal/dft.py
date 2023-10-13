@@ -184,14 +184,14 @@ def check_shapes(antenna_1: jnp.ndarray, antenna_2: jnp.ndarray, frequency: jnp.
         raise ValueError("frequency must have shape [chan]")
     # Check shapes
     if image.shape[2] != 2 or image.shape[3] != 2:
-        raise ValueError("image must have shape [source, chan, 2, 2]")
+        raise ValueError(f"image must have shape [source, chan, 2, 2], got {image.shape}")
     if gains.shape[4] != 2 or gains.shape[5] != 2:
-        raise ValueError("gains must have shape [time, ant, source, chan, 2, 2]")
+        raise ValueError(f"gains must have shape [time, ant, source, chan, 2, 2], got {gains.shape}")
     if antenna_1.shape[0] != antenna_2.shape[0]:
-        raise ValueError("antenna_1 and antenna_2 must have same length")
+        raise ValueError(f"antenna_1 and antenna_2 must have same length, got {antenna_1.shape} and {antenna_2.shape}")
     if antenna_1.shape[0] != time_idx.shape[0]:
-        raise ValueError("antenna_1 and time_idx must have same length")
+        raise ValueError(f"antenna_1 and time_idx must have same length, got {antenna_1.shape} and {time_idx.shape}")
     if uvw.shape[0] != antenna_1.shape[0]:
-        raise ValueError("uvw and antenna_1 must have same length")
+        raise ValueError(f"uvw and antenna_1 must have same length, got {uvw.shape} and {antenna_1.shape}")
     if lm.shape[0] != image.shape[0]:
-        raise ValueError("lm and image must have same length")
+        raise ValueError(f"lm and image must have same length, got {lm.shape} and {image.shape}")

@@ -5,6 +5,7 @@ import astropy.units as au
 from pydantic import Field, confloat, conint
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
+from dsa2000_cal.rfi.rfi_simulation import RFISimConfig
 from dsa2000_cal.utils import SerialisableBaseModel
 
 
@@ -34,11 +35,11 @@ class RunConfig(SerialisableBaseModel):
     )
     start_freq_hz: confloat(gt=0) = Field(
         description="The start frequency of the simulation in Hz.",
-        example=800e6,
+        example=700e6,
     )
     channel_width_hz: confloat(gt=0) = Field(
         description="The channel width of the simulation in Hz.",
-        example=2e6,
+        example=162.5e3,
     )
     num_channels: conint(ge=1) = Field(
         description="The number of channels in the simulation.",
@@ -75,4 +76,13 @@ class RunConfig(SerialisableBaseModel):
     ionosphere_h5parm: str = Field(
         description="The path to the output ionosphere h5parm file.",
         example="output.h5parm",
+    )
+    rfi_sim_config: RFISimConfig = Field(
+        default_factory=RFISimConfig,
+        description="The RFI simulation configuration.",
+        example=RFISimConfig()
+    )
+    noise_sigma: float = Field(
+        description="The noise sigma to use in the simulation.",
+        example=0.1
     )

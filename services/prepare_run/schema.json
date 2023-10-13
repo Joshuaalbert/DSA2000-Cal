@@ -55,14 +55,14 @@
     "start_freq_hz": {
       "title": "Start Freq Hz",
       "description": "The start frequency of the simulation in Hz.",
-      "example": 800000000.0,
+      "example": 700000000.0,
       "exclusiveMinimum": 0,
       "type": "number"
     },
     "channel_width_hz": {
       "title": "Channel Width Hz",
       "description": "The channel width of the simulation in Hz.",
-      "example": 2000000.0,
+      "example": 162500.0,
       "exclusiveMinimum": 0,
       "type": "number"
     },
@@ -100,6 +100,23 @@
         "dusk_challenge"
       ],
       "type": "string"
+    },
+    "rfi_sim_config": {
+      "title": "Rfi Sim Config",
+      "description": "The RFI simulation configuration.",
+      "example": {
+        "lte_distance": 46800.0,
+        "lte_angle": 160.0,
+        "lte_height": 20.0,
+        "lte_frequency": 770.0,
+        "lte_polarization": 10.0,
+        "lte_power": 0.00064
+      },
+      "allOf": [
+        {
+          "$ref": "#\/definitions\/RFISimConfig"
+        }
+      ]
     }
   },
   "required": [
@@ -115,5 +132,50 @@
     "num_times",
     "integration_time_s",
     "ionosphere_specification"
-  ]
+  ],
+  "definitions": {
+    "RFISimConfig": {
+      "title": "RFISimConfig",
+      "description": "A pydantic BaseModel that can be serialised and deserialised using pickle, working well with Ray.",
+      "type": "object",
+      "properties": {
+        "lte_distance": {
+          "title": "Lte Distance",
+          "default": 46800.0,
+          "desciption": "Distance between RFI transmitter and center of the telescope [m].",
+          "type": "number"
+        },
+        "lte_angle": {
+          "title": "Lte Angle",
+          "description": "Angle between RFI transmitter and center of the telescope [deg., 0=N, 90=W].",
+          "default": 160.0,
+          "type": "number"
+        },
+        "lte_height": {
+          "title": "Lte Height",
+          "description": "Height of RFI transmitter [m].",
+          "default": 20.0,
+          "type": "number"
+        },
+        "lte_frequency": {
+          "title": "Lte Frequency",
+          "description": "Frequency of RFI signal [MHz].",
+          "default": 770.0,
+          "type": "number"
+        },
+        "lte_polarization": {
+          "title": "Lte Polarization",
+          "description": "Polarization angle of RFI [deg, 0=full XX, 90=full YY].",
+          "default": 10.0,
+          "type": "number"
+        },
+        "lte_power": {
+          "title": "Lte Power",
+          "description": "Power of RFI transmitter at the source [W\/Hz].",
+          "default": 0.00064,
+          "type": "number"
+        }
+      }
+    }
+  }
 }

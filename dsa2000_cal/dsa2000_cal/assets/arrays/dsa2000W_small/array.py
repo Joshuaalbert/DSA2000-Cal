@@ -13,7 +13,7 @@ class DSA2000WArray(AbstractArray):
     """
 
     def get_antenna_diameter(self) -> float:
-        return 10.
+        return 5.
 
     def get_mount_type(self) -> str:
         return 'ALT-AZ'
@@ -31,3 +31,9 @@ class DSA2000WArray(AbstractArray):
 
     def get_station_name(self) -> str:
         return 'OVRO'
+
+    def system_equivalent_flux_density(self) -> float:
+        return 2.5
+
+    def system_efficency(self) -> float:
+        return 0.7

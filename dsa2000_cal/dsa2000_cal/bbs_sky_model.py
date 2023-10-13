@@ -177,8 +177,8 @@ class BBSSkyModel(AbstractSkyModel):
             stokes_image,
             ['I', 'Q', 'U', 'V'],
             output_corrs
-        )  # [source, corr]
-        image_corr = np.tile(image_corr[:, None, :], [1, len(self.channels), 1])  # [source, chan, 2, 2]
+        )  # [source, 2, 2]
+        image_corr = np.tile(image_corr[:, None, :, :], [1, len(self.channels), 1, 1])  # [source, chan, 2, 2]
         if 'ReferenceFrequency' in data_dict and 'SpectralIndex' in data_dict:
             ## TODO: Add spectral model if necessary
             pass

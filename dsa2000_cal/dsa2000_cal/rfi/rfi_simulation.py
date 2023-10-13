@@ -1,17 +1,22 @@
-import argparse
+import logging
+import os.path
 
 import astropy.time as at
 import numpy as np
 import utm
 from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from casacore.tables import table
+from pydantic import Field
 from scipy.io import loadmat
 from tqdm import tqdm
 
 from dsa2000_cal.assets.rfi.rfi_data import RFIData
+from dsa2000_cal.utils import SerialisableBaseModel
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 # Constants
-C = 299792458
+C = 299792458.  # Speed of light [m/s]
 
 
 def extract_ms_data(msfile):
@@ -124,31 +129,82 @@ def calculate_visibilities(FSPL, SLA, visidx, geodelays, trackdelays, t_acf, acf
 def write_visibilities_to_ms(vis_data, msfile, overwrite):
     """Writes visibility data to the MS table."""
     with table(msfile, readonly=False) as t:
-        if overwrite:
+        dtype = t.getcol('DATA').dtype
+        vis_data = vis_data.astype(dtype)
+        if not overwrite:  # Then we add to existing
             vis = t.getcol('DATA')
             vis_data += vis
         t.putcol('DATA', vis_data)
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Inject an RFI signal within an MS data set.')
-    # ... Your argparse definitions here
+class RFISimConfig(SerialisableBaseModel):
+    lte_distance: float = Field(
+        desciption="Distance between RFI transmitter and center of the telescope [m].",
+        default=46800.
+    )
+    lte_angle: float = Field(
+        description="Angle between RFI transmitter and center of the telescope [deg., 0=N, 90=W].",
+        default=160.
+    )
+    lte_height: float = Field(
+        description="Height of RFI transmitter [m].",
+        default=20.
+    )
+    lte_frequency: float = Field(
+        description="Frequency of RFI signal [MHz].",
+        default=770.
+    )
+    lte_polarization: float = Field(
+        description="Polarization angle of RFI [deg, 0=full XX, 90=full YY].",
+        default=10.
+    )
+    lte_power: float = Field(
+        description="Power of RFI transmitter at the source [W/Hz].",
+        default=6.4e-4
+    )
 
-    args = parser.parse_args()
 
-    uvw, antspos, azel, visidx = extract_ms_data(args.MSfile)
-    FSPL = calculate_free_space_path_loss(args.LTEang, args.LTEdist, args.LTEheight, args.LTEfreq, antspos)
-    SLA = calculate_side_lobes_attenuation(args.LTEang, args.LTEdist, args.LTEheight, args.LTEfreq, antspos, azel)
-    geodelays = calculate_geometric_delays(args.LTEang, args.LTEdist, args.LTEheight, antspos, visidx)
-    trackdelays = calculate_tracking_delays(azel, antspos, visidx)
+def run_rfi_simulation(ms_file: str,
+                       rfi_sim_config: RFISimConfig,
+                       overwrite: bool = True):
+    """
+    Inject an RFI signal (from LTE cell towers) within an MS data set.
 
+    Args:
+        ms_file: MS file where the RFI will be injected.
+        rfi_sim_config: Configuration for the RFI simulation.
+        overwrite: Option to overwrite visibilities in input MS file instead of adding them. Default is True.
+    """
+    if not os.path.exists(ms_file):
+        raise ValueError(f"MS file {ms_file} does not exist.")
+
+    logger.info("Extracting data from MS file.")
+    uvw, antenna_positions, azel, visibility_index = extract_ms_data(ms_file)
+
+    logger.info("Calculating free space path loss.")
+    fspl = calculate_free_space_path_loss(rfi_sim_config.lte_angle, rfi_sim_config.lte_distance,
+                                          rfi_sim_config.lte_height, rfi_sim_config.lte_frequency, antenna_positions)
+
+    logger.info("Calculating side lobes attenuation.")
+    sla = calculate_side_lobes_attenuation(rfi_sim_config.lte_angle, rfi_sim_config.lte_distance,
+                                           rfi_sim_config.lte_height, rfi_sim_config.lte_frequency, antenna_positions,
+                                           azel)
+
+    logger.info("Calculating geometric delays.")
+    geometric_delays = calculate_geometric_delays(rfi_sim_config.lte_angle, rfi_sim_config.lte_distance,
+                                                  rfi_sim_config.lte_height, antenna_positions, visibility_index)
+
+    logger.info("Calculating tracking delays.")
+    tracking_delays = calculate_tracking_delays(azel, antenna_positions, visibility_index)
+
+    logger.info("Loading RFI data.")
     rfi_acf_data = loadmat(RFIData().rfi_injection_model())
-    t_acf = rfi_acf_data['t_acf'][0]
+    time_acf = rfi_acf_data['t_acf'][0]
     acf = rfi_acf_data['acf'][0]
 
-    vis = calculate_visibilities(FSPL, SLA, visidx, geodelays, trackdelays, t_acf, acf, args.LTEpol, args.LTEpow)
-    write_visibilities_to_ms(vis, args.MSfile, args.OverWrite)
+    logger.info("Calculating visibilities.")
+    visibilities = calculate_visibilities(fspl, sla, visibility_index, geometric_delays, tracking_delays, time_acf, acf,
+                                          rfi_sim_config.lte_polarization, rfi_sim_config.lte_power)
 
-
-if __name__ == "__main__":
-    main()
+    logger.info("Writing visibilities to MS.")
+    write_visibilities_to_ms(visibilities, ms_file, overwrite)

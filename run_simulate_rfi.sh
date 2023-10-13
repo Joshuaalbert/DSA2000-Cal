@@ -4,9 +4,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 
 # We force rebuild to take into account edits to changes to .env variables between runs.
-#DOCKER_BUILDKIT=0  --no-cache
-docker compose -f "$SCRIPT_DIR"/docker-compose.yaml build --no-cache prepare_run
-docker compose -f "$SCRIPT_DIR"/docker-compose.yaml up -d --force-recreate prepare_run
+docker compose -f "$SCRIPT_DIR"/docker-compose.yaml build --no-cache predict_dft
+docker compose -f "$SCRIPT_DIR"/docker-compose.yaml up -d --force-recreate predict_dft
 
 # This streams the logs. Push ctrl-C to detach from logs.
 docker compose logs -f

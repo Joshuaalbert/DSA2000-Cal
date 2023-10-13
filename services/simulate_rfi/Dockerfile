@@ -3,7 +3,7 @@ FROM python:3.10.8
 # install extras
 
 RUN apt-get update && \
-    apt-get install -y vim less ffmpeg git htop feh build-essential wget && \
+    apt-get install -y vim less git htop feh build-essential wget && \
     rm -rf /var/lib/apt/lists/*
 
 # container directories that will be mounted
@@ -16,7 +16,7 @@ RUN pip install -r dsa2000_cal/requirements.txt && \
     pip install ./dsa2000_cal
 
 
-COPY services/dft_predict/src src
+COPY services/simulate_rfi/src src
 
 # Directies that will be mounted
 RUN mkdir -p /dsa/run

@@ -46,14 +46,16 @@ def main(run_config: RunConfig):
         dp.select(pol=slice(0, 1, 1))
         phase, axes = dp.phase
         _, Nd, Na, Nf, Nt = phase.shape
-        phase = np.transpose(phase, (4, 2, 1, 3, 0))  # [time, ant, dir, freq, pol]
+        phase = np.reshape(np.transpose(phase, (4, 2, 1, 3, 0)),
+                           (Nt, Na, Nd, Nf))  # [time, ant, dir, freq, pol]
         gains = np.zeros((Nt, Na, Nd, Nf, 2, 2), dtype=np.complex64)
         gains[..., 0, 0] = np.exp(1j * phase)
         gains[..., 1, 1] = gains[..., 0, 0]
         # if amplitude is present, multiply by it
         if 'amplitude000' in dp.soltabs:
             amplitude, axes = dp.amplitude
-            amplitude = np.transpose(amplitude, (4, 2, 1, 3, 0))  # [time, ant, dir, freq, pol]
+            amplitude = np.reshape(np.transpose(amplitude, (4, 2, 1, 3, 0)),
+                                   (Nt, Na, Nd, Nf))  # [time, ant, dir, freq, pol]
             gains[..., 0, 0] *= amplitude
             gains[..., 1, 1] *= amplitude
         else:

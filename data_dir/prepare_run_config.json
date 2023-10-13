@@ -6,10 +6,18 @@
   "num_bright_sources": 10,
   "spacing_deg": 1.0,
   "faint_sky_model_fits": "mock_faint_sky_model.fits",
-  "start_freq_hz": 800000000.0,
-  "channel_width_hz": 2000000.0,
+  "start_freq_hz": 700000000.0,
+  "channel_width_hz": 162500.0,
   "num_channels": 32,
   "num_times": 10,
   "integration_time_s": 1.5,
-  "ionosphere_specification": "light_dawn"
+  "ionosphere_specification": "light_dawn",
+  "rfi_sim_config": {
+    "lte_distance": 46800.0,
+    "lte_angle": 160.0,
+    "lte_height": 20.0,
+    "lte_frequency": 770.0,
+    "lte_polarization": 10.0,
+    "lte_power": 0.00064
+  }
 }

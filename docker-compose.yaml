@@ -30,12 +30,38 @@ services:
       - $RUN_DIR_HOST:/dsa/run
     networks:
       - safe-tier
-  dft_predict:
-    image: dft_predict
-    container_name: dft_predict
+  sum_visibilities:
+    image: sum_visibilities
+    container_name: sum_visibilities
     build:
       context: .
-      dockerfile: services/dft_predict/Dockerfile
+      dockerfile: services/sum_visibilities/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/run
+    networks:
+      - safe-tier
+  simulate_rfi:
+    image: simulate_rfi
+    container_name: simulate_rfi
+    build:
+      context: .
+      dockerfile: services/simulate_rfi/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/run
+    networks:
+      - safe-tier
+  predict_dft:
+    image: predict_dft
+    container_name: predict_dft
+    build:
+      context: .
+      dockerfile: services/predict_dft/Dockerfile
     env_file:
       - .env
     volumes:
