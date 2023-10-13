@@ -1,16 +1,20 @@
 import logging
 import os.path
+import sys
+from typing import Generator
 
+import astropy.coordinates as ac
 import astropy.time as at
+import astropy.units as au
 import numpy as np
-import utm
-from astropy.coordinates import EarthLocation, SkyCoord, AltAz
-from casacore.tables import table
+import pyrap.tables as pt
 from pydantic import Field
 from scipy.io import loadmat
+from tomographic_kernel.frames import ENU
 from tqdm import tqdm
 
 from dsa2000_cal.assets.rfi.rfi_data import RFIData
+from dsa2000_cal.astropy_utils import mean_itrs
 from dsa2000_cal.utils import SerialisableBaseModel
 
 logging.basicConfig(level=logging.INFO)
@@ -19,149 +23,303 @@ logger = logging.getLogger(__name__)
 C = 299792458.  # Speed of light [m/s]
 
 
-def extract_ms_data(msfile):
-    """Extracts relevant data from an MS file."""
-    with table(msfile) as t:
-        uvw = t.getcol('UVW')
-        ant1 = t.getcol('ANTENNA1')
-        ant2 = t.getcol('ANTENNA2')
-    visidx = np.zeros((len(ant1), 2), dtype=int)
-    visidx[:, 0] = ant1
-    visidx[:, 1] = ant2
-    with table(msfile + '/ANTENNA') as t:
-        antspos = t.getcol('POSITION')
-
-    antspos = EarthLocation.from_geocentric(x=antspos[:, 0], y=antspos[:, 1], z=antspos[:, 2]).to_geodetic()
-    arr_center = [np.mean(antspos[1]), np.mean(antspos[0])]
-    antspos = utm.from_latlon(np.array(antspos.lat), np.array(antspos.lon))
-    antspos = np.array([antspos[0] - np.mean(antspos[0]), antspos[1] - np.mean(antspos[1])])
-    with table(msfile + '/POINTING') as t:
-        time = t.getcol('TIME')[0]
-        time = at.Time(time / 86400, format='mjd')
-        point = t.getcol('DIRECTION')[0][0]
-
-    observing_location = EarthLocation(lat=arr_center[0], lon=arr_center[1], height=5)
-    observing_time = time
-    aa = AltAz(location=observing_location, obstime=observing_time)
-    coord = SkyCoord(point[0], point[1], unit="deg")
-    azel = coord.transform_to(aa)
-    azel = [azel.az, azel.alt]
-    return uvw, antspos.T, azel, visidx
-
-
-def calculate_free_space_path_loss(LTEang, LTEdist, LTEheight, LTEfreq, antspos):
-    """Calculates free space path loss between RFI transmitter and individual antennas."""
-    FSPL = np.zeros(len(antspos))
-    LTE = [LTEdist * np.cos(LTEang * 2 * np.pi / 360 + np.pi / 2),
-           LTEdist * np.sin(LTEang * 2 * np.pi / 360 + np.pi / 2),
-           LTEheight]
-    for k in range(len(antspos)):
-        d = np.sqrt((antspos[k, 0] - LTE[0]) ** 2 + (antspos[k, 1] - LTE[1]) ** 2 + (5 - LTE[2]) ** 2)
-        FSPL[k] = (C / (4 * np.pi * d * LTEfreq * 1e6)) ** 2
-    return FSPL
-
-
-def calculate_side_lobes_attenuation(LTEang, LTEdist, LTEheight, LTEfreq, antspos, azel):
-    """Computes side lobe attenuation for each telescope antenna given the RFI transmitter location."""
-    ant_model = loadmat(RFIData().dsa2000_antenna_model())
-    I = np.argmin(np.abs(ant_model["freqListGHz"] - LTEfreq * 1e-3))
-    SLA = np.zeros(len(antspos))
-    az = np.deg2rad(azel[0].value + 90)
-    el = np.deg2rad(azel[1].value)
-    ArrSteer = np.array([np.sin(el) * np.cos(az), np.sin(el) * np.sin(az), np.cos(el)])
-    LTE = [LTEdist * np.cos(LTEang * 2 * np.pi / 360 + np.pi / 2),
-           LTEdist * np.sin(LTEang * 2 * np.pi / 360 + np.pi / 2),
-           LTEheight]
-    normArrSteer = np.sqrt(np.dot(ArrSteer, ArrSteer))
-    for k in range(len(antspos)):
-        vec = [(antspos[k, 0] - LTE[0]), (antspos[k, 1] - LTE[1]), 5 - LTE[2]]
-        ang = np.dot(ArrSteer, vec) / np.sqrt(np.dot(vec, vec)) / normArrSteer
-        ang = np.arccos(ang)
-        idx = np.argmin(np.abs(ant_model["ThetaDeg"] - np.rad2deg(ang)))
-        SLA[k] = 10 ** (ant_model["coPolPattern_dBi_Freqs_15DegConicalShield"][idx, 0, I] / 10)
-    return SLA
-
-
-def calculate_geometric_delays(LTEang, LTEdist, LTEheight, antspos, visidx):
-    """Calculates geometric delays between pairs of antennas given the RFI tx location."""
-    LTE = [LTEdist * np.cos(LTEang * 2 * np.pi / 360 + np.pi / 2),
-           LTEdist * np.sin(LTEang * 2 * np.pi / 360 + np.pi / 2),
-           LTEheight]
-    dist_LTE_rx = np.sqrt((antspos[:, 0] - LTE[0]) ** 2 + (antspos[:, 1] - LTE[1]) ** 2 + (5 - LTE[2]) ** 2)
-    delays = (dist_LTE_rx[visidx[:, 0]] - dist_LTE_rx[visidx[:, 1]]) / C
-    return delays
-
-
-def calculate_tracking_delays(azel, antspos, visidx):
-    """Calculates tracking delays for each visibility given the tracking position."""
-    az = np.deg2rad(azel[0].value + 90)
-    el = np.deg2rad(azel[1].value)
-    target_vec = np.array([np.sin(el) * np.cos(az), np.sin(el) * np.sin(az), np.cos(el)])
-    antstrackdelays = np.dot(antspos, target_vec[:2]) / C
-    trackdelays = antstrackdelays[visidx[:, 0]] - antstrackdelays[visidx[:, 1]]
-    return trackdelays
-
-
-def calculate_visibilities(FSPL, SLA, visidx, geodelays, trackdelays, t_acf, acf, polAngle, LTEpow):
-    """Computes actual visibilities with all considerations."""
-    vis = np.zeros((len(geodelays), 1, 4), dtype=np.complex64)
-    tot_att = FSPL[visidx[:, 0]] * FSPL[visidx[:, 1]] * SLA[visidx[:, 0]] * SLA[visidx[:, 1]]
-    tot_del = geodelays + trackdelays
-    delmin = np.min(tot_del)
-    delmax = np.max(tot_del)
-    delidx = np.where((t_acf >= delmin) & (t_acf <= delmax))[0]
-    t_acf = t_acf[delidx]
-    acf = acf[delidx]
-    t_acf = t_acf[::200]
-    acf = acf[::200]
-    for k in tqdm(range(len(geodelays))):
-        delayidx = np.argmin(np.abs(t_acf - tot_del[k]))
-        vis[k, 0, :] = tot_att[k] * acf[delayidx]
-    vis[:, :, 0] *= np.cos(np.deg2rad(polAngle)) ** 2
-    vis[:, :, 1] *= np.cos(np.deg2rad(polAngle)) * np.sin(np.deg2rad(polAngle))
-    vis[:, :, 2] *= np.cos(np.deg2rad(polAngle)) * np.sin(np.deg2rad(polAngle))
-    vis[:, :, 3] *= np.sin(np.deg2rad(polAngle)) ** 2
-    vis = vis * LTEpow / 13 * 10 ** 26
-    vis = vis.astype(np.complex64)
-    return vis
-
-
-def write_visibilities_to_ms(vis_data, msfile, overwrite):
-    """Writes visibility data to the MS table."""
-    with table(msfile, readonly=False) as t:
-        dtype = t.getcol('DATA').dtype
-        vis_data = vis_data.astype(dtype)
-        if not overwrite:  # Then we add to existing
-            vis = t.getcol('DATA')
-            vis_data += vis
-        t.putcol('DATA', vis_data)
-
-
 class RFISimConfig(SerialisableBaseModel):
-    lte_distance: float = Field(
-        desciption="Distance between RFI transmitter and center of the telescope [m].",
-        default=46800.
+    lte_east: float = Field(
+        desciption="Distance east of RFI transmitter from center of the telescope [m].",
+        default=46800. * np.sin(160. * 2 * np.pi / 360 + np.pi)
     )
-    lte_angle: float = Field(
-        description="Angle between RFI transmitter and center of the telescope [deg., 0=N, 90=W].",
-        default=160.
+    lte_north: float = Field(
+        description="Distance south of RFI transmitter from center of the telescope [m].",
+        default=46800. * np.cos(160. * 2 * np.pi / 360)
     )
-    lte_height: float = Field(
-        description="Height of RFI transmitter [m].",
+    lte_up: float = Field(
+        description="Height of RFI transmitter [m] above array centre.",
         default=20.
     )
-    lte_frequency: float = Field(
-        description="Frequency of RFI signal [MHz].",
-        default=770.
+    lte_frequency_hz: float = Field(
+        description="Frequency of RFI signal [Hz].",
+        default=770e6
     )
-    lte_polarization: float = Field(
+    lte_polarization_deg: float = Field(
         description="Polarization angle of RFI [deg, 0=full XX, 90=full YY].",
         default=10.
     )
-    lte_power: float = Field(
+    lte_power_W_Hz: float = Field(
         description="Power of RFI transmitter at the source [W/Hz].",
         default=6.4e-4
     )
+
+
+class MSData(SerialisableBaseModel):
+    """
+    Data from an MS file that is yielded by the iterator.
+    """
+    enu_frame: ENU
+    time: at.Time
+    antennas: ac.ITRS
+    antenna1: np.ndarray
+    antenna2: np.ndarray
+    pointing: ac.ICRS
+
+
+def iter_ms_data(msfile: str, overwrite: bool) -> Generator[MSData, np.ndarray, None]:
+    """
+    Iterate over MS data, yielding MSData objects, and storing the response.
+
+    Args:
+        msfile: MS file to iterate over, and store response in.
+        overwrite: Option to overwrite visibilities in input MS file instead of adding them.
+    """
+    with pt.table(msfile) as t:
+        ant1 = t.getcol('ANTENNA1')
+        ant2 = t.getcol('ANTENNA2')
+        times = t.getcol('TIME')
+
+    with pt.table(f'{msfile}/ANTENNA') as t:
+        antenna_position_itrs_m = t.getcol('POSITION')
+
+    with pt.table(msfile + '/POINTING') as t:
+        pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
+        pointing = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 0, 1] * au.rad)  # [num_ant]
+
+    times, start_indicies, time_idx = np.unique(times, return_index=True)
+    if len(start_indicies) > 1:
+        block_size = start_indicies[1] - start_indicies[0]
+    else:
+        block_size = -1
+    # Iterate over time blocks (which are sequential in the MS)
+    for i, (time, start_idx) in enumerate(zip(times, start_indicies)):
+        select = time_idx == i
+        ant1_select = ant1[select]
+        ant2_select = ant2[select]
+        obstime = at.Time(time / 86400, format='mjd')
+        antennas_itrs = ac.ITRS(
+            x=antenna_position_itrs_m[:, 0] * au.m,
+            y=antenna_position_itrs_m[:, 1] * au.m,
+            z=antenna_position_itrs_m[:, 2] * au.m,
+            obstime=obstime
+        )
+        array_centre = mean_itrs(antennas_itrs)
+        enu = ENU(location=array_centre.earth_location, obstime=obstime)
+        # Yield and get back response (np.ndarray)
+        sim_visibilities = yield MSData(
+            enu_frame=enu,
+            time=time,
+            antennas=antennas_itrs,
+            antenna1=ant1_select,
+            antenna2=ant2_select,
+            pointing=pointing
+        )
+        # Store response
+        with pt.table(msfile, readonly=False) as table:
+            dtype = table.getcol('DATA').dtype
+            sim_visibilities = sim_visibilities.astype(dtype)
+            if not overwrite:  # Then we add to existing
+                vis = t.getcol('DATA', startrow=start_idx, nrow=block_size, rowincr=1)
+                sim_visibilities += vis
+            table.putcol(
+                columnname='DATA',
+                value=sim_visibilities,
+                startrow=start_idx,
+                nrow=block_size,
+                rowincr=1
+            )
+
+
+def calculate_free_space_path_loss(rfi_sim_config: RFISimConfig, ms_data: MSData) -> np.ndarray:
+    """
+    Computes free space path loss for each telescope antenna given the RFI transmitter location.
+
+    Args:
+        rfi_sim_config: Configuration for the RFI simulation.
+        ms_data: Data from an MS file.
+
+    Returns:
+        Free space path loss for each telescope antenna [num_ant]
+    """
+    lte_location = ac.SkyCoord(
+        east=rfi_sim_config.lte_east * au.m,
+        north=rfi_sim_config.lte_north * au.m,
+        up=rfi_sim_config.lte_up * au.m,
+        enu_frame=ms_data.enu_frame
+    )
+    antennas_enu = ms_data.antennas.transform_to(ms_data.enu_frame)
+    antennas_enu_xyz = antennas_enu.cartesian.xyz.T  # [num_ant, 3]
+    lte_location_xyz = lte_location.cartesian.xyz  # [3]
+    dist = np.linalg.norm((antennas_enu_xyz - lte_location_xyz).to(au.m).value, axis=-1)  # [num_ant]
+    free_space_path_loss = C / (4 * np.pi * dist * rfi_sim_config.lte_frequency_hz) ** 2  # [num_ant]
+    return free_space_path_loss
+
+
+def calculate_side_lobes_attenuation(rfi_sim_config: RFISimConfig, ms_data: MSData) -> np.ndarray:
+    """
+    Computes side lobes attenuation for each telescope antenna given the RFI transmitter location.
+
+    Args:
+        rfi_sim_config: Configuration for the RFI simulation.
+        ms_data: Data from an MS file.
+
+    Returns:
+        Side lobes attenuation for each telescope antenna [num_ant]
+    """
+    ant_model = loadmat(RFIData().dsa2000_antenna_model())
+
+    ant_model_freqs_hz = ant_model['freqListGHz'] * 1e9
+
+    freq_idx = np.argmin(np.abs(ant_model_freqs_hz - rfi_sim_config.lte_frequency_hz))
+
+    lte_location = ac.SkyCoord(
+        east=rfi_sim_config.lte_east * au.m,
+        north=rfi_sim_config.lte_north * au.m,
+        up=rfi_sim_config.lte_up * au.m,
+        enu_frame=ms_data.enu_frame
+    )
+
+    antennas_enu_xyz = ms_data.antennas.transform_to(ms_data.enu_frame).cartesian.xyz.T  # [num_ant, 3]
+    lte_location_xyz = lte_location.cartesian.xyz  # [3]
+    pointing_enu_xyz = ms_data.pointing.transform_to(ms_data.enu_frame).cartesian.xyz.T  # [num_ant, 3] (normed)
+
+    line_of_sight = (antennas_enu_xyz - lte_location_xyz).value  # [num_ant, 3]
+    line_of_sight /= np.linalg.norm(line_of_sight, axis=-1, keepdims=True)  # [num_ant, 3] (normed)
+
+    # Theta is in [0, 180] measured from pointing direction, aka bore sight
+    theta = np.arccos(np.sum(line_of_sight * pointing_enu_xyz, axis=-1))  # [num_ant]
+    theta_idx = np.asarray(
+        [
+            np.argmin(np.abs(ant_model["ThetaDeg"][:, 0] - np.rad2deg(theta_i)))
+            for theta_i in theta
+        ]
+    )  # [num_ant]
+
+    # Phi is in [0, 360] measured from x-axis (see below)
+    line_of_sight_proj = line_of_sight - np.sum(line_of_sight * pointing_enu_xyz, axis=-1,
+                                                keepdims=True) * pointing_enu_xyz  # [num_ant, 3]
+    line_of_sight_proj /= np.linalg.norm(line_of_sight_proj, axis=-1, keepdims=True)  # [num_ant, 3] (normed)
+
+    # Assume Alt-Az mount, so x-axis always stays parallel to ground tangent
+    # x' = a x + b y where x, y are east and north. To solve for a, b use x'.z'=0 and x'.x'=1.
+    # a = (y.z' / x.z') / sqrt((y.z' / x.z') ^ 2 + 1)
+    # b = 1 / sqrt((y.z' / x.z') ^ 2 + 1)
+
+    east_proj = pointing_enu_xyz[:, 0]  # [num_ant]
+    north_proj = pointing_enu_xyz[:, 1]  # [num_ant]
+
+    a = (north_proj / east_proj) / np.sqrt((north_proj / east_proj) ** 2 + 1)  # [num_ant]
+    b = 1 / np.sqrt((north_proj / east_proj) ** 2 + 1)  # [num_ant]
+    x = a[:, None] * np.asarray([1, 0, 0]) + b[:, None] * np.asarray([0, 1, 0])  # [num_ant, 3] (normed)
+
+    phi = np.arccos(np.sum(line_of_sight_proj * x, axis=-1))  # [num_ant]
+
+    phi_idx = np.asarray(
+        [
+            np.argmin(np.abs(ant_model["PhiDeg"][:, 0] - np.rad2deg(phi_i)))
+            for phi_i in phi
+        ]
+    )  # [num_ant]
+
+    side_lobes_attenuation = 10 ** (
+            ant_model["coPolPattern_dBi_Freqs_15DegConicalShield"][theta_idx, phi_idx, freq_idx] / 10.
+    )
+
+    return side_lobes_attenuation
+
+
+def calculate_geometric_delays(rfi_sim_config: RFISimConfig, ms_data: MSData) -> np.ndarray:
+    """
+    Computes geometric delays for each visibility given the RFI transmitter location.
+
+    Args:
+        rfi_sim_config: Configuration for the RFI simulation.
+        ms_data: Data from an MS file.
+
+    Returns:
+        Geometric delays for each visibility [num_vis]
+    """
+    lte_location = ac.SkyCoord(
+        east=rfi_sim_config.lte_east * au.m,
+        north=rfi_sim_config.lte_north * au.m,
+        up=rfi_sim_config.lte_up * au.m,
+        enu_frame=ms_data.enu_frame
+    )
+    lte_location_xyz = lte_location.cartesian.xyz  # [3]
+    antennas_enu_xyz = ms_data.antennas.transform_to(ms_data.enu_frame).cartesian.xyz.T  # [num_ant, 3]
+    dist_m = np.linalg.norm((antennas_enu_xyz - lte_location_xyz).to(au.m).value, axis=-1)  # [num_ant] (m)
+    delays = (dist_m[ms_data.antenna1] - dist_m[ms_data.antenna2]) / C  # [num_vis]
+    return delays
+
+
+def calculate_tracking_delays(rfi_sim_config: RFISimConfig, ms_data: MSData) -> np.ndarray:
+    """
+    Computes tracking delays for each visibility given the RFI transmitter location.
+
+    Args:
+        ms_data: Data from an MS file.
+
+    Returns:
+        Tracking delays for each visibility [num_vis]
+    """
+    # TODO(ghellbourg): aren't these delays supposed to be toward the source?
+    lte_location = ac.SkyCoord(
+        east=rfi_sim_config.lte_east * au.m,
+        north=rfi_sim_config.lte_north * au.m,
+        up=rfi_sim_config.lte_up * au.m,
+        enu_frame=ms_data.enu_frame
+    )
+    lte_location_xyz = lte_location.cartesian.xyz  # [3] # <---- Probably should be this relative to this
+
+    antennas_enu_xyz = ms_data.antennas.transform_to(ms_data.enu_frame).cartesian.xyz.T  # [num_ant, 3]
+    pointing_enu_xyz = ms_data.pointing.transform_to(ms_data.enu_frame).cartesian.xyz.T  # [num_ant, 3] (normed)
+
+    antenna_tracking_delays = np.sum(pointing_enu_xyz * antennas_enu_xyz, axis=-1) / C  # [num_ant]
+    track_delay = antenna_tracking_delays[ms_data.antenna1] - antenna_tracking_delays[ms_data.antenna2]  # [num_vis]
+    return track_delay
+
+
+def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometric_delays, tracking_delays,
+                           time_acf, acf,
+                           rfi_sim_config: RFISimConfig, ms_data: MSData) -> np.ndarray:
+    """
+    Computes visibilities for each visibility given the RFI transmitter location.
+
+    Args:
+        free_space_path_loss: The free space path loss for each telescope antenna [num_ant]
+        side_lobes_attenuation: The side lobes attenuation for each telescope antenna [num_ant]
+        geometric_delays: The geometric delays for each visibility [num_vis]
+        tracking_delays: The tracking delays for each visibility [num_vis]
+        time_acf: The time axis of the ACF [num_acf]
+        acf: The ACF [num_acf]
+        rfi_sim_config: Configuration for the RFI simulation.
+        ms_data: Data from an MS file.
+
+    Returns:
+        Visibilities for each visibility [num_vis, 1, 4]
+    """
+    (num_vis,) = geometric_delays.shape
+    vis = np.zeros((num_vis, 1, 4), dtype=np.complex64)
+    tot_att = (
+                      free_space_path_loss[ms_data.antenna1] * free_space_path_loss[ms_data.antenna2]
+              ) * (
+                      side_lobes_attenuation[ms_data.antenna1] * side_lobes_attenuation[ms_data.antenna2]
+              )  # [num_vis]
+    tot_del = geometric_delays + tracking_delays  # [num_vis]
+    delmin = np.min(tot_del)
+    delmax = np.max(tot_del)
+    (delidx,) = np.where((time_acf >= delmin) & (time_acf <= delmax))
+    time_acf = time_acf[delidx]
+    acf = acf[delidx]
+    time_acf = time_acf[::200]
+    acf = acf[::200]
+    for k in range(num_vis):
+        delayidx = np.argmin(np.abs(time_acf - tot_del[k]))
+        vis[k, 0, :] = tot_att[k] * acf[delayidx]
+    vis[:, :, 0] *= np.cos(np.deg2rad(rfi_sim_config.lte_polarization_deg)) ** 2
+    vis[:, :, 1] *= np.cos(np.deg2rad(rfi_sim_config.lte_polarization_deg)) * np.sin(
+        np.deg2rad(rfi_sim_config.lte_polarization_deg))
+    vis[:, :, 2] *= np.cos(np.deg2rad(rfi_sim_config.lte_polarization_deg)) * np.sin(
+        np.deg2rad(rfi_sim_config.lte_polarization_deg))
+    vis[:, :, 3] *= np.sin(np.deg2rad(rfi_sim_config.lte_polarization_deg)) ** 2
+    vis = vis * rfi_sim_config.lte_power_W_Hz * 1e26 / 13  # [num_vis, 1, 4]
+    return vis
 
 
 def run_rfi_simulation(ms_file: str,
@@ -179,32 +337,38 @@ def run_rfi_simulation(ms_file: str,
         raise ValueError(f"MS file {ms_file} does not exist.")
 
     logger.info("Extracting data from MS file.")
-    uvw, antenna_positions, azel, visibility_index = extract_ms_data(ms_file)
+    gen = iter_ms_data(ms_file, overwrite=overwrite)
+    gen_response: np.ndarray | None = None
+    pbar = tqdm(file=sys.stdout, dynamic_ncols=True)
 
-    logger.info("Calculating free space path loss.")
-    fspl = calculate_free_space_path_loss(rfi_sim_config.lte_angle, rfi_sim_config.lte_distance,
-                                          rfi_sim_config.lte_height, rfi_sim_config.lte_frequency, antenna_positions)
+    while True:
+        try:
+            ms_data = gen.send(gen_response)
+        except StopIteration:
+            break
 
-    logger.info("Calculating side lobes attenuation.")
-    sla = calculate_side_lobes_attenuation(rfi_sim_config.lte_angle, rfi_sim_config.lte_distance,
-                                           rfi_sim_config.lte_height, rfi_sim_config.lte_frequency, antenna_positions,
-                                           azel)
+        logger.info("Calculating free space path loss.")
+        free_space_path_loss = calculate_free_space_path_loss(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
 
-    logger.info("Calculating geometric delays.")
-    geometric_delays = calculate_geometric_delays(rfi_sim_config.lte_angle, rfi_sim_config.lte_distance,
-                                                  rfi_sim_config.lte_height, antenna_positions, visibility_index)
+        logger.info("Calculating side lobes attenuation.")
+        side_lobes_attenuation = calculate_side_lobes_attenuation(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
 
-    logger.info("Calculating tracking delays.")
-    tracking_delays = calculate_tracking_delays(azel, antenna_positions, visibility_index)
+        logger.info("Calculating geometric delays.")
+        geometric_delays = calculate_geometric_delays(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
 
-    logger.info("Loading RFI data.")
-    rfi_acf_data = loadmat(RFIData().rfi_injection_model())
-    time_acf = rfi_acf_data['t_acf'][0]
-    acf = rfi_acf_data['acf'][0]
+        logger.info("Calculating tracking delays.")
+        tracking_delays = calculate_tracking_delays(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
 
-    logger.info("Calculating visibilities.")
-    visibilities = calculate_visibilities(fspl, sla, visibility_index, geometric_delays, tracking_delays, time_acf, acf,
-                                          rfi_sim_config.lte_polarization, rfi_sim_config.lte_power)
+        logger.info("Loading RFI data.")
+        rfi_acf_data = loadmat(RFIData().rfi_injection_model())
+        time_acf = rfi_acf_data['t_acf'][0]
+        acf = rfi_acf_data['acf'][0]
 
-    logger.info("Writing visibilities to MS.")
-    write_visibilities_to_ms(visibilities, ms_file, overwrite)
+        logger.info("Calculating visibilities.")
+        visibilities = calculate_visibilities(free_space_path_loss=free_space_path_loss,
+                                              side_lobes_attenuation=side_lobes_attenuation,
+                                              geometric_delays=geometric_delays, tracking_delays=tracking_delays,
+                                              time_acf=time_acf,
+                                              acf=acf, rfi_sim_config=rfi_sim_config, ms_data=ms_data)
+        gen_response = visibilities  # [num_vis, 1, 4]
+        pbar.update(1)

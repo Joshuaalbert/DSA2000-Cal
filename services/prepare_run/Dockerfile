@@ -108,7 +108,6 @@ RUN pip install -r dsa2000_cal/requirements.txt && \
 COPY services/prepare_run/src src
 
 # Directies that will be mounted
-
 RUN mkdir -p /dsa/data
 
 

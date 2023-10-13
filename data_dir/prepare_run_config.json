@@ -13,11 +13,12 @@
   "integration_time_s": 1.5,
   "ionosphere_specification": "light_dawn",
   "rfi_sim_config": {
-    "lte_distance": 46800.0,
-    "lte_angle": 160.0,
-    "lte_height": 20.0,
-    "lte_frequency": 770.0,
-    "lte_polarization": 10.0,
-    "lte_power": 0.00064
-  }
+    "lte_east": -16006.0,
+    "lte_north": -43977.0,
+    "lte_up": 20.0,
+    "lte_frequency_hz": 770e6,
+    "lte_polarization_deg": 10.0,
+    "lte_power_W_Hz": 0.00064
+  },
+  "calibration_parset": "parset.yaml"
 }
