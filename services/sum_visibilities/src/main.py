@@ -9,7 +9,7 @@ from dsa2000_cal.run_config import RunConfig
 
 
 def main(run_config: RunConfig):
-    array = array_registry.get_instance(array_registry(run_config.array_name))
+    array = array_registry.get_instance(array_registry.get_match(run_config.array_name))
     sum_and_add_noise(
         output_ms_file=run_config.visibilities_path,
         input_ms_files=[

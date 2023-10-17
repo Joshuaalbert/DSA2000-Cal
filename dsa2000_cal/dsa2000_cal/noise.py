@@ -35,6 +35,7 @@ def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: Abs
         input_ms_files: the input measurement set files
         array: the array object
     """
+    np.random.seed(42)
     noise_sigma = calc_noise(
         system_equivalent_flux_density=array.system_equivalent_flux_density(),
         chan_width_hz=channel_width_hz,
@@ -49,5 +50,5 @@ def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: Abs
         output_with_noise = np.random.normal(loc=0, scale=noise_sigma, size=shape).astype(dtype)
         for input_ms_file in input_ms_files:
             with pt.table(input_ms_file) as input_ms:
-                output_with_noise += input_ms.col('DATA')[...]
+                output_with_noise += input_ms.col('DATA')[:]
         output_ms.putcol('DATA', output_with_noise)
