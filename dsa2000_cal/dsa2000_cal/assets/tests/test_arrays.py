@@ -1,6 +1,16 @@
-from astropy import units as au
+import os
 
+import astropy.coordinates as ac
+import astropy.time as at
+import numpy as np
+from astropy import units as au
+from tomographic_kernel.frames import ENU
+
+from dsa2000_cal.assets.content_registry import fill_registries
+
+fill_registries()
 from dsa2000_cal.assets.arrays.array import extract_itrs_coords
+from dsa2000_cal.assets.registries import array_registry
 
 
 def test_extract_itrs_coords():
@@ -18,3 +28,20 @@ def test_extract_itrs_coords():
     assert antenna_coords[0].z == 3554652.4556 * au.m
     assert stations == ['vla-00', 'vla-01', 'vla-02', 'vla-03']
     os.remove('test_array.txt')
+
+
+def test_array_beam():
+    array = array_registry.get_instance(array_registry.get_match('dsa2000W_small'))
+    antenna_beam = array.antenna_beam()
+    amplitude = antenna_beam.get_amplitude(
+        pointing=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
+        source=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
+        freq_hz=800e6,
+        enu_frame=ENU(
+            location=ac.EarthLocation.from_geodetic(lon=0 * au.deg, lat=0 * au.deg, height=0 * au.m),
+            obstime=at.Time('2000-01-01T00:00:00', format='isot', scale='utc')
+        )
+    )
+    assert not np.any(np.isnan(amplitude))
+    assert amplitude.shape == (1,)
+    assert amplitude[0] <= 1.

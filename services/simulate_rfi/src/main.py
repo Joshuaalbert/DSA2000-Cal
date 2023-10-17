@@ -6,6 +6,7 @@ from dsa2000_cal.run_config import RunConfig
 
 def main(run_config: RunConfig):
     run_rfi_simulation(
+        array_name=run_config.array_name,
         ms_file=run_config.rfi_visibilities_path,
         rfi_sim_config=run_config.rfi_sim_config,
         overwrite=True

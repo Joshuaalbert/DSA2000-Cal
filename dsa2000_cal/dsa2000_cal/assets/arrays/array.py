@@ -5,6 +5,7 @@ import astropy.coordinates as ac
 import astropy.units as au
 from astropy.coordinates import CartesianRepresentation, ITRS
 
+from dsa2000_cal.abc import AbstractAntennaBeam
 from dsa2000_cal.assets.base_content import BaseContent
 
 
@@ -142,5 +143,15 @@ class AbstractArray(ABC, BaseContent):
 
         Returns:
             system efficiency
+        """
+        ...
+
+    @abstractmethod
+    def antenna_beam(self) -> AbstractAntennaBeam:
+        """
+        Get antenna beam.
+
+        Returns:
+            antenna beam
         """
         ...

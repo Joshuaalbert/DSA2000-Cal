@@ -2,7 +2,9 @@ from abc import ABC, abstractmethod
 from typing import List
 
 import numpy as np
+from astropy import coordinates as ac
 from pydantic import Field
+from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.utils import SerialisableBaseModel
 
@@ -33,5 +35,69 @@ class AbstractSkyModel(ABC):
 
         Returns:
             source_model: SourceModel
+        """
+        ...
+
+
+class AbstractAntennaModel(ABC):
+    """
+    Antenna beam model.
+    """
+    @abstractmethod
+    def get_amplitude(self) -> np.ndarray:
+        """
+        Get the antenna beam model.
+
+        Returns:
+            A 3D array of shape [num_theta, num_phi, num_freqs] where num_theta is the number of theta values,
+            num_phi is the number of phi values, and num_freqs is the number of frequency values.
+        """
+        ...
+
+    @abstractmethod
+    def get_freqs(self) -> np.ndarray:
+        """
+        Get the frequency axis, in Hz.
+
+        Returns:
+            A 1D array of shape [num_freqs] where num_freqs is the number of frequency values.
+        """
+        ...
+
+    @abstractmethod
+    def get_theta(self) -> np.ndarray:
+        """
+        Get the theta axis, in degrees, measured from the pointing direction. Domain is [0, 180].
+
+        Returns:
+            A 1D array of shape [num_theta] where num_theta is the number of theta values.
+        """
+        ...
+
+    @abstractmethod
+    def get_phi(self) -> np.ndarray:
+        """
+        Get the phi axis, in degrees, measured from the x-axis. Domain is [0, 360].
+
+        Returns:
+            A 1D array of shape [num_phi] where num_phi is the number of phi values.
+        """
+        ...
+
+
+class AbstractAntennaBeam(ABC):
+    @abstractmethod
+    def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU) -> np.ndarray:
+        """
+        Get the amplitude of the antenna beam at a given pointing and source.
+
+        Args:
+            pointing: The pointing direction in ICRS frame.
+            source: The source direction in ICRS frame.
+            freq_hz: The frequency in Hz.
+            enu_frame: The ENU frame.
+
+        Returns:
+            The amplitude of the antenna beam.
         """
         ...

@@ -2,12 +2,14 @@ import os
 
 from astropy import coordinates as ac
 
+from dsa2000_cal.abc import AbstractAntennaModel, AbstractAntennaBeam
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
+from dsa2000_cal.antenna_beam import MatlabAntennaModelV1, AltAzAntennaBeam
 from dsa2000_cal.assets.registries import array_registry
 
 
 @array_registry(template='dsa2000W_small')
-class DSA2000WArray(AbstractArray):
+class DSA2000WSmallArray(AbstractArray):
     """
     DSA2000W array class, smaller for testing
     """
@@ -37,3 +39,11 @@ class DSA2000WArray(AbstractArray):
 
     def system_efficency(self) -> float:
         return 0.7
+
+    def antenna_beam(self) -> AbstractAntennaBeam:
+        return AltAzAntennaBeam(
+            antenna_model=MatlabAntennaModelV1(
+                antenna_model_file=os.path.join(*self.content_path, '..', 'dsa2000W', 'dsa2000_antenna_model.mat'),
+                model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
+            )
+        )
