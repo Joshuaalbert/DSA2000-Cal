@@ -8,6 +8,10 @@ RUN apt-get update && \
 
 WORKDIR /dsa/code
 
-COPY requirements.txt .
+# Prepare run
+COPY services/predict_fft/src src
+RUN ls && ls src && pip install -r src/requirements.txt
 
-RUN pip install -r requirements.txt
+RUN mkdir -p /dsa/run
+WORKDIR /dsa/run
+

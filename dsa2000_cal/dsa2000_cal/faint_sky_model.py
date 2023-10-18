@@ -58,6 +58,8 @@ def down_sample_fits(fits_file: str, output_file: str, desired_ra_size: int, des
     """
     hdu = fits.open(fits_file)[0]
     data = hdu.data
+    if np.any(np.isnan(data)):
+        raise ValueError("Input data contains NaNs")
     output = np.zeros((data.shape[0], data.shape[1], desired_dec_size, desired_ra_size), dtype=data.dtype)
     ra_downsample_ratio = desired_ra_size / data.shape[3]
     dec_downsample_ratio = desired_dec_size / data.shape[2]

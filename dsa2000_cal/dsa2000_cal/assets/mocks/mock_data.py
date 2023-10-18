@@ -8,4 +8,4 @@ class MockData(BaseContent):
         super().__init__(seed='mock')
 
     def faint_sky_model(self) -> str:
-        return os.path.join(*self.content_path, "mock_faint_sky_model.fits")
+        return os.path.join(*self.content_path, "mock_faint_sky-model.fits")

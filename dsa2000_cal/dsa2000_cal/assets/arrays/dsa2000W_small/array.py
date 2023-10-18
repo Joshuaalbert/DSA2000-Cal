@@ -48,3 +48,4 @@ class DSA2000WSmallArray(AbstractArray):
                 model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
             )
         )
+

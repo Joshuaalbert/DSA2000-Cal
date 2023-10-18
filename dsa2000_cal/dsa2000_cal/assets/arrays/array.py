@@ -77,7 +77,7 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def get_antenna_names(self) -> list[str]:
+    def get_antenna_names(self) -> List[str]:
         """
         Get antenna names.
 
@@ -155,3 +155,4 @@ class AbstractArray(ABC, BaseContent):
             antenna beam
         """
         ...
+

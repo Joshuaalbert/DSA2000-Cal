@@ -5,7 +5,7 @@
   "az_deg": 0.0,
   "num_bright_sources": 10,
   "spacing_deg": 1.0,
-  "faint_sky_model_fits": "\/home\/albert\/git\/DSA2000-Cal\/dsa2000_cal\/dsa2000_cal\/assets\/mocks\/mock_faint_sky_model.fits",
+  "faint_sky_model_fits": "\/home\/albert\/git\/DSA2000-Cal\/dsa2000_cal\/dsa2000_cal\/assets\/mocks\/mock_faint_sky-model.fits",
   "start_freq_hz": 700000000.0,
   "channel_width_hz": 162500.0,
   "num_channels": 32,
@@ -13,11 +13,13 @@
   "integration_time_s": 1.5,
   "ionosphere_specification": "light_dawn",
   "rfi_sim_config": {
-    "lte_distance": 46800.0,
-    "lte_angle": 160.0,
-    "lte_height": 20.0,
-    "lte_frequency": 770.0,
-    "lte_polarization": 10.0,
-    "lte_power": 0.00064
-  }
+    "lte_east": -16006.54270764129,
+    "lte_north": -43977.61465278051,
+    "lte_up": 20.0,
+    "lte_frequency_hz": 770000000.0,
+    "lte_polarization_deg": 10.0,
+    "lte_power_W_Hz": 0.00064
+  },
+  "calibration_parset": "parset.yaml",
+  "a_term_parset": "a_term_correction.parset"
 }

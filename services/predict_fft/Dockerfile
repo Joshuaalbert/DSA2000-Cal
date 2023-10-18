@@ -141,10 +141,6 @@ RUN pip install -r dsa2000_cal/requirements.txt && \
 # Prepare run
 COPY services/predict_fft/src src
 
-# Directies that will be mounted
-RUN mkdir -p /dsa/data
-
-
 RUN mkdir -p /dsa/run
 WORKDIR /dsa/run
 

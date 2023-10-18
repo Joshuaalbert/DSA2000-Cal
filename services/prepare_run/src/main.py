@@ -7,7 +7,7 @@ from typing import Union
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-from pydantic import conint, confloat, Field
+from pydantic import conint, confloat, Field, constr
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
@@ -31,7 +31,7 @@ class PrepareRunConfig(SerialisableBaseModel):
     """
     array_name: str = Field(
         description="The name of the array to use.",
-        example="dsa2000W",
+        example="dsa2000W_small",
     )
     start_dt: datetime = Field(
         description="The start datetime of the run.",
@@ -53,8 +53,8 @@ class PrepareRunConfig(SerialisableBaseModel):
         description="The spacing between bright sources in degrees",
         example=1.,
     )
-    faint_sky_model_fits: Union[str, None] = Field(
-        description="The path to the faint sky model fits file, if given.",
+    faint_sky_model_fits: Union[constr(regex=r".*-model\.fits$"), None] = Field(
+        description="The path to the faint sky model fits file, if given must end in '-model.fits'.",
         example=MockData().faint_sky_model(),
     )
     start_freq_hz: confloat(gt=0) = Field(

@@ -1,13 +1,10 @@
 import logging
 import os
+import subprocess
 
-from dsa2000_cal.assets.content_registry import fill_registries
-
-fill_registries()
+from pyrap import tables as pt
 
 from dsa2000_cal.run_config import RunConfig
-from pyrap import tables as pt
-import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +18,7 @@ def main(run_config: RunConfig):
     # Take the .fits off the end.
     image_name = os.path.join(
         os.path.dirname(run_config.faint_sky_model_fits),
-        os.path.basename(run_config.faint_sky_model_fits).split('.')[0]
+        os.path.basename(run_config.faint_sky_model_fits).rsplit('-model.fits', 1)[0]
     )
     completed_process = subprocess.run(
         [

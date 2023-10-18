@@ -17,7 +17,7 @@ def test_repoint_fits():
 
     MockData()
 
-    ds_output_file = "down_sampled_faint_sky_model.fits"
+    ds_output_file = "../assets/mocks/mock_faint_sky-model.fits"
 
     down_sample_fits(
         fits_file=MockData().faint_sky_model(),
@@ -30,6 +30,7 @@ def test_repoint_fits():
     with fits.open(ds_output_file) as hdu:
         data = hdu[0].data
         assert data.shape[2:] == (128, 128)
+        assert not np.any(np.isnan(data))
 
     rp_output_file = "repointed_down_sampled_faint_sky_model.fits"
     repoint_fits(
@@ -46,6 +47,7 @@ def test_repoint_fits():
         wcs = WCS(hdu[0].header)
         assert np.isclose(wcs.wcs.crval[0], pointing_centre.ra.deg, atol=1e-6)
         assert np.isclose(wcs.wcs.crval[1], pointing_centre.dec.deg, atol=1e-6)
+        assert not np.any(np.isnan(data))
 
     # Cleanup
     os.remove(ds_output_file)

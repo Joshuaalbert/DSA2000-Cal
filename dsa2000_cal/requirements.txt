@@ -11,7 +11,7 @@ jaxlib
 python-casacore
 scipy
 codex-africanus
-tomographic_kernel
+tomographic_kernel>=1.0.1
 jupyter
 utm
 tqdm

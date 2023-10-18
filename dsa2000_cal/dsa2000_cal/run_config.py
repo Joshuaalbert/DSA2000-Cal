@@ -3,7 +3,7 @@ from typing import Union
 
 import astropy.coordinates as ac
 import astropy.units as au
-from pydantic import Field, confloat, conint
+from pydantic import Field, confloat, conint, constr
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.rfi.rfi_simulation import RFISimConfig
@@ -30,9 +30,9 @@ class RunConfig(SerialisableBaseModel):
         description="The path to the bright sky model bbs file, if given.",
         example="bright_sky_model.bbs",
     )
-    faint_sky_model_fits: Union[str, None] = Field(
-        description="The path to the faint sky model fits file, if given.",
-        example="faint_sky_model.fits",
+    faint_sky_model_fits: Union[constr(regex=r".*-model\.fits$"), None] = Field(
+        description="The path to the faint sky model fits file, if given must end in '-model.fits'.",
+        example="faint_sky-model.fits",
     )
     start_freq_hz: confloat(gt=0) = Field(
         description="The start frequency of the simulation in Hz.",

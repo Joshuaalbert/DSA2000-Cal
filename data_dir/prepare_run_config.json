@@ -5,7 +5,7 @@
   "az_deg": 0.0,
   "num_bright_sources": 10,
   "spacing_deg": 1.0,
-  "faint_sky_model_fits": "mock_faint_sky_model.fits",
+  "faint_sky_model_fits": "mock_faint_sky-model.fits",
   "start_freq_hz": 700000000.0,
   "channel_width_hz": 162500.0,
   "num_channels": 32,
@@ -13,12 +13,13 @@
   "integration_time_s": 1.5,
   "ionosphere_specification": "light_dawn",
   "rfi_sim_config": {
-    "lte_east": -16006.0,
-    "lte_north": -43977.0,
+    "lte_east": -16006.54270764129,
+    "lte_north": -43977.61465278051,
     "lte_up": 20.0,
-    "lte_frequency_hz": 770e6,
+    "lte_frequency_hz": 770000000.0,
     "lte_polarization_deg": 10.0,
     "lte_power_W_Hz": 0.00064
   },
-  "calibration_parset": "parset.yaml"
+  "calibration_parset": "parset.yaml",
+  "a_term_parset": "a_term_correction.parset"
 }
