@@ -9,11 +9,12 @@ declare -A services
 services=(
   #  ["prepare_run"]=1
   #  ["simulate_ionosphere"]=0
+  #  ["compute_beam"]=0
   #  ["simulate_instrumental_effects"]=0
   #  ["predict_dft"]=1
-  #  ["predict_fft"]=0
+  ["predict_fft"]=0
   #  ["simulate_rfi"]=0
-  ["sum_visibilities"]=0
+  #  ["sum_visibilities"]=0
   #  ["dirty_image"]=0
   #  ["calibration"]=0
   #  ["image_subtracted"]=0
@@ -27,6 +28,7 @@ run_services() {
     echo "Processing service: $service_name"
 
     local cache_option=""
+
     if [ ${services["$service_name"]} -eq 1 ]; then
       cache_option="--no-cache"
     fi

@@ -4,8 +4,7 @@ import pkgutil
 from abc import abstractmethod
 from functools import cached_property
 from types import ModuleType
-from typing import List, Dict, Callable, Any, TypeVar, Protocol, Type, Generic
-
+from typing import List, Dict, Callable, Any, TypeVar, Protocol, Type, Generic, Union
 
 from dsa2000_cal import assets
 from dsa2000_cal.assets.base_content import BaseContent
@@ -63,7 +62,7 @@ class NoMatchFound(Exception):
     Exception raised when no match is found.
     """
 
-    def __init__(self, match_pattern: MatchPatternType | None = None):
+    def __init__(self, match_pattern: Union[MatchPatternType, None] = None):
         super().__init__(f"Could not match {match_pattern}")
 
 
@@ -113,7 +112,7 @@ class BaseContentFactory(AbstractContentFactory, Generic[T]):
     Factory for content objects, with no arguments needed to construct.
     """
 
-    def __call__(self, content_cls: Type[BaseContent | NoArgInit | T]) -> T:
+    def __call__(self, content_cls: Type[Union[BaseContent, NoArgInit, T]]) -> T:
         """
         Constructs a content object from the class.
 
@@ -132,8 +131,9 @@ class ContentRegistry(Generic[T]):
     """
 
     def __init__(self, match_func: Callable[[MatchPatternType, TemplateType], bool],
-                 sort_key_func: Callable[[MatchPatternType, TemplateType], SupportsLessThan] | None = None,
-                 content_factory: AbstractContentFactory | Callable[..., AbstractContentFactory] = BaseContentFactory()
+                 sort_key_func: Union[Callable[[MatchPatternType, TemplateType], SupportsLessThan], None] = None,
+                 content_factory: Union[
+                     AbstractContentFactory, Callable[..., AbstractContentFactory]] = BaseContentFactory()
                  ):
         self.entries: Dict[Type[T], List[TemplateType]] = {}
         self.match_func = match_func
@@ -318,5 +318,5 @@ class SetKwargsFactory(AbstractContentFactory, Generic[T]):
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
-    def __call__(self, content_cls: Type[BaseContent | T]) -> T:
+    def __call__(self, content_cls: Type[Union[BaseContent, T]]) -> T:
         return content_cls(**self.kwargs)

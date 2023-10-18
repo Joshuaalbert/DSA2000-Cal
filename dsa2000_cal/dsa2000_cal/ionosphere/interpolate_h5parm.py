@@ -12,8 +12,8 @@ from tomographic_kernel.utils import make_coord_array, wrap
 logger = logging.getLogger(__name__)
 
 
-def haversine_distance(lon1: float | np.ndarray, lat1: float | np.ndarray, lon2: float | np.ndarray,
-                       lat2: float | np.ndarray) -> np.ndarray:
+def haversine_distance(lon1: Union[float, np.ndarray], lat1: Union[float, np.ndarray], lon2: Union[float, np.ndarray],
+                       lat2: Union[float, np.ndarray]) -> np.ndarray:
     """
     Calculate the great circle distance between two points
 
@@ -30,8 +30,8 @@ def haversine_distance(lon1: float | np.ndarray, lat1: float | np.ndarray, lon2:
                              np.sin(lon2 - lon1) * np.cos(lat2)))
 
 
-def calculate_midpoint(lon1: float | np.ndarray, lat1: float | np.ndarray, lon2: float | np.ndarray,
-                       lat2: float | np.ndarray) -> np.ndarray:
+def calculate_midpoint(lon1: Union[float, np.ndarray], lat1: Union[float, np.ndarray], lon2: Union[float, np.ndarray],
+                       lat2: Union[float, np.ndarray]) -> np.ndarray:
     """
     Calculate the midpoint between two coordinates on a sphere.
 

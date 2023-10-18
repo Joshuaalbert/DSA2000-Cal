@@ -1,82 +1,46 @@
+import logging
 import os
 
-from h5parm import DataPack
-
 from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.bbs_sky_model import BBSSkyModel
-from dsa2000_cal.dft import im_to_vis_with_gains
 
 fill_registries()
 
-if 'num_cpus' not in os.environ:
-    num_cpus = os.cpu_count()
-    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={num_cpus}"
-else:
-    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.environ.get('num_cpus')}"
-
-import jax
-from jax import numpy as jnp
-import numpy as np
 from dsa2000_cal.run_config import RunConfig
-import astropy.units as au
 from pyrap import tables as pt
+import subprocess
+
+logger = logging.getLogger(__name__)
 
 
 def main(run_config: RunConfig):
-    if run_config.bright_sky_model_bbs is None:
-        raise ValueError("Bright sky model must be specified to run ionosphere simulation.")
+    if run_config.faint_sky_model_fits is None:
+        raise ValueError("Faint sky model must be specified to run FFT Predict.")
 
-    bbs_sky_model = BBSSkyModel(bbs_sky_model=run_config.bright_sky_model_bbs,
-                                pointing_centre=run_config.pointing_centre,
-                                chan0=run_config.start_freq_hz * au.Hz,
-                                chan_width=run_config.channel_width_hz * au.Hz,
-                                num_channels=run_config.num_channels
-                                )
+    # Create aterms.fits
 
-    source_model = bbs_sky_model.get_source()
-    with pt.table(run_config.dft_visibilities_path, readonly=True) as vis_table:
-        antenna_1 = vis_table.getcol('ANTENNA1')
-        antenna_2 = vis_table.getcol('ANTENNA2')
-        times, time_idx = np.unique(vis_table.getcol('TIME'), return_inverse=True)
-        uvw = vis_table.getcol('UVW')
+    # Take the .fits off the end.
+    image_name = os.path.join(
+        os.path.dirname(run_config.faint_sky_model_fits),
+        os.path.basename(run_config.faint_sky_model_fits).split('.')[0]
+    )
+    completed_process = subprocess.run(
+        [
+            'wsclean',
+            '-predict',
+            '-gridder', 'wgridder',
+            '-wgridder-accuracy', '1e-4',
+            # '-aterm-config', run_config.a_term_parset,
+            '-name', image_name,
+            run_config.fft_visibilities_path
+        ]
+    )
+    if completed_process.returncode != 0:
+        raise ValueError("Failed to run WSClean.")
 
-    with DataPack(run_config.ionosphere_h5parm, readonly=True) as dp:
-        assert dp.axes_order == ['pol', 'dir', 'ant', 'freq', 'time']
-        dp.current_solset = 'sol000'
-        dp.select(pol=slice(0, 1, 1))
-        phase, axes = dp.phase
-        _, Nd, Na, Nf, Nt = phase.shape
-        phase = np.reshape(np.transpose(phase, (4, 2, 1, 3, 0)),
-                           (Nt, Na, Nd, Nf))  # [time, ant, dir, freq, pol]
-        gains = np.zeros((Nt, Na, Nd, Nf, 2, 2), dtype=np.complex64)
-        gains[..., 0, 0] = np.exp(1j * phase)
-        gains[..., 1, 1] = gains[..., 0, 0]
-        # if amplitude is present, multiply by it
-        if 'amplitude000' in dp.soltabs:
-            amplitude, axes = dp.amplitude
-            amplitude = np.reshape(np.transpose(amplitude, (4, 2, 1, 3, 0)),
-                                   (Nt, Na, Nd, Nf))  # [time, ant, dir, freq, pol]
-            gains[..., 0, 0] *= amplitude
-            gains[..., 1, 1] *= amplitude
-        else:
-            print(f"Amplitude not present in h5parm.")
-
-    vis = im_to_vis_with_gains(
-        image=jnp.asarray(source_model.image),  # [source, chan, 2, 2]
-        gains=jnp.asarray(gains),  # [time, ant, source, chan, 2, 2]
-        antenna_1=jnp.asarray(antenna_1),  # [row]
-        antenna_2=jnp.asarray(antenna_2),  # [row]
-        time_idx=jnp.asarray(time_idx),  # [row]
-        uvw=jnp.asarray(uvw),  # [row, 3]
-        lm=jnp.asarray(source_model.lm),  # [source, 2]
-        frequency=jnp.asarray(source_model.freqs),  # [chan]
-        convention='fourier',
-        chunksize=len(jax.devices())
-    )  # [row, chan, 2, 2]
-    row, chan, _, _ = vis.shape
-    with pt.table(run_config.dft_visibilities_path, readonly=False) as vis_table:
-        dtype = vis_table.getcol('DATA').dtype
-        vis_table.putcol('DATA', np.reshape(np.asarray(vis, dtype=dtype), (row, chan, 4)))
+    with pt.table(run_config.fft_visibilities_path, readonly=False) as vis_table:
+        data = vis_table.getcol('MODEL_DATA')
+        vis_table.putcol('DATA', data)
+    logger.info(f"Predicted visibilities written to {run_config.fft_visibilities_path}")
 
 
 if __name__ == '__main__':

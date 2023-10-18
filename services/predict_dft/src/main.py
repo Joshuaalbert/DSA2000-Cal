@@ -5,6 +5,7 @@ from h5parm import DataPack
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.bbs_sky_model import BBSSkyModel
 from dsa2000_cal.dft import im_to_vis_with_gains
+from dsa2000_cal.gains import extract_scalar_gains
 
 fill_registries()
 
@@ -40,26 +41,9 @@ def main(run_config: RunConfig):
         times, time_idx = np.unique(vis_table.getcol('TIME'), return_inverse=True)
         uvw = vis_table.getcol('UVW')
 
-    with DataPack(run_config.ionosphere_h5parm, readonly=True) as dp:
-        assert dp.axes_order == ['pol', 'dir', 'ant', 'freq', 'time']
-        dp.current_solset = 'sol000'
-        dp.select(pol=slice(0, 1, 1))
-        phase, axes = dp.phase
-        _, Nd, Na, Nf, Nt = phase.shape
-        phase = np.reshape(np.transpose(phase, (4, 2, 1, 3, 0)),
-                           (Nt, Na, Nd, Nf))  # [time, ant, dir, freq, pol]
-        gains = np.zeros((Nt, Na, Nd, Nf, 2, 2), dtype=np.complex64)
-        gains[..., 0, 0] = np.exp(1j * phase)
-        gains[..., 1, 1] = gains[..., 0, 0]
-        # if amplitude is present, multiply by it
-        if 'amplitude000' in dp.soltabs:
-            amplitude, axes = dp.amplitude
-            amplitude = np.reshape(np.transpose(amplitude, (4, 2, 1, 3, 0)),
-                                   (Nt, Na, Nd, Nf))  # [time, ant, dir, freq, pol]
-            gains[..., 0, 0] *= amplitude
-            gains[..., 1, 1] *= amplitude
-        else:
-            print(f"Amplitude not present in h5parm.")
+    ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm)
+    beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm)
+    gains = ionosphere_gains * beam_gains
 
     vis = im_to_vis_with_gains(
         image=jnp.asarray(source_model.image),  # [source, chan, 2, 2]

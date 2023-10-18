@@ -305,7 +305,7 @@ def run_rfi_simulation(array_name: str,
 
     logger.info("Extracting data from MS file.")
     gen = iter_ms_data(ms_file=ms_file, array=array, overwrite=overwrite)
-    gen_response: np.ndarray | None = None
+    gen_response: Union[np.ndarray, None] = None
     pbar = tqdm(file=sys.stdout, dynamic_ncols=True)
 
     while True:

@@ -43,6 +43,14 @@ class AbstractAntennaModel(ABC):
     """
     Antenna beam model.
     """
+
+    @abstractmethod
+    def plot_polar_amplitude(self):
+        """
+        Plot the antenna beam model in polar coordinates.
+        """
+        ...
+
     @abstractmethod
     def get_amplitude(self) -> np.ndarray:
         """
@@ -86,6 +94,17 @@ class AbstractAntennaModel(ABC):
 
 
 class AbstractAntennaBeam(ABC):
+
+    @abstractmethod
+    def get_model(self) -> AbstractAntennaModel:
+        """
+        Get the antenna model.
+
+        Returns:
+            antenna_model: AbstractAntennaModel
+        """
+        ...
+
     @abstractmethod
     def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU) -> np.ndarray:
         """

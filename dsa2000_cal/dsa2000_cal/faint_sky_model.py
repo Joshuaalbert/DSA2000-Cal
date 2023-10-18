@@ -1,8 +1,10 @@
+import astropy.time as at
 import numpy as np
-from astropy import coordinates as ac
+from astropy import coordinates as ac, io, wcs
 from astropy.io import fits
 from astropy.wcs import WCS
 from reproject import reproject_interp
+from scipy.interpolate import griddata
 from scipy.ndimage import zoom
 
 
@@ -92,19 +94,90 @@ def repoint_fits(fits_file: str, output_file: str, pointing_centre: ac.ICRS):
 
     # Create a new WCS based on the desired center direction
     new_wcs = WCS(naxis=4)
-    new_wcs.wcs.ctype = ["RA---TAN", "DEC--TAN", "STOKES", "FREQ"]
+    new_wcs.wcs.ctype = ["RA---SIN", "DEC--SIN", "STOKES", "FREQ"]
     # Assuming you want to keep STOKES and FREQ as 1
     new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, 1]
     # Assuming data shape corresponds to [FREQ, STOKES, DEC, RA]
     new_wcs.wcs.crpix = [hdu.data.shape[3] / 2, hdu.data.shape[2] / 2, 1, 1]
     new_wcs.wcs.cdelt = [original_wcs.pixel_scale_matrix[1, 1], original_wcs.pixel_scale_matrix[0, 0], 1, 1]
-    #
-    # new_wcs = WCS(naxis=2)
-    # new_wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
-    # new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg]
-    # new_wcs.wcs.crpix = [hdu.data.shape[1] / 2, hdu.data.shape[0] / 2]  # Assuming 2D data
-    # new_wcs.wcs.cdelt = np.array([original_wcs.pixel_scale_matrix[1, 1], original_wcs.pixel_scale_matrix[0, 0]])
+
     new_wcs.wcs.set()
     reprojected_data, _ = reproject_interp(hdu, new_wcs, shape_out=hdu.data.shape)
     hdu_new = fits.PrimaryHDU(data=reprojected_data, header=new_wcs.to_header())
     hdu_new.writeto(output_file, overwrite=True)
+
+
+def prepare_gain_fits(output_file: str, pointing_centre: ac.ICRS,
+                      gains: np.ndarray, directions: ac.ICRS,
+                      freq_hz: np.ndarray, times: at.Time, num_pix: int):
+    """
+    Given an input gain array, prepare a gain fits file for use with a-term correction in WSClean.
+    Axes should be [RA, DEC, MATRIX, ANTENNA, FREQ, TIME]
+    MATRIX has 4 components: {real XX, imaginary XX, real YY, imaginary YY}
+    Args:
+        output_file: the path to the output fits file
+        pointing_centre: the pointing centre
+        gains: the gain array [num_time, num_ant, num_dir, num_freq, 2, 2]
+        directions: the directions [num_dir]
+        freq_hz: the frequencies [num_freq]
+        times: the times [num_time]
+        num_pix: the screen resolution in pixels
+    References:
+        [1] https://wsclean.readthedocs.io/en/latest/a_term_correction.html#diagonal-gain-correction
+    """
+    # Determine the range of RA and DEC and pad by 20%
+    ra_values = [dir.ra.deg for dir in directions]
+    dec_values = [dir.dec.deg for dir in directions]
+    ra_range = max(ra_values) - min(ra_values)
+    dec_range = max(dec_values) - min(dec_values)
+
+    ra_padding = ra_range * 0.2
+    dec_padding = dec_range * 0.2
+
+    ra_min = min(ra_values) - ra_padding
+    ra_max = max(ra_values) + ra_padding
+    dec_min = min(dec_values) - dec_padding
+    dec_max = max(dec_values) + dec_padding
+
+    # Create the new WCS
+    w = wcs.WCS(naxis=6)
+    w.wcs.ctype = ["RA---SIN", "DEC--SIN", "MATRIX", "ANTENNA", "FREQ", "TIME"]
+    w.wcs.crpix = [num_pix / 2, num_pix / 2, 1, 1, 1, 1]
+    w.wcs.cdelt = [(ra_max - ra_min) / num_pix, (dec_max - dec_min) / num_pix, 1, 1, freq_hz[1] - freq_hz[0],
+                   (times[1].mjd - times[0].mjd) * 86400]
+    w.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, 1, freq_hz[0], times[0].mjd * 86400]
+
+    # Extract pixel directions from the WCS as ICRS coordinates
+    x = np.linspace(ra_min, ra_max, num_pix)
+    y = np.linspace(dec_min, dec_max, num_pix)
+    x, y = np.meshgrid(x, y)
+    ra, dec, _, _, _, _ = w.all_pix2world(x, y, 1, 1, 1, 1, 0)
+    coords = ac.SkyCoord(ra, dec, frame='icrs', unit='deg')
+
+    # Grid the gains using nearest method
+    grid_points = [(dir.ra.deg, dir.dec.deg) for dir in directions]
+
+    # Split gains into real and imaginary parts
+    gains_real = np.real(gains)
+    gains_imag = np.imag(gains)
+
+    values_real = gains_real.reshape(-1, 2, 2)
+    values_imag = gains_imag.reshape(-1, 2, 2)
+
+    grid_gains_real = griddata(grid_points, values_real, (coords.ra.deg, coords.dec.deg), method='nearest').reshape(
+        num_pix, num_pix, len(gains), 2, 2)
+    grid_gains_imag = griddata(grid_points, values_imag, (coords.ra.deg, coords.dec.deg), method='nearest').reshape(
+        num_pix, num_pix, len(gains), 2, 2)
+
+    # Prepare data for FITS
+    data = np.zeros((num_pix, num_pix, 4, len(gains), len(freq_hz), len(times)))
+
+    # Assign real and imaginary parts of XX and YY to appropriate positions in the data array
+    data[:, :, 0, :, :, :] = grid_gains_real[:, :, :, :, 0, 0]
+    data[:, :, 1, :, :, :] = grid_gains_imag[:, :, :, :, 0, 0]
+    data[:, :, 2, :, :, :] = grid_gains_real[:, :, :, :, 1, 1]
+    data[:, :, 3, :, :, :] = grid_gains_imag[:, :, :, :, 1, 1]
+
+    # Store the gains in the fits file
+    hdu = io.fits.PrimaryHDU(data, header=w.to_header())
+    hdu.writeto(output_file, overwrite=True)

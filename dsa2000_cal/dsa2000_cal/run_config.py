@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Union
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -25,11 +26,11 @@ class RunConfig(SerialisableBaseModel):
         description="The pointing direction in ICRS.",
         example=ac.ICRS(ra=10 * au.deg, dec=45 * au.deg),
     )
-    bright_sky_model_bbs: str | None = Field(
+    bright_sky_model_bbs: Union[str, None] = Field(
         description="The path to the bright sky model bbs file, if given.",
         example="bright_sky_model.bbs",
     )
-    faint_sky_model_fits: str | None = Field(
+    faint_sky_model_fits: Union[str, None] = Field(
         description="The path to the faint sky model fits file, if given.",
         example="faint_sky_model.fits",
     )
@@ -75,7 +76,11 @@ class RunConfig(SerialisableBaseModel):
     )
     ionosphere_h5parm: str = Field(
         description="The path to the output ionosphere h5parm file.",
-        example="output.h5parm",
+        example="ionosphere.h5parm",
+    )
+    beam_h5parm: str = Field(
+        description="The path to the output beam h5parm file.",
+        example="beam.h5parm",
     )
     rfi_sim_config: RFISimConfig = Field(
         default_factory=RFISimConfig,
@@ -85,4 +90,12 @@ class RunConfig(SerialisableBaseModel):
     calibration_parset: str = Field(
         description="The path to the calibration parset.",
         example="parset.yaml",
+    )
+    a_term_parset: str = Field(
+        description="The path to the a-term parset.",
+        example="a_term_correction.parset",
+    )
+    a_term_fits: str = Field(
+        description="The path to the a-term fits file. We'll create this. Must match what's in the a_term_parset",
+        example="aterms-diag.fits",
     )

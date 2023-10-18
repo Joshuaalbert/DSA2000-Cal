@@ -31,6 +31,7 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
 
     def plot_polar_amplitude(self):
         # Generate theta and phi values for the meshgrid
+        print(f"Min, Max: {np.min(self.get_amplitude())}, {np.max(self.get_amplitude())}")
 
         # Create a 2D meshgrid of theta and phi values
         Theta, Phi = np.meshgrid(self.get_theta(), self.get_phi())
@@ -45,8 +46,7 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
 
     @cached_property
     def _get_amplitude(self) -> np.ndarray:
-        amplitude = 10 ** (self.ant_model[self.model_name] / 10.)  # [num_theta, num_phi, num_freqs]
-        amplitude /= np.max(amplitude)
+        amplitude = 10 ** (self.ant_model[self.model_name] / 20.)  # [num_theta, num_phi, num_freqs]
         return amplitude
 
     def get_amplitude(self) -> np.ndarray:
@@ -88,19 +88,10 @@ class AltAzAntennaBeam(AbstractAntennaBeam):
         """
         self.antenna_model = antenna_model
 
+    def get_model(self) -> AbstractAntennaModel:
+        return self.antenna_model
+
     def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU) -> np.ndarray:
-        """
-        Get the amplitude of the antenna beam at a given pointing and source.
-
-        Args:
-            pointing: The pointing direction in ICRS frame for each antenna [num_ant].
-            source: The source direction in ICRS frame for each antenna [num_ant].
-            freq_hz: The frequency in Hz.
-            enu_frame: The ENU frame.
-
-        Returns:
-            The amplitude of the antenna beam.
-        """
         if pointing.shape == ():
             pointing = pointing.reshape((1,))
         if source.shape == ():

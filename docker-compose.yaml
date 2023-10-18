@@ -1,4 +1,4 @@
-version: "3"
+version: "3.8"
 services:
   inspect:
     image: inspect
@@ -56,12 +56,41 @@ services:
       - $RUN_DIR_HOST:/dsa/run
     networks:
       - safe-tier
+  predict_fft:
+    image: predict_fft
+    container_name: predict_fft
+    build:
+      context: .
+      dockerfile: services/predict_fft/Dockerfile
+    env_file:
+      - .env
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    runtime: nvidia
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/run
+    networks:
+      - safe-tier
   predict_dft:
     image: predict_dft
     container_name: predict_dft
     build:
       context: .
       dockerfile: services/predict_dft/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - /dev/shm:/dev/shm
+      - $RUN_DIR_HOST:/dsa/run
+    networks:
+      - safe-tier
+  compute_beam:
+    image: compute_beam
+    container_name: compute_beam
+    build:
+      context: .
+      dockerfile: services/compute_beam/Dockerfile
     env_file:
       - .env
     volumes:

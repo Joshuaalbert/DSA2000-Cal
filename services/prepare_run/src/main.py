@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 from datetime import datetime
+from typing import Union
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -52,7 +53,7 @@ class PrepareRunConfig(SerialisableBaseModel):
         description="The spacing between bright sources in degrees",
         example=1.,
     )
-    faint_sky_model_fits: str | None = Field(
+    faint_sky_model_fits: Union[str, None] = Field(
         description="The path to the faint sky model fits file, if given.",
         example=MockData().faint_sky_model(),
     )
@@ -88,6 +89,10 @@ class PrepareRunConfig(SerialisableBaseModel):
     calibration_parset: str = Field(
         description="The path to the calibration parset.",
         example="parset.yaml",
+    )
+    a_term_parset: str = Field(
+        description="The path to the a-term parset.",
+        example="a_term_correction.parset",
     )
 
 
@@ -160,8 +165,11 @@ def main(prepare_run_config: PrepareRunConfig):
     shutil.move('visibilities.ms_p0', output_ms_file)
 
     ionosphere_h5parm = os.path.abspath('ionosphere.h5parm')
+    beam_h5parm = os.path.abspath('beam.h5parm')
 
     calibration_parset = os.path.abspath(prepare_run_config.calibration_parset)
+
+    a_term_fits = os.path.abspath('aterms-diag.fits')
 
     run_config = RunConfig(
         array_name=prepare_run_config.array_name,
@@ -181,7 +189,10 @@ def main(prepare_run_config: PrepareRunConfig):
         fft_visibilities_path=fft_ms_file,
         rfi_visibilities_path=rfi_ms_file,
         rfi_sim_config=prepare_run_config.rfi_sim_config,
-        calibration_parset=calibration_parset
+        calibration_parset=calibration_parset,
+        a_term_parset=prepare_run_config.a_term_parset,
+        beam_h5parm=beam_h5parm,
+        a_term_fits=a_term_fits
     )
     with open('run_config.json', 'w') as f:
         f.write(run_config.json(indent=2))
