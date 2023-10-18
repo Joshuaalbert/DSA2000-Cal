@@ -1,7 +1,7 @@
 import logging
 import os.path
 import sys
-from typing import Generator
+from typing import Generator, Union
 
 import astropy.coordinates as ac
 import astropy.time as at

@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 from astropy import coordinates as ac
 
@@ -24,7 +25,7 @@ class DSA2000WArray(AbstractArray):
         _, coords = extract_itrs_coords(self.get_array_file(), delim=',')
         return coords
 
-    def get_antenna_names(self) -> list[str]:
+    def get_antenna_names(self) -> List[str]:
         stations, _ = extract_itrs_coords(self.get_array_file(), delim=',')
         return stations
 

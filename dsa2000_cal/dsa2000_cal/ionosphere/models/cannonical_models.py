@@ -2,7 +2,6 @@ from typing import Literal
 
 from jax import numpy as jnp
 from tensorflow_probability.substrates import jax as tfp
-
 from tomographic_kernel.tomographic_kernel import MultiLayerTomographicKernel
 
 SPECIFICATION = Literal['simple', 'light_dawn', 'dawn', 'dusk', 'dawn_challenge', 'dusk_challenge']

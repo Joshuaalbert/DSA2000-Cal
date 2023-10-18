@@ -1,10 +1,11 @@
 import os
+from typing import List
 
 from astropy import coordinates as ac
 
-from dsa2000_cal.abc import AbstractAntennaModel, AbstractAntennaBeam
-from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
+from dsa2000_cal.abc import AbstractAntennaBeam
 from dsa2000_cal.antenna_beam import MatlabAntennaModelV1, AltAzAntennaBeam
+from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
 
 
@@ -24,7 +25,7 @@ class DSA2000WSmallArray(AbstractArray):
         _, coords = extract_itrs_coords(self.get_array_file(), delim=',')
         return coords
 
-    def get_antenna_names(self) -> list[str]:
+    def get_antenna_names(self) -> List[str]:
         stations, _ = extract_itrs_coords(self.get_array_file(), delim=',')
         return stations
 

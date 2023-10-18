@@ -9,7 +9,7 @@ import numpy as np
 import pylab as plt
 from h5parm import DataPack
 from h5parm.datapack import save_array_file
-from h5parm.utils import directions_from_sky_model, create_empty_datapack, format_direction_bbs
+from h5parm.utils import directions_from_sky_model, create_empty_datapack
 from jax import numpy as jnp, tree_map, jit, random, devices
 from tomographic_kernel.frames import ENU
 from tomographic_kernel.plotting import plot_vornoi_map
