@@ -88,11 +88,15 @@ class PrepareRunConfig(SerialisableBaseModel):
     )
     calibration_parset: str = Field(
         description="The path to the calibration parset.",
-        example="parset.yaml",
+        example="calibration_parset.yaml",
     )
-    a_term_parset: str = Field(
-        description="The path to the a-term parset.",
-        example="a_term_correction.parset",
+    image_pixel_arcsec: confloat(gt=0) = Field(
+        description="The pixel size of the image in arcseconds.",
+        example=2.
+    )
+    image_size: conint(ge=1) = Field(
+        description="The size of the image in pixels, assuming square images.",
+        example=512
     )
 
 
@@ -165,11 +169,11 @@ def main(prepare_run_config: PrepareRunConfig):
     shutil.move('visibilities.ms_p0', output_ms_file)
 
     ionosphere_h5parm = os.path.abspath('ionosphere.h5parm')
+    ionosphere_fits = os.path.abspath('ionosphere.fits')
     beam_h5parm = os.path.abspath('beam.h5parm')
+    beam_fits = os.path.abspath('beam.fits')
 
     calibration_parset = os.path.abspath(prepare_run_config.calibration_parset)
-
-    a_term_fits = os.path.abspath('aterms-diag.fits')
 
     run_config = RunConfig(
         array_name=prepare_run_config.array_name,
@@ -184,15 +188,17 @@ def main(prepare_run_config: PrepareRunConfig):
         integration_time_s=prepare_run_config.integration_time_s,
         ionosphere_specification=prepare_run_config.ionosphere_specification,
         ionosphere_h5parm=ionosphere_h5parm,
+        ionosphere_fits=ionosphere_fits,
         visibilities_path=output_ms_file,
         dft_visibilities_path=dft_ms_file,
         fft_visibilities_path=fft_ms_file,
         rfi_visibilities_path=rfi_ms_file,
         rfi_sim_config=prepare_run_config.rfi_sim_config,
         calibration_parset=calibration_parset,
-        a_term_parset=prepare_run_config.a_term_parset,
         beam_h5parm=beam_h5parm,
-        a_term_fits=a_term_fits
+        beam_fits=beam_fits,
+        image_size=prepare_run_config.image_size,
+        image_pixel_arcsec=prepare_run_config.image_pixel_arcsec
     )
     with open('run_config.json', 'w') as f:
         f.write(run_config.json(indent=2))

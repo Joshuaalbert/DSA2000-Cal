@@ -1,8 +1,8 @@
+git+https://github.com/mattyowl/astLib.git@master
 quartical
 astropy
 numpy<1.24.0
 scipy
-astLib
 python-casacore
 future
 astro-kittens

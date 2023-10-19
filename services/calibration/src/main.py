@@ -5,6 +5,12 @@ from dsa2000_cal.run_config import RunConfig
 
 
 def main(run_config: RunConfig):
+    if not os.path.exists(run_config.bright_sky_model_bbs):
+        raise ValueError(f"Bright sky model {run_config.bright_sky_model_bbs} does not exist.")
+    if not os.path.exists(run_config.calibration_parset):
+        raise ValueError(f"Calibration parset {run_config.calibration_parset} does not exist.")
+
+    print("Converting sky model to Tigger.")
     completed_process = subprocess.run(
         [
             "tigger-convert",
@@ -17,6 +23,7 @@ def main(run_config: RunConfig):
     if completed_process.returncode != 0:
         raise RuntimeError(f"tigger-convert failed with return code {completed_process.returncode}")
 
+    print("Running goquartical.")
     completed_process = subprocess.run(
         [
             "goquartical",

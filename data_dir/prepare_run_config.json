@@ -20,6 +20,7 @@
     "lte_polarization_deg": 10.0,
     "lte_power_W_Hz": 0.00064
   },
-  "calibration_parset": "parset.yaml",
-  "a_term_parset": "a_term_correction.parset"
+  "calibration_parset": "calibration_parset.yaml",
+  "image_pixel_arcsec": 2.0,
+  "image_size": 512
 }

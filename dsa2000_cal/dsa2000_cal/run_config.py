@@ -78,9 +78,17 @@ class RunConfig(SerialisableBaseModel):
         description="The path to the output ionosphere h5parm file.",
         example="ionosphere.h5parm",
     )
+    ionosphere_fits: str = Field(
+        description="The path to the output ionosphere fits file.",
+        example="ionosphere.fits",
+    )
     beam_h5parm: str = Field(
         description="The path to the output beam h5parm file.",
         example="beam.h5parm",
+    )
+    beam_fits: str = Field(
+        description="The path to the output beam fits file.",
+        example="beam.fits",
     )
     rfi_sim_config: RFISimConfig = Field(
         default_factory=RFISimConfig,
@@ -91,11 +99,11 @@ class RunConfig(SerialisableBaseModel):
         description="The path to the calibration parset.",
         example="parset.yaml",
     )
-    a_term_parset: str = Field(
-        description="The path to the a-term parset.",
-        example="a_term_correction.parset",
+    image_pixel_arcsec: confloat(gt=0) = Field(
+        description="The pixel size of the image in arcseconds.",
+        example=2.
     )
-    a_term_fits: str = Field(
-        description="The path to the a-term fits file. We'll create this. Must match what's in the a_term_parset",
-        example="aterms-diag.fits",
+    image_size: conint(ge=1) = Field(
+        description="The size of the image in pixels, assuming square images.",
+        example=512
     )

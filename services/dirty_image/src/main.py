@@ -15,10 +15,11 @@ def main(run_config: RunConfig):
         raise ValueError("Faint sky model must be specified to run FFT Predict.")
 
     # Create aterms.fits
-    a_term_file = os.path.abspath('predict_fft_a_corr.parset')
+
+    a_term_file = os.path.abspath('dirty_a_corr.parset')
     write_diagonal_a_term_correction_file(
         a_term_file=a_term_file,
-        diagonal_gain_fits_files=[run_config.beam_fits, run_config.ionosphere_fits]
+        diagonal_gain_fits_files=[run_config.beam_fits]
     )
 
     # Take the .fits off the end.
@@ -26,14 +27,32 @@ def main(run_config: RunConfig):
         os.path.dirname(run_config.faint_sky_model_fits),
         os.path.basename(run_config.faint_sky_model_fits).rsplit('-model.fits', 1)[0]
     )
+
     completed_process = subprocess.run(
         [
             'wsclean',
-            '-predict',
+            '--help'
+        ]
+    )
+
+    num_cpus = os.cpu_count()
+
+    completed_process = subprocess.run(
+        [
+            'wsclean',
             '-gridder', 'wgridder',
             '-wgridder-accuracy', '1e-4',
             '-aterm-config', a_term_file,
             '-name', image_name,
+            '-size', f"{run_config.image_size}", f"{run_config.image_size}",
+            '-scale', f"{run_config.image_pixel_arcsec}asec",
+            '-channels-out', '1',
+            '-nwlayers-factor', '1',
+            '-make-psf',
+            '-idg-mode', 'hybrid',
+            '-weight', 'natural',
+            '-save-uv',
+            '-j', f'{num_cpus}',
             run_config.fft_visibilities_path
         ]
     )

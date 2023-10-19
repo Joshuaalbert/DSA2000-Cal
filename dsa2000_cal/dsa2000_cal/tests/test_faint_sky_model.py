@@ -9,7 +9,8 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from dsa2000_cal.assets.mocks.mock_data import MockData
-from dsa2000_cal.faint_sky_model import repoint_fits, down_sample_fits, prepare_gain_fits
+from dsa2000_cal.faint_sky_model import repoint_fits, down_sample_fits, prepare_gain_fits, haversine, \
+    nearest_neighbors_sphere
 
 
 def test_repoint_fits():
@@ -54,11 +55,81 @@ def test_repoint_fits():
     os.remove(rp_output_file)
 
 
+def test_basic_functionality():
+    ra1, dec1 = np.radians(0), np.radians(0)
+    ra2, dec2 = np.radians(0), np.radians(1)
+    distance = haversine(ra1, dec1, ra2, dec2)
+    assert np.isclose(distance, np.radians(1), rtol=1e-5)
+
+
+def test_identical_points():
+    ra1, dec1 = np.radians(45), np.radians(45)
+    ra2, dec2 = np.radians(45), np.radians(45)
+    distance = haversine(ra1, dec1, ra2, dec2)
+    assert np.isclose(distance, 0, rtol=1e-5)
+
+
+def test_array_of_coordinates():
+    ra1 = np.radians([0, 0, 0])
+    dec1 = np.radians([0, 1, 2])
+    ra2 = np.radians([0, 0, 0])
+    dec2 = np.radians([1, 2, 3])
+    distances = haversine(ra1, dec1, ra2, dec2)
+    expected = np.radians([1, 1, 1])
+    assert np.allclose(distances, expected, rtol=1e-5)
+
+
+def test_antipodal_points():
+    ra1, dec1 = np.radians(0), np.radians(90)  # North pole
+    ra2, dec2 = np.radians(0), np.radians(-90)  # South pole
+    distance = haversine(ra1, dec1, ra2, dec2)
+    assert np.isclose(distance, np.pi, rtol=1e-5)  # Should be half the circumference of the circle (pi radians)
+
+
+def test_wrapping():
+    # Define two points close in RA but on either side of the RA=0 boundary.
+    coord1 = ac.ICRS(ra=359.5 * au.degree, dec=0 * au.degree)
+    coord2 = ac.ICRS(ra=0.5 * au.degree, dec=0 * au.degree)
+
+    # Expected separation is 1 degree, but we have to handle the RA wrapping.
+    expected_distance = np.radians(1)  # Convert 1 degree to radians
+
+    distance = haversine(coord1.ra.rad, coord1.dec.rad, coord2.ra.rad, coord2.dec.rad)
+    assert np.isclose(distance, expected_distance, rtol=1e-5)
+
+
+def test_nearest_neighbor():
+    coords1 = ac.ICRS([10, 20] * au.degree, [-45, 45] * au.degree)
+    coords2 = ac.ICRS([11, 21, 10.5, 19.5] * au.degree, [-44, 46, -45.5, 44.5] * au.degree)
+
+    nearest_indices, distances = nearest_neighbors_sphere(coords1, coords2)
+
+    # For the given example:
+    # - The nearest neighbor to (10°, -45°) is (10.5°, -45.5°)
+    # - The nearest neighbor to (20°, 45°) is (19.5°, 44.5°)
+    expected_indices = np.array([2, 3])
+    # Convert angles to radians for haversine calculations
+    ra1_rad, dec1_rad = np.radians(10), np.radians(-45)
+    ra2_rad, dec2_rad = np.radians(10.5), np.radians(-45.5)
+    ra3_rad, dec3_rad = np.radians(20), np.radians(45)
+    ra4_rad, dec4_rad = np.radians(19.5), np.radians(44.5)
+
+    # Calculate expected distances
+    expected_distances = np.array([
+        haversine(ra1_rad, dec1_rad, ra2_rad, dec2_rad),
+        haversine(ra3_rad, dec3_rad, ra4_rad, dec4_rad)
+    ])
+    assert np.array_equal(nearest_indices, expected_indices)
+    assert np.allclose(distances, expected_distances, rtol=1e-5)
+
+
 def mock_data():
-    pointing_centre = ac.ICRS(ra=180 * au.degree, dec=0 * au.degree)
-    gains = np.random.randn(10, 5, 3, 4, 2, 2) + 1j * np.random.randn(10, 5, 3, 4, 2, 2)
-    directions = ac.concatenate([ac.ICRS(ra=ra * au.degree, dec=0 * au.degree) for ra in [178, 180, 182]])
-    freq_hz = np.array([1e8, 1.1e8, 1.2e8, 1.3e8])
+    pointing_centre = ac.ICRS(ra=80 * au.degree, dec=0 * au.degree)
+    # [num_time, num_ant, num_dir, num_freq, 2, 2]
+    gains = np.random.randn(10, 5, 3, 7, 2, 2) + 1j * np.random.randn(10, 5, 3, 7, 2, 2)
+    directions = ac.concatenate(
+        [ac.ICRS(ra=ra * au.degree, dec=np.random.normal() * au.degree) for ra in [178, 180, 182]])
+    freq_hz = np.linspace(700e6, 1400e6, 7)
     times = at.Time(['2023-10-18T00:00:00', '2023-10-18T01:00:00', '2023-10-18T02:00:00', '2023-10-18T03:00:00',
                      '2023-10-18T04:00:00', '2023-10-18T05:00:00', '2023-10-18T06:00:00', '2023-10-18T07:00:00',
                      '2023-10-18T08:00:00', '2023-10-18T09:00:00'])
@@ -91,7 +162,7 @@ def test_fits_file_content(tmp_path):
         # ... add other checks
 
         # Check the shape of the data
-        assert data.shape == (num_pix, num_pix, 4, 10, 4, 10)
+        assert data.shape == (num_pix, num_pix, 4, 5, 7, 10)
 
         # Check some statistics on the data if necessary
         assert data.mean() != 0

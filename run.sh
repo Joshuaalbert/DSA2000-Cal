@@ -16,7 +16,7 @@ services_order=(
   "predict_fft"
   "simulate_rfi"
   "sum_visibilities"
-  #  "dirty_image"
+  "dirty_image"
   "calibration"
   #  "image_a_proj"
 )

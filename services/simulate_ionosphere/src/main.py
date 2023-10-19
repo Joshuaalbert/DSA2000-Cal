@@ -1,5 +1,10 @@
 import os
 
+import numpy as np
+from h5parm import DataPack
+
+from dsa2000_cal.faint_sky_model import prepare_gain_fits
+
 if 'num_cpus' not in os.environ:
     num_cpus = os.cpu_count()
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={num_cpus}"
@@ -38,6 +43,32 @@ def main(run_config: RunConfig):
             num_channels=run_config.num_channels,
             sky_model=run_config.bright_sky_model_bbs,
             grid_res_m=1000.)
+
+    with DataPack(run_config.ionosphere_h5parm, readonly=True) as dp:
+        # get phase
+        dp.current_solset = 'sol000'
+        if dp.axes_order != ['pol', 'ant', 'dir', 'freq', 'time']:
+            raise ValueError("Expects axes order must be ['pol', 'ant', 'dir', 'freq', 'time']")
+        phase, axes = dp.phase  # [1, num_antennas, num_sources, num_freqs, num_times]
+        _, antennas = dp.get_antennas(axes['ant'])
+        _, times = dp.get_times(axes['time'])
+        _, freqs = dp.get_freqs(axes['freq'])
+        _, directions = dp.get_directions(axes['dir'])  # [num_sources]
+
+    # get gains in  [num_time, num_ant, num_dir, num_freq, 2, 2]
+    phase = np.transpose(phase, (4, 1, 2, 3, 0))  # [num_time, num_ant, num_dir, num_freq, pol]
+    gains = np.zeros(phase.shape[:-1] + (2, 2), dtype=np.complex64)
+    gains[..., 0, 0] = np.exp(1j * phase[..., 0])
+    gains[..., 1, 1] = np.exp(1j * phase[..., 0])
+    prepare_gain_fits(
+        output_file=run_config.ionosphere_fits,
+        pointing_centre=run_config.pointing_centre,
+        gains=gains,
+        directions=directions,
+        freq_hz=freqs.to('Hz').value,
+        times=times,
+        num_pix=32
+    )
 
 
 if __name__ == '__main__':

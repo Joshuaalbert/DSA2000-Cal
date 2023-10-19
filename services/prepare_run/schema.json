@@ -6,7 +6,7 @@
     "array_name": {
       "title": "Array Name",
       "description": "The name of the array to use.",
-      "example": "dsa2000W",
+      "example": "dsa2000W_small",
       "type": "string"
     },
     "start_dt": {
@@ -48,8 +48,9 @@
     },
     "faint_sky_model_fits": {
       "title": "Faint Sky Model Fits",
-      "description": "The path to the faint sky model fits file, if given.",
-      "example": "\/home\/albert\/git\/DSA2000-Cal\/dsa2000_cal\/dsa2000_cal\/assets\/mocks\/mock_faint_sky_model.fits",
+      "description": "The path to the faint sky model fits file, if given must end in '-model.fits'.",
+      "example": "\/home\/albert\/git\/DSA2000-Cal\/dsa2000_cal\/dsa2000_cal\/assets\/mocks\/mock_faint_sky-model.fits",
+      "pattern": ".*-model\\.fits$",
       "type": "string"
     },
     "start_freq_hz": {
@@ -121,14 +122,22 @@
     "calibration_parset": {
       "title": "Calibration Parset",
       "description": "The path to the calibration parset.",
-      "example": "parset.yaml",
+      "example": "calibration_parset.yaml",
       "type": "string"
     },
-    "a_term_parset": {
-      "title": "A Term Parset",
-      "description": "The path to the a-term parset.",
-      "example": "a_term_correction.parset",
-      "type": "string"
+    "image_pixel_arcsec": {
+      "title": "Image Pixel Arcsec",
+      "description": "The pixel size of the image in arcseconds.",
+      "example": 2.0,
+      "exclusiveMinimum": 0,
+      "type": "number"
+    },
+    "image_size": {
+      "title": "Image Size",
+      "description": "The size of the image in pixels, assuming square images.",
+      "example": 512,
+      "minimum": 1,
+      "type": "integer"
     }
   },
   "required": [
@@ -145,7 +154,8 @@
     "integration_time_s",
     "ionosphere_specification",
     "calibration_parset",
-    "a_term_parset"
+    "image_pixel_arcsec",
+    "image_size"
   ],
   "definitions": {
     "RFISimConfig": {
