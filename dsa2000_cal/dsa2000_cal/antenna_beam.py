@@ -1,5 +1,6 @@
 import os
 from functools import cached_property
+from typing import Literal
 
 import astropy.coordinates as ac
 import numpy as np
@@ -19,7 +20,8 @@ class AltAzAntennaModel(AbstractAntennaModel):
 
 class MatlabAntennaModelV1(AltAzAntennaModel):
     """
-    Antenna beam model, assumes an Alt-Az mount, based on what ghellbourg provided.
+    Antenna beam model, assumes an Alt-Az mount, with isotropic dish so that rotating by 90 deg gives other
+    polarisation, based on what jonas provided ghellbourg provided.
     """
 
     def __init__(self, antenna_model_file: str, model_name: str):
@@ -91,7 +93,8 @@ class AltAzAntennaBeam(AbstractAntennaBeam):
     def get_model(self) -> AbstractAntennaModel:
         return self.antenna_model
 
-    def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU) -> np.ndarray:
+    def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
+                      pol: Literal['X', 'Y']) -> np.ndarray:
         if pointing.shape == ():
             pointing = pointing.reshape((1,))
         if source.shape == ():
@@ -132,6 +135,8 @@ class AltAzAntennaBeam(AbstractAntennaBeam):
         x = a[:, None] * np.asarray([1, 0, 0]) + b[:, None] * np.asarray([0, 1, 0])  # [num_ant, 3] (normed)
 
         phi = np.arccos(np.sum((line_of_sight_proj * x).value, axis=-1))  # [num_ant]
+        if pol == 'Y':
+            phi += np.pi / 2
 
         phi_idx = np.asarray(
             [

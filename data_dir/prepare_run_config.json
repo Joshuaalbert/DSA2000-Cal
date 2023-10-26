@@ -5,7 +5,7 @@
   "az_deg": 0.0,
   "num_bright_sources": 10,
   "spacing_deg": 1.0,
-  "faint_sky_model_fits": "mock_faint_sky-model.fits",
+  "faint_sky_model_fits": "test_faint_sky-model.fits",
   "start_freq_hz": 700000000.0,
   "channel_width_hz": 162500.0,
   "num_channels": 32,
@@ -20,7 +20,8 @@
     "lte_polarization_deg": 10.0,
     "lte_power_W_Hz": 0.00064
   },
-  "calibration_parset": "calibration_parset.yaml",
-  "image_pixel_arcsec": 2.0,
-  "image_size": 512
+  "calibration_time_interval": 2,
+  "calibration_freq_interval": 32,
+  "image_pixel_arcsec": 5.0,
+  "image_size": 1024
 }

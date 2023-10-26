@@ -192,7 +192,8 @@ def calculate_side_lobes_attenuation(rfi_sim_config: RFISimConfig, ms_data: MSDa
         pointing=ms_data.pointing,
         source=source,
         freq_hz=rfi_sim_config.lte_frequency_hz,
-        enu_frame=ms_data.enu_frame
+        enu_frame=ms_data.enu_frame,
+        pol='X'
     )  # [num_ant]
 
 

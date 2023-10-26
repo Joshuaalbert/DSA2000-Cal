@@ -1,5 +1,6 @@
 # Using the same base image
-ARG NVIDIA_VERSION=11.3.1
+ARG NVIDIA_VERSION=12.0.1
+#11.3.1
 
 FROM nvidia/cuda:${NVIDIA_VERSION}-devel-ubuntu20.04
 
@@ -101,7 +102,7 @@ RUN cd /opt/idg && \
       -DCMAKE_INSTALL_PREFIX=/usr \
       "-DCMAKE_LIBRARY_PATH=/usr/local/cuda/compat;/usr/local/cuda/lib64" \
       "-DCMAKE_CXX_FLAGS=-isystem /usr/local/cuda/include" \
-      -DBUILD_TESTING=On -DBUILD_LIB_CUDA=On -DBUILD_PACKAGES=On -DBUILD_WITH_PYTHON=ON -DBUILD_LIB_CPU=On -DBUILD_LIB_GPU=On && \
+      -DBUILD_LIB_CUDA=On -DBUILD_PACKAGES=On -DBUILD_WITH_PYTHON=ON -DBUILD_LIB_CPU=On -DBUILD_LIB_GPU=On && \
     ninja package
 
 
@@ -118,6 +119,22 @@ RUN apt-get update && \
     apt install -y /opt/idg/*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+###
+## EveryBeam
+###
+ENV EVERYBEAM_VERSION_TAG v0.4.0
+
+WORKDIR /opt
+
+RUN mkdir /opt/everybeam && cd /opt/everybeam \
+    && git clone https://git.astron.nl/RD/EveryBeam.git src \
+    && (cd src && git checkout $EVERYBEAM_VERSION_TAG) \
+    && mkdir build && cd build \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_WITH_PYTHON=ON ../src -DPYTHON_EXECUTABLE=/usr/bin/python3 \
+    && make install -j4 \
+    && cd / && rm -rf everybeam
+
 
 #####################################################################
 ## BUILD WSCLEAN

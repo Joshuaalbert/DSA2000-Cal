@@ -234,9 +234,9 @@ def prepare_gain_fits(output_file: str, pointing_centre: ac.ICRS,
     for (i, j), nn_idx in zip(coords_pix[:, :2], nn_indices):
         # Assign real and imaginary parts of XX and YY to appropriate positions in the data array
         data[i, j, 0, :, :, :] = gains_real[nn_idx, :, :, :, 0, 0]
-        data[:, :, 1, :, :, :] = gains_imag[nn_idx, :, :, :, 0, 0]
-        data[:, :, 2, :, :, :] = gains_real[nn_idx, :, :, :, 1, 1]
-        data[:, :, 3, :, :, :] = gains_imag[nn_idx, :, :, :, 1, 1]
+        data[i, j, 1, :, :, :] = gains_imag[nn_idx, :, :, :, 0, 0]
+        data[i, j, 2, :, :, :] = gains_real[nn_idx, :, :, :, 1, 1]
+        data[i, j, 3, :, :, :] = gains_imag[nn_idx, :, :, :, 1, 1]
 
     # Store the gains in the fits file
     hdu = io.fits.PrimaryHDU(data, header=w.to_header())

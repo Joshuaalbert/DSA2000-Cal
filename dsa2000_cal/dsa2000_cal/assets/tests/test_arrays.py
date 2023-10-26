@@ -42,7 +42,8 @@ def test_array_beam():
         enu_frame=ENU(
             location=ac.EarthLocation.from_geodetic(lon=0 * au.deg, lat=0 * au.deg, height=0 * au.m),
             obstime=at.Time('2000-01-01T00:00:00', format='isot', scale='utc')
-        )
+        ),
+        pol='X'
     )
     assert not np.any(np.isnan(amplitude))
     assert amplitude.shape == (1,)

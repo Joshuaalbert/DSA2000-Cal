@@ -18,7 +18,7 @@ def test_repoint_fits():
 
     MockData()
 
-    ds_output_file = "../assets/mocks/mock_faint_sky-model.fits"
+    ds_output_file = "downsampled_mock_faint_sky-model.fits"
 
     down_sample_fits(
         fits_file=MockData().faint_sky_model(),
@@ -145,10 +145,19 @@ def test_output_file_created(tmp_path):
 
     assert output_file.exists()
 
+    # Open the FITS file
+    with fits.open(output_file) as hdul:
+        # Get the header of the primary HDU (or specify another index if needed)
+        header = hdul[0].header
+
+        # Print the entire header
+        print(header)
+
+
 
 def test_fits_file_content(tmp_path):
     pointing_centre, gains, directions, freq_hz, times, num_pix = mock_data()
-    output_file = tmp_path / "test_output.fits"
+    output_file = "test_output.fits"
 
     prepare_gain_fits(output_file, pointing_centre, gains, directions, freq_hz, times, num_pix)
 
@@ -167,3 +176,5 @@ def test_fits_file_content(tmp_path):
         # Check some statistics on the data if necessary
         assert data.mean() != 0
         # ... add other checks
+
+        assert not np.any(np.isnan(data))

@@ -2,8 +2,6 @@ import logging
 import os
 import subprocess
 
-from pyrap import tables as pt
-
 from dsa2000_cal.faint_sky_model import write_diagonal_a_term_correction_file
 from dsa2000_cal.run_config import RunConfig
 
@@ -34,35 +32,33 @@ def main(run_config: RunConfig):
             '--help'
         ]
     )
-
+    # # if completed_process.returncode != 0:
+    # #     raise ValueError("Failed to run WSClean.")
+    #
+    # raise ValueError()
     num_cpus = os.cpu_count()
 
     completed_process = subprocess.run(
         [
             'wsclean',
-            '-gridder', 'wgridder',
+            '-gridder', 'idg',
+            '-idg-mode', 'cpu',  # Try hybrid
             '-wgridder-accuracy', '1e-4',
-            '-aterm-config', a_term_file,
+            # '-aterm-config', a_term_file,
             '-name', image_name,
             '-size', f"{run_config.image_size}", f"{run_config.image_size}",
             '-scale', f"{run_config.image_pixel_arcsec}asec",
             '-channels-out', '1',
             '-nwlayers-factor', '1',
             '-make-psf',
-            '-idg-mode', 'hybrid',
             '-weight', 'natural',
             '-save-uv',
             '-j', f'{num_cpus}',
-            run_config.fft_visibilities_path
+            run_config.dft_visibilities_path
         ]
     )
     if completed_process.returncode != 0:
         raise ValueError("Failed to run WSClean.")
-
-    with pt.table(run_config.fft_visibilities_path, readonly=False) as vis_table:
-        data = vis_table.getcol('MODEL_DATA')
-        vis_table.putcol('DATA', data)
-    logger.info(f"Predicted visibilities written to {run_config.fft_visibilities_path}")
 
 
 if __name__ == '__main__':

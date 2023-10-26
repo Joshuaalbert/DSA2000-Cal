@@ -8,7 +8,7 @@ from dsa2000_cal.create_ms_cfg import create_makems_config
 def test_create_makems_config():
     create_makems_config(
         array_name='dsa2000W',
-        start_freq=800e6,
+        start_freq=700e6,
         step_freq=2e6,
         start_time=datetime(2019, 3, 19, 19, 58, 15),
         step_time=1.5,

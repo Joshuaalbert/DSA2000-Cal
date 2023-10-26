@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Literal
 
 import numpy as np
 from astropy import coordinates as ac
@@ -106,7 +106,8 @@ class AbstractAntennaBeam(ABC):
         ...
 
     @abstractmethod
-    def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU) -> np.ndarray:
+    def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
+                      pol: Literal['X', 'Y']) -> np.ndarray:
         """
         Get the amplitude of the antenna beam at a given pointing and source.
 
@@ -115,6 +116,7 @@ class AbstractAntennaBeam(ABC):
             source: The source direction in ICRS frame.
             freq_hz: The frequency in Hz.
             enu_frame: The ENU frame.
+            pol: The polarisation, one of ['X', 'Y'].
 
         Returns:
             The amplitude of the antenna beam.

@@ -26,13 +26,18 @@ def main(run_config: RunConfig):
         os.path.dirname(run_config.faint_sky_model_fits),
         os.path.basename(run_config.faint_sky_model_fits).rsplit('-model.fits', 1)[0]
     )
+    num_cpus = os.cpu_count()
     completed_process = subprocess.run(
         [
             'wsclean',
             '-predict',
-            '-gridder', 'wgridder',
+            '-gridder', 'idg',
+            '-idg-mode', 'cpu',  # Try hybrid
+            # '-aterm-config', a_term_file,
             '-wgridder-accuracy', '1e-4',
-            '-aterm-config', a_term_file,
+            '-nwlayers-factor', '1',
+            '-channels-out', '1',
+            '-j', f'{num_cpus}',
             '-name', image_name,
             run_config.fft_visibilities_path
         ]

@@ -6,18 +6,21 @@ set -x
 declare -A cache_options
 declare -A volumes
 declare -A gpu_services
+declare -A extras
 
 services_order=(
-  "prepare_run"
-  "simulate_ionosphere"
-  "compute_beam"
+  #  "inspect"
+  #  "prepare_run"
+  #  "simulate_ionosphere"
+  #  "compute_beam"
   #  "simulate_instrumental_effects"
-  "predict_dft"
-  "predict_fft"
-  "simulate_rfi"
-  "sum_visibilities"
+  #  "predict_dft"
   "dirty_image"
-  "calibration"
+  #    "predict_fft"
+  #  "simulate_rfi"
+  #  "sum_visibilities"
+  #  "dirty_image"
+  #  "calibration"
   #  "image_a_proj"
 )
 
@@ -42,9 +45,15 @@ volumes=(
   ["prepare_run"]='-v $DATA_DIR_HOST:/dsa/data'
 )
 
+# Add port forwarding maps, or environment variables (use single quotes to do delayed expand).
+extras=(
+  ["inspect"]='-p 8890:8888 -e JUPYTER_TOKEN=$JUPYTER_TOKEN'
+)
+
 # Add other services requiring GPU with a value of 1.
 gpu_services=(
-  ["predict_fft"]=1
+  ["predict_fft"]=0
+  ["dirty_image"]=0
 )
 
 expand_string_from_env() {
@@ -93,8 +102,10 @@ run_services() {
     echo "==== Processing service: $service_name ===="
 
     local cache_option=""
-    if [ ${cache_options["$service_name"]} -eq 1 ]; then
-      cache_option="--no-cache"
+    if [ ${cache_options["$service_name"]+isset} ]; then
+      if [ ${cache_options["$service_name"]} -eq 1 ]; then
+        cache_option="--no-cache"
+      fi
     fi
 
     # Build the Docker image
@@ -122,12 +133,22 @@ run_services() {
       fi
     fi
 
+    # Construct the extra arguments
+    local extra_args=()
+    if [[ ${extras["$service_name"]+isset} ]]; then
+      if [[ -n ${extras["$service_name"]} ]]; then
+        extra_args+=(
+          $(get_expanded_value_or_default extras "$service_name" "" "$env_file")
+        )
+      fi
+    fi
+
     # Remove the container if it already exists
     docker rm -f "$service_name" || true
 
     # Run the container as a daemon
     echo "Starting container for $service_name..."
-    local container_id=$(docker run -d $gpu_option --name "$service_name" --env-file "$env_file" "${volume_args[@]}" "$service_name")
+    local container_id=$(docker run -d $gpu_option --name "$service_name" --env-file "$env_file" "${volume_args[@]}" "${extra_args[@]}" "$service_name")
 
     # Stream the logs until the service ends.
     docker logs -f "$container_id"

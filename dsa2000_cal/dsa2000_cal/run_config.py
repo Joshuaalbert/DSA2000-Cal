@@ -95,9 +95,13 @@ class RunConfig(SerialisableBaseModel):
         description="The RFI simulation configuration.",
         example=RFISimConfig()
     )
-    calibration_parset: str = Field(
-        description="The path to the calibration parset.",
-        example="parset.yaml",
+    calibration_time_interval: conint(ge=1) = Field(
+        description="The time interval to use for calibration in units of integrations.",
+        example=2
+    )
+    calibration_freq_interval: conint(ge=1) = Field(
+        description="The frequency interval to use for calibration in units of channels.",
+        example=32
     )
     image_pixel_arcsec: confloat(gt=0) = Field(
         description="The pixel size of the image in arcseconds.",
