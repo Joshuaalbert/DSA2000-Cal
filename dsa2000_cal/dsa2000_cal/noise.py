@@ -47,7 +47,10 @@ def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: Abs
     with pt.table(output_ms_file, readonly=False) as output_ms:
         shape = output_ms.getcol('DATA').shape
         dtype = output_ms.getcol('DATA').dtype
-        output_with_noise = np.random.normal(loc=0, scale=noise_sigma, size=shape).astype(dtype)
+        output_with_noise = (
+                np.random.normal(loc=0, scale=noise_sigma, size=shape).astype(dtype)
+                + 1j * np.random.normal(loc=0, scale=noise_sigma, size=shape).astype(dtype)
+        )
         for input_ms_file in input_ms_files:
             with pt.table(input_ms_file) as input_ms:
                 output_with_noise += input_ms.col('DATA')[:]

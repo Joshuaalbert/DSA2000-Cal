@@ -1,0 +1,13 @@
+quartical
+astropy
+numpy
+scipy
+astLib
+python-casacore
+future
+astro-kittens
+matplotlib
+jupyter
+scikit-learn
+h5parm
+tables

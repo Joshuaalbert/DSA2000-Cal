@@ -44,7 +44,7 @@ class DSA2000WArray(AbstractArray):
     def antenna_beam(self) -> AbstractAntennaBeam:
         return AltAzAntennaBeam(
             antenna_model=MatlabAntennaModelV1(
-                antenna_model_file=os.path.join(*self.content_path, 'dsa2000_antenna_model.mat'),
+                antenna_model_file=os.path.join(*self.content_path, '../../../../large_files/dsa2000_antenna_model.mat'),
                 model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
             )
         )

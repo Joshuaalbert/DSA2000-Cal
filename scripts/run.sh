@@ -9,51 +9,30 @@ declare -A gpu_services
 declare -A extras
 
 services_order=(
-  #    "inspect"
-    "prepare_run"
-    "simulate_ionosphere"
-    "compute_beam"
-  #  "simulate_instrumental_effects"
-  "predict_dft"
-  "dirty_image"
-  #    "predict_fft"
-  #  "simulate_rfi"
-  #  "sum_visibilities"
-  #  "dirty_image"
-  #  "calibration"
-  #  "image_a_proj"
+  "calibration"
 )
 
 # The values represent whether to use --no-cache or not. 1 for yes, 0 for no.
 cache_options=(
-  ["prepare_run"]=0
-  ["simulate_ionosphere"]=0
-  ["compute_beam"]=0
-  ["simulate_instrumental_effects"]=0
-  ["predict_dft"]=0
-  ["predict_fft"]=0
-  ["simulate_rfi"]=0
-  ["sum_visibilities"]=0
-  ["dirty_image"]=0
   ["calibration"]=0
-  ["image_a_proj"]=0
 )
 
 # Add special volumes that need to be mounted
 # Use single quotes for variables.
 volumes=(
-  ["prepare_run"]='-v $DATA_DIR_HOST:/dsa/data'
+  ["calibration"]='-v $DATA_DIR_HOST:/dsa/data'
+  ["inspect"]='-v $DATA_DIR_HOST:/dsa/data'
 )
 
 # Add port forwarding maps, or environment variables (use single quotes to do delayed expand).
 extras=(
   ["inspect"]='-p 8890:8888 -e JUPYTER_TOKEN=$JUPYTER_TOKEN'
+  ["calibration"]='-e RUN_CONFIG_NAME=calibration_config.json'
 )
 
 # Add other services requiring GPU with a value of 1.
 gpu_services=(
-  ["predict_fft"]=0
-  ["dirty_image"]=0
+  ["calibration"]=0
 )
 
 expand_string_from_env() {
@@ -110,7 +89,7 @@ run_services() {
 
     # Build the Docker image
     echo "Building Docker image for $service_name..."
-    docker build $cache_option -t "$service_name" -f "$script_dir/services/$service_name/Dockerfile" "$script_dir" || {
+    docker build $cache_option -t "$service_name" -f "$script_dir/$service_name/Dockerfile" "$script_dir" || {
       echo "Failed to build Docker image for $service_name"
       exit 1
     }

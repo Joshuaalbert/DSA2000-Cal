@@ -177,8 +177,6 @@ def main(prepare_run_config: PrepareRunConfig):
     beam_h5parm = os.path.abspath('beam.h5parm')
     beam_fits = os.path.abspath('beam.fits')
 
-    calibration_parset = os.path.abspath(prepare_run_config.calibration_parset)
-
     run_config = RunConfig(
         array_name=prepare_run_config.array_name,
         start_dt=prepare_run_config.start_dt,
@@ -198,11 +196,12 @@ def main(prepare_run_config: PrepareRunConfig):
         fft_visibilities_path=fft_ms_file,
         rfi_visibilities_path=rfi_ms_file,
         rfi_sim_config=prepare_run_config.rfi_sim_config,
-        calibration_parset=calibration_parset,
         beam_h5parm=beam_h5parm,
         beam_fits=beam_fits,
         image_size=prepare_run_config.image_size,
-        image_pixel_arcsec=prepare_run_config.image_pixel_arcsec
+        image_pixel_arcsec=prepare_run_config.image_pixel_arcsec,
+        calibration_freq_interval=prepare_run_config.calibration_freq_interval,
+        calibration_time_interval=prepare_run_config.calibration_time_interval
     )
     with open('run_config.json', 'w') as f:
         f.write(run_config.json(indent=2))
@@ -211,5 +210,6 @@ def main(prepare_run_config: PrepareRunConfig):
 if __name__ == '__main__':
     prepare_run_config = os.environ.get('RUN_CONFIG')
     if not os.path.exists(prepare_run_config):
-        raise ValueError('Environment variable RUN_CONFIG must be set.')
+        raise ValueError(
+            f"RUN_CONFIG environment variable must point to a valid run config file. Got {prepare_run_config}")
     main(prepare_run_config=PrepareRunConfig.parse_file(prepare_run_config))

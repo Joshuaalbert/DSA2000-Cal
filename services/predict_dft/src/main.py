@@ -41,9 +41,13 @@ def main(run_config: RunConfig):
         times, time_idx = np.unique(vis_table.getcol('TIME'), return_inverse=True)
         uvw = vis_table.getcol('UVW')
 
-    ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm)
-    beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm)
-    gains = ionosphere_gains * beam_gains
+    ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm) # [time, ant, source, chan, 2, 2]
+    beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm) # [time, ant, source, chan, 2, 2]
+    # Multiply diagonal matrices with simple * operator
+    gains = ionosphere_gains# * beam_gains # [time, ant, source, chan, 2, 2]
+
+    # no gains
+    gains = np.tile(np.eye(2)[None, None, None, None, :, :], gains.shape[:-2] + (1, 1))
 
     vis = im_to_vis_with_gains(
         image=jnp.asarray(source_model.image),  # [source, chan, 2, 2]

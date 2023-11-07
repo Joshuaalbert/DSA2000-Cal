@@ -190,13 +190,15 @@ def prepare_gain_fits(output_file: str, pointing_centre: ac.ICRS,
     dec_values = [dir.dec.deg for dir in directions]
     ra_range = max(ra_values) - min(ra_values)
     dec_range = max(dec_values) - min(dec_values)
-    if ra_range == 0:
-        raise ValueError("RA range is 0")
-    if dec_range == 0:
-        raise ValueError("DEC range is 0")
 
     ra_padding = ra_range * 0.2
     dec_padding = dec_range * 0.2
+    if ra_range == 0:
+        ra_padding = 1
+        print("RA range is 0, padding by 1 deg")
+    if dec_range == 0:
+        dec_padding = 1
+        print("DEC range is 0, padding by 1 deg")
 
     ra_min = min(ra_values) - ra_padding
     ra_max = max(ra_values) + ra_padding

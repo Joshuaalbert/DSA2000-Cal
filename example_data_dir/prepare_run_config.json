@@ -1,9 +1,9 @@
 {
-  "array_name": "dsa2000W_small",
+  "array_name": "dsa2000W",
   "start_dt": "2023-10-10T12:00:00",
   "alt_deg": 90.0,
   "az_deg": 0.0,
-  "num_bright_sources": 10,
+  "num_bright_sources": 1,
   "spacing_deg": 1.0,
   "faint_sky_model_fits": "test_faint_sky-model.fits",
   "start_freq_hz": 700000000.0,
