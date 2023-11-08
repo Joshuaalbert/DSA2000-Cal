@@ -54,7 +54,7 @@ class AbstractAntennaModel(ABC):
     @abstractmethod
     def get_amplitude(self) -> np.ndarray:
         """
-        Get the antenna beam model.
+        Get the antenna beam model amplitude. This has peak value of 1 typically along bore sight.
 
         Returns:
             A 3D array of shape [num_theta, num_phi, num_freqs] where num_theta is the number of theta values,

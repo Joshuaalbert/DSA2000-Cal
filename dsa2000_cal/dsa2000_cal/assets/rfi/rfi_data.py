@@ -8,4 +8,4 @@ class RFIData(BaseContent):
         super().__init__(seed='rfi data')
 
     def rfi_injection_model(self) -> str:
-        return os.path.join(*self.content_path, '../../../large_files/rfi_injection_model.mat')
+        return os.path.join(*self.content_path, 'rfi_injection_model.mat')

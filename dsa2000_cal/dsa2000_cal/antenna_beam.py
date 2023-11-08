@@ -49,6 +49,7 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
     @cached_property
     def _get_amplitude(self) -> np.ndarray:
         amplitude = 10 ** (self.ant_model[self.model_name] / 20.)  # [num_theta, num_phi, num_freqs]
+        amplitude /= np.max(amplitude)  # Normalise to 1
         return amplitude
 
     def get_amplitude(self) -> np.ndarray:
