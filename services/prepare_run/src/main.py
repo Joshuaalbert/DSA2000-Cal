@@ -1,107 +1,22 @@
 import os
 import shutil
 import subprocess
-from datetime import datetime
-from typing import Union
 
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-from pydantic import conint, confloat, Field, constr
-from tomographic_kernel.models.cannonical_models import SPECIFICATION
+
+from dsa2000_cal.assets.content_registry import fill_registries
+
+fill_registries()
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.mocks.mock_data import MockData
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.astropy_utils import mean_itrs
 from dsa2000_cal.bbs_sky_model import create_sky_model
 from dsa2000_cal.create_ms_cfg import create_makems_config
 from dsa2000_cal.faint_sky_model import repoint_fits
-from dsa2000_cal.rfi.rfi_simulation import RFISimConfig
-from dsa2000_cal.run_config import RunConfig
-from dsa2000_cal.utils import SerialisableBaseModel
-
-fill_registries()
-
-
-class PrepareRunConfig(SerialisableBaseModel):
-    """
-    Represents the configuration for preparing a run.
-    """
-    array_name: str = Field(
-        description="The name of the array to use.",
-        example="dsa2000W_small",
-    )
-    start_dt: datetime = Field(
-        description="The start datetime of the run.",
-        example=datetime.fromisoformat("2023-10-10T12:00:00"),
-    )
-    alt_deg: confloat(ge=0, le=90) = Field(
-        description="The altitude of the pointing direction in degrees, measured from horizon to zenith.",
-        example=90,
-    )
-    az_deg: confloat(ge=0, le=360) = Field(
-        description="The azimuth of the pointing direction in degrees measured East from North.",
-        example=0,
-    )
-    num_bright_sources: conint(ge=0) = Field(
-        description="The number of bright sources to use in the simulation, if any.",
-        example=10,
-    )
-    spacing_deg: confloat(ge=0) = Field(
-        description="The spacing between bright sources in degrees",
-        example=1.,
-    )
-    faint_sky_model_fits: Union[constr(regex=r".*-model\.fits$"), None] = Field(
-        description="The path to the faint sky model fits file, if given must end in '-model.fits'.",
-        example=MockData().faint_sky_model(),
-    )
-    start_freq_hz: confloat(gt=0) = Field(
-        description="The start frequency of the simulation in Hz.",
-        example=700e6,
-    )
-    channel_width_hz: confloat(gt=0) = Field(
-        description="The channel width of the simulation in Hz.",
-        example=162.5e3,
-    )
-    num_channels: conint(ge=1) = Field(
-        description="The number of channels in the simulation.",
-        example=32
-    )
-    num_times: conint(ge=1) = Field(
-        description="The number of times in the simulation.",
-        example=10
-    )
-    integration_time_s: confloat(gt=0) = Field(
-        description="The integration time of the simulation in seconds.",
-        example=1.5
-    )
-    ionosphere_specification: SPECIFICATION = Field(
-        description="The ionosphere specification, one of ['simple', 'light_dawn', 'dawn', 'dusk', 'dawn_challenge', 'dusk_challenge']",
-        example="light_dawn"
-    )
-    rfi_sim_config: RFISimConfig = Field(
-        default_factory=RFISimConfig,
-        description="The RFI simulation configuration.",
-        example=RFISimConfig()
-    )
-    calibration_time_interval: conint(ge=1) = Field(
-        description="The time interval to use for calibration in units of integrations.",
-        example=2
-    )
-    calibration_freq_interval: conint(ge=1) = Field(
-        description="The frequency interval to use for calibration in units of channels.",
-        example=32
-    )
-    image_pixel_arcsec: confloat(gt=0) = Field(
-        description="The pixel size of the image in arcseconds.",
-        example=2.
-    )
-    image_size: conint(ge=1) = Field(
-        description="The size of the image in pixels, assuming square images.",
-        example=512
-    )
+from dsa2000_cal.run_config import RunConfig, PrepareRunConfig
 
 
 def main(prepare_run_config: PrepareRunConfig):
@@ -177,6 +92,8 @@ def main(prepare_run_config: PrepareRunConfig):
     beam_h5parm = os.path.abspath('beam.h5parm')
     beam_fits = os.path.abspath('beam.fits')
 
+    image_prefix = 'image'
+
     run_config = RunConfig(
         array_name=prepare_run_config.array_name,
         start_dt=prepare_run_config.start_dt,
@@ -201,7 +118,8 @@ def main(prepare_run_config: PrepareRunConfig):
         image_size=prepare_run_config.image_size,
         image_pixel_arcsec=prepare_run_config.image_pixel_arcsec,
         calibration_freq_interval=prepare_run_config.calibration_freq_interval,
-        calibration_time_interval=prepare_run_config.calibration_time_interval
+        calibration_time_interval=prepare_run_config.calibration_time_interval,
+        image_prefix=image_prefix
     )
     with open('run_config.json', 'w') as f:
         f.write(run_config.json(indent=2))

@@ -57,7 +57,6 @@ def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: Abs
         input_ms_files: the input measurement set files
         array: the array object
     """
-    np.random.seed(42)
     noise_sigma = calc_baseline_noise(
         system_equivalent_flux_density=array.system_equivalent_flux_density(),
         chan_width_hz=channel_width_hz,

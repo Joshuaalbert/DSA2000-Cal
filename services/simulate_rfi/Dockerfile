@@ -1,21 +1,8 @@
-FROM python:3.10.8
-
-# install extras
-
-RUN apt-get update && \
-    apt-get install -y vim less git htop feh build-essential wget && \
-    rm -rf /var/lib/apt/lists/*
-
-# container directories that will be mounted
+FROM base:latest
 
 
-# install dsa2000_cal
+# Prepare run
 WORKDIR /dsa/code
-COPY dsa2000_cal dsa2000_cal
-RUN pip install -r dsa2000_cal/requirements.txt && \
-    pip install ./dsa2000_cal
-
-
 COPY services/simulate_rfi/src src
 
 # Directies that will be mounted

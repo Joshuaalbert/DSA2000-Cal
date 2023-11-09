@@ -7,8 +7,11 @@ from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.noise import sum_and_add_noise
 from dsa2000_cal.run_config import RunConfig
 
+import numpy as np
+
 
 def main(run_config: RunConfig):
+    np.random.seed(42)
     array = array_registry.get_instance(array_registry.get_match(run_config.array_name))
     sum_and_add_noise(
         output_ms_file=run_config.visibilities_path,

@@ -10,9 +10,9 @@ declare -A extras
 
 services_order=(
   #    "inspect"
-    "prepare_run"
-    "simulate_ionosphere"
-    "compute_beam"
+  "prepare_run"
+  "simulate_ionosphere"
+  "compute_beam"
   #  "simulate_instrumental_effects"
   "predict_dft"
   "dirty_image"
@@ -164,5 +164,28 @@ run_services() {
     docker rm "$container_id"
   done
 }
+
+# Build or rebuild the base images as needed
+build_base_images() {
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+  local base_dockerfiles_path="$script_dir/bases"
+  local base_image_name=""
+  local base_dockerfile=""
+
+  # Loop over all the Dockerfiles in the base_images directory
+  for base_dockerfile in "$base_dockerfiles_path"/*.Dockerfile; do
+    # Extract the base image name from the Dockerfile filename
+    base_image_name="$(basename "$base_dockerfile" .Dockerfile)"
+
+    # Build the base image
+    echo "Building or updating base image $base_image_name..."
+    docker build -t "$base_image_name" -f "$base_dockerfile" "$script_dir" || {
+      echo "Failed to build base image $base_image_name"
+      exit 1
+    }
+  done
+}
+
+build_base_images
 
 run_services
