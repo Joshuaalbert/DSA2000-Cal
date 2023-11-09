@@ -1,15 +1,15 @@
 import os
 
-from h5parm import DataPack
-
-from dsa2000_cal.faint_sky_model import prepare_gain_fits
-from dsa2000_cal.gains import extract_scalar_gains
-
 if 'num_cpus' not in os.environ:
     num_cpus = os.cpu_count()
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={num_cpus}"
 else:
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.environ.get('num_cpus')}"
+
+from h5parm import DataPack
+
+from dsa2000_cal.faint_sky_model import prepare_gain_fits
+from dsa2000_cal.gains import extract_scalar_gains
 from dsa2000_cal.assets.content_registry import fill_registries
 
 fill_registries()
@@ -42,7 +42,7 @@ def main(run_config: RunConfig):
             channel_width_hz=run_config.channel_width_hz,
             num_channels=run_config.num_channels,
             sky_model=run_config.bright_sky_model_bbs,
-            grid_res_m=1000.)
+            grid_res_m=800.)
 
     with DataPack(run_config.ionosphere_h5parm, readonly=True) as dp:
         # get phase

@@ -10,19 +10,41 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def calc_noise(system_equivalent_flux_density: float, chan_width_hz: float, t_int_s: float,
-               system_efficiency: float) -> float:
+def calc_baseline_noise(system_equivalent_flux_density: float, chan_width_hz: float, t_int_s: float) -> float:
     """Calculate the per visibility rms for identical antennas.
+
     Args:
-        system_equivalent_flux_density (float): System Equivalent Flux Density (SEFD) per antennas in Jy.
+        system_equivalent_flux_density (float): System Equivalent Flux Density (SEFD) per antennas in Jy
+            (already includes efficiency)
         chan_width_khz (float): Channel width in Hz.
         t_int_s (float): Accumulation time in seconds.
-        system_efficiency (float): System efficiency.
 
     Returns:
         float: noise standard devation per part visibility.
     """
-    return (system_equivalent_flux_density / system_efficiency) / np.sqrt(2 * chan_width_hz * t_int_s)
+    # The 2 is for number of polarizations.
+    return system_equivalent_flux_density / np.sqrt(2 * chan_width_hz * t_int_s)
+
+
+def calc_image_noise(system_equivalent_flux_density: float, bandwidth_hz: float, t_int_s: float, num_antennas: int,
+                     flag_frac: float) -> float:
+    """
+    Calculate the image noise for the central pixel.
+    
+    Args:
+        system_equivalent_flux_density: the system equivalent flux density in Jy (already includes efficiency)
+        bandwidth_hz: the bandwidth in Hz
+        t_int_s: the integration time in seconds
+        num_antennas: the number of antennas
+        flag_frac: the fraction of flagged visibilities
+
+    Returns:
+        the image noise in Jy
+    """
+    num_baselines = (1. - flag_frac) * num_antennas * (num_antennas - 1) / 2.
+    return calc_baseline_noise(system_equivalent_flux_density=system_equivalent_flux_density,
+                               chan_width_hz=bandwidth_hz,
+                               t_int_s=t_int_s) / np.sqrt(num_baselines)
 
 
 def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: AbstractArray,
@@ -36,20 +58,20 @@ def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: Abs
         array: the array object
     """
     np.random.seed(42)
-    noise_sigma = calc_noise(
+    noise_sigma = calc_baseline_noise(
         system_equivalent_flux_density=array.system_equivalent_flux_density(),
         chan_width_hz=channel_width_hz,
-        t_int_s=integration_time_s,
-        system_efficiency=array.system_efficency()
+        t_int_s=integration_time_s
     )
     logger.info(f"Adding noise with sigma {noise_sigma} to {output_ms_file}")
 
     with pt.table(output_ms_file, readonly=False) as output_ms:
         shape = output_ms.getcol('DATA').shape
         dtype = output_ms.getcol('DATA').dtype
+        # Divide noise scale by sqrt(2) to account for real and imaginary parts.
         output_with_noise = (
-                np.random.normal(loc=0, scale=noise_sigma, size=shape).astype(dtype)
-                + 1j * np.random.normal(loc=0, scale=noise_sigma, size=shape).astype(dtype)
+                np.random.normal(loc=0, scale=noise_sigma / np.sqrt(2.), size=shape).astype(dtype)
+                + 1j * np.random.normal(loc=0, scale=noise_sigma / np.sqrt(2.), size=shape).astype(dtype)
         )
         for input_ms_file in input_ms_files:
             with pt.table(input_ms_file) as input_ms:

@@ -1,24 +1,23 @@
 import os
 
-from h5parm import DataPack
-
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.bbs_sky_model import BBSSkyModel
-from dsa2000_cal.dft import im_to_vis_with_gains
-from dsa2000_cal.gains import extract_scalar_gains
-
-fill_registries()
-
 if 'num_cpus' not in os.environ:
     num_cpus = os.cpu_count()
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={num_cpus}"
 else:
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.environ.get('num_cpus')}"
 
+from dsa2000_cal.assets.content_registry import fill_registries
+
+fill_registries()
+
+from dsa2000_cal.bbs_sky_model import BBSSkyModel
+from dsa2000_cal.dft import im_to_vis_with_gains
+from dsa2000_cal.gains import extract_scalar_gains
+from dsa2000_cal.run_config import RunConfig
+
 import jax
 from jax import numpy as jnp
 import numpy as np
-from dsa2000_cal.run_config import RunConfig
 import astropy.units as au
 from pyrap import tables as pt
 
@@ -41,10 +40,10 @@ def main(run_config: RunConfig):
         times, time_idx = np.unique(vis_table.getcol('TIME'), return_inverse=True)
         uvw = vis_table.getcol('UVW')
 
-    ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm) # [time, ant, source, chan, 2, 2]
-    beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm) # [time, ant, source, chan, 2, 2]
+    ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm)  # [time, ant, source, chan, 2, 2]
+    beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm)  # [time, ant, source, chan, 2, 2]
     # Multiply diagonal matrices with simple * operator
-    gains = ionosphere_gains# * beam_gains # [time, ant, source, chan, 2, 2]
+    gains = ionosphere_gains  # * beam_gains # [time, ant, source, chan, 2, 2]
 
     # no gains
     gains = np.tile(np.eye(2)[None, None, None, None, :, :], gains.shape[:-2] + (1, 1))

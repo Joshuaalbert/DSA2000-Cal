@@ -36,7 +36,7 @@ class DSA2000WArray(AbstractArray):
         return 'OVRO'
 
     def system_equivalent_flux_density(self) -> float:
-        return 2.5
+        return 5022. # Jy
 
     def system_efficency(self) -> float:
         return 0.7

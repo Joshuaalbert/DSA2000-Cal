@@ -10,6 +10,17 @@ have an admin run this for you `sudo usermod -aG docker $USER`). Then, you can r
 ./run.sh
 ```
 
+We use Git LFS to store the data, so you will need to have that installed. You can install it with the following
+commands:
+
+```bash
+sudo apt-get install git-lfs
+# Then inside repo directory
+git lfs install
+# To track a large file use
+git lfs track "path/to/file"
+```
+
 ## To run with GPU support, you need to have the Nvidia driver and `nvidia-docker` installed.
 
 If you have the Nvidia driver installed then you should be able to run:
