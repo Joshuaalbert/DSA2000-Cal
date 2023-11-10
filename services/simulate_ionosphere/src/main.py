@@ -6,10 +6,6 @@ if 'num_cpus' not in os.environ:
 else:
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.environ.get('num_cpus')}"
 
-from h5parm import DataPack
-
-from dsa2000_cal.faint_sky_model import prepare_gain_fits
-from dsa2000_cal.gains import extract_scalar_gains
 from dsa2000_cal.assets.content_registry import fill_registries
 
 fill_registries()

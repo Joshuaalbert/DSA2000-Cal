@@ -1,5 +1,5 @@
 {
-  "array_name": "dsa2000W_small",
+  "array_name": "dsa2000W",
   "start_dt": "2023-10-10T12:00:00",
   "alt_deg": 90.0,
   "az_deg": 0.0,
@@ -22,6 +22,6 @@
   },
   "calibration_time_interval": 2,
   "calibration_freq_interval": 32,
-  "image_pixel_arcsec": 5.0,
-  "image_size": 1024
+  "image_pixel_arcsec": 1.2,
+  "image_size": 2048
 }

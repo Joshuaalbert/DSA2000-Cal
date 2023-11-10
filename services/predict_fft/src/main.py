@@ -11,8 +11,11 @@ from dsa2000_cal.run_config import RunConfig
 
 logger = logging.getLogger(__name__)
 
-def make_diagonal_a_term_correction_files(run_config:RunConfig):
 
+def make_diagonal_a_term_correction_files(run_config: RunConfig):
+    logger.info(
+        f"Creating diagonal a-term correction files for {run_config.beam_h5parm} and {run_config.ionosphere_h5parm}"
+    )
     with DataPack(run_config.beam_h5parm, readonly=True) as dp:
         dp.current_solset = 'sol000'
         if dp.axes_order != ['pol', 'dir', 'ant', 'freq', 'time']:
@@ -24,7 +27,7 @@ def make_diagonal_a_term_correction_files(run_config:RunConfig):
         _, directions = dp.get_directions(axes['dir'])  # [num_sources]
 
     # get gains in  [num_time, num_ant, num_dir, num_freq, 2, 2]
-    gains = extract_scalar_gains(h5parm=run_config.beam_h5parm)
+    gains = extract_scalar_gains(h5parm=run_config.beam_h5parm, components=['amplitude'])
 
     prepare_gain_fits(
         output_file=run_config.beam_fits,
@@ -35,7 +38,6 @@ def make_diagonal_a_term_correction_files(run_config:RunConfig):
         times=times,
         num_pix=32
     )
-
 
     with DataPack(run_config.ionosphere_h5parm, readonly=True) as dp:
         # get phase
@@ -49,7 +51,7 @@ def make_diagonal_a_term_correction_files(run_config:RunConfig):
         _, directions = dp.get_directions(axes['dir'])  # [num_sources]
 
     # get gains in  [num_time, num_ant, num_dir, num_freq, 2, 2]
-    gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm)
+    gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm, components=['phase'])
     prepare_gain_fits(
         output_file=run_config.ionosphere_fits,
         pointing_centre=run_config.pointing_centre,
@@ -66,6 +68,7 @@ def main(run_config: RunConfig):
         raise ValueError("Faint sky model must be specified to run FFT Predict.")
 
     # Create aterms.fits
+    make_diagonal_a_term_correction_files(run_config=run_config)
     a_term_file = os.path.abspath('predict_fft_a_corr.parset')
     write_diagonal_a_term_correction_file(
         a_term_file=a_term_file,
@@ -84,7 +87,7 @@ def main(run_config: RunConfig):
             '-predict',
             '-gridder', 'idg',
             '-idg-mode', 'cpu',  # Try hybrid
-            # '-aterm-config', a_term_file,
+            '-aterm-config', a_term_file,
             '-wgridder-accuracy', '1e-4',
             '-nwlayers-factor', '1',
             '-channels-out', '1',

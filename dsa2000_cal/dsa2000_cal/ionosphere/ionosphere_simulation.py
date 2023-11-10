@@ -358,8 +358,8 @@ class Simulation:
                                   field_of_view_diameter=None,
                                   start_time=start_time,
                                   time_resolution=time_resolution,
-                                  min_freq=start_freq_hz,
-                                  max_freq=max_freq_hz,
+                                  min_freq=start_freq_hz * 1e-6,  # MHz
+                                  max_freq=max_freq_hz * 1e-6,  # MHz
                                   array_file=array_file,
                                   phase_tracking=(pointing_centre.ra.deg, pointing_centre.dec.deg),
                                   save_name=output_h5parm,

@@ -18,7 +18,8 @@ services_order=(
   "dirty_image"
   #    "predict_fft"
   #  "simulate_rfi"
-  #  "sum_visibilities"
+#  "sum_visibilities"
+  "image_uncorrected"
   #  "dirty_image"
   #  "calibration"
   #  "image_a_proj"
@@ -35,6 +36,7 @@ cache_options=(
   ["simulate_rfi"]=0
   ["sum_visibilities"]=0
   ["dirty_image"]=0
+  ["image_uncorrected"]=0
   ["calibration"]=0
   ["image_a_proj"]=0
 )
@@ -54,6 +56,7 @@ extras=(
 gpu_services=(
   ["predict_fft"]=0
   ["dirty_image"]=0
+  ["image_uncorrected"]=0
 )
 
 expand_string_from_env() {
