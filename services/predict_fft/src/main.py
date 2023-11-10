@@ -2,12 +2,63 @@ import logging
 import os
 import subprocess
 
+from h5parm import DataPack
 from pyrap import tables as pt
 
-from dsa2000_cal.faint_sky_model import write_diagonal_a_term_correction_file
+from dsa2000_cal.faint_sky_model import write_diagonal_a_term_correction_file, prepare_gain_fits
+from dsa2000_cal.gains import extract_scalar_gains
 from dsa2000_cal.run_config import RunConfig
 
 logger = logging.getLogger(__name__)
+
+def make_diagonal_a_term_correction_files(run_config:RunConfig):
+
+    with DataPack(run_config.beam_h5parm, readonly=True) as dp:
+        dp.current_solset = 'sol000'
+        if dp.axes_order != ['pol', 'dir', 'ant', 'freq', 'time']:
+            raise ValueError(f"Expects axes order must be ['pol', 'dir', 'ant', 'freq', 'time'], got {dp.axes_order}")
+        axes = dp.axes_phase
+        _, antennas = dp.get_antennas(axes['ant'])
+        _, times = dp.get_times(axes['time'])
+        _, freqs = dp.get_freqs(axes['freq'])
+        _, directions = dp.get_directions(axes['dir'])  # [num_sources]
+
+    # get gains in  [num_time, num_ant, num_dir, num_freq, 2, 2]
+    gains = extract_scalar_gains(h5parm=run_config.beam_h5parm)
+
+    prepare_gain_fits(
+        output_file=run_config.beam_fits,
+        pointing_centre=run_config.pointing_centre,
+        gains=gains,
+        directions=directions,
+        freq_hz=freqs.to('Hz').value,
+        times=times,
+        num_pix=32
+    )
+
+
+    with DataPack(run_config.ionosphere_h5parm, readonly=True) as dp:
+        # get phase
+        dp.current_solset = 'sol000'
+        if dp.axes_order != ['pol', 'dir', 'ant', 'freq', 'time']:
+            raise ValueError(f"Expects axes order must be ['pol', 'dir', 'ant', 'freq', 'time'], got {dp.axes_order}")
+        axes = dp.axes_phase
+        _, antennas = dp.get_antennas(axes['ant'])
+        _, times = dp.get_times(axes['time'])
+        _, freqs = dp.get_freqs(axes['freq'])
+        _, directions = dp.get_directions(axes['dir'])  # [num_sources]
+
+    # get gains in  [num_time, num_ant, num_dir, num_freq, 2, 2]
+    gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm)
+    prepare_gain_fits(
+        output_file=run_config.ionosphere_fits,
+        pointing_centre=run_config.pointing_centre,
+        gains=gains,
+        directions=directions,
+        freq_hz=freqs.to('Hz').value,
+        times=times,
+        num_pix=32
+    )
 
 
 def main(run_config: RunConfig):

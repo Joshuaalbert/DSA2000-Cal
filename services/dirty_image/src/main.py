@@ -52,7 +52,6 @@ def main(run_config: RunConfig):
             '-nwlayers-factor', '1',
             '-make-psf',
             '-weight', 'natural',
-            '-save-uv',
             '-j', f'{num_cpus}',
             run_config.dft_visibilities_path
         ]

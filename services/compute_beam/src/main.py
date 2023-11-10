@@ -60,18 +60,6 @@ def main(run_config: RunConfig):
         dp.current_solset = 'sol000'
         dp.amplitude = amplitude
 
-    # get gains in  [num_time, num_ant, num_dir, num_freq, 2, 2]
-    gains = extract_scalar_gains(h5parm=run_config.beam_h5parm)
-    prepare_gain_fits(
-        output_file=run_config.beam_fits,
-        pointing_centre=run_config.pointing_centre,
-        gains=gains,
-        directions=directions,
-        freq_hz=freqs.to('Hz').value,
-        times=times,
-        num_pix=32
-    )
-
 
 if __name__ == '__main__':
     if not os.path.exists('run_config.json'):

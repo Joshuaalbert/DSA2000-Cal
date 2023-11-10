@@ -163,11 +163,13 @@ def test_fits_file_content(tmp_path):
 
     with io.fits.open(output_file) as hdu_list:
         header = hdu_list[0].header
+        print("\n".join([f"{k} = {header[k]}" for k in header]))
         data = hdu_list[0].data
 
         # Check if WCS data in header is as expected
         assert header['CTYPE1'] == 'RA---SIN'
         assert header['CTYPE2'] == 'DEC--SIN'
+        assert header['BITPIX'] == -32
         # ... add other checks
 
         # Check the shape of the data

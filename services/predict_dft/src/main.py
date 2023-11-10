@@ -45,8 +45,8 @@ def main(run_config: RunConfig):
     # Multiply diagonal matrices with simple * operator
     gains = ionosphere_gains  # * beam_gains # [time, ant, source, chan, 2, 2]
 
-    # no gains
-    gains = np.tile(np.eye(2)[None, None, None, None, :, :], gains.shape[:-2] + (1, 1))
+    # Uncomment for no gains
+    # gains = np.tile(np.eye(2)[None, None, None, None, :, :], gains.shape[:-2] + (1, 1))
 
     vis = im_to_vis_with_gains(
         image=jnp.asarray(source_model.image),  # [source, chan, 2, 2]
