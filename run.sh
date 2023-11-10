@@ -19,7 +19,7 @@ services_order=(
   #    "predict_fft"
   #  "simulate_rfi"
 #  "sum_visibilities"
-  "image_uncorrected"
+#  "image_uncorrected"
   #  "dirty_image"
   #  "calibration"
   #  "image_a_proj"
