@@ -93,22 +93,25 @@ def repoint_fits(fits_file: str, output_file: str, pointing_centre: ac.ICRS):
         pointing_centre: the pointing centre in ICRS coordinates
     """
     # Load the FITS file
-    hdu = fits.open(fits_file)[0]
-    original_wcs = WCS(hdu.header)
+    with fits.open(fits_file) as hdu:
 
-    # Create a new WCS based on the desired center direction
-    new_wcs = WCS(naxis=4)
-    new_wcs.wcs.ctype = ["RA---SIN", "DEC--SIN", "STOKES", "FREQ"]
-    # Assuming you want to keep STOKES and FREQ as 1
-    new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, 1]
-    # Assuming data shape corresponds to [FREQ, STOKES, DEC, RA]
-    new_wcs.wcs.crpix = [hdu.data.shape[3] / 2, hdu.data.shape[2] / 2, 1, 1]
-    new_wcs.wcs.cdelt = [original_wcs.pixel_scale_matrix[1, 1], original_wcs.pixel_scale_matrix[0, 0], 1, 1]
+        original_wcs = WCS(hdu[0].header)
+        new_wcs = original_wcs.deepcopy()
 
-    new_wcs.wcs.set()
-    reprojected_data, _ = reproject_interp(hdu, new_wcs, shape_out=hdu.data.shape)
-    hdu_new = fits.PrimaryHDU(data=reprojected_data, header=new_wcs.to_header())
-    hdu_new.writeto(output_file, overwrite=True)
+
+        # Create a new WCS based on the desired center direction
+        # new_wcs = WCS(naxis=4)
+        new_wcs.wcs.ctype = ["RA---SIN", "DEC--SIN", "STOKES", "FREQ"]
+        # Assuming you want to keep STOKES and FREQ as 1
+        new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, new_wcs.wcs.crval[3]]
+        # Assuming data shape corresponds to [FREQ, STOKES, DEC, RA]
+        Nf, Ns, Ndec, Nra = hdu[0].data.shape
+        new_wcs.wcs.crpix = [Nra / 2, Ndec / 2, 1, 1]
+        new_wcs.wcs.cdelt = [original_wcs.pixel_scale_matrix[0, 0], original_wcs.pixel_scale_matrix[1, 1], 1, 1]
+        new_wcs.wcs.set()
+        # reprojected_data, _ = reproject_interp(hdu[0], new_wcs, shape_out=hdu[0].data.shape)
+        hdu_new = fits.PrimaryHDU(data=hdu[0].data, header=new_wcs.to_header())
+        hdu_new.writeto(output_file, overwrite=True)
 
 
 def haversine(ra1: np.ndarray, dec1: np.ndarray, ra2: np.ndarray, dec2: np.ndarray) -> np.ndarray:
