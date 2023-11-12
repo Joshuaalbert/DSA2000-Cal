@@ -7,10 +7,12 @@ from tomographic_kernel.frames import ENU
 from tqdm import tqdm
 
 from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.astropy_utils import mean_itrs
+from dsa2000_cal.faint_sky_model import prepare_gain_fits
+from dsa2000_cal.gains import extract_scalar_gains
 
 fill_registries()
 from dsa2000_cal.run_config import RunConfig
+from dsa2000_cal.astropy_utils import mean_itrs
 from dsa2000_cal.assets.registries import array_registry
 
 
@@ -49,7 +51,7 @@ def main(run_config: RunConfig):
                     beam_amplitude = antenna_beam.get_amplitude(
                         pointing=run_config.pointing_centre,
                         source=direction,
-                        freq_hz=freq.value,
+                        freq_hz=freq.to('Hz').value,
                         enu_frame=enu_frame,
                         pol=pol
                     )  # [1]
@@ -57,6 +59,19 @@ def main(run_config: RunConfig):
     with DataPack(run_config.beam_h5parm, readonly=False) as dp:
         dp.current_solset = 'sol000'
         dp.amplitude = amplitude
+
+    # get gains in  [num_time, num_ant, num_dir, num_freq, 2, 2]
+    gains = extract_scalar_gains(h5parm=run_config.beam_h5parm, components=['amplitude'])
+
+    prepare_gain_fits(
+        output_file=run_config.beam_fits,
+        pointing_centre=run_config.pointing_centre,
+        gains=gains,
+        directions=directions,
+        freq_hz=freqs.to('Hz').value,
+        times=times,
+        num_pix=32
+    )
 
 
 if __name__ == '__main__':
