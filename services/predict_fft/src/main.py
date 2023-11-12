@@ -32,7 +32,7 @@ def main(run_config: RunConfig):
         run_config.faint_sky_model_fits,
         os.path.join(
             os.path.dirname(run_config.faint_sky_model_fits),
-            os.path.basename(run_config.faint_sky_model_fits).replace('.fits', '-model-pb.fits')
+            os.path.basename(run_config.faint_sky_model_fits).replace('-model.fits', '-model-pb.fits')
         )
     )
 
