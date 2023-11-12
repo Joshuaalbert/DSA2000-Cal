@@ -26,6 +26,16 @@ def main(run_config: RunConfig):
         os.path.dirname(run_config.faint_sky_model_fits),
         os.path.basename(run_config.faint_sky_model_fits).rsplit('-model.fits', 1)[0]
     )
+
+    # symlink run_config.faint_sky_model_fits to ...-model-pb.fits
+    os.symlink(
+        run_config.faint_sky_model_fits,
+        os.path.join(
+            os.path.dirname(run_config.faint_sky_model_fits),
+            os.path.basename(run_config.faint_sky_model_fits).replace('.fits', '-model-pb.fits')
+        )
+    )
+
     num_cpus = os.cpu_count()
     completed_process = subprocess.run(
         [
