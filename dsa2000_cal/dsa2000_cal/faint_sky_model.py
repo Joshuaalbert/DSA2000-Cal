@@ -113,7 +113,7 @@ def transform_to_wsclean_model(fits_file: str, output_file: str, pointing_centre
         for ctype in new_wcs.wcs.ctype:
             if ctype not in original_wcs.wcs.ctype:
                 raise ValueError(f"Could not find {ctype} in {fits_file}")
-            perm = original_wcs.wcs.ctype.index(ctype)
+            perm = list(original_wcs.wcs.ctype).index(ctype)
         # Apply perm. Note: because python is column-major we need to reverse the perm
         data = np.transpose(hdu[0].data, perm[::-1])  # [Ns, Nf, Ndec, Nra]
         Ns, Nf, Ndec, Nra = data.shape
