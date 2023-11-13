@@ -9,7 +9,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from dsa2000_cal.assets.mocks.mock_data import MockData
-from dsa2000_cal.faint_sky_model import repoint_fits, down_sample_fits, prepare_gain_fits, haversine, \
+from dsa2000_cal.faint_sky_model import transform_to_wsclean_model, down_sample_fits, prepare_gain_fits, haversine, \
     nearest_neighbors_sphere
 
 
@@ -34,10 +34,12 @@ def test_repoint_fits():
         assert not np.any(np.isnan(data))
 
     rp_output_file = "repointed_down_sampled_faint_sky_model.fits"
-    repoint_fits(
+    transform_to_wsclean_model(
         fits_file=ds_output_file,
         output_file=rp_output_file,
-        pointing_centre=pointing_centre
+        pointing_centre=pointing_centre,
+        ref_freq_hz=700e6,
+        bandwidth_hz=5e6
     )
 
     # Check if the output file is created
@@ -47,13 +49,16 @@ def test_repoint_fits():
     with fits.open(rp_output_file) as hdu:
         data = hdu[0].data
         wcs = WCS(hdu[0].header)
+        assert wcs.wcs.ctype == ["RA---SIN", "DEC--SIN", "FREQ", "STOKES"]
         assert np.isclose(wcs.wcs.crval[0], pointing_centre.ra.deg, atol=1e-6)
         assert np.isclose(wcs.wcs.crval[1], pointing_centre.dec.deg, atol=1e-6)
+        assert np.isclose(wcs.wcs.crval[2], 700e6, atol=1e-6)
+        assert np.isclose(wcs.wcs.crval[3], 1., atol=1e-6)
         assert not np.any(np.isnan(data))
 
     # Cleanup
-    # os.remove(ds_output_file)
-    # os.remove(rp_output_file)
+    os.remove(ds_output_file)
+    os.remove(rp_output_file)
 
 
 def test_basic_functionality():

@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple
 
 import astropy.time as at
@@ -6,8 +7,9 @@ import numpy as np
 from astropy import coordinates as ac, io, wcs
 from astropy.io import fits
 from astropy.wcs import WCS
-from reproject import reproject_interp
 from scipy.ndimage import zoom
+
+logger = logging.getLogger(__name__)
 
 
 def flatten(f):
@@ -83,14 +85,19 @@ def down_sample_fits(fits_file: str, output_file: str, desired_ra_size: int, des
     hdu_new.writeto(output_file, overwrite=True)
 
 
-def repoint_fits(fits_file: str, output_file: str, pointing_centre: ac.ICRS):
+def transform_to_wsclean_model(fits_file: str, output_file: str, pointing_centre: ac.ICRS, ref_freq_hz: float,
+                               bandwidth_hz: float):
     """
-    Re-points the fits file to the pointing centre.
+    Re-points the fits file to the pointing centre, and transposes axes to match the output of wsclean.
+
+    Note, the projection might change, but we don't take that into account.
 
     Args:
-        fits_file: the path to the fits file
+        fits_file: the path to the fits file of an image to turn into a model
         output_file: the path to the output fits file
         pointing_centre: the pointing centre in ICRS coordinates
+        ref_freq_hz: reference frequency in Hz (lowest bound of bandwidth)
+        bandwidth_hz: the bandwidth of model
     """
     # Load the FITS file
     with fits.open(fits_file) as hdu:
@@ -98,19 +105,35 @@ def repoint_fits(fits_file: str, output_file: str, pointing_centre: ac.ICRS):
         original_wcs = WCS(hdu[0].header)
         new_wcs = original_wcs.deepcopy()
 
-
         # Create a new WCS based on the desired center direction
         # new_wcs = WCS(naxis=4)
-        new_wcs.wcs.ctype = ["RA---SIN", "DEC--SIN", "STOKES", "FREQ"]
-        # Assuming you want to keep STOKES and FREQ as 1
-        new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, new_wcs.wcs.crval[3]]
-        # Assuming data shape corresponds to [FREQ, STOKES, DEC, RA]
-        Nf, Ns, Ndec, Nra = hdu[0].data.shape
-        new_wcs.wcs.crpix = [Nra / 2, Ndec / 2, 1, 1]
-        new_wcs.wcs.cdelt = [original_wcs.pixel_scale_matrix[0, 0], original_wcs.pixel_scale_matrix[1, 1], 1, 1]
+        new_wcs.wcs.ctype = ["RA---SIN", "DEC--SIN", "FREQ", "STOKES"]
+        # Get permutation of axes
+        perm = []
+        for ctype in new_wcs.wcs.ctype:
+            if ctype not in original_wcs.wcs.ctype:
+                raise ValueError(f"Could not find {ctype} in {fits_file}")
+            perm = original_wcs.wcs.ctype.index(ctype)
+        # Apply perm. Note: because python is column-major we need to reverse the perm
+        data = np.transpose(hdu[0].data, perm[::-1])  # [Ns, Nf, Ndec, Nra]
+        Ns, Nf, Ndec, Nra = data.shape
+        new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, ref_freq_hz, 1]
+        new_wcs.wcs.crpix = [Nra / 2 + 1, Ndec / 2 + 1, 1, 1]
+        new_wcs.wcs.cdelt = [
+            original_wcs.pixel_scale_matrix[0, 0],
+            original_wcs.pixel_scale_matrix[1, 1],
+            bandwidth_hz,
+            1
+        ]
+        new_wcs.wcs.cunit = [
+            'deg',
+            'deg',
+            'Hz',
+            ''
+        ]
         new_wcs.wcs.set()
         # reprojected_data, _ = reproject_interp(hdu[0], new_wcs, shape_out=hdu[0].data.shape)
-        hdu_new = fits.PrimaryHDU(data=hdu[0].data, header=new_wcs.to_header())
+        hdu_new = fits.PrimaryHDU(data=data, header=new_wcs.to_header())
         hdu_new.writeto(output_file, overwrite=True)
 
 
