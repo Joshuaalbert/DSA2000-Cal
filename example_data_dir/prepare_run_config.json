@@ -9,7 +9,7 @@
   "start_freq_hz": 700000000.0,
   "channel_width_hz": 162500.0,
   "num_channels": 32,
-  "num_times": 10,
+  "num_times": 4,
   "integration_time_s": 1.5,
   "ionosphere_specification": "light_dawn",
   "rfi_sim_config": {
