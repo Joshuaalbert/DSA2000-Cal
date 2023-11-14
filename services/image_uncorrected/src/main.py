@@ -28,7 +28,7 @@ def main(run_config: RunConfig):
             # '-aterm-config', a_term_file,
             # '-save-aterms',
             '-pol', 'i',  # throw away quv
-            '-link-polarization', 'i',  # If found in i, clean on all quv
+            # '-link-polarization', 'i',  # If found in i, clean on all quv
             '-name', image_name,
             '-size', f"{run_config.image_size}", f"{run_config.image_size}",
             '-scale', f"{run_config.image_pixel_arcsec}asec",
