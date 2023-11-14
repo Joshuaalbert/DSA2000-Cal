@@ -30,7 +30,9 @@ def test_repoint_fits():
     # Check the dimensions of the output file
     with fits.open(ds_output_file) as hdu:
         data = hdu[0].data
-        assert data.shape[2:] == (64, 64)
+        _, _, Ndec, Nra = data.shape
+        assert Nra == 64
+        assert Ndec == 64
         assert not np.any(np.isnan(data))
 
     rp_output_file = "repointed_down_sampled_faint_sky_model.fits"
@@ -49,7 +51,12 @@ def test_repoint_fits():
     with fits.open(rp_output_file) as hdu:
         data = hdu[0].data
         wcs = WCS(hdu[0].header)
-        assert wcs.wcs.ctype == ["RA---SIN", "DEC--SIN", "FREQ", "STOKES"]
+        assert list(wcs.wcs.ctype) == ["RA---SIN", "DEC--SIN", "FREQ", "STOKES"]
+        Ns, Nf, Ndec, Nra = data.shape
+        assert Ns == 1
+        assert Nf == 1
+        assert Nra == 64
+        assert Ndec == 64
         assert np.isclose(wcs.wcs.crval[0], pointing_centre.ra.deg, atol=1e-6)
         assert np.isclose(wcs.wcs.crval[1], pointing_centre.dec.deg, atol=1e-6)
         assert np.isclose(wcs.wcs.crval[2], 700e6, atol=1e-6)

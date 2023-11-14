@@ -43,6 +43,7 @@ def main(run_config: RunConfig):
             '-predict',
             '-gridder', 'idg',
             '-idg-mode', 'cpu',  # Try hybrid
+            '-aterm-kernel-size', '16',
             '-pol','i',
             '-aterm-config', a_term_file,
             '-wgridder-accuracy', '1e-4',

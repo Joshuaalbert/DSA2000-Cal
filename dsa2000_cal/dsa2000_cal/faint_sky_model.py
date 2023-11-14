@@ -103,10 +103,10 @@ def transform_to_wsclean_model(fits_file: str, output_file: str, pointing_centre
     with fits.open(fits_file) as hdu:
 
         original_wcs = WCS(hdu[0].header)
-        new_wcs = original_wcs.deepcopy()
+        # new_wcs = original_wcs.deepcopy()
 
         # Create a new WCS based on the desired center direction
-        # new_wcs = WCS(naxis=4)
+        new_wcs = WCS(naxis=4)
         new_wcs.wcs.ctype = ["RA---SIN", "DEC--SIN", "FREQ", "STOKES"]
         # Get permutation of axes
         perm = []
@@ -115,7 +115,10 @@ def transform_to_wsclean_model(fits_file: str, output_file: str, pointing_centre
                 raise ValueError(f"Could not find {ctype} in {fits_file}")
             perm.append(list(original_wcs.wcs.ctype).index(ctype))
         # Apply perm. Note: because python is column-major we need to reverse the perm
-        data = np.transpose(hdu[0].data, perm[::-1])  # [Ns, Nf, Ndec, Nra]
+        # print(perm)
+
+        data = np.transpose(hdu[0].data.T, perm).T.copy()  # [Ns, Nf, Ndec, Nra]
+        # print(data.shape)
         Ns, Nf, Ndec, Nra = data.shape
         new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, ref_freq_hz, 1]
         new_wcs.wcs.crpix = [Nra / 2 + 1, Ndec / 2 + 1, 1, 1]
