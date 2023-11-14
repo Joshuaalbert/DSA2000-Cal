@@ -50,8 +50,6 @@ def extract_scalar_gains(h5parm: str, components: List[Literal['phase', 'amplitu
             else:
                 gains[..., 1, 1] = amplitude[..., 1]
             gains_list.append(gains)
-        else:
-            print(f"Amplitude not present in h5parm.")
     if len(gains_list) == 0:
         raise ValueError("No gains found in h5parm.")
     output = gains_list[0]

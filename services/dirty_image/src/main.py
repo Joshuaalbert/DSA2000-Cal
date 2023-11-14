@@ -36,6 +36,7 @@ def main(run_config: RunConfig):
             '-gridder', 'idg',
             '-idg-mode', 'cpu',  # Try hybrid
             '-wgridder-accuracy', '1e-4',
+            '-pol', 'i',
             # '-aterm-config', a_term_file,
             '-name', image_name,
             '-size', f"{run_config.image_size}", f"{run_config.image_size}",
