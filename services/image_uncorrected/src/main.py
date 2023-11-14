@@ -25,8 +25,8 @@ def main(run_config: RunConfig):
             '-gridder', 'idg',
             '-idg-mode', 'cpu',  # Try hybrid
             '-wgridder-accuracy', '1e-4',
-            '-aterm-config', a_term_file,
-            '-save-aterms',
+            # '-aterm-config', a_term_file,
+            # '-save-aterms',
             '-pol', 'i',  # throw away quv
             '-link-polarization', 'i',  # If found in i, clean on all quv
             '-name', image_name,
