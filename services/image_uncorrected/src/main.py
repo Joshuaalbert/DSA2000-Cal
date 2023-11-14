@@ -18,30 +18,6 @@ def main(run_config: RunConfig):
 
     num_cpus = os.cpu_count()
 
-    image_name = 'uncorrected_dft'
-    completed_process = subprocess.run(
-        [
-            'wsclean',
-            '-gridder', 'idg',
-            '-idg-mode', 'cpu',  # Try hybrid
-            '-wgridder-accuracy', '1e-4',
-            '-aterm-config', a_term_file,
-            '-save-aterms',
-            '-pol', 'i',
-            '-name', image_name,
-            '-size', f"{run_config.image_size}", f"{run_config.image_size}",
-            '-scale', f"{run_config.image_pixel_arcsec}asec",
-            '-channels-out', '1',
-            '-nwlayers-factor', '1',
-            '-make-psf',
-            '-weight', 'natural',
-            '-j', f'{num_cpus}',
-            run_config.visibilities_path
-        ]
-    )
-    if completed_process.returncode != 0:
-        raise ValueError("Failed to run WSClean.")
-
     image_name = 'uncorrected_sum'
     completed_process = subprocess.run(
         [
@@ -50,10 +26,17 @@ def main(run_config: RunConfig):
             '-idg-mode', 'cpu',  # Try hybrid
             '-wgridder-accuracy', '1e-4',
             '-aterm-config', a_term_file,
+            '-save-aterms',
+            '-pol', 'i',  # throw away quv
+            '-link-polarization', 'i',  # If found in i, clean on all quv
             '-name', image_name,
             '-size', f"{run_config.image_size}", f"{run_config.image_size}",
             '-scale', f"{run_config.image_pixel_arcsec}asec",
             '-channels-out', '1',
+            '-niter', '100',
+            '-auto-threshold', '1',
+            '-auto-mask', '4',
+            '-mgain', '0.8',
             '-nwlayers-factor', '1',
             '-make-psf',
             '-weight', 'natural',

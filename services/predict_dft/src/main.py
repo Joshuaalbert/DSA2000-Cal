@@ -57,7 +57,7 @@ def main(run_config: RunConfig):
         uvw=jnp.asarray(uvw),  # [row, 3]
         lm=jnp.asarray(source_model.lm),  # [source, 2]
         frequency=jnp.asarray(source_model.freqs),  # [chan]
-        convention='fourier',
+        convention='casa',
         chunksize=len(jax.devices())
     )  # [row, chan, 2, 2]
     row, chan, _, _ = vis.shape

@@ -16,7 +16,7 @@ def im_to_vis(
         uvw: jnp.ndarray,
         lm: jnp.ndarray,
         frequency: jnp.ndarray,
-        convention: Literal['fourier', 'casa'] = 'fourier',
+        convention: Literal['fourier', 'casa'] = 'casa',
         dtype=jnp.complex64,
         chunksize: int = 1
 ) -> jnp.ndarray:
@@ -81,7 +81,7 @@ def im_to_vis_with_gains(
         uvw: jnp.ndarray,
         lm: jnp.ndarray,
         frequency: jnp.ndarray,
-        convention: Literal['fourier', 'casa'] = 'fourier',
+        convention: Literal['fourier', 'casa'] = 'casa',
         dtype=jnp.complex64,
         chunksize: int = 1
 ) -> jnp.ndarray:
@@ -124,7 +124,7 @@ def im_to_vis_with_gains(
         def sum_over_source(lm, im_chan_corr, g1_chan_corr, g2_chan_corr):
             l, m = lm
             n = jnp.sqrt(1. - l ** 2 - m ** 2) # [scalar]
-            # -2*pi*(l*u + m*v + n*w)/c
+            # -2*pi*freq/c*(l*u + m*v + (n-1)*w)
             real_phase = constant * (l * u + m * v + (n - 1.) * w)  # [scalar]
 
             # Multiple in frequency for each channel
