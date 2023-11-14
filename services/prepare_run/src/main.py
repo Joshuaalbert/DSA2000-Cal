@@ -93,6 +93,8 @@ def main(prepare_run_config: PrepareRunConfig):
 
     ionosphere_h5parm = os.path.abspath('ionosphere.h5parm')
     ionosphere_fits = os.path.abspath('ionosphere.fits')
+    quartical_h5parm = os.path.abspath('quartical.h5parm')
+    quartical_fits = os.path.abspath('quartical.fits')
     beam_h5parm = os.path.abspath('beam.h5parm')
     beam_fits = os.path.abspath('beam.fits')
 
@@ -119,6 +121,8 @@ def main(prepare_run_config: PrepareRunConfig):
         rfi_sim_config=prepare_run_config.rfi_sim_config,
         beam_h5parm=beam_h5parm,
         beam_fits=beam_fits,
+        quartical_h5parm=quartical_h5parm,
+        quartical_fits=quartical_fits,
         image_size=prepare_run_config.image_size,
         image_pixel_arcsec=prepare_run_config.image_pixel_arcsec,
         calibration_freq_interval=prepare_run_config.calibration_freq_interval,

@@ -83,6 +83,14 @@ class RunConfig(SerialisableBaseModel):
         description="The path to the output ionosphere fits file.",
         example="ionosphere.fits",
     )
+    quartical_h5parm: str = Field(
+        description="The path to the output quartical h5parm file.",
+        example="quartical.h5parm",
+    )
+    quartical_fits: str = Field(
+        description="The path to the output quartical fits file.",
+        example="quartical.fits",
+    )
     beam_h5parm: str = Field(
         description="The path to the output beam h5parm file.",
         example="beam.h5parm",

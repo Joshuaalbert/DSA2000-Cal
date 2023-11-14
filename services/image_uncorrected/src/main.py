@@ -26,6 +26,8 @@ def main(run_config: RunConfig):
             '-idg-mode', 'cpu',  # Try hybrid
             '-wgridder-accuracy', '1e-4',
             '-aterm-config', a_term_file,
+            '-save-atrms',
+            '-pol', 'i',
             '-name', image_name,
             '-size', f"{run_config.image_size}", f"{run_config.image_size}",
             '-scale', f"{run_config.image_pixel_arcsec}asec",
@@ -34,7 +36,7 @@ def main(run_config: RunConfig):
             '-make-psf',
             '-weight', 'natural',
             '-j', f'{num_cpus}',
-            run_config.dft_visibilities_path
+            run_config.visibilities_path
         ]
     )
     if completed_process.returncode != 0:

@@ -17,7 +17,7 @@ def main(run_config: RunConfig):
         output_ms_file=run_config.visibilities_path,
         input_ms_files=[
             run_config.dft_visibilities_path,
-            run_config.fft_visibilities_path,
+            # run_config.fft_visibilities_path, #TODO: Turn back on once FFT is working
             run_config.rfi_visibilities_path
         ],
         array=array,
