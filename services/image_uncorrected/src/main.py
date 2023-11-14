@@ -26,7 +26,7 @@ def main(run_config: RunConfig):
             '-idg-mode', 'cpu',  # Try hybrid
             '-wgridder-accuracy', '1e-4',
             '-aterm-config', a_term_file,
-            '-save-atrms',
+            '-save-aterms',
             '-pol', 'i',
             '-name', image_name,
             '-size', f"{run_config.image_size}", f"{run_config.image_size}",

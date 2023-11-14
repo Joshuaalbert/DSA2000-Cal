@@ -141,7 +141,7 @@ def mock_data():
     # [num_time, num_ant, num_dir, num_freq, 2, 2]
     gains = np.random.randn(10, 5, 3, 7, 2, 2) + 1j * np.random.randn(10, 5, 3, 7, 2, 2)
     directions = ac.concatenate(
-        [ac.ICRS(ra=ra * au.degree, dec=np.random.normal() * au.degree) for ra in [178, 180, 182]])
+        [ac.ICRS(ra=ra * au.degree, dec=np.random.normal() * au.degree) for ra in [78, 80, 82]])
     freq_hz = np.linspace(700e6, 1400e6, 7)
     times = at.Time(['2023-10-18T00:00:00', '2023-10-18T01:00:00', '2023-10-18T02:00:00', '2023-10-18T03:00:00',
                      '2023-10-18T04:00:00', '2023-10-18T05:00:00', '2023-10-18T06:00:00', '2023-10-18T07:00:00',
@@ -150,7 +150,8 @@ def mock_data():
     return pointing_centre, gains, directions, freq_hz, times, num_pix
 
 
-def test_output_file_created(tmp_path):
+
+def test_fits_file_content(tmp_path):
     pointing_centre, gains, directions, freq_hz, times, num_pix = mock_data()
     output_file = tmp_path / "test_output.fits"
 
@@ -158,38 +159,30 @@ def test_output_file_created(tmp_path):
 
     assert output_file.exists()
 
-    # Open the FITS file
-    with fits.open(output_file) as hdul:
-        # Get the header of the primary HDU (or specify another index if needed)
-        header = hdul[0].header
-
-        # Print the entire header
-        print(header)
-
-
-
-def test_fits_file_content(tmp_path):
-    pointing_centre, gains, directions, freq_hz, times, num_pix = mock_data()
-    output_file = "test_output.fits"
-
-    prepare_gain_fits(output_file, pointing_centre, gains, directions, freq_hz, times, num_pix)
-
     with io.fits.open(output_file) as hdu_list:
         header = hdu_list[0].header
+        wcs = WCS(hdu_list[0].header)
         print("\n".join([f"{k} = {header[k]}" for k in header]))
         data = hdu_list[0].data
 
         # Check if WCS data in header is as expected
-        assert header['CTYPE1'] == 'RA---SIN'
-        assert header['CTYPE2'] == 'DEC--SIN'
+
         assert header['BITPIX'] == -32
-        # ... add other checks
 
-        # Check the shape of the data
-        assert data.shape == (num_pix, num_pix, 4, 5, 7, 10)
+        # [RA, DEC, MATRIX, ANTENNA, FREQ, TIME]
 
-        # Check some statistics on the data if necessary
-        assert data.mean() != 0
-        # ... add other checks
-
+        assert list(wcs.wcs.ctype) == ["RA---SIN", "DEC--SIN", "MATRIX", "ANTENNA", "FREQ", "TIME"]
+        Nt, Nf, Na, Nmatrix, Ndec, Nra = data.shape
+        assert Nt == len(times)
+        assert Nf == len(freq_hz)
+        assert Na == 5
+        assert Nmatrix == 4
+        assert Nra == num_pix
+        assert Ndec == num_pix
+        assert np.isclose(wcs.wcs.crval[0], pointing_centre.ra.deg, atol=1e-6)
+        assert np.isclose(wcs.wcs.crval[1], pointing_centre.dec.deg, atol=1e-6)
+        assert np.isclose(wcs.wcs.crval[2], 1., atol=1e-6)
+        assert np.isclose(wcs.wcs.crval[3], 1., atol=1e-6)
+        assert np.isclose(wcs.wcs.crval[4], freq_hz.min(), atol=1e-6)
+        assert np.isclose(wcs.wcs.crval[5], times.mjd.min() * 86400, atol=1e-6)
         assert not np.any(np.isnan(data))

@@ -32,7 +32,8 @@ def test_bbs_sky_model_I_only():
 def test_bbs_sky_model_all_only():
     sky_model_bbs = "# (Name, Type, Ra, Dec, I=0, U=0, V=0) = format\n" \
                     "A, POINT, 00:00:00.123456, +37.07.47.12345, 1.0, , , \n" \
-                    "B, POINT, 00:00:00.123456, +37.37.47.12345, 1.0, , , "
+                    "B, POINT, 00:00:00.123456, +37.37.47.12345, 1.0, , , \n" \
+                    "C, POINT, 00:00:10.123456, +37.37.47.12345, 1.0, , , "
     sky_model_file = 'test_sky_model.txt'
     with open(sky_model_file, 'w') as f:
         f.write(sky_model_bbs)
@@ -40,12 +41,12 @@ def test_bbs_sky_model_all_only():
     bbs_sky_model = BBSSkyModel(sky_model_file, pointing_centre=pointing_centre,
                                 chan0=800e6 * au.Hz,
                                 chan_width=2e6 * au.Hz,
-                                num_channels=2
+                                num_channels=5
                                 )
     source_model = bbs_sky_model.get_source()
-    assert len(source_model.corrs) == 4
-    assert source_model.image.shape == (2, 2, 4)
-    assert source_model.lm.shape == (2, 2)
+    assert source_model.corrs == [['XX', 'XY'], ['YX', 'YY']]
+    assert source_model.image.shape == (3, 5, 2, 2)
+    assert source_model.lm.shape == (3, 2)
     print(source_model)
     os.remove(sky_model_file)
 

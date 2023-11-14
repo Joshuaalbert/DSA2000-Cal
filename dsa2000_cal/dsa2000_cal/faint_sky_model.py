@@ -237,14 +237,14 @@ def prepare_gain_fits(output_file: str, pointing_centre: ac.ICRS,
     # Create the new WCS
     w = wcs.WCS(naxis=6)
     w.wcs.ctype = ["RA---SIN", "DEC--SIN", "MATRIX", "ANTENNA", "FREQ", "TIME"]
-    w.wcs.crpix = [num_pix // 2, num_pix // 2, 1, 1, 1, 1]
+    w.wcs.crpix = [num_pix / 2 + 1, num_pix / 2 + 1, 1, 1, 1, 1]
     w.wcs.cdelt = [-(ra_max - ra_min) / num_pix, (dec_max - dec_min) / num_pix, 1, 1, freq_hz[1] - freq_hz[0],
                    (times[1].mjd - times[0].mjd) * 86400]
     w.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, 1, freq_hz[0], times[0].mjd * 86400]
     w.wcs.set()
     # Extract pixel directions from the WCS as ICRS coordinates
-    x = np.arange(num_pix)
-    y = np.arange(num_pix)
+    x = np.arange(-num_pix/2, num_pix/2) + 1
+    y = np.arange(-num_pix/2, num_pix/2) + 1
     X = np.meshgrid(x, y, np.arange(1), np.arange(1), np.arange(1), np.arange(1), indexing='ij')
     coords_pix = np.stack([x.flatten() for x in X], axis=1)
     coords_world = w.all_pix2world(coords_pix, 0)
@@ -254,20 +254,23 @@ def prepare_gain_fits(output_file: str, pointing_centre: ac.ICRS,
     coords = ac.ICRS(ra=ra * au.deg, dec=dec * au.deg)
     nn_indices, nn_dist = nearest_neighbors_sphere(coords1=coords, coords2=directions)
 
+    # Prepare data for FITS: row-major to transposed column-major
+    data = np.zeros((Nt, Nf, Na, 4, num_pix, num_pix), dtype=np.float32)
+    # [num_time, num_ant, num_dir, num_freq, 2, 2] -> [num_time, num_freq, num_ant, 2, 2, num_dir]
+    gains = np.transpose(gains, (0, 3, 1, 4, 5, 2))
+
     # Split gains into real and imaginary parts
-    gains = np.transpose(gains, (2, 1, 3, 0, 4, 5))  # [num_dir, num_ant, num_freq, num_time, 2, 2]
     gains_real = np.real(gains).astype(np.float32)
     gains_imag = np.imag(gains).astype(np.float32)
 
-    # Prepare data for FITS
-    data = np.zeros((num_pix, num_pix, 4, Na, Nf, Nt), dtype=np.float32)
-
     for (i, j), nn_idx in zip(coords_pix[:, :2], nn_indices):
+        i = int(i + num_pix / 2 - 1)
+        j = int(j + num_pix / 2 - 1)
         # Assign real and imaginary parts of XX and YY to appropriate positions in the data array
-        data[i, j, 0, :, :, :] = gains_real[nn_idx, :, :, :, 0, 0]
-        data[i, j, 1, :, :, :] = gains_imag[nn_idx, :, :, :, 0, 0]
-        data[i, j, 2, :, :, :] = gains_real[nn_idx, :, :, :, 1, 1]
-        data[i, j, 3, :, :, :] = gains_imag[nn_idx, :, :, :, 1, 1]
+        data[:, :, :, 0, j, i] = gains_real[:, :, :, 0, 0, nn_idx]
+        data[:, :, :, 1, j, i] = gains_imag[:, :, :, 0, 0, nn_idx]
+        data[:, :, :, 2, j, i] = gains_real[:, :, :, 1, 1, nn_idx]
+        data[:, :, :, 3, j, i] = gains_imag[:, :, :, 1, 1, nn_idx]
 
     # Store the gains in the fits file
     hdu = io.fits.PrimaryHDU(data, header=w.to_header())

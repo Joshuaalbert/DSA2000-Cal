@@ -13,7 +13,8 @@ def main(run_config: RunConfig):
     a_term_file = os.path.abspath('corrected_quartical_a_corr.parset')
     write_diagonal_a_term_correction_file(
         a_term_file=a_term_file,
-        diagonal_gain_fits_files=[run_config.quartical_fits, run_config.beam_fits] # TODO: quartical_fits needs to be created
+        diagonal_gain_fits_files=[run_config.quartical_fits, run_config.beam_fits]
+        # TODO: quartical_fits needs to be created
     )
 
     num_cpus = os.cpu_count()
@@ -26,6 +27,7 @@ def main(run_config: RunConfig):
             '-idg-mode', 'cpu',  # Try hybrid
             '-wgridder-accuracy', '1e-4',
             '-aterm-config', a_term_file,
+            '-save-aterms',
             '-pol', 'i',
             '-name', image_name,
             '-size', f"{run_config.image_size}", f"{run_config.image_size}",
