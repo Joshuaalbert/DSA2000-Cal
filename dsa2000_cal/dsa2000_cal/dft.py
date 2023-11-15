@@ -123,14 +123,14 @@ def im_to_vis_with_gains(
         @vmap
         def sum_over_source(lm, im_chan_corr, g1_chan_corr, g2_chan_corr):
             l, m = lm
-            n = jnp.sqrt(1. - l ** 2 - m ** 2) # [scalar]
+            n = jnp.sqrt(1. - l ** 2 - m ** 2)  # [scalar]
             # -2*pi*freq/c*(l*u + m*v + (n-1)*w)
-            real_phase = constant * (l * u + m * v + (n - 1.) * w)  # [scalar]
+            excess_path_length = l * u + m * v + (n - 1.) * w  # [scalar]
 
             # Multiple in frequency for each channel
             @vmap
             def sum_over_channel(freq, im_corr, g1_corr, g2_corr):
-                p = jnp.asarray(1.0j*(real_phase * freq), dtype=dtype) # [scalar]
+                p = jnp.asarray((1.0j * constant * excess_path_length) * freq , dtype=dtype)  # [scalar]
                 vis_comp = jnp.einsum('ab,bc,cd->ad', g1_corr, im_corr, jnp.conj(g2_corr).T)  # [2,2]
                 return vis_comp * (jnp.exp(p) / n)  # [2, 2]
 

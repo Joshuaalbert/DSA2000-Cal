@@ -35,7 +35,7 @@ def test_array_beam():
     antenna_beam = array.antenna_beam()
     antenna_beam.get_model().plot_polar_amplitude()
 
-    amplitude = antenna_beam.get_amplitude(
+    amplitude = antenna_beam.compute_beam_amplitude(
         pointing=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
         source=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
         freq_hz=800e6,
@@ -46,5 +46,6 @@ def test_array_beam():
         pol='X'
     )
     assert not np.any(np.isnan(amplitude))
+    assert not np.isnan(antenna_beam.get_model().get_voltage_gain())
     assert amplitude.shape == (1,)
     # assert amplitude[0] <= 1.

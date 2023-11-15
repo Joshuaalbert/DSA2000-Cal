@@ -63,6 +63,16 @@ class AbstractAntennaModel(ABC):
         ...
 
     @abstractmethod
+    def get_voltage_gain(self) -> float:
+        """
+        Get the voltage gain of the antenna beam model. This is basically the maximum value of the amplitude.
+
+        Returns:
+            A float.
+        """
+        ...
+
+    @abstractmethod
     def get_freqs(self) -> np.ndarray:
         """
         Get the frequency axis, in Hz.
@@ -92,6 +102,24 @@ class AbstractAntennaModel(ABC):
         """
         ...
 
+    @abstractmethod
+    def compute_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
+                      pol: Literal['X', 'Y']) -> np.ndarray:
+        """
+        Compute the amplitude of the antenna at a given pointing and source.
+
+        Args:
+            pointing: The pointing direction in ICRS frame.
+            source: The source direction in ICRS frame.
+            freq_hz: The frequency in Hz.
+            enu_frame: The ENU frame.
+            pol: The polarisation, one of ['X', 'Y'].
+
+        Returns:
+            The amplitude of the antenna beam.
+        """
+        ...
+
 
 class AbstractAntennaBeam(ABC):
 
@@ -106,8 +134,8 @@ class AbstractAntennaBeam(ABC):
         ...
 
     @abstractmethod
-    def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
-                      pol: Literal['X', 'Y']) -> np.ndarray:
+    def compute_beam_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
+                               pol: Literal['X', 'Y']) -> np.ndarray:
         """
         Get the amplitude of the antenna beam at a given pointing and source.
 

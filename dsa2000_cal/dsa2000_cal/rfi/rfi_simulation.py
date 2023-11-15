@@ -120,8 +120,8 @@ def iter_ms_data(ms_file: str, array: AbstractArray, overwrite: bool) -> Generat
         # Store response
         with pt.table(ms_file, readonly=False) as t:
             dtype = t.getcol('DATA').dtype
-            sim_visibilities = sim_visibilities.astype(dtype)
             _, num_freqs, _ = t.getcol('DATA').shape
+            sim_visibilities = sim_visibilities.astype(dtype)
             sim_visibilities = np.tile(sim_visibilities, (1, num_freqs, 1))
             if not overwrite:  # Then we add to existing
                 vis = t.getcol('DATA', startrow=start_idx, nrow=block_size, rowincr=1)
@@ -188,7 +188,7 @@ def calculate_side_lobes_attenuation(rfi_sim_config: RFISimConfig, ms_data: MSDa
     source = ac.SkyCoord(east=line_of_sight[:, 0], north=line_of_sight[:, 1], up=line_of_sight[:, 2],
                          frame=ms_data.enu_frame).transform_to(ac.ICRS())  # [num_ant]
 
-    return antenna_beam.get_amplitude(
+    return antenna_beam.get_model().compute_amplitude(
         pointing=ms_data.pointing,
         source=source,
         freq_hz=rfi_sim_config.lte_frequency_hz,
@@ -256,7 +256,7 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
         ms_data: Data from an MS file.
 
     Returns:
-        Visibilities for each visibility [num_vis, 1, 4]
+        Visibilities for each visibility [num_vis, num_channels, 4]
     """
     (num_vis,) = geometric_delays.shape
     vis = np.zeros((num_vis, 1, 4), dtype=np.complex64)
@@ -265,24 +265,24 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
               ) * (
                       side_lobes_attenuation[ms_data.antenna1] * side_lobes_attenuation[ms_data.antenna2]
               )  # [num_vis]
-    tot_del = geometric_delays + tracking_delays  # [num_vis]
-    delmin = np.min(tot_del)
-    delmax = np.max(tot_del)
-    (delidx,) = np.where((time_acf >= delmin) & (time_acf <= delmax))
+    total_delay = geometric_delays + tracking_delays  # [num_vis]
+    # Get the ACF for times that are within the delay range (performance improvement?)
+    min_delay = np.min(total_delay)
+    max_delay = np.max(total_delay)
+    (delidx,) = np.where((time_acf >= min_delay) & (time_acf <= max_delay))
     time_acf = time_acf[delidx]
     acf = acf[delidx]
-    time_acf = time_acf[::200]
-    acf = acf[::200]
-    for k in range(num_vis):
-        delayidx = np.argmin(np.abs(time_acf - tot_del[k]))
-        vis[k, 0, :] = tot_att[k] * acf[delayidx]
-    vis[:, :, 0] *= np.cos(np.deg2rad(rfi_sim_config.lte_polarization_deg)) ** 2
-    vis[:, :, 1] *= np.cos(np.deg2rad(rfi_sim_config.lte_polarization_deg)) * np.sin(
-        np.deg2rad(rfi_sim_config.lte_polarization_deg))
-    vis[:, :, 2] *= np.cos(np.deg2rad(rfi_sim_config.lte_polarization_deg)) * np.sin(
-        np.deg2rad(rfi_sim_config.lte_polarization_deg))
-    vis[:, :, 3] *= np.sin(np.deg2rad(rfi_sim_config.lte_polarization_deg)) ** 2
-    vis = vis * rfi_sim_config.lte_power_W_Hz * 1e26 / 13  # [num_vis, 1, 4]
+    # Calculate visibilities, find the delay index for each visibility, and multiply by the ACF at that index
+    select_idx = np.searchsorted(time_acf, total_delay)
+    # TODO(Joshuaalbert): All the channels get the same RFI... is this correct?
+    vis[:, :, :] = np.reshape(tot_att * acf[select_idx], (-1, 1, 1)) # [num_vis, num_channels, 4]
+    # Now we need to rotate the correlations to the correct polarization angle
+    lte_polarization_rad = np.deg2rad(rfi_sim_config.lte_polarization_deg)
+    vis[:, :, 0] *= np.cos(lte_polarization_rad) ** 2
+    vis[:, :, 1] *= np.cos(lte_polarization_rad) * np.sin(lte_polarization_rad)
+    vis[:, :, 2] *= np.cos(lte_polarization_rad) * np.sin(lte_polarization_rad)
+    vis[:, :, 3] *= np.sin(lte_polarization_rad) ** 2
+    vis = vis * rfi_sim_config.lte_power_W_Hz * 1e26 / 13  # [num_vis, num_channels, 4]
     return vis
 
 
@@ -309,6 +309,11 @@ def run_rfi_simulation(array_name: str,
     gen_response: Union[np.ndarray, None] = None
     pbar = tqdm(file=sys.stdout, dynamic_ncols=True)
 
+    pbar.set_description("Loading RFI data.")
+    rfi_acf_data = loadmat(RFIData().rfi_injection_model())
+    time_acf = rfi_acf_data['t_acf'][0]
+    acf = rfi_acf_data['acf'][0]
+
     while True:
         try:
             ms_data = gen.send(gen_response)
@@ -327,11 +332,6 @@ def run_rfi_simulation(array_name: str,
         pbar.set_description("Calculating tracking delays.")
         tracking_delays = calculate_tracking_delays(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
 
-        pbar.set_description("Loading RFI data.")
-        rfi_acf_data = loadmat(RFIData().rfi_injection_model())
-        time_acf = rfi_acf_data['t_acf'][0]
-        acf = rfi_acf_data['acf'][0]
-
         pbar.set_description("Calculating visibilities.")
         visibilities = calculate_visibilities(
             free_space_path_loss=free_space_path_loss,
@@ -343,5 +343,6 @@ def run_rfi_simulation(array_name: str,
             rfi_sim_config=rfi_sim_config,
             ms_data=ms_data
         )  # [num_vis, 1, 4]
+        logger.info(f"Injected {visibilities.shape[0]} visibilities. Mean {np.mean(visibilities):.2e}.")
         gen_response = visibilities
         pbar.update(1)

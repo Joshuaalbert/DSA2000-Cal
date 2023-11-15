@@ -10,13 +10,13 @@ declare -A extras
 
 services_order=(
   #    "inspect"
-  #  "prepare_run"
-  #  "simulate_ionosphere"
-  #  "compute_beam"
+    "prepare_run"
+    "simulate_ionosphere"
+    "compute_beam"
   #  "simulate_instrumental_effects"
   "predict_dft"
   #"predict_fft"
-  #  "simulate_rfi"
+    "simulate_rfi"
   "sum_visibilities"
   #  "dirty_image"
   "image_uncorrected"

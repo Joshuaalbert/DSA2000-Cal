@@ -48,7 +48,7 @@ def main(run_config: RunConfig):
             for k, freq in enumerate(freqs):
                 for p, pol in enumerate(axes['pol']):
                     pbar.set_description(f"Computing beam at {time} for {direction} and {freq} and pol {pol}")
-                    beam_amplitude = antenna_beam.get_amplitude(
+                    beam_amplitude = antenna_beam.compute_beam_amplitude(
                         pointing=run_config.pointing_centre,
                         source=direction,
                         freq_hz=freq.to('Hz').value,

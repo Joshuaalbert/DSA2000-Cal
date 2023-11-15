@@ -56,6 +56,13 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
         return self._get_amplitude
 
     @cached_property
+    def _get_voltage_gain(self) -> np.ndarray:
+        return np.max(self.get_amplitude())
+
+    def get_voltage_gain(self) -> float:
+        return self._get_voltage_gain
+
+    @cached_property
     def _get_freqs(self) -> np.ndarray:
         return self.ant_model['freqListGHz'] * 1e9
 
@@ -76,6 +83,61 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
     def get_phi(self) -> np.ndarray:
         return self._get_phi
 
+    def compute_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
+                          pol: Literal['X', 'Y']) -> np.ndarray:
+        if pointing.shape == ():
+            pointing = pointing.reshape((1,))
+        if source.shape == ():
+            source = source.reshape((1,))
+        if pointing.shape != source.shape:
+            raise ValueError(f"pointing and source must have the same shape, got {pointing.shape} and {source.shape}")
+
+        freq_idx = np.argmin(np.abs(self.get_freqs() - freq_hz))
+
+        pointing_enu_xyz = pointing.transform_to(enu_frame).cartesian.xyz.T  # [num_ant, 3] (normed)
+        line_of_sight_enu_xyz = source.transform_to(enu_frame).cartesian.xyz.T  # [num_ant, 3] (normed)
+
+        # Theta is in [0, 180] measured from pointing direction, aka bore sight
+        theta = np.arccos(np.sum(line_of_sight_enu_xyz.value * pointing_enu_xyz.value, axis=-1))  # [num_ant]
+        theta_idx = np.asarray(
+            [
+                np.argmin(np.abs(self.get_theta() - np.rad2deg(theta_i)))
+                for theta_i in theta
+            ]
+        )  # [num_ant]
+
+        # Phi is in [0, 360] measured from x-axis (see below)
+        line_of_sight_proj = line_of_sight_enu_xyz - np.sum(line_of_sight_enu_xyz.value * pointing_enu_xyz.value,
+                                                            axis=-1,
+                                                            keepdims=True) * pointing_enu_xyz  # [num_ant, 3]
+        line_of_sight_proj /= np.linalg.norm(line_of_sight_proj, axis=-1, keepdims=True)  # [num_ant, 3] (normed)
+
+        # Assume Alt-Az mount, so x-axis always stays parallel to ground tangent
+        # TODO(Joshuaalbert): swaped X,Y definitions need to be fixed.
+        # x' = a x + b y where x, y are east and north. To solve for a, b use x'.z'=0 and x'.x'=1.
+        # a = (y.z' / x.z') / sqrt((y.z' / x.z') ^ 2 + 1)
+        # b = 1 / sqrt((y.z' / x.z') ^ 2 + 1)
+
+        east_proj = pointing_enu_xyz[:, 0]  # [num_ant]
+        north_proj = pointing_enu_xyz[:, 1]  # [num_ant]
+
+        a = (north_proj / east_proj) / np.sqrt((north_proj / east_proj) ** 2 + 1)  # [num_ant]
+        b = 1 / np.sqrt((north_proj / east_proj) ** 2 + 1)  # [num_ant]
+        x = a[:, None] * np.asarray([1, 0, 0]) + b[:, None] * np.asarray([0, 1, 0])  # [num_ant, 3] (normed)
+
+        phi = np.arccos(np.sum((line_of_sight_proj * x).value, axis=-1))  # [num_ant]
+        if pol == 'Y':
+            phi += np.pi / 2
+
+        phi_idx = np.asarray(
+            [
+                np.argmin(np.abs(self.get_phi() - np.rad2deg(phi_i)))
+                for phi_i in phi
+            ]
+        )  # [num_ant]
+
+        return self.get_amplitude()[theta_idx, phi_idx, freq_idx]
+
 
 class AltAzAntennaBeam(AbstractAntennaBeam):
     """
@@ -94,56 +156,12 @@ class AltAzAntennaBeam(AbstractAntennaBeam):
     def get_model(self) -> AbstractAntennaModel:
         return self.antenna_model
 
-    def get_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
-                      pol: Literal['X', 'Y']) -> np.ndarray:
-        if pointing.shape == ():
-            pointing = pointing.reshape((1,))
-        if source.shape == ():
-            source = source.reshape((1,))
-        if pointing.shape != source.shape:
-            raise ValueError(f"pointing and source must have the same shape, got {pointing.shape} and {source.shape}")
-
-        freq_idx = np.argmin(np.abs(self.antenna_model.get_freqs() - freq_hz))
-
-        pointing_enu_xyz = pointing.transform_to(enu_frame).cartesian.xyz.T  # [num_ant, 3] (normed)
-        line_of_sight_enu_xyz = source.transform_to(enu_frame).cartesian.xyz.T  # [num_ant, 3] (normed)
-
-        # Theta is in [0, 180] measured from pointing direction, aka bore sight
-        theta = np.arccos(np.sum(line_of_sight_enu_xyz.value * pointing_enu_xyz.value, axis=-1))  # [num_ant]
-        theta_idx = np.asarray(
-            [
-                np.argmin(np.abs(self.antenna_model.get_theta() - np.rad2deg(theta_i)))
-                for theta_i in theta
-            ]
-        )  # [num_ant]
-
-        # Phi is in [0, 360] measured from x-axis (see below)
-        line_of_sight_proj = line_of_sight_enu_xyz - np.sum(line_of_sight_enu_xyz.value * pointing_enu_xyz.value,
-                                                            axis=-1,
-                                                            keepdims=True) * pointing_enu_xyz  # [num_ant, 3]
-        line_of_sight_proj /= np.linalg.norm(line_of_sight_proj, axis=-1, keepdims=True)  # [num_ant, 3] (normed)
-
-        # Assume Alt-Az mount, so x-axis always stays parallel to ground tangent
-        # x' = a x + b y where x, y are east and north. To solve for a, b use x'.z'=0 and x'.x'=1.
-        # a = (y.z' / x.z') / sqrt((y.z' / x.z') ^ 2 + 1)
-        # b = 1 / sqrt((y.z' / x.z') ^ 2 + 1)
-
-        east_proj = pointing_enu_xyz[:, 0]  # [num_ant]
-        north_proj = pointing_enu_xyz[:, 1]  # [num_ant]
-
-        a = (north_proj / east_proj) / np.sqrt((north_proj / east_proj) ** 2 + 1)  # [num_ant]
-        b = 1 / np.sqrt((north_proj / east_proj) ** 2 + 1)  # [num_ant]
-        x = a[:, None] * np.asarray([1, 0, 0]) + b[:, None] * np.asarray([0, 1, 0])  # [num_ant, 3] (normed)
-
-        phi = np.arccos(np.sum((line_of_sight_proj * x).value, axis=-1))  # [num_ant]
-        if pol == 'Y':
-            phi += np.pi / 2
-
-        phi_idx = np.asarray(
-            [
-                np.argmin(np.abs(self.antenna_model.get_phi() - np.rad2deg(phi_i)))
-                for phi_i in phi
-            ]
-        )  # [num_ant]
-
-        return self.antenna_model.get_amplitude()[theta_idx, phi_idx, freq_idx]
+    def compute_beam_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
+                               pol: Literal['X', 'Y']) -> np.ndarray:
+        return self.antenna_model.compute_amplitude(
+            pointing=pointing,
+            source=source,
+            freq_hz=freq_hz,
+            enu_frame=enu_frame,
+            pol=pol
+        ) / self.antenna_model.get_voltage_gain()
