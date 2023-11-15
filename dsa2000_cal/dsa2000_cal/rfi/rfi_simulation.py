@@ -273,7 +273,8 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
     time_acf = time_acf[delidx]
     acf = acf[delidx]
     # Calculate visibilities, find the delay index for each visibility, and multiply by the ACF at that index
-    select_idx = np.searchsorted(time_acf, total_delay)
+    select_idx = np.clip(np.searchsorted(time_acf, total_delay), 0, len(time_acf) - 1)
+
     # TODO(Joshuaalbert): All the channels get the same RFI... is this correct?
     vis[:, :, :] = np.reshape(tot_att * acf[select_idx], (-1, 1, 1))  # [num_vis, num_channels, 4]
     # Now we need to rotate the correlations to the correct polarization angle
