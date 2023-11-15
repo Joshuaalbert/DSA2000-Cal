@@ -265,6 +265,8 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
               ) * (
                       side_lobes_attenuation[ms_data.antenna1] * side_lobes_attenuation[ms_data.antenna2]
               )  # [num_vis]
+    if np.count_nonzero(tot_att) == 0:
+        raise ValueError("All visibilities are zero, this indicates an problem.")
     total_delay = geometric_delays + tracking_delays  # [num_vis]
     # Get the ACF for times that are within the delay range (performance improvement?)
     min_delay = np.min(total_delay)
@@ -323,9 +325,13 @@ def run_rfi_simulation(array_name: str,
 
         pbar.set_description("Calculating free space path loss.")
         free_space_path_loss = calculate_free_space_path_loss(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
+        if np.count_nonzero(free_space_path_loss) == 0:
+            raise ValueError("Free space path loss is zero, this indicates an problem.")
 
         pbar.set_description("Calculating side lobes attenuation.")
         side_lobes_attenuation = calculate_side_lobes_attenuation(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
+        if np.count_nonzero(side_lobes_attenuation) == 0:
+            raise ValueError("Side lobes attenuation is zero, this indicates an problem.")
 
         pbar.set_description("Calculating geometric delays.")
         geometric_delays = calculate_geometric_delays(rfi_sim_config=rfi_sim_config, ms_data=ms_data)
