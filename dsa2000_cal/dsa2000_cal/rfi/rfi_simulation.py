@@ -261,19 +261,19 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
     (num_vis,) = geometric_delays.shape
     vis = np.zeros((num_vis, 1, 4), dtype=np.complex64)
     tot_att = (
+                      rfi_sim_config.lte_power_W_Hz * 1e26 / 13
+              ) * (
                       free_space_path_loss[ms_data.antenna1] * free_space_path_loss[ms_data.antenna2]
               ) * (
                       side_lobes_attenuation[ms_data.antenna1] * side_lobes_attenuation[ms_data.antenna2]
               )  # [num_vis]
-    if np.count_nonzero(tot_att) == 0:
-        raise ValueError("A: All attenuation are zero, this indicates an problem.")
     total_delay = geometric_delays + tracking_delays  # [num_vis]
     # Get the ACF for times that are within the delay range (performance improvement?)
     min_delay = np.min(total_delay)
     max_delay = np.max(total_delay)
-    (delidx,) = np.where((time_acf >= min_delay) & (time_acf <= max_delay))
-    time_acf = time_acf[delidx]
-    acf = acf[delidx]
+    # (delidx,) = np.where((time_acf >= min_delay) & (time_acf <= max_delay))
+    # time_acf = time_acf[delidx]
+    # acf = acf[delidx]
     print(f"Delay range: {min_delay:.2e} - {max_delay:.2e}")
     print(f"Total attenuation range: {np.min(tot_att):.2e} - {np.max(tot_att):.2e}")
     # Calculate visibilities, find the delay index for each visibility, and multiply by the ACF at that index
@@ -282,19 +282,12 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
 
     # TODO(Joshuaalbert): All the channels get the same RFI... is this correct?
     vis[:, :, :] = np.reshape(tot_att * acf[select_idx], (-1, 1, 1))  # [num_vis, num_channels, 4]
-    if np.count_nonzero(vis) == 0:
-        raise ValueError("B: All visibilities are zero, this indicates an problem.")
     # Now we need to rotate the correlations to the correct polarization angle
     lte_polarization_rad = np.deg2rad(rfi_sim_config.lte_polarization_deg)
     vis[:, :, 0] *= np.cos(lte_polarization_rad) ** 2
     vis[:, :, 1] *= np.cos(lte_polarization_rad) * np.sin(lte_polarization_rad)
     vis[:, :, 2] *= np.cos(lte_polarization_rad) * np.sin(lte_polarization_rad)
     vis[:, :, 3] *= np.sin(lte_polarization_rad) ** 2
-    if np.count_nonzero(vis) == 0:
-        raise ValueError("C: All visibilities are zero, this indicates an problem.")
-    vis *= rfi_sim_config.lte_power_W_Hz * 1e26 / 13  # [num_vis, num_channels, 4]
-    if np.count_nonzero(vis) == 0:
-        raise ValueError("D: All visibilities are zero, this indicates an problem.")
     return vis
 
 
@@ -361,8 +354,6 @@ def run_rfi_simulation(array_name: str,
         )  # [num_vis, 1, 4]
         if np.any(np.isnan(visibilities)):
             raise ValueError("NaNs in visibilities.")
-        if np.count_nonzero(visibilities.real) == 0:
-            raise ValueError("All visibilities are zero.")
         logger.info(f"Injected {visibilities.shape[0]} visibilities. Mean {np.mean(visibilities):.2e}.")
         gen_response = visibilities
         pbar.update(1)
