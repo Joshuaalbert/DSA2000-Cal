@@ -275,7 +275,7 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
     # Calculate visibilities, find the delay index for each visibility, and multiply by the ACF at that index
     select_idx = np.searchsorted(time_acf, total_delay)
     # TODO(Joshuaalbert): All the channels get the same RFI... is this correct?
-    vis[:, :, :] = np.reshape(tot_att * acf[select_idx], (-1, 1, 1)) # [num_vis, num_channels, 4]
+    vis[:, :, :] = np.reshape(tot_att * acf[select_idx], (-1, 1, 1))  # [num_vis, num_channels, 4]
     # Now we need to rotate the correlations to the correct polarization angle
     lte_polarization_rad = np.deg2rad(rfi_sim_config.lte_polarization_deg)
     vis[:, :, 0] *= np.cos(lte_polarization_rad) ** 2
@@ -343,6 +343,10 @@ def run_rfi_simulation(array_name: str,
             rfi_sim_config=rfi_sim_config,
             ms_data=ms_data
         )  # [num_vis, 1, 4]
+        if np.any(np.isnan(visibilities)):
+            raise ValueError("NaNs in visibilities.")
+        if np.count_nonzero(visibilities.real) == 0:
+            raise ValueError("All visibilities are zero.")
         logger.info(f"Injected {visibilities.shape[0]} visibilities. Mean {np.mean(visibilities):.2e}.")
         gen_response = visibilities
         pbar.update(1)
