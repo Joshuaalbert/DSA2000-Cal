@@ -32,31 +32,31 @@ C = 299792458.  # Speed of light [m/s]
 class RFISimConfig(SerialisableBaseModel):
     lte_east: float = Field(
         desciption="Distance east of RFI transmitter from center of the telescope [m].",
-        default=46800. * np.sin(160. * 2 * np.pi / 360 + np.pi)
+        example=46800. * np.sin(160. * 2 * np.pi / 360 + np.pi)
     )
     lte_north: float = Field(
         description="Distance south of RFI transmitter from center of the telescope [m].",
-        default=46800. * np.cos(160. * 2 * np.pi / 360)
+        example=46800. * np.cos(160. * 2 * np.pi / 360)
     )
     lte_up: float = Field(
         description="Height of RFI transmitter [m] above array centre.",
-        default=20.
+        example=20.
     )
     lte_polarization_deg: float = Field(
         description="Polarization angle of RFI [deg, 0=full XX, 90=full YY].",
-        default=10.
+        example=10.
     )
     lte_power_W_Hz: float = Field(
         description="Power of RFI transmitter at the source [W/Hz].",
-        default=6.4e-4
+        example=6.4e-4
     )
     lte_frequency_hz: float = Field(
-        description="Frequency of RFI signal [Hz].",
-        default=705e6
+        description="Central frequency of RFI signal [Hz].",
+        example=705e6
     )
     lte_bandwidth_hz: float = Field(
         description="Bandwidth of RFI signal [Hz].",
-        default=5e6
+        example=5e6
     )
 
 

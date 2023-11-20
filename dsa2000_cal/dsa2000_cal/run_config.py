@@ -8,7 +8,7 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.assets.mocks.mock_data import MockData
 from dsa2000_cal.rfi.rfi_simulation import RFISimConfig
-from dsa2000_cal.utils import SerialisableBaseModel
+from dsa2000_cal.utils import SerialisableBaseModel, build_example
 
 
 class RunConfig(SerialisableBaseModel):
@@ -100,9 +100,8 @@ class RunConfig(SerialisableBaseModel):
         example="beam.fits",
     )
     rfi_sim_config: RFISimConfig = Field(
-        default_factory=RFISimConfig,
         description="The RFI simulation configuration.",
-        example=RFISimConfig()
+        example=build_example(RFISimConfig)
     )
     calibration_time_interval: conint(ge=1) = Field(
         description="The time interval to use for calibration in units of integrations.",
@@ -183,9 +182,8 @@ class PrepareRunConfig(SerialisableBaseModel):
         example="light_dawn"
     )
     rfi_sim_config: RFISimConfig = Field(
-        default_factory=RFISimConfig,
         description="The RFI simulation configuration.",
-        example=RFISimConfig()
+        example=build_example(RFISimConfig)
     )
     calibration_time_interval: conint(ge=1) = Field(
         description="The time interval to use for calibration in units of integrations.",
