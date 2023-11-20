@@ -42,10 +42,6 @@ class RFISimConfig(SerialisableBaseModel):
         description="Height of RFI transmitter [m] above array centre.",
         default=20.
     )
-    lte_frequency_hz: float = Field(
-        description="Frequency of RFI signal [Hz].",
-        default=770e6
-    )
     lte_polarization_deg: float = Field(
         description="Polarization angle of RFI [deg, 0=full XX, 90=full YY].",
         default=10.
@@ -53,6 +49,14 @@ class RFISimConfig(SerialisableBaseModel):
     lte_power_W_Hz: float = Field(
         description="Power of RFI transmitter at the source [W/Hz].",
         default=6.4e-4
+    )
+    lte_frequency_hz: float = Field(
+        description="Frequency of RFI signal [Hz].",
+        default=705e6
+    )
+    lte_bandwidth_hz: float = Field(
+        description="Bandwidth of RFI signal [Hz].",
+        default=5e6
     )
 
 
@@ -66,6 +70,7 @@ class MSData(SerialisableBaseModel):
     antenna1: np.ndarray
     antenna2: np.ndarray
     pointing: ac.ICRS
+    freqs_hz: np.ndarray
 
 
 def iter_ms_data(ms_file: str, array: AbstractArray, overwrite: bool) -> Generator[MSData, np.ndarray, None]:
@@ -84,6 +89,9 @@ def iter_ms_data(ms_file: str, array: AbstractArray, overwrite: bool) -> Generat
 
     with pt.table(f'{ms_file}/ANTENNA') as t:
         antenna_position_itrs_m = t.getcol('POSITION')
+
+    with pt.table(ms_file + '/SPECTRAL_WINDOW') as t:
+        freqs_hz = t.getcol('CHAN_FREQ')  # [num_freqs]
 
     with pt.table(ms_file + '/POINTING') as t:
         pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
@@ -115,7 +123,8 @@ def iter_ms_data(ms_file: str, array: AbstractArray, overwrite: bool) -> Generat
             antennas=antennas_itrs,
             antenna1=ant1_select,
             antenna2=ant2_select,
-            pointing=pointing
+            pointing=pointing,
+            freqs_hz=freqs_hz
         )
         # Store response
         with pt.table(ms_file, readonly=False) as t:
@@ -261,12 +270,12 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
     (num_vis,) = geometric_delays.shape
     vis = np.zeros((num_vis, 1, 4), dtype=np.complex64)
     tot_att = (
-                      rfi_sim_config.lte_power_W_Hz * 1e26 / 13
-              ) * (
-                      free_space_path_loss[ms_data.antenna1] * free_space_path_loss[ms_data.antenna2]
-              ) * (
-                      side_lobes_attenuation[ms_data.antenna1] * side_lobes_attenuation[ms_data.antenna2]
-              )  # [num_vis]
+                      1e26 * rfi_sim_config.lte_power_W_Hz / ((C / rfi_sim_config.lte_frequency_hz) ** 2 / (4 * np.pi))
+              ) * np.sqrt(
+        free_space_path_loss[ms_data.antenna1] * free_space_path_loss[ms_data.antenna2]
+    ) * np.sqrt(
+        side_lobes_attenuation[ms_data.antenna1] * side_lobes_attenuation[ms_data.antenna2]
+    )  # [num_vis]
     total_delay = geometric_delays + tracking_delays  # [num_vis]
     # Get the ACF for times that are within the delay range (performance improvement?)
     min_delay = np.min(total_delay)
@@ -280,8 +289,12 @@ def calculate_visibilities(free_space_path_loss, side_lobes_attenuation, geometr
     select_idx = np.clip(np.searchsorted(time_acf, total_delay), 0, len(time_acf) - 1)
     print("Select idx range:", np.min(select_idx), np.max(select_idx))
 
-    # TODO(Joshuaalbert): All the channels get the same RFI... is this correct?
-    vis[:, :, :] = np.reshape(tot_att * acf[select_idx], (-1, 1, 1))  # [num_vis, num_channels, 4]
+    # We put into the destined channel
+    (select_freq_idx,) = np.where(np.bitwise_and(
+        ms_data.freqs_hz >= rfi_sim_config.lte_frequency_hz - rfi_sim_config.lte_bandwidth_hz / 2,
+        ms_data.freqs_hz <= rfi_sim_config.lte_frequency_hz + rfi_sim_config.lte_bandwidth_hz / 2
+    ))
+    vis[:, select_freq_idx, :] = np.reshape(tot_att * acf[select_idx], (-1, 1, 1))  # [num_vis, num_channels, 4]
     # Now we need to rotate the correlations to the correct polarization angle
     lte_polarization_rad = np.deg2rad(rfi_sim_config.lte_polarization_deg)
     vis[:, :, 0] *= np.cos(lte_polarization_rad) ** 2
