@@ -43,7 +43,7 @@ def main(run_config: RunConfig):
     ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm, components=['phase'])  # [time, ant, source, chan, 2, 2]
     beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm, components=['amplitude'])  # [time, ant, source, chan, 2, 2]
     # Multiply diagonal matrices with simple * operator
-    gains = ionosphere_gains * beam_gains # [time, ant, source, chan, 2, 2]
+    gains = ionosphere_gains #* beam_gains # [time, ant, source, chan, 2, 2]
 
     # Uncomment for no gains
     # gains = np.tile(np.eye(2)[None, None, None, None, :, :], gains.shape[:-2] + (1, 1))
