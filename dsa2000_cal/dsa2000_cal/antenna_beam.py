@@ -49,7 +49,7 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
     @cached_property
     def _get_amplitude(self) -> np.ndarray:
         amplitude = 10 ** (self.ant_model[self.model_name] / 20.)  # [num_theta, num_phi, num_freqs]
-        amplitude /= np.max(amplitude)  # Normalise to 1, i.e. voltage gain is np.max(amplitude)
+        # Note: this is amplification factor, not peak of 1.
         return amplitude
 
     def get_amplitude(self) -> np.ndarray:
@@ -57,14 +57,21 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
 
     @cached_property
     def _get_voltage_gain(self) -> np.ndarray:
-        return np.max(self.get_amplitude())
+        return np.max(np.max(self.get_amplitude(), axis=0), axis=0)  # [num_freqs]
 
-    def get_voltage_gain(self) -> float:
-        return self._get_voltage_gain
+    def get_voltage_gain(self) -> np.ndarray:
+        """
+        Get the voltage gain of the antenna model. This is used in the correlator to account for amplification of
+        the signal.
+
+        Returns:
+            voltage gain [Nf]
+        """
+        return self._get_voltage_gain # [Nf]
 
     @cached_property
     def _get_freqs(self) -> np.ndarray:
-        return self.ant_model['freqListGHz'] * 1e9
+        return np.reshape(self.ant_model['freqListGHz'] * 1e9, (-1,))
 
     def get_freqs(self) -> np.ndarray:
         return self._get_freqs

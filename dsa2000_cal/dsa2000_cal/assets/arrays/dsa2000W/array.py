@@ -49,3 +49,22 @@ class DSA2000WArray(AbstractArray):
             )
         )
 
+def test_dsa2000_antenna_beam():
+    antenna_beam = array_registry.get_instance(array_registry.get_match('dsa2000W')).antenna_beam()
+    import pylab as plt
+    import numpy as np
+    amplitude = antenna_beam.get_model().get_amplitude()
+    circular_mean = np.mean(amplitude, axis=1)
+    phi = antenna_beam.get_model().get_phi()
+    theta = antenna_beam.get_model().get_theta()
+    print(amplitude.shape)
+    for i, freq in enumerate(antenna_beam.get_model().get_freqs()):
+        plt.plot(theta[:60], amplitude[:60, i], label=freq)
+    plt.legend()
+    plt.show()
+    print(antenna_beam.get_model().get_freqs())
+    for i, freq in enumerate(antenna_beam.get_model().get_freqs()):
+        for k, th in enumerate(theta):
+            if circular_mean[k, i] < 0.01:
+                break
+        print(f"Freq: {i}, {freq}, theta: {k}, {th}")
