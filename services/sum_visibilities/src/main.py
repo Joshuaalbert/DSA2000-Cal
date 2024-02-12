@@ -16,9 +16,9 @@ def main(run_config: RunConfig):
     sum_and_add_noise(
         output_ms_file=run_config.visibilities_path,
         input_ms_files=[
-            run_config.dft_visibilities_path,
-            # run_config.fft_visibilities_path, #TODO: Turn back on once FFT is working
-            run_config.rfi_visibilities_path
+            # run_config.dft_visibilities_path,
+            run_config.fft_visibilities_path, #TODO: Turn back on once FFT is working
+            # run_config.rfi_visibilities_path
         ],
         array=array,
         channel_width_hz=run_config.channel_width_hz,

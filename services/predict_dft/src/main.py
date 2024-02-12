@@ -26,12 +26,13 @@ def main(run_config: RunConfig):
     if run_config.bright_sky_model_bbs is None:
         raise ValueError("Bright sky model must be specified to run ionosphere simulation.")
 
-    bbs_sky_model = BBSSkyModel(bbs_sky_model=run_config.bright_sky_model_bbs,
-                                pointing_centre=run_config.pointing_centre,
-                                chan0=run_config.start_freq_hz * au.Hz,
-                                chan_width=run_config.channel_width_hz * au.Hz,
-                                num_channels=run_config.num_channels
-                                )
+    bbs_sky_model = BBSSkyModel(
+        bbs_sky_model=run_config.bright_sky_model_bbs,
+        pointing_centre=run_config.pointing_centre,
+        chan0=run_config.start_freq_hz * au.Hz,
+        chan_width=run_config.channel_width_hz * au.Hz,
+        num_channels=run_config.num_channels
+    )
 
     source_model = bbs_sky_model.get_source()
     with pt.table(run_config.dft_visibilities_path, readonly=True) as vis_table:
@@ -40,10 +41,12 @@ def main(run_config: RunConfig):
         times, time_idx = np.unique(vis_table.getcol('TIME'), return_inverse=True)
         uvw = vis_table.getcol('UVW')
 
-    ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm, components=['phase'])  # [time, ant, source, chan, 2, 2]
-    beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm, components=['amplitude'])  # [time, ant, source, chan, 2, 2]
+    ionosphere_gains = extract_scalar_gains(h5parm=run_config.ionosphere_h5parm,
+                                            components=['phase'])  # [time, ant, source, chan, 2, 2]
+    beam_gains = extract_scalar_gains(h5parm=run_config.beam_h5parm,
+                                      components=['amplitude'])  # [time, ant, source, chan, 2, 2]
     # Multiply diagonal matrices with simple * operator
-    gains = ionosphere_gains #* beam_gains # [time, ant, source, chan, 2, 2]
+    gains = ionosphere_gains  # * beam_gains # [time, ant, source, chan, 2, 2]
 
     # Uncomment for no gains
     # gains = np.tile(np.eye(2)[None, None, None, None, :, :], gains.shape[:-2] + (1, 1))

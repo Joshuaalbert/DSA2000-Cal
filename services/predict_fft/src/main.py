@@ -16,10 +16,10 @@ def main(run_config: RunConfig):
 
     # Create aterms.fits
     a_term_file = os.path.abspath('predict_fft_a_corr.parset')
-    write_diagonal_a_term_correction_file(
-        a_term_file=a_term_file,
-        diagonal_gain_fits_files=[run_config.beam_fits, run_config.ionosphere_fits]
-    )
+    # write_diagonal_a_term_correction_file(
+    #     a_term_file=a_term_file,
+    #     diagonal_gain_fits_files=[run_config.beam_fits, run_config.ionosphere_fits]
+    # )
 
     # Take the .fits off the end.
     image_name = os.path.join(
@@ -44,8 +44,8 @@ def main(run_config: RunConfig):
             '-gridder', 'idg',
             '-idg-mode', 'cpu',  # Try hybrid
             '-aterm-kernel-size', '16',
-            '-pol','i',
-            '-aterm-config', a_term_file,
+            '-pol', 'i',
+            # '-aterm-config', a_term_file,
             '-wgridder-accuracy', '1e-4',
             '-nwlayers-factor', '1',
             '-channels-out', '1',
