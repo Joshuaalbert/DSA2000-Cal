@@ -1,8 +1,10 @@
 import astropy.coordinates as ac
 import astropy.time as at
+import astropy.units as au
+import numpy as np
 from astropy.coordinates import EarthLocation
 from astropy.units import Quantity
-import numpy as np
+
 
 def create_uvw_frame(array_location: EarthLocation, time: at.Time, pointing: ac.ICRS) -> ac.SkyOffsetFrame:
     """
@@ -55,6 +57,7 @@ def earth_location_to_uvw(antennas: EarthLocation, array_location: EarthLocation
     w, u, v = antennas_uvw.cartesian.xyz
     return ac.CartesianRepresentation(u, v, w).xyz.T
 
+
 def icrs_to_lmn(sources: ac.ICRS, array_location: ac.EarthLocation, time: at.Time, pointing: ac.ICRS) -> Quantity:
     """
     Convert ICRS coordinates to LMN coordinates.
@@ -74,3 +77,67 @@ def icrs_to_lmn(sources: ac.ICRS, array_location: ac.EarthLocation, time: at.Tim
     lmn = ac.CartesianRepresentation(l, m, n).xyz.T
     return lmn
 
+
+def lmn_to_icrs(lmn: Quantity, array_location: ac.EarthLocation, time: at.Time, pointing: ac.ICRS) -> ac.ICRS:
+    """
+    Convert LMN coordinates to ICRS coordinates.
+
+    Args:
+        lmn: [num_sources, 3] LMN coordinates
+        array_location: the location of array reference location
+        time: the time of the observation
+        pointing: the pointing direction
+
+    Returns:
+        [num_sources] ICRS coordinates
+    """
+    frame = create_uvw_frame(array_location=array_location, time=time, pointing=pointing)
+    lmn = lmn.reshape((-1, 3))
+    # Swap back order to n, l, m
+    cartesian_rep = ac.CartesianRepresentation(lmn[:, 2], lmn[:, 0], lmn[:, 1])
+    sources = ac.SkyCoord(cartesian_rep, frame=frame).transform_to(ac.ICRS)
+    return sources
+
+
+def test_lmn_to_icrs():
+    array_location = ac.EarthLocation.from_geodetic(0, 0, 0)
+    time = at.Time("2021-01-01T00:00:00", scale='utc')
+    pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
+    sources = ac.ICRS(4 * au.deg, 2 * au.deg)
+    lmn = icrs_to_lmn(sources, array_location, time, pointing)
+    reconstructed_sources = lmn_to_icrs(lmn, array_location, time, pointing)
+    print(sources)
+    print(lmn)
+    print(reconstructed_sources)
+    assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
+
+
+def test_lmn_to_icrs_near_poles():
+    array_location = ac.EarthLocation.from_geodetic(0, 0, 0)
+    time = at.Time("2021-01-01T00:00:00", scale='utc')
+    lmn = au.Quantity(
+        [
+            [0.05, 0.0, np.sqrt(1 - 0.05 ** 2)],
+            [0.0, 0.05, np.sqrt(1 - 0.05 ** 2)],
+            [0.0, 0.0, 1],
+        ]
+    )
+
+    pointing_north_pole = ac.ICRS(0 * au.deg, 90 * au.deg)
+    sources = lmn_to_icrs(lmn, array_location, time, pointing_north_pole)
+    print(sources)
+
+    lmn_reconstructed = icrs_to_lmn(sources, array_location, time, pointing_north_pole)
+    print(lmn_reconstructed)
+
+    np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
+
+    # Near south pole
+    pointing_south_pole = ac.ICRS(0 * au.deg, -90 * au.deg)
+    sources = lmn_to_icrs(lmn, array_location, time, pointing_south_pole)
+    print(sources)
+
+    lmn_reconstructed = icrs_to_lmn(sources, array_location, time, pointing_south_pole)
+    print(lmn_reconstructed)
+
+    np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
