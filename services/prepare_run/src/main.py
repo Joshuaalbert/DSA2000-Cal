@@ -16,7 +16,7 @@ from dsa2000_cal.astropy_utils import mean_itrs
 from dsa2000_cal.bbs_sky_model import create_sky_model
 from dsa2000_cal.create_ms_cfg import create_makems_config
 from dsa2000_cal.faint_sky_model import transform_to_wsclean_model
-from dsa2000_cal.run_config import RunConfig, PrepareRunConfig
+from dsa2000_cal.models.run_config import RunConfig, PrepareRunConfig
 
 
 def main(prepare_run_config: PrepareRunConfig):

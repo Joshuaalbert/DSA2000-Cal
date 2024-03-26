@@ -11,7 +11,7 @@ from dsa2000_cal.faint_sky_model import prepare_gain_fits
 from dsa2000_cal.gains import extract_scalar_gains
 
 fill_registries()
-from dsa2000_cal.run_config import RunConfig
+from dsa2000_cal.models.run_config import RunConfig
 from dsa2000_cal.astropy_utils import mean_itrs
 from dsa2000_cal.assets.registries import array_registry
 

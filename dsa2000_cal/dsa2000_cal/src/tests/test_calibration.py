@@ -1,6 +1,7 @@
 import os
+
 # Force 2 jax  hosts
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=1"
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=4"
 
 import time
 from typing import NamedTuple
@@ -14,9 +15,11 @@ import pytest
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.calibration import vec, unvec, kron_product, DFTPredict, ModelData, VisibilityCoords, Calibration, \
+from dsa2000_cal.src.calibrate import Calibration, \
     CalibrationData
-from dsa2000_cal.coord_utils import earth_location_to_uvw, create_uvw_frame, icrs_to_lmn
+from dsa2000_cal.src.dft_predict import DFTModelData, DFTPredict
+from dsa2000_cal.src.common.vec_ops import vec, unvec, kron_product, VisibilityCoords
+from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn
 
 
 def test_vec():
@@ -77,7 +80,7 @@ def test_dft_predict():
     source = 1
     time = 15
     ant = 24
-    model_data = ModelData(
+    model_data = DFTModelData(
         image=jnp.ones((source, chan, 2, 2), dtype=jnp.complex64),
         gains=jnp.ones((source, time, ant, chan, 2, 2), dtype=jnp.complex64),
         lm=1e-3 * jnp.ones((source, 2))
@@ -110,7 +113,7 @@ def mock_data():
     dft_predict = DFTPredict(chunksize=2)
     num_time = 1
     num_ant = 2048
-    num_chan = 2
+    num_chan = 8
     num_sources = 1
 
     # row = (ant * (ant - 1) // 2 + ant) * Nt
@@ -160,17 +163,17 @@ def mock_data():
     sources = ac.ICRS(np.linspace(pointing.ra.deg, pointing.ra.deg + 0.1, num_sources) * au.deg,
                       np.linspace(pointing.dec.deg, pointing.dec.deg + 0.1, num_sources) * au.deg)
 
-    l,m,n = icrs_to_lmn(sources=sources, array_location=array_location, time=times[0], pointing=pointing).T
+    l, m, n = icrs_to_lmn(sources=sources, array_location=array_location, time=times[0], phase_tracking=pointing).T
     lm = jnp.stack([l, m], axis=-1)
 
-    model_data = ModelData(
+    model_data = DFTModelData(
         image=jnp.ones((num_sources, num_chan, 2, 2), dtype=jnp.complex64),
         gains=jnp.ones((num_sources, num_time, num_ant, num_chan, 2, 2), dtype=jnp.complex64),
         lm=lm
     )
 
     model_data = model_data._replace(
-        gains=0.8*model_data.gains.at[..., 0, 1].set(0.).at[..., 1, 0].set(0.),
+        gains=0.8 * model_data.gains.at[..., 0, 1].set(0.).at[..., 1, 0].set(0.),
         image=model_data.image.at[..., 0, 1].set(0.).at[..., 1, 0].set(0.)
     )
 
@@ -209,7 +212,7 @@ def mock_data():
 
 
 def test_calibration(mock_data: MockData):
-    calibration = Calibration(chunksize=1, use_pjit=True)
+    calibration = Calibration()
     init_params = calibration.get_init_params(
         num_source=mock_data.num_source,
         num_time=mock_data.num_time,
@@ -217,11 +220,40 @@ def test_calibration(mock_data: MockData):
         num_chan=mock_data.num_chan
     )
     print(mock_data.calibration_data.obs_vis.shape)
+
+    from jax.experimental import mesh_utils
+    from jax.sharding import Mesh
+    from jax.sharding import PartitionSpec
+    from jax.sharding import NamedSharding
+
+    P = PartitionSpec
+
+    devices = mesh_utils.create_device_mesh((len(jax.devices()), 1, 1))
+    mesh = Mesh(devices, axis_names=('row', 's', 'chan'))
+
+    def tree_device_put(tree, sharding):
+        return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
+
+    calibration_data = CalibrationData(
+        visibility_coords=tree_device_put(mock_data.calibration_data.visibility_coords, NamedSharding(mesh, P('row'))),
+        image=tree_device_put(mock_data.calibration_data.image, NamedSharding(mesh, P('s'))),
+        lm=tree_device_put(mock_data.calibration_data.lm, NamedSharding(mesh, P('s'))),
+        freq=tree_device_put(mock_data.calibration_data.freq, NamedSharding(mesh, P('chan'))),
+        obs_vis=tree_device_put(mock_data.calibration_data.obs_vis, NamedSharding(mesh, P('row', 'chan'))),
+        obs_vis_weight=mock_data.calibration_data.obs_vis_weight#tree_device_put(mock_data.calibration_data.obs_vis_weight, NamedSharding(mesh, P('row', 'chan')))
+    )
+
+
+    init_params = tree_device_put(init_params, NamedSharding(mesh, P('s', None, None, 'chan')))
+
+    def solve(init_params, calibration_data):
+        params, _ = calibration.solve(init_params, calibration_data)
+        return params
+
     # print(init_params)
-    solve_compiled = jax.jit(calibration.solve, donate_argnums=[0, 1]).lower(init_params,
-                                                                             mock_data.calibration_data).compile()
+    solve_compiled = jax.jit(solve, donate_argnums=[0, 1]).lower(init_params, calibration_data).compile()
     t0 = time.time()
-    params, opt_results = solve_compiled(init_params, mock_data.calibration_data)
+    params = solve_compiled(init_params, calibration_data)
     params.gains_real.block_until_ready()
     print(f"Time: {time.time() - t0} seconds.")
-    print(params, opt_results)
+    print(params)

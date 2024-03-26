@@ -10,7 +10,7 @@ __all__ = [
     'chunked_vmap'
 ]
 
-from dsa2000_cal.types import IntArray, int_type
+from dsa2000_cal.src.common.types import IntArray, int_type
 
 FV = TypeVar('FV')
 F = TypeVar('F')
@@ -92,48 +92,7 @@ def prepad(a, chunksize: int):
     return tree_map(lambda arg: _pad_extra(arg, chunksize), a)
 
 
-T = TypeVar('T')
-S = TypeVar('S')
 
-
-def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
-    """
-    Pad data to a multiple of chunk size
-
-    Args:
-        py_tree: pytree to add chunk dimension to
-        chunk_size: size of chunk dimension
-
-    Returns:
-        pytree with chunk dimension added, and callable to remove extra
-    """
-
-    leaves = jax.tree_util.tree_leaves(py_tree)
-
-    if len(leaves) == 0:
-        raise ValueError("Leaves must be non-empty to add a chunk dim.")
-
-    if not all(len(np.shape(x)) > 0 for x in leaves):
-        raise ValueError("Leaves must have batch dim.")
-
-    if not all(np.shape(x)[0] > 0 for x in leaves):
-        raise ValueError("Leaves must have non-zero batch dim.")
-
-    batch_size = np.shape(leaves[0])[0]
-    if not all(np.shape(x)[0] == batch_size for x in leaves):
-        raise ValueError("Leaves do not have consistent batch dim.")
-
-    remainder = batch_size % chunk_size
-    extra = (chunk_size - remainder) % chunk_size
-    if extra > 0:
-        py_tree = tree_map(lambda x: jnp.concatenate([x, jnp.repeat(x[0:1], extra, 0)]), py_tree)
-
-    def _remove_extra(output_py_tree: T) -> T:
-        if extra > 0:
-            output_py_tree = jax.tree_map(lambda x: x[:-extra], output_py_tree)
-        return output_py_tree
-
-    return py_tree, _remove_extra
 
 
 def add_chunk_dim(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:

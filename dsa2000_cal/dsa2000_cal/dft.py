@@ -2,7 +2,7 @@ from typing import Literal
 
 from jax import numpy as jnp, vmap
 
-from dsa2000_cal.jax_utils import chunked_pmap
+from dsa2000_cal.src.common.jax_utils import chunked_pmap
 
 # Lightspeed
 c = 2.99792458e8
@@ -16,7 +16,7 @@ def im_to_vis(
         uvw: jnp.ndarray,
         lm: jnp.ndarray,
         frequency: jnp.ndarray,
-        convention: Literal['fourier', 'casa'] = 'casa',
+        convention: Literal['fourier', 'casa'] = 'fourier',
         dtype=jnp.complex64,
         chunksize: int = 1
 ) -> jnp.ndarray:
@@ -81,7 +81,7 @@ def im_to_vis_with_gains(
         uvw: jnp.ndarray,
         lm: jnp.ndarray,
         frequency: jnp.ndarray,
-        convention: Literal['fourier', 'casa'] = 'casa',
+        convention: Literal['fourier', 'casa'] = 'fourier',
         dtype=jnp.complex64,
         chunksize: int = 1
 ) -> jnp.ndarray:

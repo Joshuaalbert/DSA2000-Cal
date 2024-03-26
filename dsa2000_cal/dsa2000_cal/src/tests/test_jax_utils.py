@@ -1,8 +1,8 @@
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.jax_utils import add_chunk_dim, cumulative_op_static, cumulative_op_dynamic
-from dsa2000_cal.types import float_type, int_type
+from dsa2000_cal.src.common.jax_utils import add_chunk_dim, cumulative_op_static, cumulative_op_dynamic
+from dsa2000_cal.src.common.types import float_type, int_type
 
 
 def test_add_chunk_dim():

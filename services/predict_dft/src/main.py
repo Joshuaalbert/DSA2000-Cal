@@ -13,7 +13,7 @@ fill_registries()
 from dsa2000_cal.bbs_sky_model import BBSSkyModel
 from dsa2000_cal.dft import im_to_vis_with_gains
 from dsa2000_cal.gains import extract_scalar_gains
-from dsa2000_cal.run_config import RunConfig
+from dsa2000_cal.models.run_config import RunConfig
 
 import jax
 from jax import numpy as jnp

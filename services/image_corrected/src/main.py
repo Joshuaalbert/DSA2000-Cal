@@ -3,7 +3,7 @@ import os
 import subprocess
 
 from dsa2000_cal.faint_sky_model import write_diagonal_a_term_correction_file
-from dsa2000_cal.run_config import RunConfig
+from dsa2000_cal.models.run_config import RunConfig
 
 logger = logging.getLogger(__name__)
 

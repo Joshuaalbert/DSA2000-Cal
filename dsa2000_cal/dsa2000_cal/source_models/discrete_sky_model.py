@@ -4,7 +4,7 @@ from astropy import coordinates as ac
 from astropy import time as at
 from astropy import units as au
 
-from dsa2000_cal.coord_utils import icrs_to_lmn
+from dsa2000_cal.common.coord_utils import icrs_to_lmn
 
 
 @dataclasses.dataclass(eq=False)
@@ -35,14 +35,14 @@ class DiscreteSkyModel:
         if not self.brightness.unit.is_equivalent(au.Jy):
             raise ValueError(f"Expected brightness to be in Jy, got {self.brightness.unit}")
 
-    def compute_lmn(self, pointing: ac.ICRS, array_location: ac.EarthLocation, time: at.Time):
+    def compute_lmn(self, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time):
         """
         Compute the l and m coordinates of the sources.
 
         Args:
-            pointing: the pointing direction
+            phase_tracking: the pointing direction
             array_location: the location of the array reference location
             time: the time of the observation
         """
-        return icrs_to_lmn(self.coords_icrs, array_location, time, pointing)
+        return icrs_to_lmn(self.coords_icrs, array_location, time, phase_tracking)
 

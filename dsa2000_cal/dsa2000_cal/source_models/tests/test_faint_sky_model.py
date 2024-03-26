@@ -25,14 +25,14 @@ def test_faint_sky_model():
 
     array_location = ac.EarthLocation.from_geodetic(0, 0, 0)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
-    pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
-    lmn = faint_sky_model.compute_lmn(pointing, array_location, time)
+    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    lmn = faint_sky_model.compute_lmn(phase_tracking, array_location, time)
     assert lmn.shape == (13, 13, 3)
 
     # Check that the lmn coordinates are correct
     assert np.isfinite(lmn).all()
 
-    sources = faint_sky_model.compute_icrs(pointing, array_location, time)
+    sources = faint_sky_model.compute_icrs(phase_tracking, array_location, time)
     # ref_pixel is float make int
     ref_pixel = (int(faint_sky_model.ref_pixel[0]), int(faint_sky_model.ref_pixel[1]))
 

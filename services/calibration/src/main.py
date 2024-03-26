@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from dsa2000_cal.run_config import RunConfig
+from dsa2000_cal.models.run_config import RunConfig
 
 
 def main(run_config: RunConfig):

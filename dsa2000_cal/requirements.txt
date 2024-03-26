@@ -6,7 +6,7 @@ astropy
 reproject
 h5parm
 tables
-jax
+jax>=0.4.1
 jaxlib
 jaxopt
 python-casacore

@@ -5,7 +5,7 @@ from dsa2000_cal.assets.content_registry import fill_registries
 fill_registries()
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.noise import sum_and_add_noise
-from dsa2000_cal.run_config import RunConfig
+from dsa2000_cal.models.run_config import RunConfig
 
 import numpy as np
 
