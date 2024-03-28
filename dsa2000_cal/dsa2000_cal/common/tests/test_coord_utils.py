@@ -37,6 +37,13 @@ def test_lmn_to_icrs():
     print(reconstructed_sources)
     assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
 
+    sources = ac.ICRS([1,2,3,4]*au.deg, [1,2,3,4]*au.deg).reshape((2,2))
+    lmn = icrs_to_lmn(sources, array_location, time, pointing)
+    assert lmn.shape == (2, 2, 3)
+    reconstructed_sources = lmn_to_icrs(lmn, array_location, time, pointing)
+    assert reconstructed_sources.shape == (2, 2)
+    assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
+
 
 def test_lmn_to_icrs_near_poles():
     array_location = ac.EarthLocation.from_geodetic(0, 0, 0)

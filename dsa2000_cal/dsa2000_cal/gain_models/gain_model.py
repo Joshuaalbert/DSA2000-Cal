@@ -11,7 +11,8 @@ class GainModel(ABC):
     An abstract class for a gain model.
     """
     @abstractmethod
-    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time):
+    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
+                     **kwargs):
         """
         Compute the beam gain at the given pointing direction.
 
@@ -20,6 +21,7 @@ class GainModel(ABC):
             phase_tracking: the pointing direction
             array_location: the location of the array reference location
             time: the time of the observation
+            kwargs: additional keyword arguments
 
         Returns:
             (source_shape) + [num_ant, num_freq, 2, 2] The beam gain at the given source coordinates.

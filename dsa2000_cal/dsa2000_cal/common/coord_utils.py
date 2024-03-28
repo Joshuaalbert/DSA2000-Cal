@@ -77,8 +77,11 @@ def icrs_to_lmn(sources: ac.ICRS, array_location: ac.EarthLocation, time: at.Tim
     """
     frame = create_uvw_frame(array_location=array_location, time=time, phase_tracking=phase_tracking)
     # Unsure why, but order is not l,m,n but rather n,l,m (verified)
+    shape = sources.shape
+    sources = sources.reshape((-1,))
     n, l, m = sources.transform_to(frame).cartesian.xyz.value
     lmn = ac.CartesianRepresentation(l, m, n).xyz.T
+    lmn = lmn.reshape(shape + (3,))
     return lmn
 
 
@@ -96,8 +99,10 @@ def lmn_to_icrs(lmn: Quantity, array_location: ac.EarthLocation, time: at.Time, 
         [num_sources] ICRS coordinates
     """
     frame = create_uvw_frame(array_location=array_location, time=time, phase_tracking=phase_tracking)
+    shape = lmn.shape
     lmn = lmn.reshape((-1, 3))
     # Swap back order to n, l, m
     cartesian_rep = ac.CartesianRepresentation(lmn[:, 2], lmn[:, 0], lmn[:, 1])
     sources = ac.SkyCoord(cartesian_rep, frame=frame).transform_to(ac.ICRS)
+    sources = sources.reshape(shape[:-1])
     return sources
