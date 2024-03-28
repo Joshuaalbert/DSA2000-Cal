@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
+from functools import partial
 from typing import List
 
+import jax
 import numpy as np
 from astropy import coordinates as ac
 from astropy import time as at
@@ -10,6 +12,7 @@ class GainModel(ABC):
     """
     An abstract class for a gain model.
     """
+
     @abstractmethod
     def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
                      **kwargs):
@@ -38,13 +41,12 @@ class ProductGainModel(GainModel):
     """
     A product of gain models.
     """
+
     def __init__(self, gain_models: List[GainModel]):
         self.gain_models = gain_models
 
-    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time):
-        gains = [
-            gain_model.compute_beam(sources, phase_tracking, array_location, time) for gain_model in self.gain_models
-        ]
+    @partial(jax.jit, static_argnums=(0,))
+    def _compute_beam_jax(self, gains: List[jax.Array]) -> jax.Array:
         for gain in gains:
             if np.shape(gain) != np.shape(gains[0]):
                 raise ValueError("All gains must have the same shape.")
@@ -53,35 +55,13 @@ class ProductGainModel(GainModel):
         # matrix mul
         output = gains[0]
         for gain in gains[1:]:
-            output = np.matmul(output, gain)
+            output = output @ gain
         return output
 
+    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
+                     **kwargs):
+        gains = [
+            gain_model.compute_beam(sources, phase_tracking, array_location, time) for gain_model in self.gain_models
+        ]
 
-def get_interp_indices_and_weights(x, xp) -> tuple[tuple[int, float], tuple[int, float]]:
-    """
-    One-dimensional linear interpolation. Outside bounds is also linear from nearest two points.
-
-    Args:
-        x: the x-coordinates at which to evaluate the interpolated values
-        xp: the x-coordinates of the data points, must be increasing
-
-    Returns:
-        the interpolated values, same shape as `x`
-    """
-
-    x = np.asarray(x, dtype=np.float_)
-    xp = np.asarray(xp, dtype=np.float_)
-
-    # xp_arr = np.concatenate([xp[:1], xp, xp[-1:]])
-    xp_arr = xp
-
-    i = np.clip(np.searchsorted(xp_arr, x, side='right'), 1, len(xp_arr) - 1)
-    dx = xp_arr[i] - xp_arr[i - 1]
-    delta = x - xp_arr[i - 1]
-
-    epsilon = np.spacing(np.finfo(xp_arr.dtype).eps)
-    dx0 = np.abs(dx) <= epsilon  # Prevent NaN gradients when `dx` is small.
-    # f = jnp.where(dx0, fp_arr[i - 1], fp_arr[i - 1] + (delta / jnp.where(dx0, 1, dx)) * df)
-    dx = np.where(dx0, 1, dx)
-    alpha = delta / dx
-    return (i - 1, (1. - alpha)), (i, alpha)
+        return self._compute_beam_jax(gains)

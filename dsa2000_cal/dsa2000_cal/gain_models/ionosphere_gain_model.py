@@ -4,7 +4,8 @@ import numpy as np
 from astropy import units as au, coordinates as ac, time as at
 
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.gain_models.gain_model import GainModel, get_interp_indices_and_weights
+from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights
 
 
 @dataclasses.dataclass(eq=False)
@@ -38,6 +39,9 @@ class IonosphereGainModel(GainModel):
                 f"dtec shape {self.dtec.shape} does not match times shape {self.times.shape} "
                 f"and directions shape {self.directions.shape}."
             )
+
+    def simulate_ionosphere(self):
+        ...
 
     def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time):
         shape = sources.shape

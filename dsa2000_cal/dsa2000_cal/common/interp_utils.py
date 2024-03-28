@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import lax
@@ -84,8 +85,8 @@ def multilinear_interp_2d(x, y, xp, yp, z):
     yi = (y - yp[0]) / dy
 
     # Calculate lower indices
-    xi0 = np.clip(jnp.floor(xi).astype(jnp.int32), 0, len(xp) - 2)
-    yi0 = np.clip(jnp.floor(yi).astype(jnp.int32), 0, len(yp) - 2)
+    xi0 = jnp.clip(jnp.floor(xi).astype(jnp.int32), 0, len(xp) - 2)
+    yi0 = jnp.clip(jnp.floor(yi).astype(jnp.int32), 0, len(yp) - 2)
 
     # Calculate weights
     wx = xi - xi0
@@ -122,14 +123,38 @@ def _left_broadcast_multiply(x, y):
     if len_x == len_y:
         return x * y
     if len_x > len_y:
-        y = np.reshape(y, np.shape(y) + (1,) * (len_x - len_y))
+        y = jnp.reshape(y, np.shape(y) + (1,) * (len_x - len_y))
         return x * y
     else:
-        x = np.reshape(x, np.shape(x) + (1,) * (len_y - len_x))
+        x = jnp.reshape(x, np.shape(x) + (1,) * (len_y - len_x))
         return x * y
 
 
-def test__left_broadcast_multiply():
-    assert np.all(_left_broadcast_multiply(np.ones((2, 3)), np.ones((2,))) == np.ones((2, 3)))
-    assert np.all(_left_broadcast_multiply(np.ones((2,)), np.ones((2, 3))) == np.ones((2, 3)))
-    assert np.all(_left_broadcast_multiply(np.ones((2, 3)), np.ones((2, 3))) == np.ones((2, 3)))
+def get_interp_indices_and_weights(x, xp) -> tuple[
+    tuple[int | jax.Array, float | jax.Array], tuple[int | jax.Array, float | jax.Array]]:
+    """
+    One-dimensional linear interpolation. Outside bounds is also linear from nearest two points.
+
+    Args:
+        x: the x-coordinates at which to evaluate the interpolated values
+        xp: the x-coordinates of the data points, must be increasing
+
+    Returns:
+        the interpolated values, same shape as `x`
+    """
+
+    x = jnp.asarray(x, dtype=jnp.float_)
+    xp = jnp.asarray(xp, dtype=jnp.float_)
+
+    # xp_arr = np.concatenate([xp[:1], xp, xp[-1:]])
+    xp_arr = xp
+
+    i = jnp.clip(jnp.searchsorted(xp_arr, x, side='right'), 1, len(xp_arr) - 1)
+    dx = xp_arr[i] - xp_arr[i - 1]
+    delta = x - xp_arr[i - 1]
+
+    epsilon = np.spacing(np.finfo(xp_arr.dtype).eps)
+    dx0 = jnp.abs(dx) <= epsilon  # Prevent NaN gradients when `dx` is small.
+    dx = jnp.where(dx0, 1, dx)
+    alpha = delta / dx
+    return (i - 1, (1. - alpha)), (i, alpha)
