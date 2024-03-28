@@ -2,7 +2,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from dsa2000_cal.common.interp_utils import optimized_interp_jax_safe, multilinear_interp_2d, \
-    get_interp_indices_and_weights, _left_broadcast_multiply
+    get_interp_indices_and_weights, _left_broadcast_multiply, convolved_interp
 
 
 def test_linear_interpolation():
@@ -143,3 +143,22 @@ def test__left_broadcast_multiply():
     assert np.all(_left_broadcast_multiply(np.ones((2, 3)), np.ones((2,))) == np.ones((2, 3)))
     assert np.all(_left_broadcast_multiply(np.ones((2,)), np.ones((2, 3))) == np.ones((2, 3)))
     assert np.all(_left_broadcast_multiply(np.ones((2, 3)), np.ones((2, 3))) == np.ones((2, 3)))
+
+
+def test_convolved_interp():
+    x = jnp.array([[0., 0.], [1., 1.]])
+    y = jnp.array([[0., 0.], [1., 1.], [2., 2.]])
+    z = jnp.array([0., 1., 2.])
+
+    z_interp = convolved_interp(y, y, z, k=1, mode='euclidean')
+    print(z_interp)
+    np.testing.assert_array_equal(z_interp, z)
+
+    z_interp = convolved_interp(x, y, z, k=1, mode='euclidean')
+    print(z_interp)
+    np.testing.assert_array_equal(z_interp, jnp.array([0., 1.]))
+
+    x = jnp.array([[0.5, 0.5], [1.5, 1.5]])
+    z_interp = convolved_interp(x, y, z, k=2, mode='euclidean')
+    print(z_interp)
+    np.testing.assert_allclose(z_interp, jnp.array([0.5, 1.5]), rtol=1e-6)

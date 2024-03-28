@@ -5,6 +5,7 @@ from typing import Tuple
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import jax
 import numpy as np
 import pylab as plt
 from h5parm import DataPack
@@ -491,3 +492,10 @@ def msqrt(A):
     max_eig = jnp.max(s)
     min_eig = jnp.min(s)
     return max_eig, min_eig, L
+
+
+def test_msqrt():
+    M = jax.random.normal(random.PRNGKey(42), (100, 100))
+    A = M @ M.T
+    max_eig, min_eig, L = msqrt(A)
+    np.testing.assert_allclose(A, L @ L.T, atol=2e-4)

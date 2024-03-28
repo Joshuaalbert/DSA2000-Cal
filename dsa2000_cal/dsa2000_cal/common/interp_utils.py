@@ -158,3 +158,62 @@ def get_interp_indices_and_weights(x, xp) -> tuple[
     dx = jnp.where(dx0, 1, dx)
     alpha = delta / dx
     return (i - 1, (1. - alpha)), (i, alpha)
+
+
+def convolved_interp(x, y, z, k=3, mode='scaled_euclidean'):
+    """
+    Perform k-nearest neighbour interpolation on a set of points.
+
+    Args:
+        x: [num_x, dim] array points to evaluate convoluation at
+        y: [num_y, dim] array of points to interpolate from
+        z: [num_y] array of values at each point in y
+        k: number of nearest neighbours to use
+        mode: 'euclidean' or 'dot' for distance metric
+
+    Returns:
+        [num_x] array of interpolated values
+    """
+    if k > np.shape(y)[0]:
+        raise ValueError("k must be less than the number of points in y")
+    if mode == 'scaled_euclidean':
+        y_std = jnp.std(y, axis=0) + 1e-6
+        x = x / y_std
+        y = y / y_std
+        dist = jnp.sqrt(jnp.sum(jnp.square(x[:, None, :] - y[None, :, :]), axis=-1))  # [num_x, num_y]
+    elif mode == 'euclidean':
+        dist = jnp.sqrt(jnp.sum(jnp.square(x[:, None, :] - y[None, :, :]), axis=-1))  # [num_x, num_y]
+    elif mode == 'dot':
+        dist = 1. - jnp.sum(x[:, None, :] * y[None, :, :], axis=-1)  # [num_x, num_y]
+    else:
+        raise ValueError(f"Unknown mode {mode}")
+
+    # Get the indices of the k nearest neighbours
+    select_idx = jnp.argsort(dist, axis=-1)[:, :k]  # [num_x, k]
+    weights = jnp.take_along_axis(1. / (dist + 1e-6), select_idx, axis=-1)  # [num_x, k]
+    weights /= jnp.sum(weights, axis=-1, keepdims=True)  # [num_x, k]
+    z_interp = jnp.sum(jnp.take_along_axis(z[None, :], select_idx, axis=-1) * weights, axis=-1)  # [num_x]
+    return z_interp
+
+
+def batched_convolved_interp(x, y, z, k=3, mode='scaled_euclidean', unroll=1):
+    """
+    Perform k-nearest neighbour interpolation on a set of points.
+
+    Args:
+        x: [batch_dim, num_x, dim] array points to evaluate convoluation at
+        y: [num_y, dim] array of points to interpolate from
+        z: [num_y] array of values at each point in y
+        k: number of nearest neighbours to use
+        mode: 'euclidean' or 'dot' for distance metric
+
+    Returns:
+        [batch_dim, num_x] array of interpolated values
+    """
+
+    # Use scan to apply convolved_interp to each batch element
+    def body_fn(carry, x):
+        return carry, convolved_interp(x, y, z, k, mode)
+
+    _, z_interp_batched = lax.scan(body_fn, (), x, unroll=unroll)
+    return z_interp_batched

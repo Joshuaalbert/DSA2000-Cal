@@ -12,7 +12,7 @@ fill_registries()
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.astropy_utils import mean_itrs
+from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.bbs_sky_model import create_sky_model
 from dsa2000_cal.create_ms_cfg import create_makems_config
 from dsa2000_cal.faint_sky_model import transform_to_wsclean_model

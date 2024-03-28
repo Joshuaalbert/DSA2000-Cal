@@ -5,18 +5,74 @@ import numpy as np
 from jax import numpy as jnp, tree_map, pmap, lax, tree_util
 
 __all__ = [
-    'chunked_pmap',
-    'add_chunk_dim',
-    'chunked_vmap'
+    'chunked_pmap'
 ]
 
 from dsa2000_cal.src.common.types import IntArray, int_type
+from typing import TypeVar, Callable, Tuple
+
+import jax
+import jax.numpy as jnp
+import numpy as np
+from jax import tree_util, tree_map, pmap, lax
+from jax._src.numpy.util import check_arraylike, promote_dtypes_inexact
+
+V = TypeVar('V')
+
+
+def promote_pytree(func_name: str, pytree: V) -> V:
+    """
+    Promotes a pytree to a common dtype pytree.
+
+    Args:
+        func_name: name of the function calling this function
+        pytree: pytree to promote
+
+    Returns:
+        pytree with promoted dtypes
+    """
+    leaves, tree_def = tree_util.tree_flatten(pytree)
+    check_arraylike(func_name, *leaves)
+    leaves = promote_dtypes_inexact(*leaves)
+    return tree_util.tree_unflatten(tree_def, leaves)
+
+
+def tree_transpose(list_of_trees):
+    """Convert a list of trees of identical structure into a single tree of lists."""
+    return jax.tree_map(lambda *xs: list(xs), *list_of_trees)
+
+
+PT = TypeVar('PT')
+
+
+def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callable[[jax.Array], PT]]:
+    """
+    Returns functions to ravel and unravel a pytree.
+    """
+    leaf_list, tree_def = tree_util.tree_flatten(example_tree)
+
+    sizes = [leaf.size for leaf in leaf_list]
+    shapes = [leaf.shape for leaf in leaf_list]
+
+    def ravel_fun(pytree: PT) -> jax.Array:
+        leaf_list, tree_def = tree_util.tree_flatten(pytree)
+        return jnp.concatenate([lax.reshape(leaf, (size,)) for leaf, size in zip(leaf_list, sizes)])
+
+    def unravel_fun(flat_array: jax.Array) -> PT:
+        leaf_list = []
+        start = 0
+        for size, shape in zip(sizes, shapes):
+            leaf_list.append(lax.reshape(flat_array[start:start + size], shape))
+            start += size
+        return tree_util.tree_unflatten(tree_def, leaf_list)
+
+    return ravel_fun, unravel_fun
+
 
 FV = TypeVar('FV')
-F = TypeVar('F')
 
 
-def chunked_pmap(f: Callable[..., FV], chunk_size: Optional[int] = None, unroll: int = 1) -> Callable[..., FV]:
+def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: int = 1) -> Callable[..., FV]:
     """
     A version of pmap which chunks the input into smaller pieces to avoid memory issues.
 
@@ -48,18 +104,17 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: Optional[int] = None, unroll:
 
         if chunk_size > 1:
             # Get from first leaf
-            if len(args) > 0:
-                batch_size = jax.tree_util.tree_leaves(args)[0].shape[0]
-            else:
-                batch_size = jax.tree_util.tree_leaves(kwargs)[0].shape[0]
+            leaves = tree_util.tree_leaves((args, kwargs))
+            batch_size = np.shape(leaves[0])[0]
+            for leaf in leaves:
+                if np.shape(leaf)[0] != batch_size:
+                    raise ValueError(f"All leaves must have the same first dimension, got {np.shape(leaf)}.")
             remainder = batch_size % chunk_size
             extra = (chunk_size - remainder) % chunk_size
             if extra > 0:
-                (args, kwargs) = tree_map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
-            (args, kwargs) = tree_map(
-                lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
-                (args, kwargs)
-            )
+                (args, kwargs) = tree_map(lambda x: _pad_extra(x, extra), (args, kwargs))
+            (args, kwargs) = tree_map(lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
+                                      (args, kwargs))
             result = pmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
             result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
             if extra > 0:
@@ -68,43 +123,27 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: Optional[int] = None, unroll:
             result = queue(*args, **kwargs)
         return result
 
-    _f.__doc__ = f.__doc__
-    _f.__annotations__ = f.__annotations__
     return _f
 
 
-def _pad_extra(arg, chunksize):
-    N = arg.shape[0]
-    remainder = N % chunksize
-    if (remainder != 0) and (N > chunksize):
-        # only pad if not a zero remainder
-        extra = (chunksize - remainder) % chunksize
-        arg = jnp.concatenate([arg] + [arg[0:1]] * extra, axis=0)
-        N = N + extra
-    else:
-        extra = 0
-    T = N // chunksize
-    # arg = jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:])
-    return arg
+def _pad_extra(x, extra):
+    return jnp.concatenate([x, jnp.repeat(x[:1], repeats=extra, axis=0)], axis=0)
 
 
-def prepad(a, chunksize: int):
-    return tree_map(lambda arg: _pad_extra(arg, chunksize), a)
+T = TypeVar('T')
+S = TypeVar('S')
 
 
-
-
-
-def add_chunk_dim(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
+def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
     """
-    Add a chunk dimension to a pytree
+    Pad data to a multiple of chunk size
 
     Args:
         py_tree: pytree to add chunk dimension to
         chunk_size: size of chunk dimension
 
     Returns:
-        pytree with chunk dimension added, and callable to remove chunk dim
+        pytree with chunk dimension added, and callable to remove extra
     """
 
     leaves = jax.tree_util.tree_leaves(py_tree)
@@ -127,72 +166,13 @@ def add_chunk_dim(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
     if extra > 0:
         py_tree = tree_map(lambda x: jnp.concatenate([x, jnp.repeat(x[0:1], extra, 0)]), py_tree)
 
-    py_tree = jax.tree_map(lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]), py_tree)
-
-    def _remove_chunk_dim(chunked_py_tree: T) -> T:
-        output = jax.tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), chunked_py_tree)
+    def _remove_extra(output_py_tree: S) -> S:
         if extra > 0:
-            output = jax.tree_map(lambda x: x[:-extra], output)
-        return output
+            output_py_tree = jax.tree_map(lambda x: x[:-extra], output_py_tree)
+        return output_py_tree
 
-    return py_tree, _remove_chunk_dim
+    return py_tree, _remove_extra
 
-
-def chunked_vmap(f, chunk_size: Optional[int] = None, unroll: int = 1):
-    """
-    A version of vmap which chunks the input into smaller pieces to avoid memory issues.
-
-    Args:
-        f: the function to be mapped
-        chunk_size: the size of the chunks. Default is len(devices())
-        unroll: the number of times to unroll the computation
-
-    Returns:
-
-    """
-    if chunk_size is None:
-        chunk_size = len(jax.devices())
-
-    def _f(*args, **kwargs):
-        def queue(*args, **kwargs):
-            """
-            Distributes the computation in queues which are computed with scan.
-            Args:
-                *args:
-            """
-
-            def body(state, X):
-                (args, kwargs) = X
-                return state, f(*args, **kwargs)
-
-            _, result = lax.scan(f=body, init=(), xs=(args, kwargs), unroll=unroll)
-            return result
-
-        if chunk_size > 1:
-            # Get from first leaf
-            if len(args) > 0:
-                batch_size = jax.tree_util.tree_leaves(args)[0].shape[0]
-            else:
-                batch_size = jax.tree_util.tree_leaves(kwargs)[0].shape[0]
-            remainder = batch_size % chunk_size
-            extra = (chunk_size - remainder) % chunk_size
-            if extra > 0:
-                (args, kwargs) = tree_map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
-            (args, kwargs) = tree_map(
-                lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
-                (args, kwargs)
-            )
-            result = jax.vmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
-            result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
-            if extra > 0:
-                result = tree_map(lambda x: x[:-extra], result)
-        else:
-            result = queue(*args, **kwargs)
-        return result
-
-    _f.__doc__ = f.__doc__
-    _f.__annotations__ = f.__annotations__
-    return _f
 
 
 V = TypeVar('V')

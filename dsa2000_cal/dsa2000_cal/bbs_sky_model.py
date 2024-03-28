@@ -8,7 +8,7 @@ from astropy import units as au
 from h5parm.utils import parse_coordinates_bbs
 
 from dsa2000_cal.abc import AbstractSkyModel, SourceModel
-from dsa2000_cal.astropy_utils import rotate_icrs_direction
+from dsa2000_cal.common.astropy_utils import rotate_icrs_direction
 
 
 def extract_columns(line: str) -> Tuple[Dict[str, int], Dict[str, Optional[str]]]:

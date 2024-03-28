@@ -12,7 +12,7 @@ from dsa2000_cal.gains import extract_scalar_gains
 
 fill_registries()
 from dsa2000_cal.models.run_config import RunConfig
-from dsa2000_cal.astropy_utils import mean_itrs
+from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.assets.registries import array_registry
 
 

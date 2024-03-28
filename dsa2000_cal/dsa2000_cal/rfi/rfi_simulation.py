@@ -20,7 +20,7 @@ fill_registries()
 from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.assets.rfi.rfi_data import RFIData
-from dsa2000_cal.astropy_utils import mean_itrs
+from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.utils import SerialisableBaseModel
 
 logging.basicConfig(level=logging.INFO)
