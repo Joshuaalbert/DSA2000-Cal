@@ -160,19 +160,18 @@ def get_interp_indices_and_weights(x, xp) -> tuple[
     return (i - 1, (1. - alpha)), (i, alpha)
 
 
-def convolved_interp(x, y, z, k=3, mode='scaled_euclidean'):
+def get_nn_points(x, y, k=3, mode='scaled_euclidean'):
     """
     Perform k-nearest neighbour interpolation on a set of points.
 
     Args:
         x: [num_x, dim] array points to evaluate convoluation at
         y: [num_y, dim] array of points to interpolate from
-        z: [num_y] array of values at each point in y
         k: number of nearest neighbours to use
         mode: 'euclidean' or 'dot' for distance metric
 
     Returns:
-        [num_x] array of interpolated values
+        [num_x, k] array of indices of the k nearest neighbours, and [num_x, k] array of distances
     """
     if k > np.shape(y)[0]:
         raise ValueError("k must be less than the number of points in y")
@@ -190,7 +189,26 @@ def convolved_interp(x, y, z, k=3, mode='scaled_euclidean'):
 
     # Get the indices of the k nearest neighbours
     select_idx = jnp.argsort(dist, axis=-1)[:, :k]  # [num_x, k]
-    weights = jnp.take_along_axis(1. / (dist + 1e-6), select_idx, axis=-1)  # [num_x, k]
+    dist = jnp.take_along_axis(dist, select_idx, axis=-1)  # [num_x, k]
+    return select_idx, dist
+
+
+def convolved_interp(x, y, z, k=3, mode='scaled_euclidean'):
+    """
+    Perform k-nearest neighbour interpolation on a set of points.
+
+    Args:
+        x: [num_x, dim] array points to evaluate convoluation at
+        y: [num_y, dim] array of points to interpolate from
+        z: [num_y] array of values at each point in y
+        k: number of nearest neighbours to use
+        mode: 'euclidean' or 'dot' for distance metric
+
+    Returns:
+        [num_x] array of interpolated values
+    """
+    select_idx, dist = get_nn_points(x=x, y=y, k=k, mode=mode)
+    weights = 1. / (dist + 1e-6)  # [num_x, k]
     weights /= jnp.sum(weights, axis=-1, keepdims=True)  # [num_x, k]
     z_interp = jnp.sum(jnp.take_along_axis(z[None, :], select_idx, axis=-1) * weights, axis=-1)  # [num_x]
     return z_interp

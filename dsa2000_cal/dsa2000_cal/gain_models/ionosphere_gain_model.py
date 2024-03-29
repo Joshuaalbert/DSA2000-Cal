@@ -1,5 +1,4 @@
 import dataclasses
-import logging
 import os
 from datetime import timedelta
 from functools import partial
@@ -10,8 +9,8 @@ from jax.config import config
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.common.astropy_utils import mean_itrs, create_spherical_grid, create_spherical_earth_grid, \
-    plot_icrs_points
+from dsa2000_cal.common.astropy_utils import mean_itrs, create_spherical_grid, create_spherical_earth_grid
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 config.update("jax_enable_x64", True)
 # Set num jax devices
@@ -25,16 +24,61 @@ from astropy import units as au, coordinates as ac, time as at
 from jax import lax
 from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION, build_ionosphere_tomographic_kernel
-from tomographic_kernel.tomographic_kernel import GeodesicTuple
+from tomographic_kernel.tomographic_kernel import GeodesicTuple, TomographicKernel
 from tomographic_kernel.utils import make_coord_array
+import tensorflow_probability.substrates.jax as tfp
+
+tfpd = tfp.distributions
 
 from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_enu
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, batched_convolved_interp
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, batched_convolved_interp, get_nn_points
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.src.common.jax_utils import chunked_pmap, pad_to_chunksize
 
-logger = logging.getLogger(__name__)
+
+class CachedIonosphereSimulation(SerialisableBaseModel):
+    # Simulation parameters
+    specification: SPECIFICATION
+
+    compute_tec: bool
+    S_marg: int
+    jitter: float
+    seed: int
+
+    array_location: ac.EarthLocation
+    phase_tracking: ac.ICRS
+    ref_ant: ac.EarthLocation
+    ref_time: at.Time
+
+    # Model coords
+    model_times: at.Time  # [num_model_time]
+    model_directions: ac.ICRS  # [num_model_dir]
+    model_antennas: ac.EarthLocation  # [num_model_ant]
+
+    # Data
+    dtec: np.ndarray  # [num_model_time, num_model_dir, num_model_ant]
+    enu_geodesics_data: np.ndarray  # [num_model_time, num_model_dir, num_model_ant, 10]
+
+
+def compare_directions(icrs1: ac.ICRS, icrs2: ac.ICRS, atol=1 * au.arcsec):
+    if icrs1.shape != icrs2.shape:
+        return False
+    return np.all(icrs1.separation(icrs2) <= atol)
+
+
+def compare_earth_locations(earth_location1: ac.EarthLocation, earth_location2: ac.EarthLocation, atol=1e-3 * au.m):
+    if earth_location1.shape != earth_location2.shape:
+        return False
+    itrs1 = earth_location1.get_itrs()
+    itrs2 = earth_location2.get_itrs()
+    return np.all(itrs1.separation_3d(itrs2) <= atol)
+
+
+def compare_times(time1: at.Time, time2: at.Time, atol=1e-3 * au.s):
+    if time1.shape != time2.shape:
+        return False
+    return np.all(abs(time1 - time2) <= at.TimeDelta(atol))
 
 
 @dataclasses.dataclass(eq=False)
@@ -48,12 +92,13 @@ class IonosphereGainModel(GainModel):
     # Simulation parameters
     array_location: ac.EarthLocation
     phase_tracking: ac.ICRS
-    model_directions: ac.ICRS  # [num_model_dir]
     model_times: at.Time  # [num_model_time]
+    model_directions: ac.ICRS  # [num_model_dir]
     model_antennas: ac.EarthLocation  # [num_model_ant]
 
     specification: SPECIFICATION
     plot_folder: str
+    cache_folder: str
 
     ref_ant: ac.EarthLocation | None = None
     ref_time: at.Time | None = None
@@ -70,6 +115,10 @@ class IonosphereGainModel(GainModel):
 
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
+        os.makedirs(self.cache_folder, exist_ok=True)
+
+        cache_file = os.path.join(self.cache_folder, f"cached_{self.specification}.json")
+
         # make sure all 1D
         if self.freqs.isscalar:
             self.freqs = self.freqs.reshape((1,))
@@ -90,8 +139,62 @@ class IonosphereGainModel(GainModel):
             self.ref_time = self.model_times[0]
         if self.ref_ant is None:
             self.ref_ant = self.array_location
+        self.earth_center = ac.EarthLocation.from_geocentric(0 * au.m, 0 * au.m, 0 * au.m)
 
-        self.enu_geodesics_data, self.dtec = self.simulate_ionosphere()
+        cache = None
+        if os.path.exists(cache_file):
+            cache = CachedIonosphereSimulation.parse_file(cache_file)
+            if not compare_directions(cache.model_directions, self.model_directions):
+                raise ValueError(f"Model directions do not match {cache.model_directions} != {self.model_directions}")
+            if not compare_earth_locations(cache.model_antennas, self.model_antennas):
+                raise ValueError(f"Model antennas do not match {cache.model_antennas} != {self.model_antennas}")
+            if not compare_earth_locations(cache.array_location, self.array_location):
+                raise ValueError(f"Array location does not match {cache.array_location} != {self.array_location}")
+            if not compare_directions(cache.phase_tracking, self.phase_tracking):
+                raise ValueError(f"Phase tracking does not match {cache.phase_tracking} != {self.phase_tracking}")
+            if not compare_times(cache.model_times, self.model_times):
+                raise ValueError(f"Model times do not match {cache.model_times} != {self.model_times}")
+            if cache.ref_ant != self.ref_ant:
+                raise ValueError(f"Reference antenna does not match {cache.ref_ant} != {self.ref_ant}")
+            if cache.ref_time != self.ref_time:
+                raise ValueError(f"Reference time does not match {cache.ref_time} != {self.ref_time}")
+
+            if cache.specification != self.specification:
+                raise ValueError(f"Specification does not match {cache.specification} != {self.specification}")
+            if cache.compute_tec != self.compute_tec:
+                raise ValueError(f"Compute TEC does not match {cache.compute_tec} != {self.compute_tec}")
+            if cache.S_marg != self.S_marg:
+                raise ValueError(f"S_marg does not match {cache.S_marg} != {self.S_marg}")
+            if cache.jitter != self.jitter:
+                raise ValueError(f"Jitter does not match {cache.jitter} != {self.jitter}")
+            if cache.seed != self.seed:
+                raise ValueError(f"Seed does not match {cache.seed} != {self.seed}")
+
+            print("Cache loaded successfully.")
+
+        if cache is None:
+            self.enu_geodesics_data, self.dtec = self.simulate_ionosphere()
+            cache = CachedIonosphereSimulation(
+                specification=self.specification,
+                compute_tec=self.compute_tec,
+                S_marg=self.S_marg,
+                jitter=self.jitter,
+                seed=self.seed,
+                array_location=self.array_location,
+                phase_tracking=self.phase_tracking,
+                ref_ant=self.ref_ant,
+                ref_time=self.ref_time,
+                model_times=self.model_times,
+                model_directions=self.model_directions,
+                model_antennas=self.model_antennas,
+                dtec=np.asarray(self.dtec),
+                enu_geodesics_data=np.asarray(self.enu_geodesics_data)
+            )
+            with open(cache_file, 'w') as fp:
+                fp.write(cache.json(indent=2))
+        else:
+            self.enu_geodesics_data = jnp.asarray(cache.enu_geodesics_data)
+            self.dtec = jnp.asarray(cache.dtec)
 
         if self.enu_geodesics_data.shape[:-1] != (
                 len(self.model_times), len(self.model_directions), len(self.model_antennas)
@@ -185,14 +288,13 @@ class IonosphereGainModel(GainModel):
         )
 
         x0 = earth_location_to_enu(
-            self.ref_ant,
+            self.array_location,
             array_location=self.array_location,
             time=self.ref_time
         )
 
-        earth_center = ac.GCRS(0 * au.deg, 0 * au.deg, 0 * au.km).transform_to(ac.ITRS).earth_location
         earth_center_enu = earth_location_to_enu(
-            antennas=earth_center,
+            antennas=self.earth_center,
             array_location=self.array_location,
             time=self.ref_time
         )
@@ -216,7 +318,7 @@ class IonosphereGainModel(GainModel):
         plt.close(fig)
 
         max_baseline = np.max(np.linalg.norm(model_antennas_enu[:, None, :] - model_antennas_enu[None, :, :], axis=-1))
-        logger.info(f"Maximum antenna baseline: {max_baseline} km")
+        print(f"Maximum antenna baseline: {max_baseline} km")
 
         # Plot model directions
         wcs = WCS(naxis=2)
@@ -318,8 +420,10 @@ class IonosphereGainModel(GainModel):
 
         return enu_geodesics_data, dtec
 
-    @partial(jax.jit, static_argnums=(0,))
-    def _compute_beam_jax(self, time_mjd: jax.Array, enu_geodesics_sources: jax.Array) -> jax.Array:
+    @partial(jax.jit, static_argnames=['self', 'northern_hemisphere'])
+    def _compute_beam_jax(self, time_mjd: jax.Array, enu_geodesics_sources: jax.Array,
+                          x0: jax.Array, earth_center_enu: jax.Array,
+                          northern_hemisphere: bool) -> jax.Array:
         """
         Compute the beam for a given time and set of sources.
 
@@ -331,30 +435,24 @@ class IonosphereGainModel(GainModel):
 
         """
 
-        shape = np.shape(enu_geodesics_sources)[:-2]
-        enu_geodesics_sources = jnp.reshape(
-            enu_geodesics_sources, (-1, enu_geodesics_sources.shape[-2], enu_geodesics_sources.shape[-1])
-        )  # [num_sources, num_ant, 6]
-
         freqs = quantity_to_jnp(self.freqs, 'MHz')
         phase_factor = jnp.asarray(self.TEC_CONV) / freqs  # [num_freqs] rad / mTECU
 
-        # Interpolate in time
-        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(time_mjd, jnp.asarray(self.model_times.mjd))
-        dtec = self.dtec[i0] * alpha0 + self.dtec[i1] * alpha1  # [num_model_sources, num_model_ant]
-        dtec = jnp.reshape(dtec, (-1,))
+        dtec_interp = self._nn_conv_regression_jax(
+            time_mjd=time_mjd,
+            enu_geodesics_data=self.enu_geodesics_data,
+            enu_geodesics_sources=enu_geodesics_sources,
+            dtec=self.dtec
+        )
 
-        enu_geodesics_data = self.enu_geodesics_data[i0] * alpha0 + self.enu_geodesics_data[
-            i1] * alpha1  # [num_model_sources, num_model_ant, 3]
-        enu_geodesics_data = jnp.reshape(enu_geodesics_data, (-1, enu_geodesics_data.shape[-1]))
-
-        k = 27
-
-        dtec_interp = batched_convolved_interp(
-            enu_geodesics_sources, enu_geodesics_data, dtec, k=k
-        )  # [num_sources, num_ant]
-
-        dtec_interp = jnp.reshape(dtec_interp, shape + dtec_interp.shape[1:])
+        # dtec_interp = self._batched_condition_regression_jax(
+        #     enu_geodesics_data=self.enu_geodesics_data,
+        #     enu_geodesics_sources=enu_geodesics_sources,
+        #     dtec=self.dtec,
+        #     x0=x0,
+        #     earth_center_enu=earth_center_enu,
+        #     northern_hemisphere=northern_hemisphere
+        # )
 
         phase = dtec_interp[..., None] * phase_factor  # (source_shape) + [num_ant, num_freq]
 
@@ -372,6 +470,125 @@ class IonosphereGainModel(GainModel):
         gains = gains.at[..., 1, 1].set(scalar_gain)
         return gains
 
+    def _nn_conv_regression_jax(self,
+                                time_mjd: jax.Array,
+                                enu_geodesics_data: jax.Array,
+                                enu_geodesics_sources: jax.Array,
+                                dtec: jax.Array
+                                ):
+
+        shape = np.shape(enu_geodesics_sources)[:-2]
+        enu_geodesics_sources = jnp.reshape(
+            enu_geodesics_sources, (-1,) + enu_geodesics_sources.shape[-2:]
+        )  # [num_sources, num_ant, 10]
+
+        # Interpolate in time
+        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(time_mjd, jnp.asarray(self.model_times.mjd))
+        dtec = dtec[i0] * alpha0 + dtec[i1] * alpha1  # [num_model_sources, num_model_ant]
+        dtec = jnp.reshape(dtec, (-1,))  # [num_model_sources * num_model_ant]
+
+        enu_geodesics_data = enu_geodesics_data[i0] * alpha0 + enu_geodesics_data[
+            i1] * alpha1  # [num_model_sources, num_model_ant, 10]
+        enu_geodesics_data = jnp.reshape(
+            enu_geodesics_data, (-1, enu_geodesics_data.shape[-1])
+        )  # [num_model_sources * num_model_ant, 10]
+
+        k = min(27, np.shape(enu_geodesics_data)[0])
+
+        dtec_interp = batched_convolved_interp(
+            enu_geodesics_sources, enu_geodesics_data, dtec, k=k,
+            mode='scaled_euclidean'
+        )  # [num_sources, num_ant]
+
+        dtec_interp = jnp.reshape(dtec_interp, shape + dtec_interp.shape[1:])  # (source_shape) + [num_ant]
+        return dtec_interp
+
+    def _batched_condition_regression_jax(self, enu_geodesics_data: jax.Array,
+                                          enu_geodesics_sources: jax.Array,
+                                          dtec: jax.Array, x0: jax.Array, earth_center_enu: jax.Array,
+                                          northern_hemisphere: bool):
+        shape = np.shape(enu_geodesics_sources)[:-2]
+        enu_geodesics_sources = jnp.reshape(
+            enu_geodesics_sources, (-1,) + enu_geodesics_sources.shape[-2:]
+        )  # [num_sources, num_ant, 10]
+
+        # Use scan to apply convolved_interp to each batch element
+        def body_fn(carry, x):
+            return carry, self._conditional_regression_jax(
+                enu_geodesics_data=enu_geodesics_data,
+                enu_geodesics_sources=x,
+                dtec=dtec,
+                x0=x0,
+                earth_center_enu=earth_center_enu,
+                northern_hemisphere=northern_hemisphere
+            )  # [num_ant]
+
+        _, z_interp_batched = lax.scan(body_fn, (), enu_geodesics_sources)  # [num_sources, num_ant]
+        z_interp_batched = jnp.reshape(z_interp_batched,
+                                       shape + z_interp_batched.shape[-1:])  # (source_shape) + [num_ant]
+        return z_interp_batched
+
+    def _conditional_regression_jax(self,
+                                    enu_geodesics_data: jax.Array,
+                                    enu_geodesics_sources: jax.Array,
+                                    dtec: jax.Array, x0: jax.Array, earth_center_enu: jax.Array,
+                                    northern_hemisphere: bool
+                                    ):
+        tomo_kernel = build_ionosphere_tomographic_kernel(
+            x0=x0,
+            earth_centre=earth_center_enu,
+            specification=self.specification,
+            S_marg=self.S_marg,
+            compute_tec=self.compute_tec,
+            northern_hemisphere=northern_hemisphere
+        )
+
+        def mean_fn(x):
+            X = GeodesicTuple(
+                t=x[:, 0:1],
+                k=x[:, 1:4],
+                x=x[:, 4:7],
+                ref_x=x[:, 7:10]
+            )
+            return tomo_kernel.mean_func(X)
+
+        enu_geodesics_data = jnp.reshape(
+            enu_geodesics_data, (-1, enu_geodesics_data.shape[-1])
+        )  # [num_model_sources * num_model_ant, 10]
+
+        dtec = jnp.reshape(dtec, (-1,))  # [num_model_sources * num_model_ant]
+
+        k = min(27, np.shape(enu_geodesics_data)[0])
+
+        select_idx, dist = get_nn_points(
+            x=enu_geodesics_sources,
+            y=enu_geodesics_data,
+            k=k,
+            mode='scaled_euclidean'
+        )  # [num_ant, k], [num_ant, k]
+
+        # We use these k-nn as the inducing points
+
+        predict_index_points = enu_geodesics_sources  # [num_ant, 10]
+
+        def _single_regression(_predict_index_point, _select_idx):
+            _observation_index_points = enu_geodesics_data[_select_idx]  # [k, 10]
+            _observations = dtec[_select_idx]  # [k]
+            gp = tfpd.GaussianProcessRegressionModel.precompute_regression_model(
+                kernel=ToTFPKernel(tomo_kernel=tomo_kernel),
+                mean_fn=mean_fn,
+                observations=_observations,
+                observation_index_points=_observation_index_points,
+            )
+            predictive_dist = gp.get_marginal_distribution(_predict_index_point[None, :])
+            return predictive_dist.mean()[0]
+
+        predictive_mean = jax.vmap(_single_regression)(
+            predict_index_points, select_idx
+        )  # [num_ant]
+
+        return predictive_mean
+
     def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
                      **kwargs):
 
@@ -380,14 +597,13 @@ class IonosphereGainModel(GainModel):
             array_location=self.array_location,
             time=time
         )
+        shape = sources.shape
+        sources = sources.reshape((-1,))
         directions = icrs_to_enu(
             sources=sources,
             array_location=self.array_location,
             time=time
-        )  # (sources_shape)
-
-        shape = directions.shape
-        directions = directions.reshape((-1,))
+        )  # [num_dir, 3]
 
         if array_location != self.array_location:
             raise ValueError(f"Array location {array_location} does not match {self.array_location}")
@@ -400,6 +616,18 @@ class IonosphereGainModel(GainModel):
 
         time_s = (time.mjd - self.ref_time.mjd) * 86400.
 
+        x0 = earth_location_to_enu(
+            self.array_location,
+            array_location=self.array_location,
+            time=self.ref_time
+        )
+        earth_center_enu = earth_location_to_enu(
+            self.earth_center,
+            array_location=self.array_location,
+            time=self.ref_time
+        )
+        northern_hemisphere = self.ref_ant.geodetic.lat > 0 * au.deg
+
         enu_geodesics_sources = make_coord_array(
             time_s[None, None],
             quantity_to_jnp(directions),
@@ -410,15 +638,49 @@ class IonosphereGainModel(GainModel):
 
         enu_geodesics_sources = enu_geodesics_sources[0, ..., 0, :]  # [num_dir, num_ant, 10]
         enu_geodesics_sources = jnp.reshape(
-            enu_geodesics_sources, shape + enu_geodesics_sources.shape[-1:]
+            enu_geodesics_sources, shape + enu_geodesics_sources.shape[-2:]
         )  # (source_shape) + [num_ant, 10]
 
         gains = self._compute_beam_jax(
             time_mjd=time.mjd,
-            enu_geodesics_sources=enu_geodesics_sources
+            enu_geodesics_sources=enu_geodesics_sources,
+            x0=quantity_to_jnp(x0, 'km'),
+            earth_center_enu=quantity_to_jnp(earth_center_enu, 'km'),
+            northern_hemisphere=northern_hemisphere
         )  # (source_shape) + [num_ant, num_freq]
 
         return gains
+
+
+@dataclasses.dataclass(eq=False)
+class ToTFPKernel(tfp.math.psd_kernels.PositiveSemidefiniteKernel):
+    """
+    Wrapper for a TFP kernel.
+
+    Args:
+        kernel: the TFP kernel to wrap.
+    """
+    tomo_kernel: TomographicKernel
+
+    def __post_init__(self):
+        tfp.math.psd_kernels.PositiveSemidefiniteKernel.__init__(self, feature_ndims=1)
+
+    def matrix(self, x1, x2, name='matrix'):
+        X1 = GeodesicTuple(
+            t=x1[:, 0:1],
+            k=x1[:, 1:4],
+            x=x1[:, 4:7],
+            ref_x=x1[:, 7:10]
+        )
+
+        X2 = GeodesicTuple(
+            t=x2[:, 0:1],
+            k=x2[:, 1:4],
+            x=x2[:, 4:7],
+            ref_x=x2[:, 7:10]
+        )
+
+        return self.tomo_kernel.cov_func(X1, X2)
 
 
 def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
@@ -431,7 +693,8 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
                                   freqs: au.Quantity,
                                   specification: SPECIFICATION,
                                   array_name: str,
-                                  plot_folder: str
+                                  plot_folder: str,
+                                  cache_folder: str
                                   ):
     if not field_of_view.unit.is_equivalent(au.deg):
         raise ValueError("Field of view should be in degrees")
@@ -483,7 +746,7 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
             model_antenna.get_itrs().cartesian.xyz - antennas_itrs.cartesian.xyz.T,
             axis=-1
         )
-        return np.any(dist < 2. * spatial_separation)
+        return np.any(dist < spatial_separation)
 
     # List of EarthLocation
     model_antennas = list(filter(keep, model_antennas))
@@ -499,69 +762,10 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
         model_times=model_times,
         model_antennas=model_antennas,
         specification=specification,
-        plot_folder=plot_folder
+        plot_folder=plot_folder,
+        cache_folder=cache_folder
     )
     return ionosphere_gain_model
-
-
-def test_real_ionosphere_gain_model():
-
-    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
-    field_of_view = 4 * au.deg
-    angular_separation = 32 * au.arcmin
-    spatial_separation = 1000 * au.m
-    observation_start_time = at.Time('2021-01-01T00:00:00', scale='utc')
-    observation_duration = timedelta(minutes=0)
-    temporal_resolution = timedelta(seconds=0)
-    freqs = [700e6, 2000e6] * au.Hz
-    ionosphere_gain_model = ionosphere_gain_model_factory(
-        phase_tracking=phase_tracking,
-        field_of_view=field_of_view,
-        angular_separation=angular_separation,
-        spatial_separation=spatial_separation,
-        observation_start_time=observation_start_time,
-        observation_duration=observation_duration,
-        temporal_resolution=temporal_resolution,
-        freqs=freqs,
-        specification='light_dawn',
-        array_name='dsa2000W',
-        plot_folder='plot_ionosphere'
-    )
-
-
-def test_ionosphere_gain_model():
-    freqs = [700e6, 2000e6] * au.Hz
-    antennas = ac.EarthLocation.from_geodetic([0, 0.01, 0.02, 0.03] * au.deg, [0, 0, 0, 0] * au.deg,
-                                              [0, 0, 0, 0] * au.m)
-    model_antennas = ac.EarthLocation.from_geodetic(
-        [0.005, 0.015, 0.025] * au.deg,
-        [0, 0.001, 0.002] * au.deg,
-        [0, 0, 0] * au.m
-    )
-
-    array_location = ac.EarthLocation(lat=0 * au.deg, lon=0 * au.deg, height=0 * au.m)
-    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
-    model_directions = ac.ICRS(ra=[0, 0.] * au.deg, dec=[0., 1.] * au.deg)
-    model_times = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:00:30'], scale='utc')
-
-    ionosphere_gain_model = IonosphereGainModel(
-        freqs=freqs,
-        antennas=antennas,
-        array_location=array_location,
-        phase_tracking=phase_tracking,
-        model_directions=model_directions,
-        model_times=model_times,
-        model_antennas=model_antennas,
-        specification='light_dawn',
-        plot_folder='plot_ionosphere'
-    )
-
-    assert ionosphere_gain_model.num_freqs == len(freqs)
-    assert ionosphere_gain_model.num_antenna == len(antennas)
-    assert ionosphere_gain_model.ref_ant == array_location
-    assert ionosphere_gain_model.ref_time == model_times[0]
-    assert np.all(np.isfinite(ionosphere_gain_model.dtec))
-    assert np.all(np.isfinite(ionosphere_gain_model.enu_geodesics_data))
 
 
 def msqrt(A):

@@ -6,7 +6,7 @@ from astropy import coordinates as ac
 from pydantic import Field
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.utils import SerialisableBaseModel
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 
 # Creates an empty Measurement Set using simms and then does a DFT prediction of visibilities for given sky model.

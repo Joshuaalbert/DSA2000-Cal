@@ -39,36 +39,9 @@ def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.
         points = pointing.directional_offset_by(angle_offsets, distances)
         grid_points.append(points)
 
-    return ac.concatenate(grid_points).transform_to(ac.ICRS)
+    coords = ac.concatenate(grid_points).transform_to(ac.ICRS)
+    return ac.ICRS(ra=coords.ra, dec=coords.dec)
 
-
-def plot_icrs_points(icrs_coords: ac.ICRS):
-    """
-    Plot points in ICRS coordinates using wcsaxes for accurate celestial projection.
-
-    Parameters:
-    icrs_coords (list of SkyCoord): The ICRS coordinates to plot.
-    """
-    # Define a WCS object in the ICRS frame
-    wcs = WCS(naxis=2)
-    wcs.wcs.ctype = ['RA---AIT', 'DEC--AIT']  # AITOFF projection
-    wcs.wcs.crval = [0, 0]  # Center of the projection
-    wcs.wcs.crpix = [0, 0]
-    wcs.wcs.cdelt = [-1, 1]
-
-    # Create a figure with WCSAxes
-    fig = plt.figure(figsize=(10, 6))
-    ax = fig.add_subplot(111, projection=wcs)
-    ax.set_xlabel('Right Ascension')
-    ax.set_ylabel('Declination')
-
-    # Plot each point
-    for coord in icrs_coords:
-        ra = coord.ra.degree
-        dec = coord.dec.degree
-        ax.plot(ra, dec, 'o', markersize=5, transform=ax.get_transform('world'))
-
-    plt.show()
 
 
 def create_spherical_earth_grid(center: ac.EarthLocation, radius: au.Quantity, dr: au.Quantity) -> ac.EarthLocation:
@@ -135,7 +108,7 @@ def random_discrete_skymodel(pointing: ac.ICRS, angular_width: au.Quantity, n: i
     pointing = ac.SkyCoord(ra=pointing.ra, dec=pointing.dec, frame='icrs')
     sampled_coords = pointing.directional_offset_by(random_angles, random_distances)
 
-    return sampled_coords
+    return ac.ICRS(ra=sampled_coords.ra, dec=sampled_coords.dec)
 
 
 def mean_icrs(coords: ac.ICRS) -> ac.ICRS:

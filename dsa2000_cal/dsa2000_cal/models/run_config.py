@@ -8,7 +8,7 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.assets.mocks.mock_data import MockData
 from dsa2000_cal.rfi.rfi_simulation import RFISimConfig
-from dsa2000_cal.utils import SerialisableBaseModel, build_example
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel, build_example
 
 
 class RunConfig(SerialisableBaseModel):

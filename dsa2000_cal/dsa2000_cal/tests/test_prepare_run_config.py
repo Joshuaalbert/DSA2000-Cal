@@ -1,5 +1,5 @@
 from dsa2000_cal.models.run_config import PrepareRunConfig
-from dsa2000_cal.utils import build_example
+from dsa2000_cal.common.serialise_utils import build_example
 
 
 def test_run_config():
