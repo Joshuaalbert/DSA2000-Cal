@@ -1,6 +1,6 @@
 import numpy as np
 
-from dsa2000_cal.noise import calc_baseline_noise, calc_image_noise
+from dsa2000_cal.common.noise import calc_baseline_noise, calc_image_noise
 
 
 def test_calc_noise_full_observation():

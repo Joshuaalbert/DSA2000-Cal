@@ -11,8 +11,25 @@ from dsa2000_cal.common.coord_utils import lmn_to_icrs, icrs_to_lmn
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import multilinear_interp_2d, get_interp_indices_and_weights
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 from dsa2000_cal.gain_models.gain_model import GainModel
+
+
+class DishEffectsGainModelParams(SerialisableBaseModel):
+    # dish parameters
+    dish_diameter: au.Quantity = 5. * au.m
+    focal_length: au.Quantity = 2. * au.m
+
+    # Dish effect parameters
+    elevation_pointing_error_stddev: au.Quantity = 2. * au.arcmin
+    cross_elevation_pointing_error_stddev: au.Quantity = 2. * au.arcmin
+    axial_focus_error_stddev: au.Quantity = 3. * au.mm
+    elevation_feed_offset_stddev: au.Quantity = 3. * au.mm
+    cross_elevation_feed_offset_stddev: au.Quantity = 3. * au.mm
+    horizon_peak_astigmatism_stddev: au.Quantity = 5. * au.mm
+    surface_error_mean: au.Quantity = 3. * au.mm
+    surface_error_stddev: au.Quantity = 1. * au.mm
 
 
 @dataclasses.dataclass(eq=False)
@@ -30,26 +47,14 @@ class DishEffectsGainModel(GainModel):
     # The time axis to precompute the dish effects
     model_times: at.Time  # [num_times]
 
-    # dish parameters
-    dish_diameter: au.Quantity = 5. * au.m
-    focal_length: au.Quantity = 2. * au.m
-
-    # Dish effect parameters
-    elevation_pointing_error_stddev: au.Quantity = 2. * au.arcmin
-    cross_elevation_pointing_error_stddev: au.Quantity = 2. * au.arcmin
-    axial_focus_error_stddev: au.Quantity = 3. * au.mm
-    elevation_feed_offset_stddev: au.Quantity = 3. * au.mm
-    cross_elevation_feed_offset_stddev: au.Quantity = 3. * au.mm
-    horizon_peak_astigmatism_stddev: au.Quantity = 5. * au.mm
-    surface_error_mean: au.Quantity = 3. * au.mm
-    surface_error_stddev: au.Quantity = 1. * au.mm
+    dish_effect_params: DishEffectsGainModelParams = dataclasses.field(default_factory=DishEffectsGainModelParams)
 
     seed: int = 42
     convention: Literal['fourier', 'casa'] = 'fourier'
     dtype: jnp.dtype = jnp.complex64
 
     def __post_init__(self):
-        self.freqs = self.beam_gain_model.freqs
+        self.model_freqs = self.beam_gain_model.model_freqs
         self.num_antenna = self.beam_gain_model.num_antenna
 
         # make sure all 1D
@@ -57,83 +62,85 @@ class DishEffectsGainModel(GainModel):
             self.model_times = self.model_times.reshape((1,))
 
         self.num_time = len(self.model_times)
-        self.num_freq = len(self.freqs)
-        self.wavelengths = constants.c / self.freqs
+        self.num_model_freq = len(self.model_freqs)
+        self.model_wavelengths = constants.c / self.model_freqs
 
         # Check shapes
-        if len(self.freqs.shape) != 1:
-            raise ValueError(f"Expected freqs to have 1 dimension but got {len(self.freqs.shape)}")
+        if len(self.model_freqs.shape) != 1:
+            raise ValueError(f"Expected freqs to have 1 dimension but got {len(self.model_freqs.shape)}")
         if len(self.model_times.shape) != 1:
             raise ValueError(f"Expected times to have 1 dimension but got {len(self.model_times.shape)}")
 
         # Ensure phi,theta,freq units congrutent
 
-        if not self.dish_diameter.unit.is_equivalent(au.m):
-            raise ValueError(f"Expected dish_diameter to be in length units but got {self.dish_diameter.unit}")
-        if not self.focal_length.unit.is_equivalent(au.m):
-            raise ValueError(f"Expected focal_length to be in length units but got {self.focal_length.unit}")
-        if not self.freqs.unit.is_equivalent(au.Hz):
-            raise ValueError(f"Expected freqs to be in Hz but got {self.freqs.unit}")
-        if not self.elevation_pointing_error_stddev.unit.is_equivalent(au.rad):
+        if not self.dish_effect_params.dish_diameter.unit.is_equivalent(au.m):
             raise ValueError(
-                f"Expected elevation_pointing_error_stddev to be in angular units but got {self.elevation_pointing_error_stddev.unit}")
-        if not self.cross_elevation_pointing_error_stddev.unit.is_equivalent(au.rad):
+                f"Expected dish_diameter to be in length units but got {self.dish_effect_params.dish_diameter.unit}")
+        if not self.dish_effect_params.focal_length.unit.is_equivalent(au.m):
             raise ValueError(
-                f"Expected cross_elevation_pointing_error_stddev to be in angular units but got {self.cross_elevation_pointing_error_stddev.unit}")
-        if not self.axial_focus_error_stddev.unit.is_equivalent(au.m):
+                f"Expected focal_length to be in length units but got {self.dish_effect_params.focal_length.unit}")
+        if not self.model_freqs.unit.is_equivalent(au.Hz):
+            raise ValueError(f"Expected freqs to be in Hz but got {self.model_freqs.unit}")
+        if not self.dish_effect_params.elevation_pointing_error_stddev.unit.is_equivalent(au.rad):
             raise ValueError(
-                f"Expected axial_focus_error_stddev to be in length units but got {self.axial_focus_error_stddev.unit}")
-        if not self.elevation_feed_offset_stddev.unit.is_equivalent(au.m):
+                f"Expected elevation_pointing_error_stddev to be in angular units but got {self.dish_effect_params.elevation_pointing_error_stddev.unit}")
+        if not self.dish_effect_params.cross_elevation_pointing_error_stddev.unit.is_equivalent(au.rad):
             raise ValueError(
-                f"Expected elevation_feed_offset_stddev to be in length units but got {self.elevation_feed_offset_stddev.unit}")
-        if not self.cross_elevation_feed_offset_stddev.unit.is_equivalent(au.m):
+                f"Expected cross_elevation_pointing_error_stddev to be in angular units but got {self.dish_effect_params.cross_elevation_pointing_error_stddev.unit}")
+        if not self.dish_effect_params.axial_focus_error_stddev.unit.is_equivalent(au.m):
             raise ValueError(
-                f"Expected cross_elevation_feed_offset_stddev to be in length units but got {self.cross_elevation_feed_offset_stddev.unit}")
-        if not self.horizon_peak_astigmatism_stddev.unit.is_equivalent(au.m):
+                f"Expected axial_focus_error_stddev to be in length units but got {self.dish_effect_params.axial_focus_error_stddev.unit}")
+        if not self.dish_effect_params.elevation_feed_offset_stddev.unit.is_equivalent(au.m):
             raise ValueError(
-                f"Expected horizon_peak_astigmatism_stddev to be in length units but got {self.horizon_peak_astigmatism_stddev.unit}")
-        if not self.surface_error_mean.unit.is_equivalent(au.m):
+                f"Expected elevation_feed_offset_stddev to be in length units but got {self.dish_effect_params.elevation_feed_offset_stddev.unit}")
+        if not self.dish_effect_params.cross_elevation_feed_offset_stddev.unit.is_equivalent(au.m):
             raise ValueError(
-                f"Expected surface_error_mean to be in length units but got {self.surface_error_mean.unit}")
-        if not self.surface_error_stddev.unit.is_equivalent(au.m):
+                f"Expected cross_elevation_feed_offset_stddev to be in length units but got {self.dish_effect_params.cross_elevation_feed_offset_stddev.unit}")
+        if not self.dish_effect_params.horizon_peak_astigmatism_stddev.unit.is_equivalent(au.m):
             raise ValueError(
-                f"Expected surface_error_stddev to be in length units but got {self.surface_error_stddev.unit}")
+                f"Expected horizon_peak_astigmatism_stddev to be in length units but got {self.dish_effect_params.horizon_peak_astigmatism_stddev.unit}")
+        if not self.dish_effect_params.surface_error_mean.unit.is_equivalent(au.m):
+            raise ValueError(
+                f"Expected surface_error_mean to be in length units but got {self.dish_effect_params.surface_error_mean.unit}")
+        if not self.dish_effect_params.surface_error_stddev.unit.is_equivalent(au.m):
+            raise ValueError(
+                f"Expected surface_error_stddev to be in length units but got {self.dish_effect_params.surface_error_stddev.unit}")
 
         # Generate the dish effects, broadcasts with [num_antenna, num_freq] ater time interpolation
         keys = jax.random.split(jax.random.PRNGKey(self.seed), 7)
-        self.elevation_point_error = self.elevation_pointing_error_stddev * jax.random.normal(
+        self.elevation_point_error = self.dish_effect_params.elevation_pointing_error_stddev * jax.random.normal(
             key=keys[0],
             shape=(self.num_time, self.num_antenna, 1)
         )
-        self.cross_elevation_point_error = self.cross_elevation_pointing_error_stddev * jax.random.normal(
+        self.cross_elevation_point_error = self.dish_effect_params.cross_elevation_pointing_error_stddev * jax.random.normal(
             key=keys[1],
             shape=(self.num_time, self.num_antenna, 1)
         )
-        self.axial_focus_error = self.axial_focus_error_stddev * jax.random.normal(
+        self.axial_focus_error = self.dish_effect_params.axial_focus_error_stddev * jax.random.normal(
             key=keys[2],
             shape=(self.num_time, self.num_antenna, 1)
         )
-        self.elevation_feed_offset = self.elevation_feed_offset_stddev * jax.random.normal(
+        self.elevation_feed_offset = self.dish_effect_params.elevation_feed_offset_stddev * jax.random.normal(
             key=keys[3],
             shape=(self.num_antenna, 1)
         )
-        self.cross_elevation_feed_offset = self.cross_elevation_feed_offset_stddev * jax.random.normal(
+        self.cross_elevation_feed_offset = self.dish_effect_params.cross_elevation_feed_offset_stddev * jax.random.normal(
             key=keys[4],
             shape=(self.num_antenna, 1)
         )
-        self.horizon_peak_astigmatism = self.horizon_peak_astigmatism_stddev * jax.random.normal(
+        self.horizon_peak_astigmatism = self.dish_effect_params.horizon_peak_astigmatism_stddev * jax.random.normal(
             key=keys[5],
             shape=(self.num_antenna, 1)
         )
-        self.surface_error = self.surface_error_mean + self.surface_error_stddev * jax.random.normal(
+        self.surface_error = self.dish_effect_params.surface_error_mean + self.dish_effect_params.surface_error_stddev * jax.random.normal(
             key=keys[6],
             shape=(self.num_antenna, 1)
         )
         # Compute aperture amplitude
-        self.sampling_interval = au.Quantity(jnp.min(self.wavelengths), unit=self.wavelengths.unit)
+        self.sampling_interval = au.Quantity(jnp.min(self.model_wavelengths), unit=self.model_wavelengths.unit)
         self.dx = self.dy = self.sampling_interval / 2.
         # 2*R = sampling_interval * (2 * n + 1)
-        n = int(self.dish_diameter / self.sampling_interval) + 1
+        n = int(self.dish_effect_params.dish_diameter / self.sampling_interval) + 1
 
         yvec = np.arange(-n, n + 1) * self.dy
         xvec = np.arange(-n, n + 1) * self.dx
@@ -146,17 +153,17 @@ class DishEffectsGainModel(GainModel):
         N = np.sqrt(1. - L ** 2 - M ** 2)
         self.lmn_data = au.Quantity(jnp.stack([L, M, N], axis=-1))  # [2n+1, 2n+1, 3]
         self.evanescent_mask = np.isnan(N)  # [2n+1, 2n+1]
-        self.aperture_amplitude = self.compute_aperture_amplitude()  # [2n+1, 2n+1, num_freq]
+        self.aperture_amplitude = self.compute_aperture_amplitude()  # [2n+1, 2n+1, num_model_freq]
 
     @partial(jax.jit, static_argnames=['self'])
     def _compute_aperture_amplitude_jax(self, image_amplitude: jax.Array) -> jax.Array:
         evanescent_mask = jnp.asarray(self.evanescent_mask)
-        image_amplitude = jnp.where(evanescent_mask[:, :, None], 0., image_amplitude)  # [2n+1, 2n+1, num_freq]
+        image_amplitude = jnp.where(evanescent_mask[:, :, None], 0., image_amplitude)  # [2n+1, 2n+1, num_model_freq]
         am = ApertureTransform(convention=self.convention)
         dnu = quantity_to_jnp(self.dl * self.dm / self.sampling_interval ** 2)
         aperture_amplitude = am.to_aperture(
             f_image=image_amplitude, axes=(0, 1), dnu=dnu
-        )  # [2n+1, 2n+1, num_freq]
+        )  # [2n+1, 2n+1, num_model_freq]
         return aperture_amplitude
 
     def compute_aperture_amplitude(self) -> jax.Array:
@@ -166,22 +173,26 @@ class DishEffectsGainModel(GainModel):
         phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
         sources = lmn_to_icrs(self.lmn_data, array_location=array_location, time=time, phase_tracking=phase_tracking)
 
-        gain_amplitude = self.beam_gain_model.compute_beam(
+        gain_amplitude = self.beam_gain_model.compute_gain(
+            freqs=self.model_freqs,
             sources=sources,
             phase_tracking=phase_tracking,
             array_location=array_location,
             time=time
-        )  # [2n+1, 2n+1, num_ant, num_freq, 2, 2]
+        )  # [2n+1, 2n+1, num_ant, num_model_freq, 2, 2]
         # TODO: assumes identical antennas.
         # TODO: assumes scalar amplitud, so use [0,0]
-        image_amplitude = gain_amplitude[..., 0, :, 0, 0]  # [2n+1, 2n+1, num_freq]
+        image_amplitude = gain_amplitude[..., 0, :, 0, 0]  # [2n+1, 2n+1, num_model_freq]
         return self._compute_aperture_amplitude_jax(image_amplitude=image_amplitude)
 
-    def _compute_aperture_field_model_jax(self, time_mjd, elevation_rad) -> jax.Array:
+    def _compute_aperture_field_model_jax(self, freqs: jax.Array, time_mjd: jax.Array,
+                                          elevation_rad: jax.Array) -> jax.Array:
         """
         Computes the E-field at the aperture of the dish.
 
         Args:
+            freqs: the frequency values
+            time_mjd: the time in MJD
             elevation: the elevation
 
         Returns:
@@ -190,7 +201,7 @@ class DishEffectsGainModel(GainModel):
 
         X = quantity_to_jnp(self.X)
         Y = quantity_to_jnp(self.Y)
-        focal_length = quantity_to_jnp(self.focal_length)
+        focal_length = quantity_to_jnp(self.dish_effect_params.focal_length)
         cross_elevation_point_error = quantity_to_jnp(self.cross_elevation_point_error)
         elevation_point_error = quantity_to_jnp(self.elevation_point_error)
         axial_focus_error = quantity_to_jnp(self.axial_focus_error)
@@ -198,9 +209,15 @@ class DishEffectsGainModel(GainModel):
         cross_elevation_feed_offset = quantity_to_jnp(self.cross_elevation_feed_offset)
         horizon_peak_astigmatism = quantity_to_jnp(self.horizon_peak_astigmatism)
         surface_error = quantity_to_jnp(self.surface_error)
-        dish_diameter = quantity_to_jnp(self.dish_diameter)
+        dish_diameter = quantity_to_jnp(self.dish_effect_params.dish_diameter)
         R = 0.5 * dish_diameter
-        wavelengths = quantity_to_jnp(self.wavelengths)
+        model_freqs = quantity_to_jnp(self.model_freqs)
+        wavelengths = quantity_to_jnp(constants.c) / freqs
+
+        # Interp freq
+        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(freqs, model_freqs)
+        aperture_amplitude = self.aperture_amplitude[..., i0] * alpha0 + self.aperture_amplitude[
+            ..., i1] * alpha1  # [2n+1, 2n+1, num_freqs]
 
         (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(time_mjd, jnp.asarray(self.model_times.mjd))
 
@@ -242,11 +259,11 @@ class DishEffectsGainModel(GainModel):
         else:
             raise ValueError(f"Unknown convention {self.convention}")
 
-        aperture_field = jnp.exp(constant * total_path_length_error / wavelengths)
-        aperture_field *= self.aperture_amplitude[..., None, :]  # [2n+1, 2n+1, num_ant, num_freq]
+        aperture_field = jnp.exp(constant * total_path_length_error / wavelengths)  # [2n+1, 2n+1, num_ant, num_freq]
+        aperture_field *= aperture_amplitude[..., None, :]
         return aperture_field
 
-    def compute_aperture_field_model(self, time: at.Time, elevation: au.Quantity) -> au.Quantity:
+    def compute_aperture_field_model(self, freqs: au.Quantity, time: at.Time, elevation: au.Quantity) -> jax.Array:
         """
         Computes the E-field at the aperture of the dish.
 
@@ -256,8 +273,16 @@ class DishEffectsGainModel(GainModel):
         Returns:
             (shape) + path length distortion in meters
         """
+        if freqs.isscalar:
+            freqs = freqs.reshape((1,))
+        if len(freqs.shape) != 1:
+            raise ValueError(f"Expected freqs to have 1 dimension but got {len(freqs.shape)}")
+        if not freqs.unit.is_equivalent(au.Hz):
+            raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}")
+
         return self._compute_aperture_field_model_jax(
-            time_mjd=time.mjd,
+            freqs=quantity_to_jnp(freqs),
+            time_mjd=jnp.asarray(time.mjd),
             elevation_rad=quantity_to_jnp(elevation)
         )
 
@@ -277,8 +302,8 @@ class DishEffectsGainModel(GainModel):
         )  # [num_sources, num_ant, num_freq]
         return image_field
 
-    def _compute_beam_dft_jax(self, lmn_sources: jax.Array, aperture_field: jax.Array):
-        wavelengths = quantity_to_jnp(self.wavelengths)
+    def _compute_beam_dft_jax(self, freqs: jax.Array, lmn_sources: jax.Array, aperture_field: jax.Array):
+        wavelengths = quantity_to_jnp(constants.c) / freqs  # [num_freqs]
         Y = quantity_to_jnp(self.Y)
         X = quantity_to_jnp(self.X)
         # Opposing constant
@@ -307,11 +332,13 @@ class DishEffectsGainModel(GainModel):
         return image_field
 
     @partial(jax.jit, static_argnames=['self', 'mode'])
-    def _compute_beam_jax(self, lmn_sources: jax.Array, time_mjd: jax.Array, elevation_rad: jax.Array, mode: str):
+    def _compute_gain_jax(self, freqs: jax.Array, lmn_sources: jax.Array, time_mjd: jax.Array, elevation_rad: jax.Array,
+                          mode: str):
         shape = np.shape(lmn_sources)[:-1]
         lmn_sources = lmn_sources.reshape((-1, 3))
 
         aperture_field = self._compute_aperture_field_model_jax(
+            freqs=freqs,
             time_mjd=time_mjd, elevation_rad=elevation_rad
         )  # [2n+1, 2n+1, num_antenna, num_freq]
         if mode == 'fft':
@@ -321,6 +348,7 @@ class DishEffectsGainModel(GainModel):
             )
         elif mode == 'dft':
             image_field = self._compute_beam_dft_jax(
+                freqs=freqs,
                 lmn_sources=lmn_sources,
                 aperture_field=aperture_field
             )
@@ -334,8 +362,16 @@ class DishEffectsGainModel(GainModel):
         gains = gains.at[..., 1, 1].set(image_field)
         return gains
 
-    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
+    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS,
+                     array_location: ac.EarthLocation, time: at.Time,
                      mode: str = 'fft'):
+
+        if freqs.isscalar:
+            freqs = freqs.reshape((1,))
+        if len(freqs.shape) != 1:
+            raise ValueError(f"Expected freqs to have 1 dimension but got {len(freqs.shape)}")
+        if not freqs.unit.is_equivalent(au.Hz):
+            raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}")
 
         altaz_frame = ac.AltAz(location=array_location, obstime=time)
         elevation = phase_tracking.transform_to(altaz_frame).alt
@@ -346,11 +382,10 @@ class DishEffectsGainModel(GainModel):
             phase_tracking=phase_tracking
         )  # (source_shape) + [3]
 
-        return self._compute_beam_jax(
+        return self._compute_gain_jax(
+            freqs=quantity_to_jnp(freqs),
             lmn_sources=quantity_to_jnp(lmn_sources),
             time_mjd=jnp.asarray(time.mjd),
             elevation_rad=quantity_to_jnp(elevation),
             mode=mode
         )
-
-

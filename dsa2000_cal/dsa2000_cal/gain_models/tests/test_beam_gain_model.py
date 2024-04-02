@@ -1,7 +1,7 @@
 import numpy as np
 from astropy import units as au, coordinates as ac, time as at
 
-from dsa2000_cal.gain_models.beam_gain_model import lmn_from_phi_theta, BeamGainModel, beam_gain_model_factor
+from dsa2000_cal.gain_models.beam_gain_model import lmn_from_phi_theta, BeamGainModel, beam_gain_model_factory
 
 
 def test_phi_theta_to_cartesian():
@@ -31,7 +31,7 @@ def test_beam_gain_model():
     num_antenna = 5
 
     beam_gain_model = BeamGainModel(
-        freqs=freqs,
+        model_freqs=freqs,
         model_theta=theta,
         model_phi=phi,
         model_amplitude=amplitude,
@@ -43,7 +43,8 @@ def test_beam_gain_model():
     array_location = ac.EarthLocation(lat=0, lon=0, height=0)
     time = at.Time('2021-01-01T00:00:00', scale='utc')
 
-    gains = beam_gain_model.compute_beam(
+    gains = beam_gain_model.compute_gain(
+        freqs=freqs,
         sources=sources,
         phase_tracking=phase_tracking,
         array_location=array_location,
@@ -55,7 +56,7 @@ def test_beam_gain_model():
 
 def test_beam_gain_model_real_data():
     freqs = au.Quantity([700e6, 2000e6], unit=au.Hz)
-    beam_gain_model = beam_gain_model_factor(freqs=freqs, array_name='dsa2000W')
+    beam_gain_model = beam_gain_model_factory(array_name='dsa2000W')
     # print(beam_gain_model)
 
     sources = ac.ICRS(ra=[0, 1] * au.deg, dec=[2, 3] * au.deg)
@@ -63,9 +64,10 @@ def test_beam_gain_model_real_data():
     array_location = ac.EarthLocation(lat=0, lon=0, height=0)
     time = at.Time('2021-01-01T00:00:00', scale='utc')
 
-    gains = beam_gain_model.compute_beam(
+    gains = beam_gain_model.compute_gain(
+        freqs=freqs,
         sources=sources, phase_tracking=phase_tracking, array_location=array_location, time=time
     )
 
     # print(gains)
-    assert gains.shape == (len(sources), beam_gain_model.num_antenna, len(beam_gain_model.freqs), 2, 2)
+    assert gains.shape == (len(sources), beam_gain_model.num_antenna, len(freqs), 2, 2)

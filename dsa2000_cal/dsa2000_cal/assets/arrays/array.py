@@ -61,13 +61,59 @@ def extract_itrs_coords(filename: str, delim=' ') -> Tuple[List[str], ac.ITRS]:
     return stations, ac.concatenate(coordinates).transform_to(ITRS())
 
 
+def _check_quantity(value: au.Quantity, unit, is_scalar):
+    if not isinstance(value, au.Quantity):
+        raise TypeError(f"Expected a Quantity, got {type(value)}")
+    if not value.unit.is_equivalent(unit):
+        raise ValueError(f"Expected unit {unit}, got {value.unit}")
+    if is_scalar and not value.isscalar:
+        raise ValueError(f"Expected a scalar quantity, got {value}")
+
+
 class AbstractArray(ABC, BaseContent):
     """
     Abstract array class.
     """
 
+    def __init__(self, *args, **kwargs):
+        BaseContent.__init__(self, *args, **kwargs)
+        _check_quantity(self.get_channel_width(), au.Hz, is_scalar=True)
+        _check_quantity(self.get_antenna_diameter(), au.m, is_scalar=True)
+        _check_quantity(self.get_system_equivalent_flux_density(), au.Jy, is_scalar=True)
+        _check_quantity(self.get_system_efficency(), au.dimensionless_unscaled, is_scalar=True)
+        _array_location = self.get_array_location()
+        if not isinstance(_array_location, ac.EarthLocation):
+            raise TypeError(f"Expected an EarthLocation, got {type(_array_location)}")
+        if not _array_location.isscalar:
+            raise ValueError(f"Expected a scalar EarthLocation, got {_array_location}")
+        _antennas = self.get_antennas()
+        if not isinstance(_antennas, ac.EarthLocation):
+            raise TypeError(f"Expected an EarthLocation, got {type(_antennas)}")
+        if _antennas.isscalar:
+            raise ValueError(f"Expected a vector EarthLocation, got {_antennas}")
+
     @abstractmethod
-    def get_antennas(self) -> ac.ITRS:
+    def get_channel_width(self) -> au.Quantity:
+        """
+        Get channel width (Hz)
+
+        Returns:
+            channel width
+        """
+        ...
+
+    @abstractmethod
+    def get_array_location(self) -> ac.EarthLocation:
+        """
+        Get array location.
+
+        Returns:
+            array center
+        """
+        ...
+
+    @abstractmethod
+    def get_antennas(self) -> ac.EarthLocation:
         """
         Get antenna positions.
 
@@ -97,12 +143,22 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def get_antenna_diameter(self) -> float:
+    def get_antenna_diameter(self) -> au.Quantity:
         """
         Get antenna diameter (m)
 
         Returns:
             antenna diameter
+        """
+        ...
+
+    @abstractmethod
+    def get_focal_length(self) -> au.Quantity:
+        """
+        Get focal length (m)
+
+        Returns:
+            focal length
         """
         ...
 
@@ -127,7 +183,7 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def system_equivalent_flux_density(self) -> float:
+    def get_system_equivalent_flux_density(self) -> au.Quantity:
         """
         Get system equivalent flux density (Jy)
 
@@ -137,7 +193,7 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def system_efficency(self) -> float:
+    def get_system_efficency(self) -> au.Quantity:
         """
         Get system efficiency
 
@@ -147,7 +203,7 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def antenna_beam(self) -> AbstractAntennaBeam:
+    def get_antenna_beam(self) -> AbstractAntennaBeam:
         """
         Get antenna beam.
 
@@ -155,4 +211,3 @@ class AbstractArray(ABC, BaseContent):
             antenna beam
         """
         ...
-

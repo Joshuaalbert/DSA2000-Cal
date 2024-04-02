@@ -1,29 +1,29 @@
-import logging
 from typing import List
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 from pyrap import tables as pt
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 
 
-def calc_baseline_noise(system_equivalent_flux_density: float, chan_width_hz: float, t_int_s: float) -> float:
+def calc_baseline_noise(system_equivalent_flux_density: float | jax.Array, chan_width_hz: float | jax.Array,
+                        t_int_s: float | jax.Array) -> float:
     """Calculate the per visibility rms for identical antennas.
 
     Args:
         system_equivalent_flux_density (float): System Equivalent Flux Density (SEFD) per antennas in Jy
             (already includes efficiency)
-        chan_width_khz (float): Channel width in Hz.
+        chan_width_hz (float): Channel width in Hz.
         t_int_s (float): Accumulation time in seconds.
 
     Returns:
         float: noise standard devation per part visibility.
     """
     # The 2 is for number of polarizations.
-    return system_equivalent_flux_density / np.sqrt(2 * chan_width_hz * t_int_s)
+    return system_equivalent_flux_density / jnp.sqrt(2 * chan_width_hz * t_int_s)
 
 
 def calc_image_noise(system_equivalent_flux_density: float, bandwidth_hz: float, t_int_s: float, num_antennas: int,
@@ -44,7 +44,7 @@ def calc_image_noise(system_equivalent_flux_density: float, bandwidth_hz: float,
     num_baselines = (1. - flag_frac) * num_antennas * (num_antennas - 1) / 2.
     return calc_baseline_noise(system_equivalent_flux_density=system_equivalent_flux_density,
                                chan_width_hz=bandwidth_hz,
-                               t_int_s=t_int_s) / np.sqrt(num_baselines)
+                               t_int_s=t_int_s) / jnp.sqrt(num_baselines)
 
 
 def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: AbstractArray,
@@ -58,11 +58,11 @@ def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: Abs
         array: the array object
     """
     noise_sigma = calc_baseline_noise(
-        system_equivalent_flux_density=array.system_equivalent_flux_density(),
+        system_equivalent_flux_density=quantity_to_jnp(array.get_system_equivalent_flux_density(), 'Jy'),
         chan_width_hz=channel_width_hz,
         t_int_s=integration_time_s
     )
-    logger.info(f"Adding noise with sigma {noise_sigma} to {output_ms_file}")
+    print(f"Adding noise with sigma {noise_sigma} to {output_ms_file}")
 
     with pt.table(output_ms_file, readonly=False) as output_ms:
         shape = output_ms.getcol('DATA').shape

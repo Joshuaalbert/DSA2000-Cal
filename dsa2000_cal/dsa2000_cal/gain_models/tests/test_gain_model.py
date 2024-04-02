@@ -9,7 +9,7 @@ class MockGainModel(GainModel):
     def __init__(self, gain):
         self.gain = gain
 
-    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
+    def compute_gain(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
                      **kwargs) -> jax.Array:
         return self.gain
 
@@ -26,6 +26,6 @@ def test_product_gain_model():
     array_location = ac.EarthLocation(lat=0, lon=0, height=0)
     time = at.Time('2021-01-01T00:00:00', scale='utc')
 
-    result = product_gain_model.compute_beam(sources, phase_tracking, array_location, time)
+    result = product_gain_model.compute_gain(sources, phase_tracking, array_location, time)
     expected = gain @ gain
     np.testing.assert_array_equal(result, expected)

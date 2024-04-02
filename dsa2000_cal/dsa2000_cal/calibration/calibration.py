@@ -1,43 +1,14 @@
 from dataclasses import dataclass
-from typing import Literal, NamedTuple, Tuple, Callable, TypeVar
+from typing import Literal, NamedTuple, Tuple
 
-import jax
 import jaxopt
 from jax import lax
-from jax import numpy as jnp, Array
+from jax import numpy as jnp
+from jax._src.typing import SupportsDType
 
-from dsa2000_cal.src.dft_predict.op import DFTModelData, DFTPredict
-from dsa2000_cal.src.common.vec_ops import VisibilityCoords
-
-V = TypeVar('V')
-
-
-def pytree_unravel(example_tree: V) -> Tuple[Callable[[V], Array], Callable[[Array], V]]:
-    """
-    Returns functions to ravel and unravel a pytree.
-
-    Returns:
-        ravel_fun: a function to ravel a pytree.
-        unravel_fun: a function to unravel a pytree.
-    """
-    leaf_list, tree_def = jax.tree_util.tree_flatten(example_tree)
-
-    sizes = [leaf.size for leaf in leaf_list]
-    shapes = [leaf.shape for leaf in leaf_list]
-
-    def ravel_fun(pytree):
-        leaf_list, tree_def = jax.tree_util.tree_flatten(pytree)
-        return jnp.concatenate([leaf.ravel() for leaf in leaf_list])
-
-    def unravel_fun(flat_array):
-        leaf_list = []
-        start = 0
-        for size, shape in zip(sizes, shapes):
-            leaf_list.append(flat_array[start:start + size].reshape(shape))
-            start += size
-        return jax.tree_util.tree_unflatten(tree_def, leaf_list)
-
-    return ravel_fun, unravel_fun
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
+from dsa2000_cal.predict.dft_predict import DFTPredict, DFTModelData
+from dsa2000_cal.src.common.jax_utils import pytree_unravel
 
 
 class CalibrationParams(NamedTuple):
@@ -48,18 +19,17 @@ class CalibrationParams(NamedTuple):
 class CalibrationData(NamedTuple):
     visibility_coords: VisibilityCoords
     image: jnp.ndarray  # [source, chan, 2, 2]
-    lm: jnp.ndarray  # [source, 2]
-    freq: jnp.ndarray  # [chan]
+    lmn: jnp.ndarray  # [source, 3]
+    freqs: jnp.ndarray  # [chan]
     obs_vis: jnp.ndarray  # [row, chan, 2, 2]
     obs_vis_weight: jnp.ndarray  # [row, chan, 2, 2]
 
 
 @dataclass(eq=False)
 class Calibration:
+    num_iterations: int
     convention: Literal['fourier', 'casa'] = 'fourier'
-    dtype: jnp.dtype = jnp.complex64
-    chunksize: int = 1
-    unroll: int = 1
+    dtype: SupportsDType = jnp.complex64
 
     def _objective_fun(self, params: CalibrationParams, data: CalibrationData) -> jnp.ndarray:
         residuals = self._residual_fun(params=params, data=data)
@@ -67,21 +37,19 @@ class Calibration:
 
     def _residual_fun(self, params: CalibrationParams, data: CalibrationData) -> jnp.ndarray:
         dft_predict = DFTPredict(
-            chunksize=self.chunksize,
             dtype=self.dtype,
-            convention=self.convention,
-            unroll=self.unroll
+            convention=self.convention
         )
         gains = jnp.asarray(params.gains_real + 1j * params.gains_imag, dtype=self.dtype)
-        model_data = DFTModelData(
+        dft_model_data = DFTModelData(
             image=data.image,
-            lm=data.lm,
+            lmn=data.lmn,
             gains=gains
         )
         vis_model = dft_predict.predict(
-            model_data=model_data,
+            dft_model_data=dft_model_data,
             visibility_coords=data.visibility_coords,
-            freq=data.freq
+            freqs=data.freqs
         )
         residual = (vis_model - data.obs_vis) / data.obs_vis_weight
         residual = residual.ravel()
@@ -119,23 +87,19 @@ class Calibration:
         solver = jaxopt.LBFGS(
             fun=lambda x, *args, **kwargs: self._objective_fun(unravel_fn(x), *args, **kwargs),
             maxiter=1000,
-            jit=True,
+            jit=False,
             unroll=False,
             use_gamma=True
         )
-        # solver = LevenbergMarquardt(
-        #     residual_fun=lambda x, *args, **kwargs: self._residual_fun(unravel_fn(x), *args, **kwargs),
-        #     maxiter=10000,
-        #     jit=True,
-        #     unroll=False,
-        #     materialize_jac=False,
-        #     geodesic=False,
-        #     implicit_diff=True,
-        #     atol=0.,
-        #     rtol=0.,
-        #     gtol=1e-3,
-        #     stop_criterion='madsen-nielsen'
-        # )
-        opt_result = solver.run(init_params=ravel_fn(init_params), data=data)
-        params = unravel_fn(opt_result.params)
-        return params, opt_result
+
+        def body_fn(carry, x):
+            params, state = carry
+            params, state = solver.update(params=params, state=state, data=data)
+            return (params, state), state.value
+
+        carry = (init_params, solver.init_state(init_params=init_params, data=data))
+
+        (params, _), results = lax.scan(body_fn, carry, xs=jnp.arange(self.num_iterations))
+
+        params = unravel_fn(params)
+        return params, results

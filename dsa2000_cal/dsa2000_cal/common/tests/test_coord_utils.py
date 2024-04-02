@@ -97,10 +97,11 @@ def test_earth_location_to_enu():
     dist = np.linalg.norm(enu[:, None, :] - enu[None, :, :], axis=-1)
     assert np.all(dist < np.sqrt(3) * 10 * au.km)
 
-    #Test earth cetnre
+    # Test earth cetnre
     earth_centre = ac.GCRS(0 * au.deg, 0 * au.deg, 0 * au.km).transform_to(ac.ITRS).earth_location
     enu = earth_location_to_enu(earth_centre, array_location, time)
     assert np.all(np.abs(enu) < 2e-5 * au.m)
+
 
 def test_icrs_to_enu():
     sources = ac.ICRS(0 * au.deg, 90 * au.deg)
@@ -113,6 +114,7 @@ def test_icrs_to_enu():
     reconstruct_sources = enu_to_icrs(enu, array_location, time)
     print(reconstruct_sources)
     np.testing.assert_allclose(sources.separation(reconstruct_sources).deg, 0., atol=1e-6)
+
 
 def test_enu_to_icrs():
     enu = np.array([[0, 1, 0], [0, 0, 1]]) * au.km

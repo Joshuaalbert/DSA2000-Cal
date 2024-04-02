@@ -21,7 +21,7 @@ def main(run_config: RunConfig):
         raise ValueError(f"Ionosphere H5parm file {run_config.ionosphere_h5parm} does not exist.")
     shutil.copy(run_config.ionosphere_h5parm, run_config.beam_h5parm)
     array = array_registry.get_instance(array_registry.get_match(run_config.array_name))
-    antenna_beam = array.antenna_beam()
+    antenna_beam = array.get_antenna_beam()
     with DataPack(run_config.beam_h5parm, readonly=False) as dp:
         dp.current_solset = 'sol000'
         if dp.axes_order != ['pol', 'dir', 'ant', 'freq', 'time']:

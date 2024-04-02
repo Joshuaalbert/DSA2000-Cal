@@ -16,5 +16,6 @@ tomographic_kernel>=1.0.1
 jupyter
 tqdm
 rich
+sympy
 
 

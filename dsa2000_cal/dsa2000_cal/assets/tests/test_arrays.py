@@ -32,7 +32,7 @@ def test_extract_itrs_coords():
 
 def test_array_beam():
     array = array_registry.get_instance(array_registry.get_match('dsa2000W_small'))
-    antenna_beam = array.antenna_beam()
+    antenna_beam = array.get_antenna_beam()
     antenna_beam.get_model().plot_polar_amplitude()
 
     amplitude = antenna_beam.compute_beam_amplitude(

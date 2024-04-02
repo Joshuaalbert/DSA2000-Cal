@@ -24,7 +24,7 @@ def _test_bore_sight_coords_to_pixel_coords():
 
 
 def test_get_beam_width():
-    antenna_beam = array_registry.get_instance(array_registry.get_match('dsa2000W')).antenna_beam()
+    antenna_beam = array_registry.get_instance(array_registry.get_match('dsa2000W')).get_antenna_beam()
     plot_circular_beam(antenna_beam.get_model(), theshold=0.01)
     beam_width = get_beam_width(antenna_beam.get_model())
     assert beam_width > 0. and beam_width < 180.

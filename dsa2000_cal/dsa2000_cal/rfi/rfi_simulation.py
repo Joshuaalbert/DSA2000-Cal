@@ -180,7 +180,7 @@ def calculate_side_lobes_attenuation(rfi_sim_config: RFISimConfig, ms_data: MSDa
     Returns:
         Side lobes attenuation for each telescope antenna [num_ant]
     """
-    antenna_beam = ms_data.array.antenna_beam()
+    antenna_beam = ms_data.array.get_antenna_beam()
 
     lte_location = ac.SkyCoord(
         east=rfi_sim_config.lte_east * au.m,

@@ -1,8 +1,9 @@
 import dataclasses
 import os
+import warnings
 from datetime import timedelta
 from functools import partial
-from typing import Tuple
+from typing import Tuple, Literal
 
 from astropy.wcs import WCS
 from jax.config import config
@@ -31,7 +32,7 @@ import tensorflow_probability.substrates.jax as tfp
 tfpd = tfp.distributions
 
 from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_enu
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, batched_convolved_interp, get_nn_points
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, batched_convolved_interp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.src.common.jax_utils import chunked_pmap, pad_to_chunksize
@@ -86,7 +87,6 @@ class IonosphereGainModel(GainModel):
     """
     Uses nearest neighbour interpolation to compute the gain model.
     """
-    freqs: au.Quantity  # [num_freqs]
     antennas: ac.EarthLocation  # [num_ant]
 
     # Simulation parameters
@@ -110,6 +110,8 @@ class IonosphereGainModel(GainModel):
     dtype: SupportsDType = jnp.complex64
     seed: int = 42
 
+    interp_mode: Literal['nn_conv', 'kriging'] = 'nn_conv'
+
     TEC_CONV: float = -8.4479745  # MHz/mTECU
     convention: str = 'fourier'
 
@@ -120,8 +122,6 @@ class IonosphereGainModel(GainModel):
         cache_file = os.path.join(self.cache_folder, f"cached_{self.specification}.json")
 
         # make sure all 1D
-        if self.freqs.isscalar:
-            self.freqs = self.freqs.reshape((1,))
         if self.model_directions.isscalar:
             self.model_directions = self.model_directions.reshape((1,))
         if self.model_times.isscalar:
@@ -131,7 +131,6 @@ class IonosphereGainModel(GainModel):
         if self.antennas.isscalar:
             self.antennas = self.antennas.reshape((1,))
 
-        self.num_freqs = len(self.freqs)
         self.num_antenna = len(self.antennas)
 
         # dtec: au.Quantity  # [num_time, num_dir, num_ant]
@@ -421,7 +420,7 @@ class IonosphereGainModel(GainModel):
         return enu_geodesics_data, dtec
 
     @partial(jax.jit, static_argnames=['self', 'northern_hemisphere'])
-    def _compute_beam_jax(self, time_mjd: jax.Array, enu_geodesics_sources: jax.Array,
+    def _compute_gain_jax(self, freqs: jax.Array, time_mjd: jax.Array, enu_geodesics_sources: jax.Array,
                           x0: jax.Array, earth_center_enu: jax.Array,
                           northern_hemisphere: bool) -> jax.Array:
         """
@@ -435,24 +434,28 @@ class IonosphereGainModel(GainModel):
 
         """
 
-        freqs = quantity_to_jnp(self.freqs, 'MHz')
-        phase_factor = jnp.asarray(self.TEC_CONV) / freqs  # [num_freqs] rad / mTECU
+        freqs_MHz = freqs / 1e6
+        phase_factor = jnp.asarray(self.TEC_CONV) / freqs_MHz  # [num_freqs] rad / mTECU
 
-        dtec_interp = self._nn_conv_regression_jax(
-            time_mjd=time_mjd,
-            enu_geodesics_data=self.enu_geodesics_data,
-            enu_geodesics_sources=enu_geodesics_sources,
-            dtec=self.dtec
-        )
-
-        # dtec_interp = self._batched_condition_regression_jax(
-        #     enu_geodesics_data=self.enu_geodesics_data,
-        #     enu_geodesics_sources=enu_geodesics_sources,
-        #     dtec=self.dtec,
-        #     x0=x0,
-        #     earth_center_enu=earth_center_enu,
-        #     northern_hemisphere=northern_hemisphere
-        # )
+        if self.interp_mode == 'nn_conv':
+            dtec_interp = self._nn_conv_regression_jax(
+                time_mjd=time_mjd,
+                enu_geodesics_data=self.enu_geodesics_data,
+                enu_geodesics_sources=enu_geodesics_sources,
+                dtec=self.dtec
+            )
+        elif self.interp_mode == 'kriging':
+            warnings.warn("Kriging is still experimental.")
+            dtec_interp = self._batched_condition_regression_jax(
+                enu_geodesics_data=self.enu_geodesics_data,
+                enu_geodesics_sources=enu_geodesics_sources,
+                dtec=self.dtec,
+                x0=x0,
+                earth_center_enu=earth_center_enu,
+                northern_hemisphere=northern_hemisphere
+            )
+        else:
+            raise ValueError(f"Unknown interp_mode {self.interp_mode}")
 
         phase = dtec_interp[..., None] * phase_factor  # (source_shape) + [num_ant, num_freq]
 
@@ -539,7 +542,7 @@ class IonosphereGainModel(GainModel):
             earth_centre=earth_center_enu,
             specification=self.specification,
             S_marg=self.S_marg,
-            compute_tec=self.compute_tec,
+            compute_tec=False,  # Because we interpolate DTEC not TEC
             northern_hemisphere=northern_hemisphere
         )
 
@@ -558,39 +561,40 @@ class IonosphereGainModel(GainModel):
 
         dtec = jnp.reshape(dtec, (-1,))  # [num_model_sources * num_model_ant]
 
-        k = min(27, np.shape(enu_geodesics_data)[0])
-
-        select_idx, dist = get_nn_points(
-            x=enu_geodesics_sources,
-            y=enu_geodesics_data,
-            k=k,
-            mode='scaled_euclidean'
-        )  # [num_ant, k], [num_ant, k]
-
-        # We use these k-nn as the inducing points
+        # k = min(27, np.shape(enu_geodesics_data)[0])
+        #
+        # select_idx, dist = get_nn_points(
+        #     x=enu_geodesics_sources,
+        #     y=enu_geodesics_data,
+        #     k=k,
+        #     mode='scaled_euclidean'
+        # )  # [num_ant, k], [num_ant, k]
+        #
+        # # We use these k-nn as the inducing points
 
         predict_index_points = enu_geodesics_sources  # [num_ant, 10]
 
-        def _single_regression(_predict_index_point, _select_idx):
-            _observation_index_points = enu_geodesics_data[_select_idx]  # [k, 10]
-            _observations = dtec[_select_idx]  # [k]
-            gp = tfpd.GaussianProcessRegressionModel.precompute_regression_model(
-                kernel=ToTFPKernel(tomo_kernel=tomo_kernel),
-                mean_fn=mean_fn,
-                observations=_observations,
-                observation_index_points=_observation_index_points,
-            )
-            predictive_dist = gp.get_marginal_distribution(_predict_index_point[None, :])
-            return predictive_dist.mean()[0]
+        gp = tfpd.GaussianProcessRegressionModel.precompute_regression_model(
+            kernel=ToTFPKernel(tomo_kernel=tomo_kernel),
+            mean_fn=mean_fn,
+            observations=dtec,
+            observation_index_points=enu_geodesics_data,
+        )
+        predictive_dist = gp.get_marginal_distribution(enu_geodesics_sources)
 
-        predictive_mean = jax.vmap(_single_regression)(
-            predict_index_points, select_idx
-        )  # [num_ant]
+        predictive_mean = predictive_dist.mean()
 
         return predictive_mean
 
-    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
-                     **kwargs):
+    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS,
+                     array_location: ac.EarthLocation, time: at.Time, **kwargs):
+
+        if freqs.isscalar:
+            freqs = freqs.reshape((1,))
+        if len(freqs.shape) != 1:
+            raise ValueError(f"Expected freqs to have 1 dimension but got {len(freqs.shape)}")
+        if not freqs.unit.is_equivalent(au.Hz):
+            raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}")
 
         antennas = earth_location_to_enu(
             antennas=self.antennas,
@@ -641,7 +645,8 @@ class IonosphereGainModel(GainModel):
             enu_geodesics_sources, shape + enu_geodesics_sources.shape[-2:]
         )  # (source_shape) + [num_ant, 10]
 
-        gains = self._compute_beam_jax(
+        gains = self._compute_gain_jax(
+            freqs=quantity_to_jnp(freqs),
             time_mjd=time.mjd,
             enu_geodesics_sources=enu_geodesics_sources,
             x0=quantity_to_jnp(x0, 'km'),
@@ -690,12 +695,13 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
                                   observation_start_time: at.Time,
                                   observation_duration: timedelta,
                                   temporal_resolution: timedelta,
-                                  freqs: au.Quantity,
                                   specification: SPECIFICATION,
                                   array_name: str,
                                   plot_folder: str,
-                                  cache_folder: str
+                                  cache_folder: str,
+                                  seed: int
                                   ):
+
     if not field_of_view.unit.is_equivalent(au.deg):
         raise ValueError("Field of view should be in degrees")
     if not angular_separation.unit.is_equivalent(au.deg):
@@ -706,9 +712,9 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match(array_name))
 
-    antennas_itrs = array.get_antennas()
-    antennas = antennas_itrs.earth_location
-    array_location = mean_itrs(antennas_itrs).earth_location
+    antennas = array.get_antennas()
+    antennas_itrs = antennas.get_itrs()
+    array_location = array.get_array_location()
 
     if observation_duration == timedelta(0):
         model_times = observation_start_time.reshape((-1,))
@@ -754,7 +760,6 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
     model_antennas = ac.concatenate(list(map(lambda x: x.get_itrs(), model_antennas))).earth_location
 
     ionosphere_gain_model = IonosphereGainModel(
-        freqs=freqs,
         antennas=antennas,
         array_location=array_location,
         phase_tracking=phase_tracking,
@@ -763,7 +768,8 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
         model_antennas=model_antennas,
         specification=specification,
         plot_folder=plot_folder,
-        cache_folder=cache_folder
+        cache_folder=cache_folder,
+        seed=seed
     )
     return ionosphere_gain_model
 

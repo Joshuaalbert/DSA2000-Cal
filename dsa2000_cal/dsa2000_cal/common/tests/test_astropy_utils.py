@@ -87,6 +87,13 @@ def test_create_spherical_grid():
     np.testing.assert_allclose(grid.separation(pointing).max(), angular_width, atol=1e-10)
     np.testing.assert_allclose(np.diff(grid.separation(pointing)).max(), dr, atol=1e-10)
 
+    pointing = ac.ICRS(ra=10 * au.deg, dec=0 * au.deg)
+    angular_width = 0 * au.deg
+    dr = 0.1 * au.deg
+    grid = create_spherical_grid(pointing, angular_width, dr)
+    assert not grid.isscalar
+    assert len(grid) == 1
+
 
 def test_create_spherical_earth_grid():
     center = ac.EarthLocation.from_geodetic(10 * au.deg, 0 * au.deg, 0 * au.m)

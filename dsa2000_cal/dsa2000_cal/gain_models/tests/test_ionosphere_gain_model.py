@@ -33,16 +33,16 @@ def test_real_ionosphere_gain_model():
         observation_start_time=observation_start_time,
         observation_duration=observation_duration,
         temporal_resolution=temporal_resolution,
-        freqs=freqs,
         specification='light_dawn',
         array_name='dsa2000W',
         plot_folder='plot_ionosphere',
-        cache_folder='cache_ionosphere'
+        cache_folder='cache_ionosphere',
+        seed=42
     )
 
 
 def test_ionosphere_gain_model():
-    freqs = [700e6, 2000e6] * au.Hz
+    freqs = au.Quantity([700e6, 2000e6] * au.Hz)
     array_location = ac.EarthLocation(lat=0 * au.deg, lon=0 * au.deg, height=0 * au.m)
 
     radius = 10 * au.km
@@ -72,7 +72,6 @@ def test_ionosphere_gain_model():
     model_times = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:10:00'], scale='utc')
 
     ionosphere_gain_model = IonosphereGainModel(
-        freqs=freqs,
         antennas=antennas,
         array_location=array_location,
         phase_tracking=phase_tracking,
@@ -81,10 +80,10 @@ def test_ionosphere_gain_model():
         model_antennas=model_antennas,
         specification='light_dawn',
         plot_folder='plot_ionosphere_small_test',
-        cache_folder='cache_ionosphere_small_test'
+        cache_folder='cache_ionosphere_small_test',
+        # interp_mode='kriging'
     )
 
-    assert ionosphere_gain_model.num_freqs == len(freqs)
     assert ionosphere_gain_model.num_antenna == len(antennas)
     assert ionosphere_gain_model.ref_ant == array_location
     assert ionosphere_gain_model.ref_time == model_times[0]
@@ -102,7 +101,8 @@ def test_ionosphere_gain_model():
 
     times = at.Time(np.linspace(model_times[0].jd, model_times[-1].jd, 10), format='jd')
     for time in times:
-        gains = ionosphere_gain_model.compute_beam(
+        gains = ionosphere_gain_model.compute_gain(
+            freqs=freqs,
             sources=sources,
             phase_tracking=phase_tracking,
             array_location=array_location,
@@ -111,7 +111,7 @@ def test_ionosphere_gain_model():
 
         assert gains.shape == (len(sources), len(antennas), len(freqs), 2, 2)
 
-        dtec = np.angle(gains[0, :, 0, 0, 0]) * ionosphere_gain_model.freqs[0].to('MHz').value / ionosphere_gain_model.TEC_CONV
+        dtec = np.angle(gains[0, :, 0, 0, 0]) * freqs[0].to('MHz').value / ionosphere_gain_model.TEC_CONV
         fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(10, 10))
         sc = ax[0][0].scatter(antennas.geodetic.lon.deg, antennas.geodetic.lat.deg, c=dtec, marker='o')
         fig.colorbar(sc, ax=ax[0][0])

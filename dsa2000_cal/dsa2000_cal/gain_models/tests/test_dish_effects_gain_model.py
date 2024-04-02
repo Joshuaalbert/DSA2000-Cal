@@ -4,19 +4,19 @@ from astropy import units as au, time as at, coordinates as ac
 from jax import numpy as jnp
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factor
-from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModel
+from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
+from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModel, DishEffectsGainModelParams
 
 
 @pytest.mark.parametrize('mode', ['fft', 'dft'])
 def test_dish_effects_gain_model_real_data(mode):
     freqs = au.Quantity([700e6, 2000e6], unit=au.Hz)
-    beam_gain_model = beam_gain_model_factor(freqs=freqs, array_name='dsa2000W')
+    beam_gain_model = beam_gain_model_factory(array_name='dsa2000W')
 
     dish_effects_gain_model = DishEffectsGainModel(
         beam_gain_model=beam_gain_model,
         model_times=at.Time(['2021-01-01T00:00:00', '2021-01-01T00:01:00'], scale='utc'),
-        elevation_pointing_error_stddev=0.5 * au.deg,
+        dish_effect_params=DishEffectsGainModelParams(elevation_pointing_error_stddev=0.5 * au.deg)
     )
 
     assert jnp.allclose(dish_effects_gain_model.dy / dish_effects_gain_model.dl, 2.5 * au.m, atol=0.1)
@@ -30,7 +30,7 @@ def test_dish_effects_gain_model_real_data(mode):
     assert dish_effects_gain_model.Y.unit.is_equivalent(au.m)
     assert dish_effects_gain_model.lvec.unit.is_equivalent(au.dimensionless_unscaled)
     assert dish_effects_gain_model.mvec.unit.is_equivalent(au.dimensionless_unscaled)
-    assert dish_effects_gain_model.wavelengths.unit.is_equivalent(au.m)
+    assert dish_effects_gain_model.model_wavelengths.unit.is_equivalent(au.m)
     assert dish_effects_gain_model.sampling_interval.unit.is_equivalent(au.m)
 
     phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg, )
@@ -46,6 +46,7 @@ def test_dish_effects_gain_model_real_data(mode):
         raise ValueError(f"Unknown mode {mode}")
 
     aperture_field = dish_effects_gain_model.compute_aperture_field_model(
+        freqs=freqs,
         time=time,
         elevation=90. * au.deg
     )  # [2n+1, 2n+1, num_ant, num_freq]
@@ -72,7 +73,8 @@ def test_dish_effects_gain_model_real_data(mode):
     plt.colorbar()
     plt.show()
 
-    gains = dish_effects_gain_model.compute_beam(
+    gains = dish_effects_gain_model.compute_gain(
+        freqs=freqs,
         sources=sources,
         phase_tracking=phase_tracking,
         array_location=array_location,
@@ -94,4 +96,4 @@ def test_dish_effects_gain_model_real_data(mode):
     else:
         print(gains[..., 0:2, :, 0, 0])
     assert gains.shape == sources.shape + (
-        dish_effects_gain_model.num_antenna, len(dish_effects_gain_model.freqs), 2, 2)
+        dish_effects_gain_model.num_antenna, len(freqs), 2, 2)

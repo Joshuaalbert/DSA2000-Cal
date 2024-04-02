@@ -4,11 +4,6 @@ import numpy as np
 from jax import numpy as jnp, lax
 from jax._src.numpy.lax_numpy import ndim, shape
 
-c = 2.99792458e8
-two_pi_over_c = 2 * jnp.pi / c # Casa convention
-minus_two_pi_over_c = -two_pi_over_c # Fourier convention
-
-
 def vec(a: jnp.ndarray) -> jnp.ndarray:
     """
     Vectorize a matrix.
@@ -21,12 +16,12 @@ def vec(a: jnp.ndarray) -> jnp.ndarray:
     """
     if len(a.shape) != 2:
         raise ValueError(f"a should be a matrix, got shape {a.shape}")
-    n,m = a.shape
+    n, m = a.shape
     # a.T.ravel()
-    return lax.reshape(a, (n*m,), (1,0))
+    return lax.reshape(a, (n * m,), (1, 0))
 
 
-def unvec(a:jnp.ndarray, shape: Tuple[int, ...] | None = None) -> jnp.ndarray:
+def unvec(a: jnp.ndarray, shape: Tuple[int, ...] | None = None) -> jnp.ndarray:
     """
     Unvectorize a matrix.
 
@@ -46,7 +41,7 @@ def unvec(a:jnp.ndarray, shape: Tuple[int, ...] | None = None) -> jnp.ndarray:
     if len(shape) != 2:
         raise ValueError(f"shape should be length 2, got {len(shape)}")
     # jnp.reshape(a, shape).T
-    return lax.transpose(lax.reshape(a, shape), (1,0))
+    return lax.transpose(lax.reshape(a, shape), (1, 0))
 
 
 def kron(a, b):

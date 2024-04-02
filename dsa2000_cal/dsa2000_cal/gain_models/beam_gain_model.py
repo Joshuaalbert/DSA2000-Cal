@@ -50,7 +50,6 @@ class BeamGainModel(GainModel):
     model_phi: au.Quantity  # [num_dir] # Phi is in [0, 360] measured from x-axis
     model_amplitude: au.Quantity  # [num_dir, num_freqs]
     num_antenna: int
-    freqs: au.Quantity  # [num_freqs]
 
     dtype: jnp.dtype = jnp.complex64
 
@@ -58,8 +57,7 @@ class BeamGainModel(GainModel):
         # make sure all 1D
         if self.model_freqs.isscalar:
             self.model_freqs = self.model_freqs.reshape((1,))
-        if self.freqs.isscalar:
-            self.freqs = self.freqs.reshape((1,))
+
         if self.model_theta.isscalar:
             self.model_theta = self.model_theta.reshape((1,))
         if self.model_phi.isscalar:
@@ -68,8 +66,6 @@ class BeamGainModel(GainModel):
         # Check shapes
         if len(self.model_freqs.shape) != 1:
             raise ValueError(f"Expected model_freqs to have 1 dimension but got {len(self.model_freqs.shape)}")
-        if len(self.freqs.shape) != 1:
-            raise ValueError(f"Expected freqs to have 1 dimension but got {len(self.freqs.shape)}")
         if len(self.model_theta.shape) != 1:
             raise ValueError(f"Expected theta to have 1 dimension but got {len(self.model_theta.shape)}")
         if len(self.model_phi.shape) != 1:
@@ -79,7 +75,7 @@ class BeamGainModel(GainModel):
         if self.model_amplitude.shape != (self.model_theta.shape[0], self.model_freqs.shape[0]):
             raise ValueError(
                 f"amplitude shape {self.model_amplitude.shape} does not match theta shape {self.model_theta.shape} "
-                f"and freqs shape {self.freqs.shape}."
+                f"and freqs shape {self.model_freqs.shape}."
             )
 
         # Ensure phi,theta,freq units congrutent
@@ -89,8 +85,7 @@ class BeamGainModel(GainModel):
             raise ValueError(f"Expected phi to be in degrees but got {self.model_phi.unit}")
         if not self.model_freqs.unit.is_equivalent(au.Hz):
             raise ValueError(f"Expected model_freqs to be in Hz but got {self.model_freqs.unit}")
-        if not self.freqs.unit.is_equivalent(au.Hz):
-            raise ValueError(f"Expected freqs to be in Hz but got {self.freqs.unit}")
+
         # Amplitude is probably in units, but not worried about it for now
 
         # Convert phi,theta to lmn coordinates, where Y-X frame matches L-M frame
@@ -102,7 +97,7 @@ class BeamGainModel(GainModel):
         self.lmn_data = au.Quantity(jnp.stack([y, x, z_bore], axis=-1), unit=au.dimensionless_unscaled)  # [num_dir, 3]
 
     @partial(jax.jit, static_argnums=(0,))
-    def _compute_beam_jax(self, lmn_sources: jax.Array):
+    def _compute_gain_jax(self, freqs: jax.Array, lmn_sources: jax.Array):
         """
         Compute the beam gain at the given source coordinates.
 
@@ -114,7 +109,6 @@ class BeamGainModel(GainModel):
         """
         lmn_data = quantity_to_jnp(self.lmn_data)
         amplitude = quantity_to_jnp(self.model_amplitude)
-        freqs = quantity_to_jnp(self.freqs)
         model_freqs = quantity_to_jnp(self.model_freqs)
 
         # Interpolate in freq
@@ -138,8 +132,15 @@ class BeamGainModel(GainModel):
 
         return gains
 
-    def compute_beam(self, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
+    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
                      **kwargs):
+
+        if freqs.isscalar:
+            freqs = freqs.reshape((1,))
+        if len(freqs.shape) != 1:
+            raise ValueError(f"Expected freqs to have 1 dimension but got {len(freqs.shape)}")
+        if not freqs.unit.is_equivalent(au.Hz):
+            raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}")
 
         lmn_sources = icrs_to_lmn(
             sources=sources,
@@ -148,17 +149,18 @@ class BeamGainModel(GainModel):
             phase_tracking=phase_tracking
         )  # (source_shape) + [3]
 
-        gains = self._compute_beam_jax(
+        gains = self._compute_gain_jax(
+            freqs=quantity_to_jnp(freqs),
             lmn_sources=jnp.asarray(lmn_sources.value)
         )  # (source_shape) + [num_ant, num_freq, 2, 2]
 
         return gains
 
 
-def beam_gain_model_factor(freqs: au.Quantity, array_name: str) -> BeamGainModel:
+def beam_gain_model_factory(array_name: str) -> BeamGainModel:
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match(array_name))
-    dish_model = array.antenna_beam().get_model()
+    dish_model = array.get_antenna_beam().get_model()
     theta = dish_model.get_theta() * au.deg
     phi = dish_model.get_phi() * au.deg
     theta, phi = np.meshgrid(theta, phi, indexing='ij')
@@ -173,7 +175,6 @@ def beam_gain_model_factor(freqs: au.Quantity, array_name: str) -> BeamGainModel
     amplitude = au.Quantity(amplitude / voltage_gain)
 
     beam_gain_model = BeamGainModel(
-        freqs=freqs,
         model_freqs=model_freqs,
         model_theta=theta,
         model_phi=phi,

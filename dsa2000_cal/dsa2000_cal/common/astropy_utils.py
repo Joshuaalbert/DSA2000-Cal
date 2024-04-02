@@ -1,9 +1,7 @@
 import numpy as np
-import pylab as plt
 from astropy import coordinates as ac
 from astropy import units as au
 from astropy.coordinates import Angle, angle_utilities
-from astropy.wcs import WCS
 
 
 def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.Quantity) -> ac.ICRS:
@@ -12,7 +10,7 @@ def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.
 
     Parameters:
     center_coord (SkyCoord): The central ICRS coordinate.
-    angular_width (float): The total angular width to cover, in degrees.
+    angular_width (float): The radius, in degrees.
     dr (float): The angular distance between shells, in degrees.
 
     Returns:
@@ -39,9 +37,11 @@ def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.
         points = pointing.directional_offset_by(angle_offsets, distances)
         grid_points.append(points)
 
-    coords = ac.concatenate(grid_points).transform_to(ac.ICRS)
+    if len(grid_points) > 1:
+        coords = ac.concatenate(grid_points).transform_to(ac.ICRS)
+    else:
+        coords = grid_points[0].reshape((1,))
     return ac.ICRS(ra=coords.ra, dec=coords.dec)
-
 
 
 def create_spherical_earth_grid(center: ac.EarthLocation, radius: au.Quantity, dr: au.Quantity) -> ac.EarthLocation:
