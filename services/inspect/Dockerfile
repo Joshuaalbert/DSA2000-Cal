@@ -1,6 +1,5 @@
 FROM base:latest
 
-
 # Prepare run
 WORKDIR /dsa/code
 COPY services/inspect/src src

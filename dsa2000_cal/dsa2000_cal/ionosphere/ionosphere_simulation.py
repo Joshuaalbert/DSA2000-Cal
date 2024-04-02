@@ -21,7 +21,7 @@ from tqdm import tqdm
 from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.ionosphere.interpolate_h5parm import interpolate_h5parm
 from dsa2000_cal.ionosphere.models.cannonical_models import SPECIFICATION, build_ionosphere_tomographic_kernel
-from dsa2000_cal.src.common.jax_utils import chunked_pmap
+from dsa2000_cal.common.jax_utils import chunked_pmap
 
 logger = logging.getLogger(__name__)
 

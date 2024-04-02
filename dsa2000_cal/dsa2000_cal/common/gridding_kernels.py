@@ -1,8 +1,12 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from astropy import constants
+
 import jax.numpy as jnp
 from jax._src.typing import SupportsDType
+
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 
 
 @dataclass(eq=False)
@@ -15,9 +19,9 @@ class WProjKernel:
 
     def kernel(self, l: jnp.ndarray, m: jnp.ndarray, w: jnp.ndarray, freq: jnp.ndarray) -> jnp.ndarray:
         if self.convention == 'fourier':
-            constant = minus_two_pi_over_c
+            constant = -2. * jnp.pi / quantity_to_jnp(constants.c)
         elif self.convention == 'casa':
-            constant = two_pi_over_c
+            constant = 2. * jnp.pi / quantity_to_jnp(constants.c)
         else:
             raise ValueError("convention not in ('fourier', 'casa')")
         n = jnp.sqrt(1. - l ** 2 - m ** 2)

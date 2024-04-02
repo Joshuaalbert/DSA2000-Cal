@@ -145,6 +145,8 @@ def get_interp_indices_and_weights(x, xp) -> tuple[
 
     x = jnp.asarray(x, dtype=jnp.float_)
     xp = jnp.asarray(xp, dtype=jnp.float_)
+    if len(np.shape(xp)) == 0:
+        xp = jnp.reshape(xp, (-1,))
 
     # xp_arr = np.concatenate([xp[:1], xp, xp[-1:]])
     xp_arr = xp

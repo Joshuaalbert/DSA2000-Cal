@@ -5,7 +5,7 @@ from astropy import coordinates as ac
 from astropy import units as au
 
 from dsa2000_cal.abc import AbstractAntennaBeam
-from dsa2000_cal.antenna_beam import AltAzAntennaBeam, MatlabAntennaModelV1
+from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaBeam, MatlabAntennaModelV1
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs

@@ -9,43 +9,21 @@ declare -A gpu_services
 declare -A extras
 
 services_order=(
-  #    "inspect"
-    "prepare_run"
-#    "simulate_ionosphere"
-#    "compute_beam"
-  #  "simulate_instrumental_effects"
-#  "predict_dft"
-  "predict_fft"
-#    "simulate_rfi"
-  "sum_visibilities"
-  #  "dirty_image"
-  "image_uncorrected"
-  #  "image_corrected_perfect"
-  #  "dirty_image"
-  #  "calibration"
-  #  "image_a_proj"
+  "transfer_ms"
+  "validate_forward_modelling"
 )
 
 # The values represent whether to use --no-cache or not. 1 for yes, 0 for no.
 cache_options=(
-  ["prepare_run"]=0
-  ["simulate_ionosphere"]=0
-  ["compute_beam"]=0
-  ["simulate_instrumental_effects"]=0
-  ["predict_dft"]=0
-  ["predict_fft"]=0
-  ["simulate_rfi"]=0
-  ["sum_visibilities"]=0
-  ["dirty_image"]=0
-  ["image_uncorrected"]=0
-  ["calibration"]=0
-  ["image_a_proj"]=0
+  ["transfer_ms"]=0
+  ["validate_forward_modelling"]=0
+  ["inspect"]=0
 )
 
 # Add special volumes that need to be mounted
 # Use single quotes for variables.
 volumes=(
-  ["prepare_run"]='-v $DATA_DIR_HOST:/dsa/data'
+  ["transfer_ms"]='-v $DATA_DIR_HOST:/dsa/data'
 )
 
 # Add port forwarding maps, or environment variables (use single quotes to do delayed expand).
@@ -55,9 +33,7 @@ extras=(
 
 # Add other services requiring GPU with a value of 1.
 gpu_services=(
-  ["predict_fft"]=0
-  ["dirty_image"]=0
-  ["image_uncorrected"]=0
+  ["validate_forward_modelling"]=0
 )
 
 expand_string_from_env() {

@@ -10,7 +10,7 @@ from jax.config import config
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.common.astropy_utils import mean_itrs, create_spherical_grid, create_spherical_earth_grid
+from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 config.update("jax_enable_x64", True)
@@ -35,7 +35,7 @@ from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_enu
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, batched_convolved_interp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.src.common.jax_utils import chunked_pmap, pad_to_chunksize
+from dsa2000_cal.common.jax_utils import chunked_pmap, pad_to_chunksize
 
 
 class CachedIonosphereSimulation(SerialisableBaseModel):

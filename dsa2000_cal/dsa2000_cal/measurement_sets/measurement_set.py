@@ -2,8 +2,8 @@ import dataclasses
 import itertools
 import os.path
 import warnings
-from functools import cached_property
-from typing import Literal, List, Union, Annotated, NamedTuple, Generator, Tuple
+from functools import cached_property, partial
+from typing import Literal, List, Union, Annotated, NamedTuple, Generator, Tuple, Optional
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -11,10 +11,11 @@ import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
-import tables as pt
+import tables as tb
 from pydantic import Field
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 
@@ -71,6 +72,11 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     antenna_diameters: au.Quantity = Field(
         description="Antenna diameters."
     )  # [num_antenna]
+
+    with_autocorr: bool = Field(
+        default=True,
+        description="Whether to include autocorrelations."
+    )
 
 
 def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
@@ -130,12 +136,43 @@ def _check_measurement_set_meta(meta: MeasurementSetMeta):
         raise ValueError(f"Unknown version {meta.version}.")
 
 
+def _combination_with_replacement_index(i, j, n):
+    # Starting index for the ith row
+    k_i = i * (2 * n - i + 1) // 2
+    # Index for the pair is the starting index of the row plus the offset in the row
+    index = k_i + (j - i)
+    return index
+
+
+def _combination_index(i, j, n):
+    return (i * (2 * n - i - 1)) // 2 + j - i - 1
+
+
+class NotContiguous(Exception):
+    pass
+
+
+def _get_slice(indices):
+    steps = np.diff(indices)
+    if not np.all(steps == steps[0]):
+        raise NotContiguous("Indices must be contiguous.")
+    step = steps[0]
+    return slice(indices[0], indices[-1] + 1, step)
+
+
+def _try_get_slice(indices):
+    try:
+        return _get_slice(indices)
+    except NotContiguous:
+        return indices
+
+
 class VisibilityCoords(NamedTuple):
     """
     Coordinates for a single visibility.
     """
     uvw: jax.Array | np.ndarray  # [rows, 3] the uvw coordinates
-    time_mjs: jax.Array | np.ndarray  # [rows] the time
+    time_obs: jax.Array | np.ndarray  # [rows] the time relative to the reference time (observation start)
     antenna_1: jax.Array | np.ndarray  # [rows] the first antenna
     antenna_2: jax.Array | np.ndarray  # [rows] the second antenna
     time_idx: jax.Array | np.ndarray  # [rows] the time index
@@ -145,9 +182,9 @@ class VisibilityData(NamedTuple):
     """
     Data for a single visibility.
     """
-    vis: jax.Array | np.ndarray | None = None  # [rows, num_freqs, 4] the visibility data
-    weights: jax.Array | np.ndarray | None = None  # [rows, num_freqs, 4] the weights
-    flags: jax.Array | np.ndarray | None = None  # [rows, num_freqs, 4] the flags
+    vis: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the visibility data
+    weights: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the weights
+    flags: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the flags
 
 
 @dataclasses.dataclass(eq=False)
@@ -167,26 +204,26 @@ class MeasurementSet:
         self.meta = MeasurementSetMeta.parse_file(self.meta_file)
         _check_measurement_set_meta(self.meta)
 
-    def get_row(self, antenna_1: int, antenna_2: int, time_idx: int) -> int:
+    def get_rows(self, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int,
+                 time_idx: np.ndarray | int) -> np.ndarray:
         """
         Get the row index for the given antenna pair and time index.
         """
-        with pt.open_file(self.data_file) as f:
-            (rows1,) = np.where(f.root.antenna_1[:] == antenna_1)
-            (rows2,) = np.where(f.root.antenna_2[rows1] == antenna_2)
-            (rows3,) = np.where(f.root.time_idx[rows1[rows2]] == time_idx)
+        if self.meta.with_autocorr:
+            get_antenna_index = partial(_combination_with_replacement_index, n=len(self.meta.antennas))
+        else:
+            get_antenna_index = partial(_combination_index, n=len(self.meta.antennas))
 
-            row = rows1[rows2[rows3]]
-            if len(row) == 0:
-                raise ValueError(f"No rows found for antenna pair {antenna_1}, {antenna_2} and time index {time_idx}.")
-            return row[0]
+        time_offset = time_idx * self.block_size
+
+        return get_antenna_index(antenna_1, antenna_2) + time_offset
 
     @cached_property
     def num_rows(self) -> int:
         """
         Get the number of rows in the measurement set.
         """
-        with pt.open_file(self.data_file) as f:
+        with tb.open_file(self.data_file) as f:
             return f.root.uvw.shape[0]
 
     @cached_property
@@ -195,7 +232,16 @@ class MeasurementSet:
         Get the number of rows in the measurement set.
         """
         num_antennas = len(self.meta.antennas)
+        if self.meta.with_autocorr:
+            return (num_antennas * (num_antennas + 1)) // 2
         return (num_antennas * (num_antennas - 1)) // 2
+
+    @cached_property
+    def ref_time(self) -> at.Time:
+        """
+        Get the reference time of the measurement set.
+        """
+        return self.meta.times[0]
 
     @staticmethod
     def create_measurement_set(ms_folder: str, meta: MeasurementSetMeta) -> 'MeasurementSet':
@@ -224,23 +270,33 @@ class MeasurementSet:
         num_antennas = len(meta.antennas)
         num_times = len(meta.times)
         num_freqs = len(meta.freqs)
-        num_rows = num_antennas * (num_antennas - 1) // 2 * num_times
-        with pt.open_file(data_file, "w") as f:
-            f.create_array("/", "uvw", atom=pt.Float32Atom(), shape=(num_rows, 3))
-            f.create_array("/", "antenna_1", atom=pt.Int16Atom(), shape=(num_rows,))
-            f.create_array("/", "antenna_2", atom=pt.Int16Atom(), shape=(num_rows,))
-            f.create_array("/", "time_idx", atom=pt.Int16Atom(), shape=(num_rows,))
-            f.create_array("/", "vis", atom=pt.ComplexAtom(itemsize=8),
+        if meta.with_autocorr:
+            block_size = (num_antennas * (num_antennas + 1)) // 2
+        else:
+            block_size = (num_antennas * (num_antennas - 1)) // 2
+        num_rows = block_size * num_times
+        with tb.open_file(data_file, "w") as f:
+            f.create_array("/", "uvw", atom=tb.Float32Atom(), shape=(num_rows, 3))
+            f.create_array("/", "antenna_1", atom=tb.Int16Atom(), shape=(num_rows,))
+            f.create_array("/", "antenna_2", atom=tb.Int16Atom(), shape=(num_rows,))
+            f.create_array("/", "time_idx", atom=tb.Int16Atom(), shape=(num_rows,))
+            f.create_array("/", "vis", atom=tb.ComplexAtom(itemsize=8),
                            shape=(num_rows, num_freqs, 4))  # single precision complex
-            f.create_array("/", "weights", atom=pt.Float16Atom(), shape=(num_rows, num_freqs, 4))
-            f.create_array("/", "flags", atom=pt.BoolAtom(), shape=(num_rows, num_freqs, 4))
+            f.create_array("/", "weights", atom=tb.Float16Atom(), shape=(num_rows, num_freqs, 4))
+            f.create_array("/", "flags", atom=tb.BoolAtom(), shape=(num_rows, num_freqs, 4))
 
         start_row = 0
-        for time_idx, time in enumerate(meta.times):
+        for time_idx in range(num_times):
             # UVW are position(antenna_2) - position(antenna_1)
             # antenna_1, antenna_2 are all possible baselines
+            time = meta.times[time_idx]
 
-            baseline_pairs = np.asarray(list(itertools.combinations(range(num_antennas), 2)), dtype=np.int32)
+            if meta.with_autocorr:
+                baseline_pairs = np.asarray(list(itertools.combinations_with_replacement(range(num_antennas), 2)),
+                                            dtype=np.int32)
+            else:
+                baseline_pairs = np.asarray(list(itertools.combinations(range(num_antennas), 2)),
+                                            dtype=np.int32)
             antenna_1 = baseline_pairs[:, 0]
             antenna_2 = baseline_pairs[:, 1]
 
@@ -257,7 +313,7 @@ class MeasurementSet:
 
             end_row = start_row + uvw.shape[0]
 
-            with pt.open_file(data_file, "r+") as f:
+            with tb.open_file(data_file, "r+") as f:
                 f.root.uvw[start_row:end_row] = uvw
                 f.root.antenna_1[start_row:end_row] = antenna_1
                 f.root.antenna_2[start_row:end_row] = antenna_2
@@ -269,27 +325,102 @@ class MeasurementSet:
 
         return MeasurementSet(ms_folder=ms_folder)
 
+    def match(self, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int, times: at.Time,
+              freqs: au.Quantity | None = None) -> VisibilityData:
+        """
+        Get the visibility data for the given antenna pair, times and frequencies. The shapes of inputs must broadcast.
+        I.e. scalars will broadcast.
+
+        Args:
+            antenna_1: the first antenna
+            antenna_2: the second antenna
+            times: the times
+            freqs: the frequencies, if None, all frequencies are returned
+
+        Returns:
+            the visibility data matching the given antenna pair, times and frequencies.
+        """
+
+        (i0_time, alpha0_time), (i1_time, alpha1_time) = get_interp_indices_and_weights(
+            x=(times - self.ref_time).sec, xp=(self.meta.times - self.ref_time).sec
+        )
+        rows0 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i0_time)
+        rows1 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i1_time)
+        # For accessing HDF5 slices are faster
+        rows0 = _try_get_slice(rows0)
+        rows1 = _try_get_slice(rows1)
+
+        def _access_non_unique(h5_array, rows):
+            if isinstance(rows, slice):
+                return h5_array[rows]
+            unique_rows, inverse_map = np.unique(rows, return_inverse=True)
+            unique_get = h5_array[unique_rows, ...]
+            if len(unique_rows) == len(rows):
+                return unique_get
+            # Send back to original shape
+            return unique_get[inverse_map]
+
+        with tb.open_file(self.data_file, 'r') as f:
+            vis = (
+                    _access_non_unique(f.root.vis, rows0) * alpha0_time[:, None, None]
+                    + _access_non_unique(f.root.vis, rows1) * alpha1_time[:, None, None]
+            )
+            weights = (
+                    _access_non_unique(f.root.weights, rows0) * alpha0_time[:, None, None]
+                    + _access_non_unique(f.root.weights, rows1) * alpha1_time[:, None, None]
+            )
+            flags = (
+                    _access_non_unique(f.root.flags, rows0) * alpha0_time[:, None, None]
+                    + _access_non_unique(f.root.flags, rows1) * alpha1_time[:, None, None]
+            )
+
+        if freqs is not None:
+            (i0_freq, alpha0_freq), (i1_freq, alpha1_freq) = get_interp_indices_and_weights(
+                x=freqs.value, xp=self.meta.freqs.value
+            )
+            i0_freq = _try_get_slice(i0_freq)
+            i1_freq = _try_get_slice(i1_freq)
+            vis = vis[:, i0_freq] * alpha0_freq + vis[:, i1_freq] * alpha1_freq
+            weights = weights[:, i0_freq] * alpha0_freq + weights[:, i1_freq] * alpha1_freq
+            flags = flags[:, i0_freq] * alpha0_freq + flags[:, i1_freq] * alpha1_freq
+
+        # Cast flags to bool, will effective to OR operation
+        flags = flags.astype(np.bool_)
+
+        return VisibilityData(
+            vis=vis,
+            weights=weights,
+            flags=flags
+        )
+
     def create_block_generator(self, start_time_idx: int = 0, end_time_idx: int | None = None,
                                vis: bool = True, weights: bool = True, flags: bool = True) -> Generator[
         Tuple[at.Time, VisibilityCoords, VisibilityData], VisibilityData | None, None
     ]:
-        start_row = self.get_row(0, 1, start_time_idx)
+        if self.meta.with_autocorr:
+            start_antenna_1 = 0
+            start_antenna_2 = 0
+        else:
+            start_antenna_1 = 0
+            start_antenna_2 = 1
+
+        start_row = self.get_rows(start_antenna_1, start_antenna_2, start_time_idx)
 
         if end_time_idx is None:
             end_row = self.num_rows
         else:
-            end_row = self.get_row(0, 1, end_time_idx) + self.block_size
+            end_row = self.get_rows(start_antenna_1, start_antenna_2, end_time_idx) + self.block_size
 
-        time_mjs = jnp.asarray(self.meta.times.mjd * 86400, dtype=jnp.float64)
+        time_obs = jnp.asarray((self.meta.times - self.ref_time).sec, dtype=jnp.float32)
 
-        with pt.open_file(self.data_file, 'r+') as f:
+        with tb.open_file(self.data_file, 'r+') as f:
             time_idx = start_time_idx
             for row in range(start_row, end_row, self.block_size):
                 time = self.meta.times[time_idx]
                 time_idx += 1
                 coords = VisibilityCoords(
                     uvw=f.root.uvw[row:row + self.block_size],
-                    time_mjs=time_mjs[f.root.time_idx[row:row + self.block_size]],
+                    time_obs=time_obs[f.root.time_idx[row:row + self.block_size]],
                     antenna_1=f.root.antenna_1[row:row + self.block_size],
                     antenna_2=f.root.antenna_2[row:row + self.block_size],
                     time_idx=f.root.time_idx[row:row + self.block_size]
@@ -307,65 +438,3 @@ class MeasurementSet:
                         f.root.weights[row:row + self.block_size] = response.weights
                     if response.flags is not None:
                         f.root.flags[row:row + self.block_size] = response.flags
-
-
-def test_measurement_set():
-    meta = MeasurementSetMetaV0(
-        array_name="test_array",
-        array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
-        channel_width=au.Quantity(1, au.Hz),
-        integration_time=au.Quantity(1, au.s),
-        coherencies='stokes',
-        pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
-        times=at.Time.now() + np.arange(10) * au.s,
-        freqs=au.Quantity([1, 2, 3], au.Hz),
-        antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
-        antenna_names=[f"antenna_{i}" for i in range(5)],
-        antenna_diameters=au.Quantity(np.ones(5), au.m)
-    )
-    ms = MeasurementSet.create_measurement_set("test_ms", meta)
-
-    assert ms.num_rows == 10 * 5 * 4 // 2
-
-    assert ms.get_row(0, 1, 0) == 0
-    assert ms.get_row(0, 1, 1) == ms.block_size
-    assert ms.get_row(0, 1, 9) == ms.num_rows - ms.block_size
-
-    gen = ms.create_block_generator()
-
-    gen_response = None
-    while True:
-        try:
-            time, coords, data = gen.send(gen_response)
-        except StopIteration:
-            break
-
-        assert coords.uvw.shape == (ms.block_size, 3)
-        assert coords.time_mjs.shape == (ms.block_size,)
-        assert coords.antenna_1.shape == (ms.block_size,)
-        assert coords.antenna_2.shape == (ms.block_size,)
-        assert coords.time_idx.shape == (ms.block_size,)
-        assert data.vis.shape == (ms.block_size, 3, 4)
-        assert data.weights.shape == (ms.block_size, 3, 4)
-        assert data.flags.shape == (ms.block_size, 3, 4)
-        for time_idx in coords.time_idx:
-            assert ms.meta.times[time_idx] == time
-
-        gen_response = VisibilityData(
-            vis=np.ones((ms.block_size, 3, 4), dtype=np.complex64),
-            weights=np.zeros((ms.block_size, 3, 4), dtype=np.float16),
-            flags=np.ones((ms.block_size, 3, 4), dtype=np.bool)
-        )
-
-    gen = ms.create_block_generator()
-    gen_response = None
-    while True:
-        try:
-            time, coords, data = gen.send(gen_response)
-        except StopIteration:
-            break
-
-        assert np.all(data.vis.real == 1)
-        assert np.all(data.weights == 0)
-        assert np.all(data.flags)

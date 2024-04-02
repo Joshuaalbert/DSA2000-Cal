@@ -157,7 +157,8 @@ class ForwardModel:
         # Simulate measurement noise
 
         key1, key2 = jax.random.split(key)
-        noise = noise_scale * (
+        # Divide by sqrt(2) to account for polarizations
+        noise = (noise_scale / jnp.sqrt(2.)) * (
                 jax.random.normal(key1, visibilities.shape) + 1j * jax.random.normal(key2, visibilities.shape)
         )
 

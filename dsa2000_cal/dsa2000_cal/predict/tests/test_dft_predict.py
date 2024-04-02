@@ -74,7 +74,7 @@ def test_dft_predict():
     )
     visibility_coords = VisibilityCoords(
         uvw=jnp.ones((row, 3)),
-        time_mjs=jnp.ones((row,)),
+        time_obs=jnp.ones((row,)),
         antenna_1=jnp.ones((row,), jnp.int64),
         antenna_2=jnp.ones((row,), jnp.int64),
         time_idx=jnp.ones((row,), jnp.int64)
@@ -129,7 +129,7 @@ def test_with_sharding():
 
     visibility_coords = VisibilityCoords(
         uvw=tree_device_put(uvw, NamedSharding(mesh, P())),
-        time_mjs=tree_device_put(time, NamedSharding(mesh, P())),
+        time_obs=tree_device_put(time, NamedSharding(mesh, P())),
         antenna_1=tree_device_put(antenna_1, NamedSharding(mesh, P())),
         antenna_2=tree_device_put(antenna_2, NamedSharding(mesh, P())),
         time_idx=tree_device_put(time_idx, NamedSharding(mesh, P()))

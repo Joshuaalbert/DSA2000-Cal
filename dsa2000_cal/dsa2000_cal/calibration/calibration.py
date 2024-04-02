@@ -8,7 +8,7 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
 from dsa2000_cal.predict.dft_predict import DFTPredict, DFTModelData
-from dsa2000_cal.src.common.jax_utils import pytree_unravel
+from dsa2000_cal.common.jax_utils import pytree_unravel
 
 
 class CalibrationParams(NamedTuple):

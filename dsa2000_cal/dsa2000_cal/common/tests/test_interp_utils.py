@@ -1,3 +1,5 @@
+import astropy.time as at
+import astropy.units as au
 import numpy as np
 from jax import numpy as jnp
 
@@ -137,6 +139,26 @@ def test_get_interp_indices_and_weights():
     np.testing.assert_array_equal(alpha0, jnp.asarray([0.5, 0.5]))
     np.testing.assert_array_equal(i1, jnp.asarray([2, 2]))
     np.testing.assert_array_equal(alpha1, jnp.asarray([0.5, 0.5]))
+
+    xp = [0, 1, 2, 3]
+    x = [1.5, 2.5]
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp)
+    print(i0, alpha0, i1, alpha1)
+    np.testing.assert_array_equal(i0, jnp.asarray([1, 2]))
+    np.testing.assert_array_equal(alpha0, jnp.asarray([0.5, 0.5]))
+    np.testing.assert_array_equal(i1, jnp.asarray([2, 3]))
+    np.testing.assert_array_equal(alpha1, jnp.asarray([0.5, 0.5]))
+
+def test_get_interp_indices_and_weights_astropy_time():
+    # Test with at.Time objects
+    xp = at.Time.now() + np.arange(10) * au.s
+    x = xp
+    x0 = x[0]
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights((x - x0).sec, (xp - x0).sec)
+    assert np.allclose((xp - x0).sec, np.arange(10))
+    print((i0, alpha0), (i1, alpha1))
+    assert np.all(i0 == np.asarray([0, 1, 2, 3, 4, 5, 6, 7, 8, 8]))
+    assert np.all(i1 == np.asarray([1, 2, 3, 4, 5, 6, 7, 8, 9, 9]))
 
 
 def test__left_broadcast_multiply():

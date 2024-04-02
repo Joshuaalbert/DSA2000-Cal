@@ -104,7 +104,7 @@ class AbstractAntennaModel(ABC):
 
     @abstractmethod
     def compute_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
-                      pol: Literal['X', 'Y']) -> np.ndarray:
+                          pol: Literal['X', 'Y']) -> np.ndarray:
         """
         Compute the amplitude of the antenna at a given pointing and source.
 

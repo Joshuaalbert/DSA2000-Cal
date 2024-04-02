@@ -19,29 +19,61 @@ __all__ = [
 
 _LOADED = False
 
+#
+# def load_all_module_recursively(module: ModuleType):
+#     """
+#     Imports all sub-modules within a module path.
+#     Use this to ensure that global registries are fully updated.
+#     Beware of unintended consequences.
+#
+#     Args:
+#         module: the module to start at an import recursively from.
+#     """
+#     # The description of this code is:
+#     # https://stackoverflow.com/questions/3365740/how-to-import-all-submodules
+#     if inspect.ismodule(module) and hasattr(module, '__path__'):
+#         for _, mod_name, is_pkg in pkgutil.walk_packages(module.__path__):
+#             full_mod_name = module.__name__ + '.' + mod_name
+#             try:
+#                 submodule = importlib.import_module(full_mod_name)
+#             except ImportError as e:
+#                 print(f"Could not import {full_mod_name}: {e}")
+#                 continue
+#
+#             if inspect.ismodule(submodule):
+#                 load_all_module_recursively(submodule)
 
-def load_all_module_recursively(module: ModuleType):
+
+
+def load_all_module_recursively(module: ModuleType, exclude_patterns: list = None):
     """
-    Imports all sub-modules within a module path.
+    Imports all sub-modules within a module path, excluding those that match any pattern in exclude_patterns.
     Use this to ensure that global registries are fully updated.
     Beware of unintended consequences.
 
     Args:
-        module: the module to start at an import recursively from.
+        module: the module to start at and import recursively from.
+        exclude_patterns: list of strings, sub-modules containing these strings will not be imported.
     """
-    # The description of this code is:
-    # https://stackoverflow.com/questions/3365740/how-to-import-all-submodules
+    if exclude_patterns is None:
+        exclude_patterns = ['test']  # Default pattern to exclude test modules
+
     if inspect.ismodule(module) and hasattr(module, '__path__'):
         for _, mod_name, is_pkg in pkgutil.walk_packages(module.__path__):
+            print(f"mod_name: {mod_name} is_pkg: {is_pkg}")
             full_mod_name = module.__name__ + '.' + mod_name
+            print(f"full_mod_name: {full_mod_name}")
+            if any(pattern in full_mod_name for pattern in exclude_patterns):
+                continue
+
             try:
                 submodule = importlib.import_module(full_mod_name)
-            except ImportError:
+            except ImportError as e:
+                print(f"Could not import {full_mod_name}: {e}")
                 continue
 
             if inspect.ismodule(submodule):
-                load_all_module_recursively(submodule)
-
+                load_all_module_recursively(submodule, exclude_patterns)
 
 def fill_registries():
     """

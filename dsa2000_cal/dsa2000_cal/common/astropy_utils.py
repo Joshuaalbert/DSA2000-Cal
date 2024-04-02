@@ -1,7 +1,8 @@
 import numpy as np
 from astropy import coordinates as ac
 from astropy import units as au
-from astropy.coordinates import Angle, angle_utilities
+from astropy.coordinates import Angle
+from astropy.coordinates.angles import offset_by
 
 
 def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.Quantity) -> ac.ICRS:
@@ -72,7 +73,7 @@ def create_spherical_earth_grid(center: ac.EarthLocation, radius: au.Quantity, d
 
         # Calculate the point's position in 3D space
 
-        newlon, newlat = angle_utilities.offset_by(
+        newlon, newlat = offset_by(
             lon=slon, lat=slat, posang=angle_offsets, distance=distances
         )
 
