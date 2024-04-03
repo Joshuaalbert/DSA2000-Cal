@@ -157,7 +157,7 @@ def _get_slice(indices):
     if not np.all(steps == steps[0]):
         raise NotContiguous("Indices must be contiguous.")
     step = steps[0]
-    return slice(indices[0], indices[-1] + 1, step)
+    return slice(int(indices[0]), int(indices[-1]) + 1, step)
 
 
 def _try_get_slice(indices):
@@ -344,15 +344,19 @@ class MeasurementSet:
         (i0_time, alpha0_time), (i1_time, alpha1_time) = get_interp_indices_and_weights(
             x=(times - self.ref_time).sec, xp=(self.meta.times - self.ref_time).sec
         )
+        ((i0_time, alpha0_time), (i1_time, alpha1_time)) = jax.tree_map(
+            np.asarray, ((i0_time, alpha0_time), (i1_time, alpha1_time))
+        )
         rows0 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i0_time)
         rows1 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i1_time)
+
         # For accessing HDF5 slices are faster
         rows0 = _try_get_slice(rows0)
         rows1 = _try_get_slice(rows1)
 
         def _access_non_unique(h5_array, rows):
             if isinstance(rows, slice):
-                return h5_array[rows]
+                return h5_array[rows, ...]
             unique_rows, inverse_map = np.unique(rows, return_inverse=True)
             unique_get = h5_array[unique_rows, ...]
             if len(unique_rows) == len(rows):
@@ -378,11 +382,14 @@ class MeasurementSet:
             (i0_freq, alpha0_freq), (i1_freq, alpha1_freq) = get_interp_indices_and_weights(
                 x=freqs.value, xp=self.meta.freqs.value
             )
+            ((i0_freq, alpha0_freq), (i1_freq, alpha1_freq)) = jax.tree_map(
+                np.asarray, ((i0_freq, alpha0_freq), (i1_freq, alpha1_freq))
+            )
             i0_freq = _try_get_slice(i0_freq)
             i1_freq = _try_get_slice(i1_freq)
-            vis = vis[:, i0_freq] * alpha0_freq + vis[:, i1_freq] * alpha1_freq
+            vis = vis[:, i0_freq] * alpha0_freq[:, None] + vis[:, i1_freq] * alpha1_freq[:, None]
             weights = weights[:, i0_freq] * alpha0_freq + weights[:, i1_freq] * alpha1_freq
-            flags = flags[:, i0_freq] * alpha0_freq + flags[:, i1_freq] * alpha1_freq
+            flags = flags[:, i0_freq] * alpha0_freq[:, None] + flags[:, i1_freq] * alpha1_freq[:, None]
 
         # Cast flags to bool, will effective to OR operation
         flags = flags.astype(np.bool_)

@@ -100,4 +100,7 @@ def test_measurement_set(with_autocorr):
         assert np.all(data.flags)
 
     data = ms.match(antenna_1=0, antenna_2=1, times=ms.meta.times)
-    print(data.vis.shape)
+    assert data.vis.shape == (len(meta.times), len(meta.freqs), 4)
+
+    data = ms.match(antenna_1=np.asarray([0, 1]), antenna_2=np.asarray([1, 2]), times=ms.meta.times[:2])
+    assert data.vis.shape == (2, len(meta.freqs), 4)

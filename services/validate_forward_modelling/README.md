@@ -1,3 +1,1 @@
-# Dirty Image
-
-Creates the dirty image with WSClean.
+# Create dirty image with WSClean

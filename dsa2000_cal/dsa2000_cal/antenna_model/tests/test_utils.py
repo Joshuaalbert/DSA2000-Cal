@@ -2,7 +2,7 @@ import numpy as np
 
 from dsa2000_cal.assets.content_registry import fill_registries
 
-fill_registries()
+
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.antenna_model.utils import bore_sight_coords_to_pixel_coords, pixel_coords_to_bore_sight_coords, \
     plot_circular_beam, get_beam_width, find_num_pixels
@@ -24,6 +24,7 @@ def _test_bore_sight_coords_to_pixel_coords():
 
 
 def test_get_beam_width():
+    fill_registries()
     antenna_beam = array_registry.get_instance(array_registry.get_match('dsa2000W')).get_antenna_beam()
     plot_circular_beam(antenna_beam.get_model(), theshold=0.01)
     beam_width = get_beam_width(antenna_beam.get_model())

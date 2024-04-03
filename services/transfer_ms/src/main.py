@@ -1,9 +1,5 @@
 import os
 
-from dsa2000_cal.assets.content_registry import fill_registries
-
-fill_registries()
-
 from dsa2000_cal.adapter.create_casa_ms import transfer_visibilities
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 

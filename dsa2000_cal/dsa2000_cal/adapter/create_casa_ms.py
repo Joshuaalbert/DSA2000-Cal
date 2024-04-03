@@ -9,11 +9,8 @@ import astropy.units as au
 import numpy as np
 import pyrap.tables as pt
 
-from dsa2000_cal.assets.content_registry import fill_registries
-
-fill_registries()
-
 from dsa2000_cal.assets.arrays.array import AbstractArray
+from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.assets.templates.templates import Templates
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
@@ -46,7 +43,6 @@ def create_makems_config(array_name: str,
         path to the makems config file
     """
     fill_registries()
-    print(array_registry.entries)
     array: AbstractArray = array_registry.get_instance(array_registry.get_match(array_name))
     antennas_itrs = array.get_antennas().get_itrs()
     antenna_names = array.get_antenna_names()
@@ -101,6 +97,9 @@ def create_makems_config(array_name: str,
     if completed_process.returncode != 0:
         raise RuntimeError(f"makems failed with return code {completed_process.returncode}")
 
+    # Rename from *_p0 to *
+    os.rename(f"{ms_name}_p0", ms_name)
+
     return config_file
 
 
@@ -112,32 +111,40 @@ def transfer_visibilities(ms: MeasurementSet, ms_file_name: str):
         ms: the MeasurementSet object
         ms_file_name: the name of CASA Measurement Set file
     """
-    if len(ms.meta.times) == 1:
-        step_time = ms.meta.integration_time.to('s').value
-    else:
-        step_time = (ms.meta.times[1].tai - ms.meta.times[0].tai).sec
     # Create new MS file
+    print(f"Creating new MS file {ms_file_name}")
+    if not ms.meta.with_autocorr:
+        raise ValueError("Autocorrelations must be present in the MeasurementSet to map to CASA MS.")
+
     create_makems_config(
         array_name=ms.meta.array_name,
         ms_name=ms_file_name,
-        start_freq=ms.meta.freqs[0].to('Hz').value,
+        start_freq=(ms.meta.freqs[0] - 0.5 * ms.meta.channel_width).to('Hz').value,
         step_freq=ms.meta.channel_width.to('Hz').value,
-        start_time=ms.meta.times[0].tai.mjd * 86400.,
-        step_time=step_time,
-        phase_tracking=ms.meta.pointings,
+        start_time=(ms.meta.times[0] - 0.5 * ms.meta.integration_time).tai.datetime,
+        step_time=ms.meta.integration_time.to('s').value,
+        phase_tracking=ms.meta.phase_tracking,
         num_freqs=len(ms.meta.freqs),
         num_times=len(ms.meta.times)
     )
 
     # Populate the new MS file with visibilities
+    print(f"Populating {ms_file_name} with visibilities")
     with pt.table(ms_file_name, readonly=False) as output_ms:
         # shape = output_ms.getcol('DATA').shape
         # dtype = output_ms.getcol('DATA').dtype
 
         # Make WEIGHT_SPECTRUM if it doesn't exist
         if 'WEIGHT_SPECTRUM' not in output_ms.colnames():
-            desc = pt.makecoldesc('WEIGHT_SPECTRUM', output_ms.getcoldesc('DATA'))
+            data_desc = output_ms.getcoldesc('DATA')
+
+            desc = pt.makecoldesc('WEIGHT_SPECTRUM', data_desc)
+            desc['valueType'] = 'float'
+            desc['shape'] = data_desc['shape'][::-1]  # [num_corrs, num_freqs] # reverse necessary
+            desc['ndim'] = data_desc['ndim']
+
             dminfo = output_ms.getdminfo('DATA')
+            dminfo['NAME'] = 'TiledWeightSpectrum'  # Use a unique data manager name
             output_ms.addcols(desc=desc, dminfo=dminfo)
 
         start_row = 0

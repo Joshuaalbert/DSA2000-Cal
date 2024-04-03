@@ -1,4 +1,4 @@
-FROM base:latest
+FROM 1_base:latest
 
 # Prepare run
 WORKDIR /dsa/code

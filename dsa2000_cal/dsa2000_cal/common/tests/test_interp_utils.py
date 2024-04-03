@@ -130,6 +130,33 @@ def test_get_interp_indices_and_weights():
     print(i0, alpha0, i1, alpha1)
     assert xp[i0] * alpha0 + xp[i1] * alpha1 == 5
 
+    xp = [0., 0.]
+    x = 0.
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp)
+    print(i0, alpha0, i1, alpha1)
+    assert i0 == 0
+    assert alpha0 == 1
+    assert i1 == 1
+    assert alpha1 == 0.
+
+    xp = [0., 0.]
+    x = -1
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp)
+    print(i0, alpha0, i1, alpha1)
+    assert i0 == 0
+    assert alpha0 == 2.
+    assert i1 == 1
+    assert alpha1 == -1.
+
+    xp = [0.]
+    x = 0.5
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp)
+    print(i0, alpha0, i1, alpha1)
+    assert i0 == 0
+    assert alpha0 == 1.
+    assert i1 == 0
+    assert alpha1 == 0.
+
     # Vector ops
     xp = [0, 1, 2, 3]
     x = [1.5, 1.5]
@@ -148,6 +175,15 @@ def test_get_interp_indices_and_weights():
     np.testing.assert_array_equal(alpha0, jnp.asarray([0.5, 0.5]))
     np.testing.assert_array_equal(i1, jnp.asarray([2, 3]))
     np.testing.assert_array_equal(alpha1, jnp.asarray([0.5, 0.5]))
+
+    # xp = [0, 1, 2, 3]
+    # x = [-0.5, 3.5]
+    # (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp)
+    # print(i0, alpha0, i1, alpha1)
+    # np.testing.assert_array_equal(i0, jnp.asarray([1, 2]))
+    # np.testing.assert_array_equal(alpha0, jnp.asarray([0.5, 0.5]))
+    # np.testing.assert_array_equal(i1, jnp.asarray([2, 3]))
+    # np.testing.assert_array_equal(alpha1, jnp.asarray([0.5, 0.5]))
 
 def test_get_interp_indices_and_weights_astropy_time():
     # Test with at.Time objects

@@ -147,19 +147,25 @@ def get_interp_indices_and_weights(x, xp) -> tuple[
     xp = jnp.asarray(xp, dtype=jnp.float_)
     if len(np.shape(xp)) == 0:
         xp = jnp.reshape(xp, (-1,))
+    if np.shape(xp)[0] == 0:
+        raise ValueError("xp must be non-empty")
+    if np.shape(xp)[0] == 1:
+        return (jnp.zeros_like(x, dtype=jnp.int32), jnp.ones_like(x)), (
+        jnp.zeros_like(x, dtype=jnp.int32), jnp.zeros_like(x))
 
     # xp_arr = np.concatenate([xp[:1], xp, xp[-1:]])
     xp_arr = xp
 
-    i = jnp.clip(jnp.searchsorted(xp_arr, x, side='right'), 1, len(xp_arr) - 1)
-    dx = xp_arr[i] - xp_arr[i - 1]
-    delta = x - xp_arr[i - 1]
+    i1 = jnp.clip(jnp.searchsorted(xp_arr, x, side='right'), 1, len(xp_arr) - 1)
+    i0 = i1 - 1
+    dx = xp_arr[i1] - xp_arr[i0]
+    delta = x - xp_arr[i0]
 
     epsilon = np.spacing(np.finfo(xp_arr.dtype).eps)
     dx0 = jnp.abs(dx) <= epsilon  # Prevent NaN gradients when `dx` is small.
     dx = jnp.where(dx0, 1, dx)
     alpha = delta / dx
-    return (i - 1, (1. - alpha)), (i, alpha)
+    return (i0, (1. - alpha)), (i1, alpha)
 
 
 def get_nn_points(x, y, k=3, mode='scaled_euclidean'):

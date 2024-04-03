@@ -8,7 +8,7 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 
-fill_registries()
+
 from dsa2000_cal.assets.arrays.array import extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
 
@@ -31,6 +31,7 @@ def test_extract_itrs_coords():
 
 
 def test_array_beam():
+    fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W_small'))
     antenna_beam = array.get_antenna_beam()
     antenna_beam.get_model().plot_polar_amplitude()

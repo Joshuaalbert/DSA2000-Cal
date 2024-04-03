@@ -6,9 +6,26 @@ from africanus.model.coherency import convert
 from astropy import coordinates as ac
 from astropy import units as au
 from h5parm.utils import parse_coordinates_bbs
+from pydantic import Field
 
-from dsa2000_cal.abc import AbstractSkyModel, SourceModel
 from dsa2000_cal.common.astropy_utils import rotate_icrs_direction
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+
+
+class SourceModel(SerialisableBaseModel):
+    image: np.ndarray = Field(
+        description="Source model of shape [source, chan, 2, 2]",
+    )
+    lm: np.ndarray = Field(
+        description="Source direction cosines of shape [source, 2]",
+    )
+    corrs: List[List[str]] = Field(
+        description="Correlations in the source model",
+        default=[['XX', 'XY'], ['YX', 'YY']],
+    )
+    freqs: np.ndarray = Field(
+        description="Frequencies of shape [chan]",
+    )
 
 
 def extract_columns(line: str) -> Tuple[Dict[str, int], Dict[str, Optional[str]]]:
@@ -90,7 +107,7 @@ def parse_data_line(line: str, name_to_index: Dict[str, int], defaults: Dict[str
     return parsed_data
 
 
-class BBSSkyModel(AbstractSkyModel):
+class BBSSkyModel:
     def __init__(self, bbs_sky_model: str, pointing_centre: ac.ICRS, chan0: au.Quantity, chan_width: au.Quantity,
                  num_channels: int):
         """

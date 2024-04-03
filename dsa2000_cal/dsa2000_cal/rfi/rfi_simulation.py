@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from dsa2000_cal.assets.content_registry import fill_registries
 
-fill_registries()
+
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.assets.registries import array_registry
@@ -319,7 +319,7 @@ def run_rfi_simulation(array_name: str,
     """
     if not os.path.exists(ms_file):
         raise ValueError(f"MS file {ms_file} does not exist.")
-
+    fill_registries()
     array = array_registry.get_instance(array_registry.get_match(array_name))
 
     logger.info("Extracting data from MS file.")

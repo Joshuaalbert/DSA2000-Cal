@@ -19,6 +19,7 @@ __all__ = [
 
 _LOADED = False
 
+
 #
 # def load_all_module_recursively(module: ModuleType):
 #     """
@@ -44,7 +45,6 @@ _LOADED = False
 #                 load_all_module_recursively(submodule)
 
 
-
 def load_all_module_recursively(module: ModuleType, exclude_patterns: list = None):
     """
     Imports all sub-modules within a module path, excluding those that match any pattern in exclude_patterns.
@@ -56,14 +56,13 @@ def load_all_module_recursively(module: ModuleType, exclude_patterns: list = Non
         exclude_patterns: list of strings, sub-modules containing these strings will not be imported.
     """
     if exclude_patterns is None:
-        exclude_patterns = ['test']  # Default pattern to exclude test modules
+        exclude_patterns = ['tests']  # Default pattern to exclude test modules
 
     if inspect.ismodule(module) and hasattr(module, '__path__'):
         for _, mod_name, is_pkg in pkgutil.walk_packages(module.__path__):
-            print(f"mod_name: {mod_name} is_pkg: {is_pkg}")
             full_mod_name = module.__name__ + '.' + mod_name
-            print(f"full_mod_name: {full_mod_name}")
-            if any(pattern in full_mod_name for pattern in exclude_patterns):
+            # If mod name starts with any of the exclude patterns, skip it
+            if any(mod_name.startswith(pattern) for pattern in exclude_patterns):
                 continue
 
             try:
@@ -74,6 +73,7 @@ def load_all_module_recursively(module: ModuleType, exclude_patterns: list = Non
 
             if inspect.ismodule(submodule):
                 load_all_module_recursively(submodule, exclude_patterns)
+
 
 def fill_registries():
     """
