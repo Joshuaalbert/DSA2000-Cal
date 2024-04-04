@@ -171,7 +171,7 @@ class DishEffectsGainModel(GainModel):
         array_location = ac.EarthLocation(lat=0, lon=0, height=0)
         time = at.Time('2021-01-01T00:00:00', scale='utc')
         phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
-        sources = lmn_to_icrs(self.lmn_data, array_location=array_location, time=time, phase_tracking=phase_tracking)
+        sources = lmn_to_icrs(self.lmn_data, time=time, phase_tracking=phase_tracking)
 
         gain_amplitude = self.beam_gain_model.compute_gain(
             freqs=self.model_freqs,
@@ -375,12 +375,7 @@ class DishEffectsGainModel(GainModel):
 
         altaz_frame = ac.AltAz(location=array_location, obstime=time)
         elevation = phase_tracking.transform_to(altaz_frame).alt
-        lmn_sources = icrs_to_lmn(
-            sources=sources,
-            array_location=array_location,
-            time=time,
-            phase_tracking=phase_tracking
-        )  # (source_shape) + [3]
+        lmn_sources = icrs_to_lmn(sources=sources, time=time, phase_tracking=phase_tracking)  # (source_shape) + [3]
 
         return self._compute_gain_jax(
             freqs=quantity_to_jnp(freqs),

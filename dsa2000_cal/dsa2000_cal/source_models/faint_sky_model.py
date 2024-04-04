@@ -69,7 +69,7 @@ class FaintSkyModel:
         lmn = self.compute_lmn(pointing, array_location, time)
         shape = lmn.shape
         lmn = au.Quantity(lmn.reshape((-1, 3)), unit=au.dimensionless_unscaled)
-        sources = lmn_to_icrs(lmn=lmn, array_location=array_location, time=time, phase_tracking=pointing)
+        sources = lmn_to_icrs(lmn=lmn, time=time, phase_tracking=pointing)
         return sources.reshape(shape[:-1])
 
     def compute_lmn(self, pointing: ac.ICRS, array_location: ac.EarthLocation, time: at.Time):
@@ -84,11 +84,11 @@ class FaintSkyModel:
         # The image is given in a uniform grid over l,m (i.e. the sky tangent at the pointing direction)
         # dlm are computed at the reference pixel and then the l,m coordinates are computed for each pixel
         # relative to the reference pixel
-        lmn_pointing = icrs_to_lmn(sources=pointing, phase_tracking=pointing, array_location=array_location, time=time)
+        lmn_pointing = icrs_to_lmn(sources=pointing, time=time, phase_tracking=pointing)
         pixel_source_ra = ac.ICRS(pointing.ra + self.cell_size[0], pointing.dec)
         pixel_source_dec = ac.ICRS(pointing.ra, pointing.dec + self.cell_size[1])
-        lmn_ra = icrs_to_lmn(sources=pixel_source_ra, phase_tracking=pointing, array_location=array_location, time=time)
-        lmn_dec = icrs_to_lmn(sources=pixel_source_dec, phase_tracking=pointing, array_location=array_location, time=time)
+        lmn_ra = icrs_to_lmn(sources=pixel_source_ra, time=time, phase_tracking=pointing)
+        lmn_dec = icrs_to_lmn(sources=pixel_source_dec, time=time, phase_tracking=pointing)
         dl = lmn_ra[0] - lmn_pointing[0]
         dm = lmn_dec[1] - lmn_pointing[1]
         L, M = np.meshgrid(

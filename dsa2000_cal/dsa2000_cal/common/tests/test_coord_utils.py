@@ -11,7 +11,7 @@ def test_enu_to_uvw():
     array_location = ac.EarthLocation.of_site('vla')
     time = at.Time('2000-01-01T00:00:00', format='isot')
     pointing = ac.ICRS(0 * au.deg, 90 * au.deg)
-    uvw = earth_location_to_uvw(antennas, array_location, time, pointing)
+    uvw = earth_location_to_uvw(antennas, time, pointing)
     assert np.linalg.norm(uvw) < 6400 * au.km
 
     enu_frame = ENU(location=ac.EarthLocation.of_site('vla'), obstime=time)
@@ -21,7 +21,7 @@ def test_enu_to_uvw():
         up=np.random.uniform(size=(10,), low=-5, high=5) * au.km,
         frame=enu_frame
     ).transform_to(ac.ITRS).earth_location
-    uvw = earth_location_to_uvw(antennas, array_location, time, pointing)
+    uvw = earth_location_to_uvw(antennas, time, pointing)
     assert np.all(np.linalg.norm(uvw, axis=-1) < 6400 * au.km)
 
 
@@ -30,17 +30,17 @@ def test_lmn_to_icrs():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
-    lmn = icrs_to_lmn(sources, array_location, time, pointing)
-    reconstructed_sources = lmn_to_icrs(lmn, array_location, time, pointing)
+    lmn = icrs_to_lmn(sources, time, pointing)
+    reconstructed_sources = lmn_to_icrs(lmn, time, pointing)
     print(sources)
     print(lmn)
     print(reconstructed_sources)
     assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
 
     sources = ac.ICRS([1, 2, 3, 4] * au.deg, [1, 2, 3, 4] * au.deg).reshape((2, 2))
-    lmn = icrs_to_lmn(sources, array_location, time, pointing)
+    lmn = icrs_to_lmn(sources, time, pointing)
     assert lmn.shape == (2, 2, 3)
-    reconstructed_sources = lmn_to_icrs(lmn, array_location, time, pointing)
+    reconstructed_sources = lmn_to_icrs(lmn, time, pointing)
     assert reconstructed_sources.shape == (2, 2)
     assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
 
@@ -57,20 +57,20 @@ def test_lmn_to_icrs_near_poles():
     )
 
     pointing_north_pole = ac.ICRS(0 * au.deg, 90 * au.deg)
-    sources = lmn_to_icrs(lmn, array_location, time, pointing_north_pole)
+    sources = lmn_to_icrs(lmn, time, pointing_north_pole)
     print(sources)
 
-    lmn_reconstructed = icrs_to_lmn(sources, array_location, time, pointing_north_pole)
+    lmn_reconstructed = icrs_to_lmn(sources, time, pointing_north_pole)
     print(lmn_reconstructed)
 
     np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
 
     # Near south pole
     pointing_south_pole = ac.ICRS(0 * au.deg, -90 * au.deg)
-    sources = lmn_to_icrs(lmn, array_location, time, pointing_south_pole)
+    sources = lmn_to_icrs(lmn, time, pointing_south_pole)
     print(sources)
 
-    lmn_reconstructed = icrs_to_lmn(sources, array_location, time, pointing_south_pole)
+    lmn_reconstructed = icrs_to_lmn(sources, time, pointing_south_pole)
     print(lmn_reconstructed)
 
     np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
@@ -98,7 +98,7 @@ def test_earth_location_to_enu():
     assert np.all(dist < np.sqrt(3) * 10 * au.km)
 
     # Test earth cetnre
-    earth_centre = ac.GCRS(0 * au.deg, 0 * au.deg, 0 * au.km).transform_to(ac.ITRS).earth_location
+    earth_centre = ac.GCRS(0 * au.deg, 0 * au.deg, 0 * au.km).transform_to(ac.ITRS()).earth_location
     enu = earth_location_to_enu(earth_centre, array_location, time)
     assert np.all(np.abs(enu) < 2e-5 * au.m)
 

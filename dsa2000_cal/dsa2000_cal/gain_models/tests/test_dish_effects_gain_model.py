@@ -40,8 +40,7 @@ def test_dish_effects_gain_model_real_data(mode):
     if mode == 'dft':
         sources = ac.ICRS(ra=[0, 0.] * au.deg, dec=[0., 1.] * au.deg)
     elif mode == 'fft':
-        sources = lmn_to_icrs(dish_effects_gain_model.lmn_data, array_location=array_location, time=time,
-                              phase_tracking=phase_tracking)
+        sources = lmn_to_icrs(dish_effects_gain_model.lmn_data, time=time, phase_tracking=phase_tracking)
     else:
         raise ValueError(f"Unknown mode {mode}")
 

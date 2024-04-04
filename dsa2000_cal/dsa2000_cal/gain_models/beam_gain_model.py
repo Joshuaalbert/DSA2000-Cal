@@ -142,12 +142,7 @@ class BeamGainModel(GainModel):
         if not freqs.unit.is_equivalent(au.Hz):
             raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}")
 
-        lmn_sources = icrs_to_lmn(
-            sources=sources,
-            array_location=array_location,
-            time=time,
-            phase_tracking=phase_tracking
-        )  # (source_shape) + [3]
+        lmn_sources = icrs_to_lmn(sources=sources, time=time, phase_tracking=phase_tracking)  # (source_shape) + [3]
 
         gains = self._compute_gain_jax(
             freqs=quantity_to_jnp(freqs),

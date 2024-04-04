@@ -341,12 +341,8 @@ class MeasurementSet:
 
             time_idx = np.full(antenna_1.shape, time_idx, dtype=np.int32)
 
-            antennas_uvw = earth_location_to_uvw(
-                antennas=meta.antennas,
-                array_location=meta.array_location,
-                time=time,
-                phase_tracking=meta.phase_tracking
-            )
+            antennas_uvw = earth_location_to_uvw(antennas=meta.antennas, obs_time=time,
+                                                 phase_tracking=meta.phase_tracking)
 
             uvw = antennas_uvw[antenna_2] - antennas_uvw[antenna_1]
 

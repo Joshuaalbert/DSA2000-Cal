@@ -91,4 +91,4 @@ class DiscreteSkyModel:
             array_location: the location of the array reference location
             time: the time of the observation
         """
-        return icrs_to_lmn(self.coords_icrs, array_location, time, phase_tracking)
+        return icrs_to_lmn(self.coords_icrs, time, phase_tracking)
