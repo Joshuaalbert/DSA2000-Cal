@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from astropy import units as au, coordinates as ac, time as at
 
-from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights
@@ -159,7 +159,11 @@ class BeamGainModel(GainModel):
 
 def beam_gain_model_factory(array_name: str) -> BeamGainModel:
     fill_registries()
-    array = array_registry.get_instance(array_registry.get_match(array_name))
+    try:
+        array = array_registry.get_instance(array_registry.get_match(array_name))
+    except NoMatchFound as e:
+        raise ValueError(f"Array {array_name} not found in registry. Add it to use the BeamGainModel factory.") from e
+
     dish_model = array.get_antenna_beam().get_model()
     theta = dish_model.get_theta() * au.deg
     phi = dish_model.get_phi() * au.deg

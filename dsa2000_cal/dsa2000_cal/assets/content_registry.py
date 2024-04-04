@@ -219,6 +219,10 @@ class ContentRegistry(Generic[T]):
 
         Returns:
             instance of the object
+
+        Raises:
+            ValueError: if the object is not in the registry
+            ValueError: if the content factory is not callable
         """
         if content_cls not in self.entries:
             raise ValueError(f"obj {content_cls} not in entries")
@@ -244,7 +248,7 @@ class ContentRegistry(Generic[T]):
             request script
 
         Raises:
-            NoMatchFound if no match found.
+            NoMatchFound: if no match found.
         """
         matches = self.get_all(match_pattern)
         if len(matches) == 0:

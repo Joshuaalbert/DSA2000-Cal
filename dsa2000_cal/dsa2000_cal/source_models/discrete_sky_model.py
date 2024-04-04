@@ -9,22 +9,7 @@ from astropy import units as au
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-
-
-def stokes_to_linear(I, Q, U, V):
-    XX = I + Q
-    XY = U + 1j * V
-    YX = U - 1j * V
-    YY = I - Q
-    return jnp.stack([XX, XY, YX, YY], axis=-1)
-
-
-def stokes_to_circular(I, Q, U, V):
-    RR = I + V
-    RL = Q + 1j * U
-    LR = Q - 1j * U
-    LL = I - V
-    return jnp.stack([RR, RL, LR, LL], axis=-1)
+from dsa2000_cal.source_models.corr_translation import stokes_to_linear
 
 
 @dataclasses.dataclass(eq=False)

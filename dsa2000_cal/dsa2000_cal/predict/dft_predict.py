@@ -1,6 +1,6 @@
 import dataclasses
 from functools import partial
-from typing import Tuple, NamedTuple
+from typing import NamedTuple
 
 import jax
 import numpy as np
@@ -10,6 +10,7 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
+from dsa2000_cal.predict.vec_utils import kron_product
 
 
 class DFTModelData(NamedTuple):
@@ -121,68 +122,3 @@ class DFTPredict:
         return fringe * kron_product(g1, image, g2.T.conj())
 
 
-def vec(a: jnp.ndarray) -> jnp.ndarray:
-    """
-    Vectorize a matrix.
-
-    Args:
-        a: [n, m] array
-
-    Returns:
-        [n*m] array
-    """
-    if len(a.shape) != 2:
-        raise ValueError(f"a should be a matrix, got shape {a.shape}")
-    n, m = a.shape
-    # a.T.ravel()
-    return lax.reshape(a, (n * m,), (1, 0))
-
-
-def unvec(a: jnp.ndarray, shape: Tuple[int, ...] | None = None) -> jnp.ndarray:
-    """
-    Unvectorize a matrix.
-
-    Args:
-        a: [n*m] array
-        shape: shape of the unvectorized array
-
-    Returns:
-        [n, m] array
-    """
-    if shape is None:
-        # assume square
-        n = int(np.sqrt(a.shape[-1]))
-        if n * n != a.shape[-1]:
-            raise ValueError(f"a is not square. Can't infer unvec shape.")
-        shape = (n, n)
-    if len(shape) != 2:
-        raise ValueError(f"shape should be length 2, got {len(shape)}")
-    # jnp.reshape(a, shape).T
-    return lax.transpose(lax.reshape(a, shape), (1, 0))
-
-
-def kron(a, b):
-    """
-    Compute the Kronecker product of two arrays.
-
-    Args:
-        a: [n, m]
-        b: [p, q]
-
-    Returns:
-        [n*p, m*q]
-    """
-    if len(np.shape(a)) < len(np.shape(b)):
-        a = lax.expand_dims(a, range(np.ndim(b) - np.ndim(a)))
-    elif np.ndim(b) < np.ndim(a):
-        b = lax.expand_dims(b, range(np.ndim(a) - np.ndim(b)))
-    a_reshaped = lax.expand_dims(a, range(1, 2 * np.ndim(a), 2))
-    b_reshaped = lax.expand_dims(b, range(0, 2 * np.ndim(b), 2))
-    out_shape = tuple(np.multiply(np.shape(a), np.shape(b)))
-    return lax.reshape(lax.mul(a_reshaped, b_reshaped), out_shape)
-
-
-def kron_product(a, b, c):
-    # return unvec(kron(c.T, a) @ vec(b), (a.shape[0], c.shape[1]))
-    # Fewer bytes accessed, better utilisation (2x as many flops though -- which is better than memory access)
-    return unvec(jnp.sum(kron(c.T, a) * vec(b), axis=-1), (a.shape[0], c.shape[1]))

@@ -22,14 +22,15 @@ def test_forward_model():
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=array.get_channel_width(),
         integration_time=au.Quantity(1, 's'),
-        coherencies='linear',
+        coherencies=['XX','XY','YX','YY'],
         pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
         times=at.Time("2021-01-01T00:00:00", scale='utc') + np.arange(1) * au.s,
         freqs=au.Quantity([700, 1400, 2000], unit=au.MHz),
         antennas=antennas,
         antenna_names=array.get_antenna_names(),
         antenna_diameters=array.get_antenna_diameter(),
-        with_autocorr=True
+        with_autocorr=True,
+        mount_types='ALT-AZ'
     )
     ms = MeasurementSet.create_measurement_set(ms_folder='forward_model_ms', meta=meta)
 

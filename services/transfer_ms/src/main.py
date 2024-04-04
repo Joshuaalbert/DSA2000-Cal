@@ -1,12 +1,12 @@
 import os
 
-from dsa2000_cal.adapter.create_casa_ms import transfer_visibilities
+from dsa2000_cal.adapter.to_casa_ms import transfer_to_casa
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 
 def main(input_ms, output_ms):
     measurement_set = MeasurementSet(input_ms)
-    transfer_visibilities(measurement_set, output_ms)
+    transfer_to_casa(measurement_set, output_ms)
 
 
 if __name__ == '__main__':

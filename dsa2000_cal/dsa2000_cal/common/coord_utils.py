@@ -30,14 +30,16 @@ def create_uvw_frame(array_location: EarthLocation, time: at.Time, phase_trackin
     array_position, array_velocity = array_location.get_gcrs_posvel(time)
 
     array_gcrs = ac.GCRS(array_position,
-                         obstime=time,
-                         obsgeoloc=array_position,
-                         obsgeovel=array_velocity)
+                                        obstime=time,
+                                        obsgeoloc=array_position,
+                                        obsgeovel=array_velocity,
+                                        # equinox='J2000'
+                                        )
 
     # Define the UVW frame relative to a certain point on the sky.  There are
     # two versions, depending on whether the sky offset is done in ICRS
     # or GCRS:
-    # frame_uvw = ac.SkyOffsetFrame(origin=pointing)  # ICRS
+    # frame_uvw = ac.SkyOffsetFrame(origin=phase_tracking)  # ICRS
     frame_uvw = ac.SkyOffsetFrame(origin=phase_tracking.transform_to(array_gcrs))  # GCRS
 
     return frame_uvw
@@ -52,11 +54,19 @@ def earth_location_to_uvw(antennas: EarthLocation, array_location: EarthLocation
     shape = antennas.shape
     antennas = antennas.reshape((-1,))
     array_position, array_velocity = array_location.get_gcrs_posvel(time)
-    antennas_position = antennas.get_gcrs_posvel(time)[0]
+    antennas_position, antennas_velocity = antennas.get_gcrs_posvel(time)
+
     antennas_gcrs = ac.GCRS(antennas_position,
-                            obstime=time, obsgeoloc=array_position, obsgeovel=array_velocity)
+                                           obstime=time,
+                                           # obsgeoloc=antennas_position,
+                                           # obsgeovel=antennas_velocity
+                                           obsgeoloc=array_position,
+                                           obsgeovel=array_velocity,
+                                           # equinox='J2000'
+                                           )
 
     frame_uvw = create_uvw_frame(array_location=array_location, time=time, phase_tracking=phase_tracking)
+    # frame_uvw = ac.SkyOffsetFrame(origin=phase_tracking.transform_to(antennas_gcrs))  # GCRS
 
     # Rotate antenna positions into UVW frame.
     antennas_uvw = antennas_gcrs.transform_to(frame_uvw)

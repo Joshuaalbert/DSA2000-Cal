@@ -9,8 +9,6 @@ import jax.numpy as jnp
 import numpy as np
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
@@ -39,8 +37,6 @@ class ForwardModel:
     seed: int
 
     def __post_init__(self):
-        fill_registries()
-        self.array = array_registry.get_instance(array_registry.get_match(self.ms.meta.array_name))
 
         self.beam_gain_model = beam_gain_model_factory(self.ms.meta.array_name)
         if len(self.ms.meta.times) > 1:
@@ -141,7 +137,7 @@ class ForwardModel:
         chan_width_hz = quantity_to_jnp(self.ms.meta.channel_width)
         noise_scale = calc_baseline_noise(
             system_equivalent_flux_density=quantity_to_jnp(
-                self.array.get_system_equivalent_flux_density(), 'Jy'),
+                self.ms.meta.system_equivalent_flux_density(), 'Jy'),
             chan_width_hz=chan_width_hz,
             t_int_s=quantity_to_jnp(self.ms.meta.integration_time, 's'),
         )

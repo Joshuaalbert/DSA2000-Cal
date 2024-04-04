@@ -35,7 +35,7 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     )
 
     array_name: str = Field(
-        description="Name of the array."
+        description="Name of the array. Assumes all antennas are from the same array."
     )
 
     array_location: ac.EarthLocation = Field(
@@ -50,7 +50,13 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     integration_time: au.Quantity = Field(
         description="Integration time."
     )
-    coherencies: Literal['stokes', 'linear', 'circular'] = Field(
+    coherencies: List[
+        Literal[
+            'XX', 'XY', 'YX', 'YY',
+            'RR', 'RL', 'LR', 'LL',
+            'I', 'Q', 'U', 'V'
+        ]
+    ] = Field(
         description="Coherency type."
     )
 
@@ -72,11 +78,27 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     antenna_diameters: au.Quantity = Field(
         description="Antenna diameters."
     )  # [num_antenna]
+    mount_types: List[
+                     Literal['EQUATORIAL', 'ALT-AZ', 'X-Y', 'SPACE-HALCA']
+                 ] | Literal['EQUATORIAL', 'ALT-AZ', 'X-Y', 'SPACE-HALCA'] = Field(
+        description="Mount types."
+    )  # [num_antenna]
 
     with_autocorr: bool = Field(
         default=True,
         description="Whether to include autocorrelations."
     )
+
+    system_equivalent_flux_density: au.Quantity | None = Field(
+        default=None,
+        description="System equivalent flux density."
+    )
+
+    def __init__(self, **data) -> None:
+        # Call the superclass __init__ to perform the standard validation
+        super(MeasurementSetMetaV0, self).__init__(**data)
+        # Use _check_measurement_set_meta_v0 as instance-wise validator
+        _check_measurement_set_meta_v0(self)
 
 
 def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
@@ -107,6 +129,12 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
     if meta.antenna_diameters.isscalar:
         warnings.warn(f"Expected antenna_diameters to be a vector, got {meta.antenna_diameters}")
         meta.antenna_diameters = np.repeat(meta.antenna_diameters.value, num_antennas) * meta.antenna_diameters.unit
+    if isinstance(meta.mount_types, str):
+        warnings.warn(f"Expected mount_types to be a vector, got {meta.mount_types}")
+        meta.mount_types = [meta.mount_types] * num_antennas
+    elif len(meta.mount_types) == 1:
+        warnings.warn(f"Expected mount_types to be a vector, got {meta.mount_types}")
+        meta.mount_types = [meta.mount_types[0]] * num_antennas
 
     if not meta.channel_width.unit.is_equivalent(au.Hz):
         raise ValueError(f"Expected channel width in Hz, got {meta.channel_width}")
@@ -116,6 +144,10 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
         raise ValueError(f"Expected frequencies in Hz, got {meta.freqs}")
     if not meta.antenna_diameters.unit.is_equivalent(au.m):
         raise ValueError(f"Expected antenna diameters in meters, got {meta.antenna_diameters}")
+    if meta.system_equivalent_flux_density is not None and (
+            not meta.system_equivalent_flux_density.unit.is_equivalent(au.Jy)
+    ):
+        raise ValueError(f"Expected system equivalent flux density in Jy, got {meta.system_equivalent_flux_density}")
 
     if meta.pointings.shape != (num_antennas,):
         raise ValueError(f"Expected pointings to have shape ({num_antennas},), got {meta.pointings.shape}")
@@ -124,6 +156,8 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
     if meta.antenna_diameters.shape != (num_antennas,):
         raise ValueError(
             f"Expected antenna_diameters to have shape ({num_antennas},), got {meta.antenna_diameters.shape}")
+    if len(meta.mount_types) != num_antennas:
+        raise ValueError(f"Expected mount_types to have length {num_antennas}, got {len(meta.mount_types)}")
 
 
 MeasurementSetMeta = Annotated[Union[MeasurementSetMetaV0], Field(discriminator='version')]
@@ -153,6 +187,8 @@ class NotContiguous(Exception):
 
 
 def _get_slice(indices):
+    if isinstance(indices, slice):
+        return indices
     steps = np.diff(indices)
     if not np.all(steps == steps[0]):
         raise NotContiguous("Indices must be contiguous.")
@@ -190,6 +226,9 @@ class VisibilityData(NamedTuple):
 @dataclasses.dataclass(eq=False)
 class MeasurementSet:
     ms_folder: str
+
+    def __repr__(self):
+        return f"MeasurementSet({self.ms_folder}, meta={self.meta_file}, data={self.data_file})"
 
     def __post_init__(self):
         self.meta_file = os.path.join(self.ms_folder, "meta.json")
@@ -325,6 +364,62 @@ class MeasurementSet:
 
         return MeasurementSet(ms_folder=ms_folder)
 
+    def put(self, data: VisibilityData, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int, times: at.Time,
+            freqs: au.Quantity | None = None):
+        """
+        Put the visibility data for the given antenna pair and time index.
+        """
+        # Get the time index using insertion sort
+        (time_idx, _), (_, _) = get_interp_indices_and_weights(
+            (times - self.ref_time).sec, (self.meta.times - self.ref_time).sec
+        )
+        time_idx = np.asarray(time_idx, dtype=np.int32)
+        if freqs is not None:
+            (freqs_idx, _), (_, _) = get_interp_indices_and_weights(
+                (freqs.value - self.meta.freqs[0]).to('Hz').value,
+                (self.meta.freqs - self.meta.freqs[0]).to('Hz').value
+            )
+            freqs_idx = np.asarray(freqs_idx, dtype=np.int32)
+            freqs_idx = _try_get_slice(freqs_idx)
+        else:
+            freqs_idx = slice(None, None, None)
+
+        rows = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=time_idx)
+
+        num_rows = len(rows)
+
+        rows = np.unique(rows)
+        rows = _try_get_slice(rows)
+
+        def _check_data(name, array):
+            if len(np.shape(array)) != 3:
+                raise ValueError(
+                    f"Expected {name} to have shape (num_rows, num_freqs, num_coherencies), got {np.shape(array)}"
+                )
+            if np.shape(array)[0] != num_rows:
+                raise ValueError(
+                    f"Expected {name} to have {num_rows} rows, got {np.shape(array)[0]}"
+                )
+            if freqs is not None and np.shape(array)[1] != len(freqs):
+                raise ValueError(
+                    f"Expected {name} to have {len(freqs)} frequencies, got {np.shape(array)[1]}"
+                )
+            if np.shape(array)[2] != len(self.meta.coherencies):
+                raise ValueError(
+                    f"Expected {name} to have {len(self.meta.coherencies)} coherencies, got {np.shape(array)[2]}"
+                )
+
+        with tb.open_file(self.data_file, 'r+') as f:
+            if data.vis is not None:
+                _check_data("vis", data.vis)
+                f.root.vis[rows, freqs_idx, :] = data.vis
+            if data.weights is not None:
+                _check_data("weights", data.weights)
+                f.root.weights[rows, freqs_idx, :] = data.weights
+            if data.flags is not None:
+                _check_data("flags", data.flags)
+                f.root.flags[rows, freqs_idx, :] = data.flags
+
     def match(self, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int, times: at.Time,
               freqs: au.Quantity | None = None) -> VisibilityData:
         """
@@ -351,31 +446,30 @@ class MeasurementSet:
         rows1 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i1_time)
 
         # For accessing HDF5 slices are faster
+        rows0, inverse_map0 = np.unique(rows0, return_inverse=True)
         rows0 = _try_get_slice(rows0)
+        rows1, inverse_map1 = np.unique(rows1, return_inverse=True)
         rows1 = _try_get_slice(rows1)
 
-        def _access_non_unique(h5_array, rows):
-            if isinstance(rows, slice):
-                return h5_array[rows, ...]
-            unique_rows, inverse_map = np.unique(rows, return_inverse=True)
+        def _access_non_unique(h5_array, unique_rows, inverse_map):
             unique_get = h5_array[unique_rows, ...]
-            if len(unique_rows) == len(rows):
+            if len(unique_get) == len(inverse_map):
                 return unique_get
             # Send back to original shape
-            return unique_get[inverse_map]
+            return unique_get[inverse_map, ...]
 
         with tb.open_file(self.data_file, 'r') as f:
             vis = (
-                    _access_non_unique(f.root.vis, rows0) * alpha0_time[:, None, None]
-                    + _access_non_unique(f.root.vis, rows1) * alpha1_time[:, None, None]
+                    _access_non_unique(f.root.vis, rows0, inverse_map0) * alpha0_time[:, None, None]
+                    + _access_non_unique(f.root.vis, rows1, inverse_map1) * alpha1_time[:, None, None]
             )
             weights = (
-                    _access_non_unique(f.root.weights, rows0) * alpha0_time[:, None, None]
-                    + _access_non_unique(f.root.weights, rows1) * alpha1_time[:, None, None]
+                    _access_non_unique(f.root.weights, rows0, inverse_map0) * alpha0_time[:, None, None]
+                    + _access_non_unique(f.root.weights, rows1, inverse_map1) * alpha1_time[:, None, None]
             )
             flags = (
-                    _access_non_unique(f.root.flags, rows0) * alpha0_time[:, None, None]
-                    + _access_non_unique(f.root.flags, rows1) * alpha1_time[:, None, None]
+                    _access_non_unique(f.root.flags, rows0, inverse_map0) * alpha0_time[:, None, None]
+                    + _access_non_unique(f.root.flags, rows1, inverse_map1) * alpha1_time[:, None, None]
             )
 
         if freqs is not None:

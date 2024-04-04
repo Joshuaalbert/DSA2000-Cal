@@ -34,23 +34,30 @@ def test__get_slice():
 
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
-def test_measurement_set(with_autocorr):
+def test_measurement_set(tmp_path, with_autocorr):
     meta = MeasurementSetMetaV0(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=au.Quantity(1, au.Hz),
         integration_time=au.Quantity(1, au.s),
-        coherencies='stokes',
+        coherencies=['XX', 'XY', 'YX', 'YY'],
         pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
         times=at.Time.now() + np.arange(10) * au.s,
         freqs=au.Quantity([1, 2, 3], au.Hz),
         antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
         antenna_names=[f"antenna_{i}" for i in range(5)],
         antenna_diameters=au.Quantity(np.ones(5), au.m),
-        with_autocorr=with_autocorr
+        with_autocorr=with_autocorr,
+        mount_types='ALT-AZ',
+        system_equivalent_flux_density=au.Quantity(1, au.Jy)
     )
-    ms = MeasurementSet.create_measurement_set("test_ms", meta)
+    ms = MeasurementSet.create_measurement_set(str(tmp_path/"test_ms"), meta)
+
+    assert len(meta.antenna_diameters) == 5
+    assert len(meta.antenna_names) == 5
+    assert len(meta.mount_types) == 5
+    assert len(meta.pointings) == 5
 
     if ms.meta.with_autocorr:
         assert ms.num_rows == 10 * 5 * 6 // 2
@@ -95,6 +102,17 @@ def test_measurement_set(with_autocorr):
         except StopIteration:
             break
 
+        ms.put(
+            data=VisibilityData(
+                vis=2 * np.ones((ms.block_size, 3, 4), dtype=np.complex64),
+                weights=2 * np.ones((ms.block_size, 3, 4), dtype=np.float16),
+                flags=np.zeros((ms.block_size, 3, 4), dtype=np.bool_)
+            ),
+            antenna_1=coords.antenna_1,
+            antenna_2=coords.antenna_2,
+            times=at.Time([time.isot] * ms.block_size, format='isot')
+        )
+
         assert np.all(data.vis.real == 1)
         assert np.all(data.weights == 0)
         assert np.all(data.flags)
@@ -104,3 +122,9 @@ def test_measurement_set(with_autocorr):
 
     data = ms.match(antenna_1=np.asarray([0, 1]), antenna_2=np.asarray([1, 2]), times=ms.meta.times[:2])
     assert data.vis.shape == (2, len(meta.freqs), 4)
+
+    gen = ms.create_block_generator()
+    for time, coords, data in gen:
+        assert np.all(data.vis.real == 2)
+        assert np.all(data.weights == 2)
+        assert np.bitwise_not(np.any(data.flags))
