@@ -22,8 +22,8 @@ def test_real_ionosphere_gain_model():
     angular_separation = 32 * au.arcmin
     spatial_separation = 1000 * au.m
     observation_start_time = at.Time('2021-01-01T00:00:00', scale='utc')
-    observation_duration = timedelta(minutes=0)
-    temporal_resolution = timedelta(seconds=0)
+    observation_duration = 0*au.s
+    temporal_resolution = 0*au.s
     freqs = [700e6, 2000e6] * au.Hz
     ionosphere_gain_model = ionosphere_gain_model_factory(
         phase_tracking=phase_tracking,

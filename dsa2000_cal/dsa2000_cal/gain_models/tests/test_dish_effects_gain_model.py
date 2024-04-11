@@ -1,4 +1,3 @@
-import pylab as plt
 import pytest
 from astropy import units as au, time as at, coordinates as ac
 from jax import numpy as jnp
@@ -9,14 +8,16 @@ from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModel
 
 
 @pytest.mark.parametrize('mode', ['fft', 'dft'])
-def test_dish_effects_gain_model_real_data(mode):
+def test_dish_effects_gain_model_real_data(tmp_path, mode):
     freqs = au.Quantity([700e6, 2000e6], unit=au.Hz)
     beam_gain_model = beam_gain_model_factory(array_name='dsa2000W')
 
     dish_effects_gain_model = DishEffectsGainModel(
         beam_gain_model=beam_gain_model,
         model_times=at.Time(['2021-01-01T00:00:00', '2021-01-01T00:01:00'], scale='utc'),
-        dish_effect_params=DishEffectsGainModelParams(elevation_pointing_error_stddev=0.5 * au.deg)
+        dish_effect_params=DishEffectsGainModelParams(elevation_pointing_error_stddev=0.5 * au.deg),
+        cache_folder=str(tmp_path / f'dish_effects_gain_model_cache_{mode}'),
+        plot_folder=f'dish_effects_gain_model_plots_{mode}'
     )
 
     assert jnp.allclose(dish_effects_gain_model.dy / dish_effects_gain_model.dl, 2.5 * au.m, atol=0.1)
@@ -49,29 +50,8 @@ def test_dish_effects_gain_model_real_data(mode):
         time=time,
         elevation=90. * au.deg
     )  # [2n+1, 2n+1, num_ant, num_freq]
-
-    plt.imshow(
-        jnp.abs(aperture_field[:, :, 0, 0]),
-        origin='lower',
-        extent=(dish_effects_gain_model.X.min().value, dish_effects_gain_model.X.max().value,
-                dish_effects_gain_model.Y.min().value, dish_effects_gain_model.Y.max().value)
-    )
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.colorbar()
-    plt.show()
-
-    plt.imshow(
-        jnp.angle(aperture_field[:, :, 0, 0]),
-        origin='lower',
-        extent=(dish_effects_gain_model.X.min().value, dish_effects_gain_model.X.max().value,
-                dish_effects_gain_model.Y.min().value, dish_effects_gain_model.Y.max().value)
-    )
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.colorbar()
-    plt.show()
-
+    assert aperture_field.shape == (dish_effects_gain_model.X.shape[0], dish_effects_gain_model.Y.shape[1],
+                                    dish_effects_gain_model.num_antenna, len(freqs))
     gains = dish_effects_gain_model.compute_gain(
         freqs=freqs,
         sources=sources,
@@ -81,18 +61,17 @@ def test_dish_effects_gain_model_real_data(mode):
         mode=mode
     )
     if mode == 'fft':
-        plt.imshow(
-            jnp.abs(gains[:, :, 0, 0, 0, 0]),
-            origin='lower',
-            extent=(
-                dish_effects_gain_model.mvec.min().value,
-                dish_effects_gain_model.mvec.max().value,
-                dish_effects_gain_model.lvec.min().value,
-                dish_effects_gain_model.lvec.max().value)
-        )
-        plt.colorbar()
-        plt.show()
+        ...
     else:
         print(gains[..., 0:2, :, 0, 0])
     assert gains.shape == sources.shape + (
         dish_effects_gain_model.num_antenna, len(freqs), 2, 2)
+
+    # Test from cache
+    dish_effects_gain_model = DishEffectsGainModel(
+        beam_gain_model=beam_gain_model,
+        model_times=at.Time(['2021-01-01T00:00:00', '2021-01-01T00:01:00'], scale='utc'),
+        dish_effect_params=DishEffectsGainModelParams(elevation_pointing_error_stddev=0.5 * au.deg),
+        cache_folder=str(tmp_path / f'dish_effects_gain_model_cache_{mode}'),
+        plot_folder=f'dish_effects_gain_model_plots_{mode}'
+    )

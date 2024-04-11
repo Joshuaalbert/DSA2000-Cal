@@ -1,33 +1,26 @@
 import dataclasses
 import os
 import warnings
-from datetime import timedelta
 from functools import partial
 from typing import Tuple, Literal
-
-from astropy.wcs import WCS
-from jax.config import config
-
-from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
-from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-
-config.update("jax_enable_x64", True)
-# Set num jax devices
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pylab as plt
+import tensorflow_probability.substrates.jax as tfp
 from astropy import units as au, coordinates as ac, time as at
+from astropy.wcs import WCS
 from jax import lax
 from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION, build_ionosphere_tomographic_kernel
 from tomographic_kernel.tomographic_kernel import GeodesicTuple, TomographicKernel
 from tomographic_kernel.utils import make_coord_array
-import tensorflow_probability.substrates.jax as tfp
+
+from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
+from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 tfpd = tfp.distributions
 
@@ -298,10 +291,18 @@ class IonosphereGainModel(GainModel):
             time=self.ref_time
         )
 
+        antennas_enu = earth_location_to_enu(
+            antennas=self.antennas,
+            array_location=self.array_location,
+            time=self.ref_time
+        )
+
         northern_hemisphere = self.ref_ant.geodetic.lat > 0 * au.deg
 
         # Plot model antennas
         fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(10, 10))
+        ax[0][0].scatter(antennas_enu[:, 0].to('m'), antennas_enu[:, 1].to('m'), marker='*', c='grey', alpha=0.5,
+                         label="Array Antennas")
         ax[0][0].scatter(model_antennas_enu[:, 0].to('m'), model_antennas_enu[:, 1].to('m'), marker='+')
         ax[0][0].set_xlabel(f"East (m)")
         ax[0][0].set_ylabel(f"North (m)")
@@ -316,8 +317,10 @@ class IonosphereGainModel(GainModel):
         fig.savefig(os.path.join(self.plot_folder, "model_antenna_locations.png"))
         plt.close(fig)
 
-        max_baseline = np.max(np.linalg.norm(model_antennas_enu[:, None, :] - model_antennas_enu[None, :, :], axis=-1))
-        print(f"Maximum antenna baseline: {max_baseline} km")
+        max_baseline = np.max(np.linalg.norm(
+            model_antennas_enu.to('km').value[:, None, :] - model_antennas_enu.to('km').value[None, :, :],
+            axis=-1)) * au.km
+        print(f"Maximum antenna baseline: {max_baseline}")
 
         # Plot model directions
         wcs = WCS(naxis=2)
@@ -420,14 +423,14 @@ class IonosphereGainModel(GainModel):
         return enu_geodesics_data, dtec
 
     @partial(jax.jit, static_argnames=['self', 'northern_hemisphere'])
-    def _compute_gain_jax(self, freqs: jax.Array, time_mjd: jax.Array, enu_geodesics_sources: jax.Array,
+    def _compute_gain_jax(self, freqs: jax.Array, time_s: jax.Array, enu_geodesics_sources: jax.Array,
                           x0: jax.Array, earth_center_enu: jax.Array,
                           northern_hemisphere: bool) -> jax.Array:
         """
         Compute the beam for a given time and set of sources.
 
         Args:
-            time_mjd: [num_time] The time in JD.
+            time_s: [num_time] The time in JD.
             enu_geodesics_sources: (source_shape) + [num_ant, 10] The source coordinates in the ENU frame.
 
         Returns:
@@ -439,7 +442,7 @@ class IonosphereGainModel(GainModel):
 
         if self.interp_mode == 'nn_conv':
             dtec_interp = self._nn_conv_regression_jax(
-                time_mjd=time_mjd,
+                time_s=time_s,
                 enu_geodesics_data=self.enu_geodesics_data,
                 enu_geodesics_sources=enu_geodesics_sources,
                 dtec=self.dtec
@@ -474,7 +477,7 @@ class IonosphereGainModel(GainModel):
         return gains
 
     def _nn_conv_regression_jax(self,
-                                time_mjd: jax.Array,
+                                time_s: jax.Array,
                                 enu_geodesics_data: jax.Array,
                                 enu_geodesics_sources: jax.Array,
                                 dtec: jax.Array
@@ -486,7 +489,10 @@ class IonosphereGainModel(GainModel):
         )  # [num_sources, num_ant, 10]
 
         # Interpolate in time
-        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(time_mjd, jnp.asarray(self.model_times.mjd))
+        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+            time_s,
+            jnp.asarray((self.model_times - self.ref_time).sec)
+        )
         dtec = dtec[i0] * alpha0 + dtec[i1] * alpha1  # [num_model_sources, num_model_ant]
         dtec = jnp.reshape(dtec, (-1,))  # [num_model_sources * num_model_ant]
 
@@ -589,6 +595,10 @@ class IonosphereGainModel(GainModel):
     def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS,
                      array_location: ac.EarthLocation, time: at.Time, **kwargs):
 
+        print(
+            f"Computing ionosphere gain model for {len(sources)} sources {self.num_antenna} "
+            f"and {len(freqs)} frequencies at {time}."
+        )
         if freqs.isscalar:
             freqs = freqs.reshape((1,))
         if len(freqs.shape) != 1:
@@ -618,7 +628,7 @@ class IonosphereGainModel(GainModel):
             time=time
         )
 
-        time_s = (time.mjd - self.ref_time.mjd) * 86400.
+        time_s = (time - self.ref_time).sec
 
         x0 = earth_location_to_enu(
             self.array_location,
@@ -647,7 +657,7 @@ class IonosphereGainModel(GainModel):
 
         gains = self._compute_gain_jax(
             freqs=quantity_to_jnp(freqs),
-            time_mjd=time.mjd,
+            time_s=(time - self.ref_time).sec,
             enu_geodesics_sources=enu_geodesics_sources,
             x0=quantity_to_jnp(x0, 'km'),
             earth_center_enu=quantity_to_jnp(earth_center_enu, 'km'),
@@ -693,8 +703,8 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
                                   angular_separation: au.Quantity,
                                   spatial_separation: au.Quantity,
                                   observation_start_time: at.Time,
-                                  observation_duration: timedelta,
-                                  temporal_resolution: timedelta,
+                                  observation_duration: au.Quantity,
+                                  temporal_resolution: au.Quantity,
                                   specification: SPECIFICATION,
                                   array_name: str,
                                   plot_folder: str,
@@ -720,16 +730,13 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
     antennas_itrs = antennas.get_itrs()
     array_location = array.get_array_location()
 
-    if observation_duration == timedelta(0):
+    if observation_duration == 0 * au.s:
         model_times = observation_start_time.reshape((-1,))
     else:
-        if temporal_resolution <= timedelta(seconds=0):
+        if temporal_resolution <= 0 * au.s:
             raise ValueError("Temporal resolution should be positive")
-        num_times = int(observation_duration.total_seconds() / temporal_resolution.total_seconds()) + 1
-        model_times = at.Time(
-            (np.arange(num_times) * temporal_resolution.total_seconds() / 86400.) + observation_start_time.mjd,
-            format='mjd'
-        )
+        num_times = int(observation_duration / temporal_resolution) + 1
+        model_times = observation_start_time + np.arange(num_times) * temporal_resolution
     model_directions = create_spherical_grid(
         pointing=phase_tracking,
         angular_width=0.5 * field_of_view,
@@ -738,10 +745,11 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
 
     max_baseline = np.max(
         np.linalg.norm(
-            antennas_itrs.cartesian.xyz.T[:, None, :] - antennas_itrs.cartesian.xyz.T[None, :, :],
+            antennas_itrs.cartesian.xyz.T.to('m').value[:, None, :] - antennas_itrs.cartesian.xyz.T.to('m').value[None,
+                                                                      :, :],
             axis=-1
         )
-    )
+    ) * au.m
     radius = 0.5 * max_baseline
 
     model_antennas = create_spherical_earth_grid(

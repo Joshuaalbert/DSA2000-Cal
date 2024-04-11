@@ -122,6 +122,9 @@ class BeamGainModel(GainModel):
         closest = jnp.argmin(dist_sq, axis=-1)  # [num_sources]
 
         amplitude = amplitude[closest, :]  # [num_sources, num_freqs]
+        evanescent_mask = jnp.isnan(lmn_sources[..., 2])  # [num_sources]
+        amplitude = jnp.where(evanescent_mask[:, None], np.nan, amplitude)  # [num_sources, num_freqs]
+
         amplitude = jnp.repeat(amplitude[:, None, :], self.num_antenna, axis=1)  # [num_sources, num_ant, num_freqs]
         # set diagonal
         gains = jnp.zeros(amplitude.shape + (2, 2), self.dtype)
@@ -132,7 +135,8 @@ class BeamGainModel(GainModel):
 
         return gains
 
-    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS, array_location: ac.EarthLocation, time: at.Time,
+    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS,
+                     array_location: ac.EarthLocation, time: at.Time,
                      **kwargs):
 
         if freqs.isscalar:
