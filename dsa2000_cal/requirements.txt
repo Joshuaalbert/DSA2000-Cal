@@ -17,5 +17,6 @@ jupyter
 tqdm
 rich
 sympy
+ducc0
 
 
