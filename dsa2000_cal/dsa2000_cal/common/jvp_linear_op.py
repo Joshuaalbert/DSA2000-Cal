@@ -49,11 +49,21 @@ class JVPLinearOp:
                            more_outputs_than_inputs=self.more_outputs_than_inputs, adjoint=self.adjoint)
 
     def __matmul__(self, other):
+        if not isinstance(other, (jax.Array, np.ndarray)):
+            raise ValueError(
+                'Dunder methods currently only defined for operation on arrays. '
+                'Use .matmul(...) for general tangents.'
+            )
         if len(np.shape(other)) == 1:
             return self.matvec(other, adjoint=self.adjoint)
         return self.matmul(other, adjoint=self.adjoint, left_multiply=True)
 
     def __rmatmul__(self, other):
+        if not isinstance(other, (jax.Array, np.ndarray)):
+            raise ValueError(
+                'Dunder methods currently only defined for operation on arrays. '
+                'Use .matmul(..., left_multiply=False) for general tangents.'
+            )
         if len(np.shape(other)) == 1:
             return self.matvec(other, adjoint=not self.adjoint)
         return self.matmul(other, adjoint=not self.adjoint, left_multiply=False)
