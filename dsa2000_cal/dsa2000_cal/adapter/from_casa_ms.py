@@ -86,8 +86,12 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
         coherencies = list(CASA_CORR_TYPES[x] for x in corr_type[0, :])  # [num_corrs]
 
     with pt.table(os.path.join(casa_ms, 'POINTING')) as t:
-        pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
-        pointings = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 0, 1] * au.rad)  # [num_ant]
+        if t.nrows() == 0:
+            # Assuming there are no pointings, so all antennas point at zenith
+            pointings = None
+        else:
+            pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
+            pointings = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 0, 1] * au.rad)  # [num_ant]
 
     with pt.table(casa_ms, readonly=True) as ms:
         # Get the shape of the antenna1
