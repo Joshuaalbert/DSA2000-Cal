@@ -1,7 +1,9 @@
 import dataclasses
+import warnings
 from typing import Callable, Any
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 
 
@@ -21,6 +23,7 @@ def isinstance_namedtuple(obj) -> bool:
             hasattr(obj, '_fields')
     )
 
+
 @dataclasses.dataclass(eq=False)
 class JVPLinearOp:
     """
@@ -32,6 +35,7 @@ class JVPLinearOp:
     primals: Any | None = None  # The primal value, i.e. where jacobian is evaluated
     more_outputs_than_inputs: bool = False  # If True, the operator is tall, i.e. m > n
     adjoint: bool = False  # If True, the operator is transposed
+    promote_dtypes: bool = False  # If True, promote dtypes to match primal during JVP, and cotangent to match primal_out during VJP
 
     def __post_init__(self):
         if not callable(self.fn):
@@ -40,9 +44,9 @@ class JVPLinearOp:
         if isinstance_namedtuple(self.primals) or (not isinstance(self.primals, (tuple, list))):
             self.primals = (self.primals,)
 
-    def __call__(self, *primals):
+    def __call__(self, *primals: Any) -> 'JVPLinearOp':
         return JVPLinearOp(fn=self.fn, primals=primals, more_outputs_than_inputs=self.more_outputs_than_inputs,
-                           adjoint=self.adjoint)
+                           adjoint=self.adjoint, promote_dtypes=self.promote_dtypes)
 
     def __neg__(self):
         return JVPLinearOp(fn=lambda *args, **kwargs: -self.fn(*args, **kwargs), primals=self.primals,
@@ -73,7 +77,7 @@ class JVPLinearOp:
         return JVPLinearOp(fn=self.fn, primals=self.primals, more_outputs_than_inputs=self.more_outputs_than_inputs,
                            adjoint=not self.adjoint)
 
-    def matmul(self, tangents: Any, adjoint: bool = False, left_multiply: bool = True):
+    def matmul(self, *tangents: Any, adjoint: bool = False, left_multiply: bool = True):
         """
         Implements matrix multiplication from matvec using vmap.
 
@@ -95,11 +99,12 @@ class JVPLinearOp:
             in_axes = 0
             out_axes = 0
         if adjoint:
-            return jax.vmap(lambda _tangent: self.matvec(_tangent, adjoint), in_axes=in_axes, out_axes=out_axes)(
-                tangents)
-        return jax.vmap(lambda _tangent: self.matvec(_tangent, adjoint), in_axes=in_axes, out_axes=out_axes)(tangents)
+            return jax.vmap(lambda *_tangent: self.matvec(*_tangent, adjoint=adjoint),
+                            in_axes=in_axes, out_axes=out_axes)(*tangents)
+        return jax.vmap(lambda *_tangent: self.matvec(*_tangent, adjoint=adjoint),
+                        in_axes=in_axes, out_axes=out_axes)(*tangents)
 
-    def matvec(self, tangents: Any, adjoint: bool = False):
+    def matvec(self, *tangents: Any, adjoint: bool = False):
         """
         Compute J @ v = sum_j(J_ij * v_j) using a JVP, if adjoint is False.
         Compute J.T @ v = sum_i(v_i * J_ij) using a VJP, if adjoint is True.
@@ -114,18 +119,42 @@ class JVPLinearOp:
         if self.primals is None:
             raise ValueError("The primal value must be set to compute the Jacobian.")
 
-        if isinstance_namedtuple(tangents) or (not isinstance(tangents, (tuple, list))):
-            tangents = (tangents,)
-
         if adjoint:
+            co_tangents = tangents
+
+            def _adjoint_promote_dtypes(primal_out: jax.Array, co_tangent: jax.Array):
+                if co_tangent.dtype != primal_out.dtype:
+                    warnings.warn(f"Promoting co-tangent dtype from {co_tangent.dtype} to {primal_out.dtype}.")
+                return primal_out, co_tangent.astype(primal_out.dtype)
+
             # v @ J
             primals_out, f_vjp = jax.vjp(self.fn, *self.primals)
-            output = f_vjp(*tangents)
+            if isinstance_namedtuple(primals_out) or (not isinstance(primals_out, (tuple, list))):
+                # JAX squeezed structure to a single element, as the function only returns one output
+                co_tangents = co_tangents[0]
+                if self.promote_dtypes:
+                    primals_out, co_tangents = jax.tree_map(_adjoint_promote_dtypes, primals_out, co_tangents)
+            else:
+                if self.promote_dtypes:
+                    primals_out, co_tangents = zip(*jax.tree_map(_adjoint_promote_dtypes, primals_out, co_tangents))
+            del primals_out
+            output = f_vjp(co_tangents)
             if len(output) == 1:
                 return output[0]
             return output
 
-        primal_out, tangent_out = jax.jvp(self.fn, self.primals, tangents)
+        def _promote_dtypes(primal: jax.Array, tangent: jax.Array):
+            dtype = jnp.result_type(primal, tangent)
+            if primal.dtype != dtype:
+                warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}.")
+            if tangent.dtype != dtype:
+                warnings.warn(f"Promoting tangent dtype from {tangent.dtype} to {dtype}.")
+            return primal.astype(dtype), tangent.astype(dtype)
+
+        primals = self.primals
+        if self.promote_dtypes:
+            primals, tangents = zip(*jax.tree_map(_promote_dtypes, primals, tangents))
+        primal_out, tangent_out = jax.jvp(self.fn, primals, tangents)
         return tangent_out
 
     def to_dense(self) -> jax.Array:

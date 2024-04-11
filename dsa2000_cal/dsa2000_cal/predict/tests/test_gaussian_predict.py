@@ -8,8 +8,9 @@ from dsa2000_cal.predict.gaussian_predict import GaussianModelData, GaussianPred
 
 
 @pytest.mark.parametrize("di_gains", [True, False])
-def test_gaussian_predict(di_gains: bool):
-    gaussian_predict = GaussianPredict()
+@pytest.mark.parametrize("order_approx", [0, 1])
+def test_gaussian_predict(di_gains: bool, order_approx:int):
+    gaussian_predict = GaussianPredict(order_approx=order_approx)
     row = 100
     chan = 4
     source = 1

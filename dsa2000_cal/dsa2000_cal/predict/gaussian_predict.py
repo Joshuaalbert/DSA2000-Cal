@@ -210,13 +210,17 @@ class GaussianPredict:
             A = l0 * (1. + 2j * jnp.pi * w * n0) * w_term / n0 ** 2
             B = m0 * (1. + 2j * jnp.pi * w * n0) * w_term / n0 ** 2
 
-            F_jvp = JVPLinearOp(F)(u, v)
-            vec = jnp.asarray([
+            F_jvp = JVPLinearOp(F, promote_dtypes=True)
+            vec = (
                 (A / (2 * jnp.pi)) * 1j,
                 (B / (2 * jnp.pi)) * 1j
-            ])
+            )
+            # promote_dtypes=True so we don't need to cast the primals here. Otherwise:
+            # primals = (u.astype(vec[0].dtype), v.astype(vec[1].dtype))
+            primals = (u, v)
+            F_jvp = F_jvp(*primals)
 
-            vis = F(u, v) * (C - l0 * A - m0 * B) + F_jvp @ vec
+            vis = F(u, v) * (C - l0 * A - m0 * B) + F_jvp.matvec(*vec)
         else:
             raise ValueError("order_approx must be 0 or 1")
         return vis

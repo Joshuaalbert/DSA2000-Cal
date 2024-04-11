@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import pytest
+import numpy as np
 
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 
@@ -14,7 +15,8 @@ def test_jvp_linear_op():
 
     x = jnp.arange(n).astype(jnp.float32)
 
-    jvp_op = JVPLinearOp(fn, primals=x)
+    jvp_op = JVPLinearOp(fn)
+    jvp_op = jvp_op(x)
 
     x_space = jnp.ones((n, k))
     f_space = jnp.ones((m, k))
@@ -60,7 +62,7 @@ def test_jvp_linear_op():
 
 
 @pytest.mark.parametrize('init_primals', [True, False])
-def test_multipl_primals(init_primals: bool):
+def test_multiple_primals(init_primals: bool):
     n = 5
     k = 3
 
@@ -77,10 +79,25 @@ def test_multipl_primals(init_primals: bool):
         jvp_op = jvp_op(x, y)
     x_space = jnp.ones((n, k))
     y_space = jnp.ones((n, k))
-    assert jvp_op.matvec((x_space[:, 0], y_space[:, 0])).shape == (n, 3)
-    assert jvp_op.matmul((x_space, y_space)).shape == (n, 3, k)
+    assert jvp_op.matvec(x_space[:, 0], y_space[:, 0]).shape == (n, 3)
+    assert jvp_op.matmul(x_space, y_space).shape == (n, 3, k)
 
     with pytest.raises(ValueError, match='Dunder methods currently only defined for operation on arrays.'):
         _ = (jvp_op @ (x_space[:, 0], y_space[:, 0])).shape == (n, 3)
     with pytest.raises(ValueError, match='Dunder methods currently only defined for operation on arrays.'):
         _ = (jvp_op @ (x_space, y_space)).shape == (n, 3, k)
+
+
+def test_jvp_op_dtype_promotion():
+    def fn(x, y):
+        return x + y + 0j
+
+    jvp_op = JVPLinearOp(fn, promote_dtypes=True)
+
+    primals = (jnp.ones(1), jnp.ones(1))
+    jvp_op = jvp_op(*primals)
+    np.testing.assert_allclose(jvp_op.matvec(jnp.ones(1) + 0j, jnp.ones(1) + 0j),
+                               jvp_op.matvec(jnp.ones(1), jnp.ones(1)))
+
+    np.testing.assert_allclose(jvp_op.matvec(fn(*primals).astype(jnp.float32), adjoint=True),
+                               jvp_op.matvec(fn(*primals), adjoint=True))
