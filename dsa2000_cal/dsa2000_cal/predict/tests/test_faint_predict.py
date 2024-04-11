@@ -4,27 +4,41 @@ import numpy as np
 import pytest
 
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
-from dsa2000_cal.predict.dft_predict import DFTPredict, DFTModelData
+from dsa2000_cal.predict.faint_predict import FaintPredict, FaintModelData
 
-@pytest.mark.parametrize("di_gains", [True, False])
-def test_dft_predict(di_gains: bool):
-    dft_predict = DFTPredict()
-    row = 100
+
+@pytest.mark.parametrize("gain_has_chan", [True, False])
+@pytest.mark.parametrize("image_has_chan", [True, False])
+def test_gaint_predict(gain_has_chan: bool, image_has_chan: bool):
+    faint_predict = FaintPredict()
+    Nx = 100
+    Ny = 100
     chan = 4
-    source = 1
     time = 15
     ant = 24
-    lm = 1e-3 * jnp.ones((source, 2))
-    n = jnp.sqrt(1. - jnp.sum(lm ** 2, axis=-1))
-    lmn = jnp.concatenate([lm, n[:, None]], axis=-1)
-    if di_gains:
+    row = 1000
+    if gain_has_chan:
         gain_shape = (time, ant, chan, 2, 2)
     else:
-        gain_shape = (source, time, ant, chan, 2, 2)
-    model_data = DFTModelData(
-        image=jnp.ones((source, chan, 2, 2), dtype=jnp.complex64),
-        gains=jnp.ones(gain_shape, dtype=jnp.complex64),
-        lmn=lmn
+        gain_shape = (time, ant, 2, 2)
+    if image_has_chan:
+        image_shape = (chan, Nx, Ny)
+        l0 = jnp.zeros((chan,))
+        m0 = jnp.zeros((chan,))
+        dl = -0.01 * jnp.ones((chan,))
+        dm = 0.01 * jnp.ones((chan,))
+    else:
+        image_shape = (Nx, Ny)
+        l0 = jnp.zeros(())
+        m0 = jnp.zeros(())
+        dl = -0.01 * jnp.ones(())
+        dm = 0.01 * jnp.ones(())
+    image = jnp.ones(image_shape, dtype=jnp.float32)
+    model_data = FaintModelData(
+        image=image,
+        gains=jnp.ones(gain_shape,
+                       dtype=jnp.complex64),
+        l0=l0, m0=m0, dl=dl, dm=dm
     )
     visibility_coords = VisibilityCoords(
         uvw=jnp.ones((row, 3)),
@@ -34,9 +48,9 @@ def test_dft_predict(di_gains: bool):
         time_idx=jnp.ones((row,), jnp.int64)
     )
     freqs = jnp.ones((chan,))
-    visibilities = dft_predict.predict(
+    visibilities = faint_predict.predict(
         freqs=freqs,
-        dft_model_data=model_data,
+        faint_model_data=model_data,
         visibility_coords=visibility_coords
     )
     assert np.all(np.isfinite(visibilities))
@@ -56,23 +70,26 @@ def test_with_sharding():
     def tree_device_put(tree, sharding):
         return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
 
-    dft_predict = DFTPredict()
-    row = 100
+    faint_predict = FaintPredict()
+    Nx = 100
+    Ny = 100
     chan = 4
-    source = 1
     time = 15
     ant = 24
-    lm = 1e-3 * jnp.ones((source, 2))
-    n = jnp.sqrt(1. - jnp.sum(lm ** 2, axis=-1))
-    lmn = jnp.concatenate([lm, n[:, None]], axis=-1)
-
-    image = jnp.ones((source, chan, 2, 2), dtype=jnp.float64)
-    gains = jnp.ones((source, time, ant, chan, 2, 2), dtype=jnp.complex64)
-
-    model_data = DFTModelData(
-        image=tree_device_put(image, NamedSharding(mesh, P(None, 'chan'))),
-        gains=tree_device_put(gains, NamedSharding(mesh, P(None, None, None, 'chan'))),
-        lmn=tree_device_put(lmn, NamedSharding(mesh, P()))
+    row = 1000
+    image = jnp.ones((chan, Nx, Ny), dtype=jnp.float32)
+    gains = jnp.ones((time, ant, chan, 2, 2), dtype=jnp.complex64)
+    l0 = jnp.ones((chan,))
+    m0 = jnp.ones((chan,))
+    dl = jnp.ones((chan,))
+    dm = jnp.ones((chan,))
+    model_data = FaintModelData(
+        image=tree_device_put(image, NamedSharding(mesh, P('chan'))),
+        gains=tree_device_put(gains, NamedSharding(mesh, P(None, None, 'chan'))),
+        l0=tree_device_put(l0, NamedSharding(mesh, P('chan'))),
+        m0=tree_device_put(m0, NamedSharding(mesh, P('chan'))),
+        dl=tree_device_put(dl, NamedSharding(mesh, P('chan'))),
+        dm=tree_device_put(dm, NamedSharding(mesh, P('chan')))
     )
 
     uvw = jnp.ones((row, 3))
@@ -91,9 +108,9 @@ def test_with_sharding():
     freqs = jnp.ones((chan,))
     freqs = tree_device_put(freqs, NamedSharding(mesh, P('chan')))
 
-    visibilities = dft_predict.predict(
+    visibilities = faint_predict.predict(
         freqs=freqs,
-        dft_model_data=model_data,
+        faint_model_data=model_data,
         visibility_coords=visibility_coords
     )
     assert np.all(np.isfinite(visibilities))

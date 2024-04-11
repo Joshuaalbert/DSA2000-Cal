@@ -18,27 +18,25 @@ class DFTModelData(NamedTuple):
     Data for predict.
     """
     image: jax.Array  # [source, chan, 2, 2] in [[xx, xy], [yx, yy]] format
-    gains: jax.Array  # [source, time, ant, chan, 2, 2]
+    gains: jax.Array  # [[source,] time, ant, chan, 2, 2]
     lmn: jax.Array  # [source, 3]
 
 
 @dataclasses.dataclass(eq=False)
 class DFTPredict:
-    convention: str = 'fourier'
+    convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
-
-    def __post_init__(self):
-        if self.convention not in ('fourier', 'casa'):
-            raise ValueError("convention not in ('fourier', 'casa')")
 
     def predict(self, freqs: jax.Array, dft_model_data: DFTModelData, visibility_coords: VisibilityCoords) -> jax.Array:
 
         g1 = dft_model_data.gains[
-             :, visibility_coords.time_idx, visibility_coords.antenna_1, :, :, :
-             ]  # [source, row, chan, 2, 2]
+             ..., visibility_coords.time_idx, visibility_coords.antenna_1, :, :, :
+             ]  # [[source,] row, chan, 2, 2]
         g2 = dft_model_data.gains[
-             :, visibility_coords.time_idx, visibility_coords.antenna_2, :, :, :
-             ]  # [source, row, chan, 2, 2]
+             ..., visibility_coords.time_idx, visibility_coords.antenna_2, :, :, :
+             ]  # [[source,] row, chan, 2, 2]
+
+        direction_dependent_gains = len(np.shape(g1)) == 5
 
         # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
         # We want the outer broadcast to be over chan, so we'll do this order:
@@ -47,16 +45,19 @@ class DFTPredict:
 
         # lmn: [source, 3]
         # uvw: [rows, 3]
-        # g1, g2: [source, row, chan, 2, 2]
+        # g1, g2: [[source,] row, chan, 2, 2]
         # freq: [chan]
         # image: [source, chan, 2, 2]
-        @partial(jax.vmap, in_axes=[None, None, 2, 2, 0, 1])
+        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, 1])
         # lmn: [source, 3]
         # uvw: [rows, 3]
-        # g1, g2: [source, row, 2, 2]
+        # g1, g2: [[source,] row, 2, 2]
         # freq: []
         # image: [source, 2, 2]
-        @partial(jax.vmap, in_axes=[0, None, 0, 0, None, 0])
+        @partial(jax.vmap, in_axes=[0, None,
+                                    0 if direction_dependent_gains else None,
+                                    0 if direction_dependent_gains else None,
+                                    None, 0])
         # lmn: [3]
         # uvw: [rows, 3]
         # g1, g2: [row, 2, 2]
@@ -98,13 +99,12 @@ class DFTPredict:
         Returns:
             [2, 2] visibility in given direction for given baseline.
         """
-        wavelength = freq / quantity_to_jnp(constants.c)
-        if self.convention == 'fourier':
-            constant = -2. * np.pi
-        elif self.convention == 'casa':
-            constant = 2. * np.pi
-        else:
-            raise ValueError("convention not in ('fourier', 'casa')")
+        wavelength = quantity_to_jnp(constants.c) / freq
+
+        if self.convention == 'casa':
+            uvw = jnp.negative(uvw)
+
+        uvw /= wavelength
 
         u, v, w = uvw  # scalar
 
@@ -114,11 +114,8 @@ class DFTPredict:
         delay = l * u + m * v + (n - 1.) * w  # scalar
 
         phi = jnp.asarray(
-            1j * (delay * constant * wavelength),
+            -2j * np.pi * delay,
             dtype=self.dtype
         )  # scalar
         fringe = (jnp.exp(phi) / n)
-        # TODO: Might need to add complex conjugate here, uvw is hermitean
         return fringe * kron_product(g1, image, g2.T.conj())
-
-
