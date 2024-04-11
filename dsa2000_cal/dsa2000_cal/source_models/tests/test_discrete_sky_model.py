@@ -8,16 +8,15 @@ from dsa2000_cal.source_models.discrete_sky_model import DiscreteSkyModel
 def test_discrete_sky_model():
     coords_icrs = ac.ICRS(4 * au.deg, 2 * au.deg)
     freqs = au.Quantity([1, 2, 3], unit=au.Hz)
-    brightness = au.Quantity([[1, 2, 3]], unit=au.Jy)
+    brightness_I = au.Quantity([[1, 2, 3]], unit=au.Jy)
 
-    discrete_sky_model = DiscreteSkyModel(coords_icrs=coords_icrs, freqs=freqs, brightness=brightness)
+    discrete_sky_model = DiscreteSkyModel(coords_icrs=coords_icrs, freqs=freqs, brightness=brightness_I)
     assert discrete_sky_model.num_sources == 1
     assert discrete_sky_model.num_freqs == 3
 
-    array_location = ac.EarthLocation.from_geodetic(0, 0, 0)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
-    lmn = discrete_sky_model.compute_lmn(phase_tracking, array_location, time)
+    lmn = discrete_sky_model.compute_lmn(phase_tracking, time)
     assert lmn.shape == (1, 3)
 
 

@@ -1,9 +1,34 @@
 from abc import ABC, abstractmethod
 from typing import Literal
 
+import astropy.units as au
+import astropy.time as at
+import jax
 import numpy as np
 from astropy import coordinates as ac
 from tomographic_kernel.frames import ENU
+
+
+class AbstractSourceModel(ABC):
+    @abstractmethod
+    def predict(self, uvw: au.Quantity) -> jax.Array:
+        """
+        Predict visibilities for the source model.
+
+        Args:
+            uvw: UVW coordinates from the measurement set.
+
+        Returns:
+            [num_row, num_freqs] Predicted visibilities.
+        """
+        ...
+
+    @abstractmethod
+    def compute_calibration_lmn(self,  phase_tracking: ac.ICRS, time: at.Time) -> np.ndarray:
+        """
+        Compute the direction cosines this calibration source model.
+        """
+        ...
 
 
 class AbstractAntennaModel(ABC):
