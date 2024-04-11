@@ -6,7 +6,8 @@ import tables as tb
 from astropy import coordinates as ac, units as au, time as at
 
 from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
-    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData
+    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData, \
+    _get_centred_insert_index
 
 
 def test__combination_with_replacementindex():
@@ -34,7 +35,7 @@ def test__get_slice():
 
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
-def test_measurement_set(tmp_path, with_autocorr):
+def test_measurement_set_shapes(tmp_path, with_autocorr):
     meta = MeasurementSetMetaV0(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
@@ -52,7 +53,7 @@ def test_measurement_set(tmp_path, with_autocorr):
         mount_types='ALT-AZ',
         system_equivalent_flux_density=au.Quantity(1, au.Jy)
     )
-    ms = MeasurementSet.create_measurement_set(str(tmp_path/"test_ms"), meta)
+    ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
 
     assert len(meta.antenna_diameters) == 5
     assert len(meta.antenna_names) == 5
@@ -67,6 +68,28 @@ def test_measurement_set(tmp_path, with_autocorr):
     with tb.open_file(ms.data_file, 'r') as f:
         rows = ms.get_rows(f.root.antenna_1[:], f.root.antenna_2[:], f.root.time_idx[:])
         assert np.all(rows == np.arange(ms.num_rows))
+
+
+@pytest.mark.parametrize("with_autocorr", [True, False])
+def test_measurement_setting(tmp_path, with_autocorr):
+    meta = MeasurementSetMetaV0(
+        array_name="test_array",
+        array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
+        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        channel_width=au.Quantity(1, au.Hz),
+        integration_time=au.Quantity(1, au.s),
+        coherencies=['XX', 'XY', 'YX', 'YY'],
+        pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
+        times=at.Time.now() + np.arange(10) * au.s,
+        freqs=au.Quantity([1, 2, 3], au.Hz),
+        antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
+        antenna_names=[f"antenna_{i}" for i in range(5)],
+        antenna_diameters=au.Quantity(np.ones(5), au.m),
+        with_autocorr=with_autocorr,
+        mount_types='ALT-AZ',
+        system_equivalent_flux_density=au.Quantity(1, au.Jy)
+    )
+    ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
 
     gen = ms.create_block_generator()
 
@@ -102,6 +125,41 @@ def test_measurement_set(tmp_path, with_autocorr):
         except StopIteration:
             break
 
+        assert np.all(data.vis.real == 1)
+        assert np.all(data.weights == 0)
+        assert np.all(data.flags)
+
+
+@pytest.mark.parametrize("with_autocorr", [True, False])
+def test_measurement_setting_put(tmp_path, with_autocorr):
+    meta = MeasurementSetMetaV0(
+        array_name="test_array",
+        array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
+        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        channel_width=au.Quantity(1, au.Hz),
+        integration_time=au.Quantity(1, au.s),
+        coherencies=['XX', 'XY', 'YX', 'YY'],
+        pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
+        times=at.Time.now() + np.arange(10) * au.s,
+        freqs=au.Quantity([1, 2, 3], au.Hz),
+        antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
+        antenna_names=[f"antenna_{i}" for i in range(5)],
+        antenna_diameters=au.Quantity(np.ones(5), au.m),
+        with_autocorr=with_autocorr,
+        mount_types='ALT-AZ',
+        system_equivalent_flux_density=au.Quantity(1, au.Jy)
+    )
+    ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
+
+    gen = ms.create_block_generator()
+    gen_response = None
+    while True:
+
+        try:
+            time, coords, data = gen.send(gen_response)
+        except StopIteration:
+            break
+
         ms.put(
             data=VisibilityData(
                 vis=2 * np.ones((ms.block_size, 3, 4), dtype=np.complex64),
@@ -112,10 +170,6 @@ def test_measurement_set(tmp_path, with_autocorr):
             antenna_2=coords.antenna_2,
             times=at.Time([time.isot] * ms.block_size, format='isot')
         )
-
-        assert np.all(data.vis.real == 1)
-        assert np.all(data.weights == 0)
-        assert np.all(data.flags)
 
     data = ms.match(antenna_1=0, antenna_2=1, times=ms.meta.times)
     assert data.vis.shape == (len(meta.times), len(meta.freqs), 4)
@@ -128,3 +182,23 @@ def test_measurement_set(tmp_path, with_autocorr):
         assert np.all(data.vis.real == 2)
         assert np.all(data.weights == 2)
         assert np.bitwise_not(np.any(data.flags))
+
+
+def test__get_centred_insert_index():
+    time_centres = np.asarray([0.5, 1.5, 2.5])
+
+    times_to_insert = np.asarray([0, 1, 2])
+    expected_time_idx = np.asarray([0, 1, 2])
+    time_idx = _get_centred_insert_index(times_to_insert, time_centres)
+    np.testing.assert_array_equal(time_idx, expected_time_idx)
+
+    times_to_insert = np.asarray([1, 2, 3 - 1e-10])
+    expected_time_idx = np.asarray([1, 2, 2])
+    time_idx = _get_centred_insert_index(times_to_insert, time_centres)
+    np.testing.assert_array_equal(time_idx, expected_time_idx)
+
+    with pytest.raises(ValueError):
+        _get_centred_insert_index(np.asarray([3]), time_centres)
+
+    with pytest.raises(ValueError):
+        _get_centred_insert_index(np.asarray([0 - 1e-10]), time_centres)

@@ -224,6 +224,34 @@ class VisibilityData(NamedTuple):
     flags: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the flags
 
 
+def _get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray) -> np.ndarray:
+    """
+    Get the insert_idx to insert the values at. Values are all relative. Since grid_centre represent
+    the centre of intervals we need to find the insert indexes that respect this centring.
+
+    Args:
+        insert_value: the values to insert
+        grid_centres: the centre grids to insert into
+
+    Returns:
+        the insert_indsec to insert the values at
+
+    Raises:
+        ValueError: if insert values is too far outside range
+    """
+    # Finds the index such that t[i] <= t_insert < t[i+1],
+    # where t[i] = t_centre[i] - 0.5 * dt and t[i+1] = t_centre[i] + 0.5 * dt
+    if len(grid_centres) == 0:
+        return np.zeros_like(insert_value, dtype=np.int32)
+    dt0 = grid_centres[1] - grid_centres[0]
+    edge = grid_centres - 0.5 * np.diff(grid_centres, prepend=grid_centres[0] - dt0)
+    edge = np.append(edge, edge[-1] + dt0)
+    insert_idx = np.searchsorted(edge, insert_value, side='right') - 1
+    if np.any(insert_idx < 0) or np.any(insert_idx >= len(grid_centres)):
+        raise ValueError("Insert value is too far outside range.")
+    return insert_idx
+
+
 @dataclasses.dataclass(eq=False)
 class MeasurementSet:
     ms_folder: str
@@ -384,17 +412,10 @@ class MeasurementSet:
         """
         Put the visibility data for the given antenna pair and time index.
         """
-        # Get the time index using insertion sort
-        (time_idx, _), (_, _) = get_interp_indices_and_weights(
-            (times - self.ref_time).sec, (self.meta.times - self.ref_time).sec
-        )
-        time_idx = np.asarray(time_idx, dtype=np.int32)
+        time_idx = _get_centred_insert_index((times - self.ref_time).sec, (self.meta.times - self.ref_time).sec)
         if freqs is not None:
-            (freqs_idx, _), (_, _) = get_interp_indices_and_weights(
-                (freqs.value - self.meta.freqs[0]).to('Hz').value,
-                (self.meta.freqs - self.meta.freqs[0]).to('Hz').value
-            )
-            freqs_idx = np.asarray(freqs_idx, dtype=np.int32)
+            freqs_idx = _get_centred_insert_index((freqs.value - self.meta.freqs[0]).to('Hz').value,
+                                                  (self.meta.freqs - self.meta.freqs[0]).to('Hz').value)
             freqs_idx = _try_get_slice(freqs_idx)
         else:
             freqs_idx = slice(None, None, None)

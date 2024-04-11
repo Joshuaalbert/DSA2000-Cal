@@ -189,7 +189,7 @@ class SerialisableBaseModel(BaseModel):
                 continue
 
             # Deserialise nested models
-            elif issubclass(field.type_, BaseModel):
+            elif inspect.isclass(field.type_) and issubclass(field.type_, BaseModel):
                 obj[name] = field.type_.parse_obj(obj[name])
                 continue
 
