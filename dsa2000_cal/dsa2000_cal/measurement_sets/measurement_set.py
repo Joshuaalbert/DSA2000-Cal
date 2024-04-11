@@ -1,6 +1,7 @@
 import dataclasses
 import itertools
 import os.path
+import shutil
 import warnings
 from functools import cached_property, partial
 from typing import Literal, List, Union, Annotated, NamedTuple, Generator, Tuple, Optional
@@ -60,7 +61,7 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
         description="Coherency type."
     )
 
-    pointings: ac.ICRS = Field(
+    pointings: ac.ICRS | None = Field(
         description="Pointing direction of each of the antennas."
     )  # [num_antenna]
     times: at.Time = Field(
@@ -114,7 +115,7 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
         raise ValueError(f"Expected a scalar Quantity, got {meta.channel_width}")
     if not meta.integration_time.isscalar:
         raise ValueError(f"Expected a scalar Quantity, got {meta.integration_time}")
-    if meta.pointings.isscalar:
+    if meta.pointings is not None and meta.pointings.isscalar:
         warnings.warn(f"Expected a vector ICRS, got {meta.pointings.shape}, assuming same pointing for all antennas.")
         meta.pointings = ac.ICRS(
             np.repeat(meta.pointings.ra.deg, num_antennas) * au.deg,
@@ -149,7 +150,7 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
     ):
         raise ValueError(f"Expected system equivalent flux density in Jy, got {meta.system_equivalent_flux_density}")
 
-    if meta.pointings.shape != (num_antennas,):
+    if meta.pointings is not None and meta.pointings.shape != (num_antennas,):
         raise ValueError(f"Expected pointings to have shape ({num_antennas},), got {meta.pointings.shape}")
     if len(meta.antenna_names) != num_antennas:
         raise ValueError(f"Expected antenna_names to have length {num_antennas}, got {len(meta.antenna_names)}")
@@ -281,6 +282,24 @@ class MeasurementSet:
         Get the reference time of the measurement set.
         """
         return self.meta.times[0]
+
+    def clone(self, ms_folder: str, preserve_symbolic_links: bool = False) -> 'MeasurementSet':
+        """
+        Clone the measurement set to the given folder.
+
+        Args:
+            ms_folder: the folder to clone the measurement set to
+            preserve_symbolic_links: whether to keep symbolic links, or else copy the pointed-to files
+        """
+        ms_folder = os.path.abspath(ms_folder)
+        copy_fn = shutil.copy2  # Copy with meta data
+        shutil.copytree(
+            self.ms_folder, ms_folder,
+            symlinks=preserve_symbolic_links,
+            dirs_exist_ok=False,
+            copy_function=copy_fn
+        )
+        return MeasurementSet(ms_folder=ms_folder)
 
     @staticmethod
     def create_measurement_set(ms_folder: str, meta: MeasurementSetMeta) -> 'MeasurementSet':
