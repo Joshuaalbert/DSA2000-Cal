@@ -3,6 +3,7 @@ from typing import List
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.assets.content_registry import ContentRegistry, ContentMap, AbstractContentFactory, SetKwargsFactory
+from dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel
 
 
 def match_func(match_pattern: str, template: str) -> bool:
@@ -48,3 +49,10 @@ array_registry = ContentRegistry[AbstractArray](
     content_factory=create_factory_from_templates
 )
 array_map = ContentMap[AbstractArray](content_registry=array_registry)
+
+source_model_registry = ContentRegistry[AbstractWSCleanSourceModel](
+    match_func=match_func,
+    sort_key_func=sort_key_func,
+    content_factory=create_factory_from_templates
+)
+source_model_map = ContentMap[AbstractWSCleanSourceModel](content_registry=source_model_registry)
