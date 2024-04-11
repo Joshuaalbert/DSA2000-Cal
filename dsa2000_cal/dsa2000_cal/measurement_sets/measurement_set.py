@@ -401,7 +401,7 @@ class MeasurementSet:
                 f.root.antenna_2[start_row:end_row] = antenna_2
                 f.root.time_idx[start_row:end_row] = time_idx
                 f.root.vis[start_row:end_row] = 0.
-                f.root.weights[start_row:end_row] = 1.
+                f.root.weights[start_row:end_row] = 0.
                 f.root.flags[start_row:end_row] = False
             start_row += uvw.shape[0]
 
