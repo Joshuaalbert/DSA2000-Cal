@@ -1,4 +1,5 @@
 import numpy as np
+import pylab as plt
 from astropy import coordinates as ac, time as at, units as au
 from tomographic_kernel.frames import ENU
 
@@ -26,7 +27,6 @@ def test_enu_to_uvw():
 
 
 def test_lmn_to_icrs():
-    array_location = ac.EarthLocation.from_geodetic(0, 0, 0)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
@@ -45,8 +45,19 @@ def test_lmn_to_icrs():
     assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
 
 
+def test_icrs_to_lmn():
+    time = at.Time("2021-01-01T00:00:00", scale='utc')
+    pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
+    sources = ac.ICRS(4 * au.deg, 2 * au.deg)
+    lmn1 = icrs_to_lmn(sources, time, pointing)
+
+    # Different at different times due to Earth's rotation
+    time = at.Time("2022-02-01T00:00:00", scale='utc')
+    lmn2 = icrs_to_lmn(sources, time, pointing)
+    assert np.all(lmn1 != lmn2)
+
+
 def test_lmn_to_icrs_near_poles():
-    array_location = ac.EarthLocation.from_geodetic(0, 0, 0)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     lmn = au.Quantity(
         [
@@ -126,3 +137,83 @@ def test_enu_to_icrs():
     reconstruct_enu = icrs_to_enu(sources, array_location, time)
     print(reconstruct_enu)
     np.testing.assert_allclose(enu, reconstruct_enu, atol=1e-6)
+
+
+# @pytest.mark.parametrize('offset_dt', [1 * au.hour,
+#                                        1 * au.day,
+#                                        2 * au.day,
+#                                        1 * au.year])
+def test_lmn_to_icrs_over_year():
+    mvec = lvec = np.linspace(-0.99, 0.99, 100) * au.dimensionless_unscaled
+
+    M, L = np.meshgrid(mvec, lvec, indexing='ij')
+    R = np.sqrt(L ** 2 + M ** 2)
+
+    lmn = np.stack([L, M, np.sqrt(1 - L ** 2 - M ** 2)], axis=-1)
+
+    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    time0 = at.Time("2021-01-01T00:00:00", scale='utc')
+    icrs0 = lmn_to_icrs(lmn, time0, phase_tracking)
+    for offset_dt in np.linspace(0., 1., 10) * au.year:
+        time1 = time0 + offset_dt
+        icrs1 = lmn_to_icrs(lmn, time1, phase_tracking)
+        sep = icrs0.separation(icrs1)
+        print(offset_dt.to(au.year).value)
+        color = offset_dt.to(au.year).value * np.ones(lvec.size)
+        bins = np.linspace(0., 1., 101)
+        freqs, _ = np.histogram(R.flatten(), bins=bins, weights=sep.to(au.arcsec).value.flatten())
+        counts, _ = np.histogram(R.flatten(), bins=bins)
+        avg_sep = freqs / counts
+
+        print(lvec.size)
+        print(avg_sep.size)
+        print(color.size)
+
+        plt.scatter(bins[:-1] + 0.5 * (bins[1] - bins[0]),
+                    avg_sep,
+                    c=color,
+                    cmap='hsv',
+                    vmin=0.,
+                    vmax=1.)
+    plt.xlabel(r'$\sqrt{l^2 + m^2}$')
+    plt.ylabel('Astrometry error (arcsec)')
+    plt.colorbar(label='Years', alpha=1)
+    plt.show()
+    # im = plt.imshow(sep.to(au.arcsec).value,
+    #                 origin='lower',
+    #                 extent=(lvec[0].value, lvec[-1].value, mvec[0].value, mvec[-1].value))
+    # plt.xlabel('l')
+    # plt.ylabel('m')
+    # plt.colorbar(im)
+    # plt.show()
+    # assert np.all(np.where(np.isnan(sep), True, sep < 0.03 * au.arcsec))
+
+
+def test_lmn_to_icrs_over_time():
+    mvec = lvec = np.linspace(-0.99, 0.99, 100) * au.dimensionless_unscaled
+
+    M, L = np.meshgrid(mvec, lvec, indexing='ij')
+
+    lmn = np.stack([L, M, np.sqrt(1 - L ** 2 - M ** 2)], axis=-1)
+
+    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    time0 = at.Time("2021-01-01T00:00:00", scale='utc')
+    icrs0 = lmn_to_icrs(lmn, time0, phase_tracking)
+
+    fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(10, 10))
+    for i, offset_dt in enumerate([1 * au.hour, 10 * au.day, 180 * au.day, 1 * au.year]):
+        ax = axs.flatten()[i]
+        time1 = time0 + offset_dt
+        icrs1 = lmn_to_icrs(lmn, time1, phase_tracking)
+        sep = icrs0.separation(icrs1)
+        im = ax.imshow(sep.to(au.arcsec).value,
+                       origin='lower',
+                       extent=(lvec[0].value, lvec[-1].value, mvec[0].value, mvec[-1].value))
+        ax.set_xlabel('l')
+        ax.set_ylabel('m')
+        ax.set_title(f'Offset: {offset_dt}')
+        # Make smaller colorbar
+        fig.colorbar(im, ax=ax, label='Error (arcsec)',
+                     fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    plt.show()

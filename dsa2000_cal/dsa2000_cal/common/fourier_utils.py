@@ -50,12 +50,13 @@ class ApertureTransform:
         factor = np.prod([f_aperture.shape[axis] for axis in axes])
         # uses -2pi convention so ifft is used
         return jnp.fft.fftshift(jnp.fft.ifftn(jnp.fft.ifftshift(f_aperture, axes=axes), axes=axes),
-                               axes=axes) * dx * factor
+                                axes=axes) * dx * factor
 
     def _to_aperture_casa(self, f_image, axes, dnu):
         # uses +2pi convention so ifft is used
         factor = np.prod([f_image.shape[axis] for axis in axes])
-        return jnp.fft.fftshift(jnp.fft.ifftn(jnp.fft.ifftshift(f_image, axes=axes), axes=axes), axes=axes) * dnu * factor
+        return jnp.fft.fftshift(jnp.fft.ifftn(jnp.fft.ifftshift(f_image, axes=axes), axes=axes),
+                                axes=axes) * dnu * factor
 
     def _to_image_casa(self, f_aperture, axes, dx):
         # uses +2pi convention so ifft is used

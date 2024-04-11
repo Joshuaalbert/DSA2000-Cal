@@ -171,3 +171,15 @@ def rotate_icrs_direction(direction: ac.ICRS, ra_rotation: ac.Angle, dec_rotatio
     new_ra = new_ra.wrap_at(360 * au.deg)
 
     return ac.ICRS(ra=new_ra, dec=new_dec)
+
+def dimensionless(q: au.Quantity) -> au.Quantity:
+    """
+    Convert a quantity to dimensionless units.
+
+    Args:
+        q: Quantity to convert.
+
+    Returns:
+        Quantity in dimensionless units.
+    """
+    return q.to(au.dimensionless_unscaled)

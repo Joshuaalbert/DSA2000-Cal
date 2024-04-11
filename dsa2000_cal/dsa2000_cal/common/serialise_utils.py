@@ -20,12 +20,69 @@ def serialise_array_quantity(obj):
             'unit': str(obj.unit)
         }
     elif isinstance(obj, np.ndarray):
+        if np.iscomplexobj(obj):
+            # Store real and imaginary parts separately in array_real, array_imag
+            return {
+                'type': 'numpy.ndarray',
+                'array_real': obj.real.tolist(),
+                'array_imag': obj.imag.tolist(),
+                'dtype': str(obj.dtype)
+            }
         return {
             'type': 'numpy.ndarray',
             'array': obj.tolist(),
             'dtype': str(obj.dtype)
         }
     return obj
+
+
+def deserialise_ndarray(obj):
+    if 'array_real' in obj and 'array_imag' in obj:
+        return np.array(obj["array_real"], dtype=obj["dtype"]) + 1j * np.array(obj["array_imag"], dtype=obj["dtype"])
+    return np.array(obj["array"], dtype=obj["dtype"])
+
+
+def deserialise_icrs(obj):
+    if isinstance(obj["ra"], dict) and obj["ra"].get("type") == 'numpy.ndarray':
+        obj["ra"] = deserialise_ndarray(obj["ra"])
+        obj["dec"] = deserialise_ndarray(obj["dec"])
+    return ac.ICRS(ra=ac.Angle(obj['ra']), dec=ac.Angle(obj["dec"]))
+
+
+def deserialise_itrs(obj):
+    if isinstance(obj["x"], dict) and obj["x"].get("type") == 'numpy.ndarray':
+        obj["x"] = deserialise_ndarray(obj["x"])
+        obj["y"] = deserialise_ndarray(obj["y"])
+        obj["z"] = deserialise_ndarray(obj["z"])
+    return ac.ITRS(x=obj["x"] * au.m, y=obj["y"] * au.m, z=obj["z"] * au.m)
+
+
+def deserialise_earth_location(obj):
+    if isinstance(obj["x"], dict) and obj["x"].get("type") == 'numpy.ndarray':
+        obj["x"] = deserialise_ndarray(obj["x"])
+        obj["y"] = deserialise_ndarray(obj["y"])
+        obj["z"] = deserialise_ndarray(obj["z"])
+    return ac.ITRS(x=obj["x"] * au.m, y=obj["y"] * au.m, z=obj["z"] * au.m).earth_location
+
+
+def deserialise_time(obj):
+    if isinstance(obj["value"], dict) and obj["value"].get("type") == 'numpy.ndarray':
+        obj["value"] = deserialise_ndarray(obj["value"])
+    return at.Time(obj["value"], scale=obj["scale"], format=obj["format"])
+
+
+def deserialise_altaz(obj):
+    if isinstance(obj["az"], dict) and obj["az"].get("type") == 'numpy.ndarray':
+        obj["az"] = deserialise_ndarray(obj["az"])
+        obj["alt"] = deserialise_ndarray(obj["alt"])
+    return ac.AltAz(az=obj["az"] * au.deg, alt=obj["alt"] * au.deg,
+                    location=deserialise_earth_location(obj["location"]), obstime=deserialise_time(obj["obstime"]))
+
+
+def deserialise_quantity(obj):
+    if isinstance(obj["value"], dict) and obj["value"].get("type") == 'numpy.ndarray':
+        obj["value"] = deserialise_ndarray(obj["value"])
+    return au.Quantity(obj["value"], unit=obj["unit"])
 
 
 class SerialisableBaseModel(BaseModel):
@@ -57,6 +114,13 @@ class SerialisableBaseModel(BaseModel):
                 "scale": x.scale,
                 "format": "isot"
             },
+            ac.AltAz: lambda x: {
+                "type": 'astropy.coordinates.AltAz',
+                "az": x.az.to(au.deg).value,
+                "alt": x.alt.to(au.deg).value,
+                "location": x.location,
+                "obstime": x.obstime
+            },
             ac.EarthLocation: lambda x: {
                 "type": 'astropy.coordinates.EarthLocation',
                 "x": x.get_itrs().x.to(au.m).value,
@@ -80,64 +144,58 @@ class SerialisableBaseModel(BaseModel):
     def parse_obj(cls: Type[C], obj: Dict[str, Any]) -> C:
         model_fields = cls.__fields__  # get fields of the model
 
-        # Convert all fields that are defined as np.ndarray
         for name, field in model_fields.items():
             # if isinstance(field.type_, type) and issubclass(field.type_, np.ndarray):
             #     if name in obj and isinstance(obj[name], dict):
             if field.type_ is np.ndarray and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'numpy.ndarray':
-                array = obj[name]
-                obj[name] = np.array(array["array"], dtype=array["dtype"])
+                obj[name] = deserialise_ndarray(obj[name])
                 continue
 
-            # Deserialise ICRS and ITRS
-            if field.type_ is ac.ICRS and isinstance(obj.get(name), dict) and obj[name].get(
+            # Deserialise ICRS
+            elif field.type_ is ac.ICRS and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'astropy.coordinates.ICRS':
-                ra_dec = obj[name]
-                if isinstance(ra_dec["ra"], dict) and ra_dec["ra"].get("type") == 'numpy.ndarray':
-                    ra_dec["ra"] = np.array(ra_dec["ra"]["array"], dtype=ra_dec["ra"]["dtype"])
-                    ra_dec["dec"] = np.array(ra_dec["dec"]["array"], dtype=ra_dec["dec"]["dtype"])
-                obj[name] = ac.ICRS(ra=ac.Angle(ra_dec["ra"]), dec=ac.Angle(ra_dec["dec"]))
+                obj[name] = deserialise_icrs(obj[name])
                 continue
 
-            if field.type_ is ac.ITRS and isinstance(obj.get(name), dict) and obj[name].get(
+            # Deserialise ITRS
+            elif field.type_ is ac.ITRS and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'astropy.coordinates.ITRS':
-                coords = obj[name]
-                if isinstance(coords["x"], dict) and coords["x"].get("type") == 'numpy.ndarray':
-                    # Convert to numpy array
-                    coords["x"] = np.array(coords["x"]["array"], dtype=coords["x"]["dtype"])
-                    coords["y"] = np.array(coords["y"]["array"], dtype=coords["y"]["dtype"])
-                    coords["z"] = np.array(coords["z"]["array"], dtype=coords["z"]["dtype"])
-                obj[name] = ac.ITRS(x=coords["x"] * au.m, y=coords["y"] * au.m, z=coords["z"] * au.m)
+                obj[name] = deserialise_itrs(obj[name])
                 continue
 
-            if field.type_ is at.Time and isinstance(obj.get(name), dict) and obj[name].get(
-                    "type") == 'astropy.time.Time':
-                time = obj[name]
-                if isinstance(time["value"], dict) and time["value"].get("type") == 'numpy.ndarray':
-                    time["value"] = np.array(time["value"]["array"], dtype=time["value"]["dtype"])
-                obj[name] = at.Time(time["value"], scale=time["scale"], format=time["format"])
-                continue
-
-            if field.type_ is ac.EarthLocation and isinstance(obj.get(name), dict) and obj[name].get(
+            # Deserialise EarthLocation
+            elif field.type_ is ac.EarthLocation and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'astropy.coordinates.EarthLocation':
-                coords = obj[name]
-                if isinstance(coords["x"], dict) and coords["x"].get("type") == 'numpy.ndarray':
-                    # Convert to numpy array
-                    coords["x"] = np.array(coords["x"]["array"], dtype=coords["x"]["dtype"])
-                    coords["y"] = np.array(coords["y"]["array"], dtype=coords["y"]["dtype"])
-                    coords["z"] = np.array(coords["z"]["array"], dtype=coords["z"]["dtype"])
-                obj[name] = ac.ITRS(x=coords["x"] * au.m, y=coords["y"] * au.m, z=coords["z"] * au.m).earth_location
+                obj[name] = deserialise_earth_location(obj[name])
                 continue
 
-            if field.type_ is au.Quantity and isinstance(obj.get(name), dict) and obj[name].get(
+            # Deserialise Time
+            elif field.type_ is at.Time and isinstance(obj.get(name), dict) and obj[name].get(
+                    "type") == 'astropy.time.Time':
+                obj[name] = deserialise_time(obj[name])
+                continue
+
+            # Deserialise AltAz
+            elif field.type_ is ac.AltAz and isinstance(obj.get(name), dict) and obj[name].get(
+                    "type") == 'astropy.coordinates.AltAz':
+                obj[name] = deserialise_altaz(obj[name])
+                continue
+
+            # Deserialise Quantity
+            elif field.type_ is au.Quantity and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'astropy.units.Quantity':
-                quantity = obj[name]
-                if isinstance(quantity["value"], dict) and quantity["value"].get("type") == 'numpy.ndarray':
-                    quantity["value"] = np.array(quantity["value"]["array"], dtype=quantity["value"]["dtype"])
-                obj[name] = au.Quantity(quantity["value"], unit=quantity["unit"])
+                obj[name] = deserialise_quantity(obj[name])
                 continue
 
+            # Deserialise nested models
+            elif issubclass(field.type_, BaseModel):
+                obj[name] = field.type_.parse_obj(obj[name])
+                continue
+
+            else:
+                # print('No deserialisation for', name, field.type_, obj.get(name))
+                pass
         return super().parse_obj(obj)
 
     def __reduce__(self):

@@ -1,8 +1,9 @@
 import pickle
 
 import astropy.coordinates as ac
-import astropy.units as au
 import astropy.time as at
+import astropy.units as au
+import jax
 import numpy as np
 import ujson
 
@@ -61,7 +62,7 @@ def test_icrs_serialisation():
     assert np.isclose(deserialised.coord.ra.deg, original.coord.ra.deg)
     assert np.isclose(deserialised.coord.dec.deg, original.coord.dec.deg)
 
-    original = ICRSModel(coord=ac.ICRS(ra=[0,10] * au.degree, dec=[30,45] * au.degree))
+    original = ICRSModel(coord=ac.ICRS(ra=[0, 10] * au.degree, dec=[30, 45] * au.degree))
 
     # Serialise the object to JSON
     serialised = original.json()
@@ -92,7 +93,7 @@ def test_itrs_serialisation():
     assert np.isclose(deserialised.coord.y, original.coord.y)
     assert np.isclose(deserialised.coord.z, original.coord.z)
 
-    original = ITRSModel(coord=ac.ITRS(x=[1,1] * au.m, y=[2,2] * au.m, z=[3,3] * au.m))
+    original = ITRSModel(coord=ac.ITRS(x=[1, 1] * au.m, y=[2, 2] * au.m, z=[3, 3] * au.m))
 
     # Serialise the object to JSON
     serialised = original.json()
@@ -104,6 +105,7 @@ def test_itrs_serialisation():
     np.testing.assert_array_equal(deserialised.coord.x, original.coord.x)
     np.testing.assert_array_equal(deserialised.coord.y, original.coord.y)
     np.testing.assert_array_equal(deserialised.coord.z, original.coord.z)
+
 
 def test_at_time_serialisation():
     class TimeModel(SerialisableBaseModel):
@@ -133,6 +135,7 @@ def test_at_time_serialisation():
     # Validate the deserialisation
     np.testing.assert_array_equal(deserialised.time.jd, original.time.jd)
 
+
 def test_au_quantity_serialisation():
     class QuantityModel(SerialisableBaseModel):
         quantity: au.Quantity
@@ -160,6 +163,7 @@ def test_au_quantity_serialisation():
     # Validate the deserialisation
     np.testing.assert_array_equal(deserialised.quantity, original.quantity)
 
+
 def test_earth_location_serialisation():
     class EarthLocationModel(SerialisableBaseModel):
         location: ac.EarthLocation
@@ -178,7 +182,8 @@ def test_earth_location_serialisation():
     assert np.isclose(deserialised.location.lon.deg, original.location.lon.deg)
     assert np.isclose(deserialised.location.height.value, original.location.height.value)
 
-    original = EarthLocationModel(location=ac.EarthLocation(lat=[10, 20] * au.deg, lon=[20, 30] * au.deg, height=[30, 40] * au.m))
+    original = EarthLocationModel(
+        location=ac.EarthLocation(lat=[10, 20] * au.deg, lon=[20, 30] * au.deg, height=[30, 40] * au.m))
 
     # Serialise the object to JSON
     serialised = original.json()
@@ -190,3 +195,122 @@ def test_earth_location_serialisation():
     np.testing.assert_array_equal(deserialised.location.lat.deg, original.location.lat.deg)
     np.testing.assert_array_equal(deserialised.location.lon.deg, original.location.lon.deg)
     np.testing.assert_array_equal(deserialised.location.height.value, original.location.height.value)
+
+
+def test_altaz_serialization():
+    class AltAzModel(SerialisableBaseModel):
+        altaz: ac.AltAz
+
+    original = AltAzModel(altaz=ac.AltAz(az=10 * au.deg, alt=20 * au.deg,
+                                         location=ac.EarthLocation.of_site('vla'),
+                                         obstime=at.Time.now()))
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = AltAzModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    assert np.isclose(deserialised.altaz.az.deg, original.altaz.az.deg)
+    assert np.isclose(deserialised.altaz.alt.deg, original.altaz.alt.deg)
+    assert np.isclose(deserialised.altaz.location.lat.deg, original.altaz.location.lat.deg)
+    assert np.isclose(deserialised.altaz.location.lon.deg, original.altaz.location.lon.deg)
+    assert np.isclose(deserialised.altaz.location.height.value, original.altaz.location.height.value)
+
+    original = AltAzModel(altaz=ac.AltAz(az=[10, 20] * au.deg, alt=[20, 30] * au.deg,
+                                         location=ac.EarthLocation.of_site('vla'),
+                                         obstime=at.Time.now()))
+
+    # Serialise the object to JSON
+    serialised = original.json()
+
+    # Deserialise the object from JSON
+    deserialised = AltAzModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    np.testing.assert_array_equal(deserialised.altaz.az.deg, original.altaz.az.deg)
+    np.testing.assert_array_equal(deserialised.altaz.alt.deg, original.altaz.alt.deg)
+    np.testing.assert_array_equal(deserialised.altaz.location.lat.deg, original.altaz.location.lat.deg)
+    np.testing.assert_array_equal(deserialised.altaz.location.lon.deg, original.altaz.location.lon.deg)
+    np.testing.assert_array_equal(deserialised.altaz.location.height.value, original.altaz.location.height.value)
+
+def test_complex_ndarray_serialisation():
+    class ComplexNumpyModel(SerialisableBaseModel):
+        array: np.ndarray
+
+    original = ComplexNumpyModel(array=np.array([1 + 1j, 2 + 2j, 3 + 3j]))
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = ComplexNumpyModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    np.testing.assert_array_equal(deserialised.array, original.array)
+
+def test_complex_quantity_serialisation():
+    class ComplexQuantityModel(SerialisableBaseModel):
+        quantity: au.Quantity
+
+    original = ComplexQuantityModel(quantity=au.Quantity([1 + 1j, 2 + 2j, 3 + 3j], unit=au.m))
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = ComplexQuantityModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    np.testing.assert_array_equal(deserialised.quantity, original.quantity)
+
+def test_dimensionless_quantity_serialisation():
+    class DimensionlessQuantityModel(SerialisableBaseModel):
+        quantity: au.Quantity
+
+    original = DimensionlessQuantityModel(quantity=[1, 2, 3] * au.dimensionless_unscaled)
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = DimensionlessQuantityModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    np.testing.assert_array_equal(deserialised.quantity, original.quantity)
+
+    original = DimensionlessQuantityModel(quantity=1. * au.dimensionless_unscaled)
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = DimensionlessQuantityModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    np.testing.assert_array_equal(deserialised.quantity, original.quantity)
+
+def test_nested_models_with_quantities():
+    class NestedModel(SerialisableBaseModel):
+        quantity: au.Quantity
+
+    class OuterModel(SerialisableBaseModel):
+        nested: NestedModel
+
+    original = OuterModel(nested=NestedModel(quantity=[1, 2, 3] * au.m))
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = OuterModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    np.testing.assert_array_equal(deserialised.nested.quantity, original.nested.quantity)
