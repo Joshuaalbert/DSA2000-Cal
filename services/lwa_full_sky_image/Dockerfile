@@ -3,7 +3,7 @@ FROM 1_wsclean_base:latest
 
 # Prepare run
 WORKDIR /dsa/code
-COPY services/validate_forward_modelling/src src
+COPY services/lwa_full_sky_image/src src
 
 RUN mkdir -p /dsa/data
 RUN mkdir -p /dsa/run

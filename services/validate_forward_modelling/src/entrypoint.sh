@@ -3,9 +3,11 @@
 set -euo pipefail
 set -x
 
-wsclean --help
 
-# Dirty image of visibilties
+###
+# Dirty image of visibilities
+
+wsclean --help
 
 wsclean \
   -gridder idg \

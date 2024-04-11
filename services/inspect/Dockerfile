@@ -6,6 +6,7 @@ COPY services/inspect/src src
 RUN pip install -r src/requirements.txt
 
 # Directies that will be mounted
+RUN mkdir -p /dsa/data
 RUN mkdir -p /dsa/run
 
 # Setup Jupyter root
