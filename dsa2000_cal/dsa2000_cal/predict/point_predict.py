@@ -10,10 +10,11 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
+from dsa2000_cal.predict.check_utils import check_dft_predict_inputs
 from dsa2000_cal.predict.vec_utils import kron_product
 
 
-class DFTModelData(NamedTuple):
+class PointModelData(NamedTuple):
     """
     Data for predict.
     """
@@ -23,11 +24,29 @@ class DFTModelData(NamedTuple):
 
 
 @dataclasses.dataclass(eq=False)
-class DFTPredict:
+class PointPredict:
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
 
-    def predict(self, freqs: jax.Array, dft_model_data: DFTModelData, visibility_coords: VisibilityCoords) -> jax.Array:
+    def predict(self, freqs: jax.Array, dft_model_data: PointModelData, visibility_coords: VisibilityCoords) -> jax.Array:
+        """
+        Predict visibilities from DFT model data.
+
+        Args:
+            freqs: [chan] frequencies in Hz.
+            dft_model_data: data, see above for shape info.
+            visibility_coords: visibility coordinates.
+
+        Returns:
+            visibilities: [row, chan, 2, 2] in linear correlation basis.
+        """
+
+        direction_dependent_gains = check_dft_predict_inputs(
+            freqs=freqs,
+            image=dft_model_data.image,
+            gains=dft_model_data.gains,
+            lmn=dft_model_data.lmn
+        )
 
         g1 = dft_model_data.gains[
              ..., visibility_coords.time_idx, visibility_coords.antenna_1, :, :, :
@@ -35,8 +54,6 @@ class DFTPredict:
         g2 = dft_model_data.gains[
              ..., visibility_coords.time_idx, visibility_coords.antenna_2, :, :, :
              ]  # [[source,] row, chan, 2, 2]
-
-        direction_dependent_gains = len(np.shape(g1)) == 5
 
         # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
         # We want the outer broadcast to be over chan, so we'll do this order:
