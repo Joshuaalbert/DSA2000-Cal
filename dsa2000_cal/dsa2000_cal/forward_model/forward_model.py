@@ -71,11 +71,9 @@ class ForwardModel:
             system_gain_model=system_gain_model
         )
         # Calibrate visibilities
-        self._calibrate_visibilities(
+        subtracted_ms = self._calibrate_visibilities(
             ms=self.ms
         )
-        # Subtract visibilities
-        subtracted_ms = self._subtract_visibilities()
         # Image visibilities
         self._image_visibilities(image_name='dirty_image', ms=subtracted_ms)
 
@@ -122,7 +120,7 @@ class ForwardModel:
             system_gain_model=system_gain_model
         )
 
-    def _calibrate_visibilities(self, ms: MeasurementSet):
+    def _calibrate_visibilities(self, ms: MeasurementSet) -> MeasurementSet:
         calibration = Calibration(
             num_iterations=15,
             wsclean_source_models=self.calibration_wsclean_source_models,
@@ -134,33 +132,7 @@ class ForwardModel:
             verbose=self.verbose
         )
 
-        calibration.calibrate(ms=ms)
-
-    def _subtract_visibilities(self) -> MeasurementSet:
-        subtracted_ms = self.ms.clone(ms_folder='subtracted_ms')
-        # Predict model with calibrated gains
-        gen = subtracted_ms.create_block_generator(vis=True, weights=True, flags=False)
-        gen_response = None
-        while True:
-            try:
-                time, visibility_coords, data = gen.send(gen_response)
-            except StopIteration:
-                break
-
-            # Predict model with calibrated gains
-            vis_model = ...
-            residual = data.vis - vis_model
-            residual_variance = ...
-
-            # Assuming weights represent 1/variance, we should add to the variance to account for uncertainty in the calibration
-            # weights = 1 / (1 / weights + 1 / calibration_variance)
-            weights = data.weights * residual_variance / (data.weights + residual_variance)
-
-            # Subtract model from data
-            gen_response = VisibilityData(
-                vis=residual,
-                weights=weights
-            )
+        return calibration.calibrate(ms=ms)
 
     def _image_visibilities(self, image_name: str, ms: MeasurementSet) -> ImageModel:
         imagor = DirtyImaging(

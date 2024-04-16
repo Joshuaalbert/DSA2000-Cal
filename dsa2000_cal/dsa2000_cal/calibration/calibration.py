@@ -63,8 +63,8 @@ class Calibration:
     preapply_gain_model: GainModel | None
 
     # Calibration parameters
-    inplace_subtract: bool
     num_iterations: int
+    inplace_subtract: bool
     solution_cadence: au.Quantity | None = None
     average_interval: au.Quantity | None = None
     residual_ms_folder: str | None = None
@@ -81,7 +81,16 @@ class Calibration:
         if self.average_interval is not None and not self.average_interval.unit.is_equivalent(au.s):
             raise ValueError("average_interval must be in seconds.")
 
-    def calibrate(self, ms: MeasurementSet):
+    def calibrate(self, ms: MeasurementSet) -> MeasurementSet:
+        """
+        Calibrate the measurement set, and return the subtracted measurement set.
+
+        Args:
+            ms: the measurement set to calibrate
+
+        Returns:
+            the subtracted measurement set
+        """
 
         # We perform averaging, by holding the gains constant for a period of time (average_interval)
         # 0, 1 --> integration_time = 1s, average_interval = 2.2s --> num_blocks = 2
@@ -131,6 +140,10 @@ class Calibration:
 
         solutions = []
         # TODO: Apply UV cutoff to ignore galactic plane
+        if not self.inplace_subtract:
+            if self.residual_ms_folder is None:
+                raise ValueError("If not inplace subtracting, residual_ms_folder must be provided.")
+            ms = ms.clone(ms_folder=self.residual_ms_folder)
         gen = ms.create_block_generator(vis=True, weights=True, flags=True, relative_time_idx=True,
                                         num_blocks=num_blocks)
         gen_response = None
@@ -162,12 +175,15 @@ class Calibration:
 
             self.key, key = jax.random.split(self.key)
             t0 = time_mod.time()
-            params, results = self.solve(
+            params, results, residual = self.solve(
                 freqs=ms.meta.freqs,
                 preapply_gains=preapply_gains,
                 init_params=init_params,
                 vis_data=data,
                 vis_coords=visibility_coords
+            )
+            gen_response = VisibilityData(
+                vis=np.asarray(residual)
             )
             solutions.append(np.asarray(params.gains_real + 1j * params.gains_imag))
             t1 = time_mod.time()
@@ -189,8 +205,10 @@ class Calibration:
         with open("calibration_solutions.json", "w") as fp:
             fp.write(calibration_solutions.json(indent=2))
 
-    def _build_log_likelihood(self, freqs: jax.Array, preapply_gains: jax.Array, vis_data: VisibilityData,
-                              vis_coords: VisibilityCoords):
+        return ms
+
+    def _build_log_likelihood_and_subtract(self, freqs: jax.Array, preapply_gains: jax.Array, vis_data: VisibilityData,
+                                           vis_coords: VisibilityCoords):
         """
         Build the log likelihood function.
 
@@ -217,16 +235,7 @@ class Calibration:
 
         # vis now contains the model visibilities for each calibrator
 
-        def _log_likelihood(gains: jax.Array) -> jax.Array:
-            """
-            Compute the log probability of the data given the gains.
-
-            Args:
-                gains: [cal_dirs, num_ant, num_time / 1, num_chans, 2, 2]
-
-            Returns:
-                log_prob: scalar
-            """
+        def _apply_gains(gains: jax.Array) -> jax.Array:
             if self.average_interval is None:
                 # There is one time index anyways, and it's the same gain for all times.
                 time_selection = 0
@@ -246,6 +255,24 @@ class Calibration:
 
             model_vis = transform(g1, g2, vis)  # [cal_dirs, num_rows, num_chan, 4]
             model_vis = jnp.sum(model_vis, axis=0)  # [num_rows, num_chan, 4]
+            return model_vis
+
+        def _subtract_model(gains: jax.Array):
+            model_vis = _apply_gains(gains)
+            residual = vis_data.vis - model_vis
+            return residual
+
+        def _log_likelihood(gains: jax.Array) -> jax.Array:
+            """
+            Compute the log probability of the data given the gains.
+
+            Args:
+                gains: [cal_dirs, num_ant, num_time / 1, num_chans, 2, 2]
+
+            Returns:
+                log_prob: scalar
+            """
+            model_vis = _apply_gains(gains)  # [num_rows, num_chan, 4]
 
             vis_variance = 1. / vis_data.weights  # Should probably use measurement set SIGMA here
             vis_stddev = jnp.sqrt(vis_variance)
@@ -259,7 +286,7 @@ class Calibration:
 
             return jnp.sum(log_prob)
 
-        return _log_likelihood
+        return _log_likelihood, _subtract_model
 
     @property
     def float_dtype(self):
@@ -289,11 +316,12 @@ class Calibration:
     @partial(jax.jit, static_argnums=(0,))
     def solve(self, freqs: jax.Array, preapply_gains: jax.Array, init_params: CalibrationParams,
               vis_data: VisibilityData,
-              vis_coords: VisibilityCoords) -> Tuple[CalibrationParams, jaxopt.OptStep]:
+              vis_coords: VisibilityCoords) -> Tuple[CalibrationParams, jaxopt.OptStep, jax.Array]:
 
-        log_prob_fn = self._build_log_likelihood(freqs=freqs,
-                                                 preapply_gains=preapply_gains, vis_data=vis_data,
-                                                 vis_coords=vis_coords)
+        log_prob_fn, subtract_fn = self._build_log_likelihood_and_subtract(freqs=freqs,
+                                                                           preapply_gains=preapply_gains,
+                                                                           vis_data=vis_data,
+                                                                           vis_coords=vis_coords)
 
         ravel_fn, unravel_fn = pytree_unravel(init_params)
         init_params_flat = ravel_fn(init_params)
@@ -322,4 +350,6 @@ class Calibration:
         (params_flat, final_state), results = lax.scan(body_fn, carry, xs=jnp.arange(self.num_iterations))
 
         params = unravel_fn(params_flat)
-        return params, (results, final_state)
+
+        residual = subtract_fn(gains=params.gains_real + 1j * params.gains_imag)
+        return params, (results, final_state), residual
