@@ -1,6 +1,7 @@
 import numpy as np
 import pylab as plt
 from astropy import coordinates as ac, time as at, units as au
+from astropy.coordinates import offset_by
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
@@ -217,3 +218,41 @@ def test_lmn_to_icrs_over_time():
                      fraction=0.046, pad=0.04)
     fig.tight_layout()
     plt.show()
+
+
+def test_lmn_coords():
+    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    distance = 0.1 * au.deg
+    time = at.Time("2021-01-01T00:00:00", scale='utc')
+    # Offset north
+    dnorth_icrs = ac.ICRS(
+        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=0 * au.deg, distance=distance))
+    lmn_dnorth = icrs_to_lmn(dnorth_icrs, time, phase_tracking)
+    m_dnorth = lmn_dnorth[1]
+    print('North', dnorth_icrs)
+    print(lmn_dnorth)
+    assert m_dnorth > 0
+    # Offset east
+    deast_icrs = ac.ICRS(
+        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=90 * au.deg, distance=distance))
+    lmn_deast = icrs_to_lmn(deast_icrs, time, phase_tracking)
+    l_deast = lmn_deast[0]
+    print('East', deast_icrs)
+    print(lmn_deast)
+    assert l_deast > 0
+    # Offset south
+    dsouth_icrs = ac.ICRS(
+        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=180 * au.deg, distance=distance))
+    lmn_dsouth = icrs_to_lmn(dsouth_icrs, time, phase_tracking)
+    m_dsouth = lmn_dsouth[1]
+    print('South', dsouth_icrs)
+    print(lmn_dsouth)
+    assert m_dsouth < 0
+    # Offset west
+    dwest_icrs = ac.ICRS(
+        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=270 * au.deg, distance=distance))
+    lmn_dwest = icrs_to_lmn(dwest_icrs, time, phase_tracking)
+    l_dwest = lmn_dwest[0]
+    print('West', dwest_icrs)
+    print(lmn_dwest)
+    assert l_dwest < 0

@@ -22,9 +22,15 @@ def create_uvw_frame(obs_time: at.Time, phase_tracking: ac.ICRS, barycentre: str
         UVW frame
     """
     if not phase_tracking.isscalar:
-        raise ValueError("phase_tracking must be a scalar ICRS.")
+        if phase_tracking.size == 1:
+            phase_tracking = phase_tracking.reshape(())
+        else:
+            raise ValueError("phase_tracking must be a scalar ICRS.")
     if not obs_time.isscalar:
-        raise ValueError("time must be a scalar Time.")
+        if obs_time.size == 1:
+            obs_time = obs_time.reshape(())
+        else:
+            raise ValueError("time must be a scalar Time.")
 
     if barycentre == 'sun':
         earth_location, earth_velocity = ac.get_body_barycentric_posvel('earth', obs_time, ephemeris='builtin')
@@ -44,7 +50,6 @@ def create_uvw_frame(obs_time: at.Time, phase_tracking: ac.ICRS, barycentre: str
         obsgeoloc=obs_position,
         obsgeovel=obs_velocity
     )
-
 
     frame_uvw = ac.SkyOffsetFrame(origin=phase_tracking.transform_to(gcrs_frame),
                                   obstime=obs_time,
