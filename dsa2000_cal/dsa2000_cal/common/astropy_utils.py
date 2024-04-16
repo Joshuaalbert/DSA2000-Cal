@@ -144,34 +144,6 @@ def mean_itrs(coords: ac.ITRS) -> ac.ITRS:
                    )
 
 
-def rotate_icrs_direction(direction: ac.ICRS, ra_rotation: ac.Angle, dec_rotation: ac.Angle) -> ac.ICRS:
-    """
-    Rotates an ICRS direction by the specified RA and DEC angles.
-
-    Args:
-        direction (ac.ICRS): Initial direction in ICRS coordinates.
-        ra_rotation (Angle): Rotation angle in RA.
-        dec_rotation (Angle): Rotation angle in DEC.
-
-    Returns:
-        ac.ICRS: New rotated direction in ICRRS coordinates.
-    """
-    # Apply RA rotation
-    new_ra = direction.ra + ra_rotation
-    # Apply DEC rotation, and handle poles
-    new_dec = direction.dec + dec_rotation
-    if new_dec > 90 * au.deg:
-        new_dec = 180 * au.deg - new_dec
-        new_ra += 180 * au.deg
-    elif new_dec < -90 * au.deg:
-        new_dec = -180 * au.deg - new_dec
-        new_ra += 180 * au.deg
-
-    # Ensure RA is within [0, 360) range
-    new_ra = new_ra.wrap_at(360 * au.deg)
-
-    return ac.ICRS(ra=new_ra, dec=new_dec)
-
 def dimensionless(q: au.Quantity) -> au.Quantity:
     """
     Convert a quantity to dimensionless units.
@@ -183,3 +155,20 @@ def dimensionless(q: au.Quantity) -> au.Quantity:
         Quantity in dimensionless units.
     """
     return q.to(au.dimensionless_unscaled)
+
+
+def get_angular_diameter(coords_icrs: ac.ICRS) -> au.Quantity:
+    """
+    Get the maximum angular diameter of a set of ICRS coordinates.
+
+    Args:
+        coords_icrs: The ICRS coordinates.
+
+    Returns:
+        The maximum angular diameter.
+    """
+    if coords_icrs.isscalar or coords_icrs.shape[0] == 1:
+        return au.Quantity(0, 'rad')
+
+    # Get maximal separation
+    return max(coord.separation(coords_icrs).max() for coord in coords_icrs).to('deg')

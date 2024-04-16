@@ -15,7 +15,7 @@ class AbstractWSCleanSourceModel(ABC, BaseContent):
         BaseContent.__init__(self, *args, **kwargs)
 
     @abstractmethod
-    def get_wsclean_source_file(self) -> str:
+    def get_wsclean_clean_component_file(self) -> str:
         """
         Get the wsclean source file.
 
@@ -25,11 +25,11 @@ class AbstractWSCleanSourceModel(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def get_wsclean_fits_files(self) -> List[Tuple[au.Quantity, str]]:
+    def get_wsclean_fits_files(self) -> List[str]:
         """
-        Get the wsclean fits file.
+        Get the files for the wsclean model.
 
         Returns:
-            list of tuples of frequencies and fits files
+            the fits files
         """
         ...

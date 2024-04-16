@@ -8,7 +8,6 @@ from astropy import units as au
 from h5parm.utils import parse_coordinates_bbs
 from pydantic import Field
 
-from dsa2000_cal.common.astropy_utils import rotate_icrs_direction
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 
@@ -206,67 +205,3 @@ class BBSSkyModel:
             corrs=output_corrs,
             freqs=self.channels
         )
-
-
-def create_sky_model(
-        filename: str,
-        num_sources: int,
-        spacing_deg: float,
-        pointing_centre: ac.ICRS
-):
-    """
-    Create a sky model with a given number of sources, spacing, and pointing centre.
-
-    Args:
-        filename: the name of the file to write the sky model to
-        num_sources: the number of sources to generate
-        spacing_deg: the spacing between sources in degrees
-        pointing_centre: the pointing centre of the observation
-    """
-
-    def _make_line(source_idx: int, direction: ac.ICRS):
-        ra_str = direction.ra.to_string(unit='hour', sep=':', pad=True)
-        dec_str = direction.dec.to_string(unit='deg', sep='.', pad=True, alwayssign=True)
-        return f"S{source_idx}, POINT, {ra_str}, {dec_str}, 1.0, 0.0, 0.0, 0.0"
-
-    lines = ["# (Name, Type, Ra, Dec, I, Q, U, V) = format"]
-    # Will make a cross pattern
-    if num_sources >= 1:
-        lines.append(_make_line(0, pointing_centre))
-    r = spacing_deg * au.deg
-    for i in range(1, num_sources):
-        if (i - 1) % 4 == 0:
-            lines.append(_make_line(
-                source_idx=i,
-                direction=rotate_icrs_direction(direction=pointing_centre,
-                                                ra_rotation=ac.Angle(r),
-                                                dec_rotation=ac.Angle(0 * r)
-                                                )
-            ))
-        elif (i - 1) % 4 == 1:
-            lines.append(_make_line(
-                source_idx=i,
-                direction=rotate_icrs_direction(direction=pointing_centre,
-                                                ra_rotation=ac.Angle(0 * r),
-                                                dec_rotation=ac.Angle(r)
-                                                )
-            ))
-        elif (i - 1) % 4 == 2:
-            lines.append(_make_line(
-                source_idx=i,
-                direction=rotate_icrs_direction(direction=pointing_centre,
-                                                ra_rotation=ac.Angle(-r),
-                                                dec_rotation=ac.Angle(0 * r)
-                                                )
-            ))
-        elif (i - 1) % 4 == 3:
-            lines.append(_make_line(
-                source_idx=i,
-                direction=rotate_icrs_direction(direction=pointing_centre,
-                                                ra_rotation=ac.Angle(0 * r),
-                                                dec_rotation=ac.Angle(-r)
-                                                )
-            ))
-            r += spacing_deg * au.deg
-    with open(filename, 'w') as f:
-        f.write("\n".join(lines))
