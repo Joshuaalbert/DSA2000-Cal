@@ -1,5 +1,6 @@
 import logging
-from typing import List, Tuple
+import os
+from typing import List, Tuple, Literal
 
 import astropy.time as at
 import astropy.units as au
@@ -8,6 +9,9 @@ from astropy import coordinates as ac, io, wcs
 from astropy.io import fits
 from astropy.wcs import WCS
 from scipy.ndimage import zoom
+
+from dsa2000_cal.common.quantity_utils import quantity_to_np
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -243,8 +247,8 @@ def prepare_gain_fits(output_file: str, pointing_centre: ac.ICRS,
     w.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, 1, freq_hz[0], times[0].mjd * 86400]
     w.wcs.set()
     # Extract pixel directions from the WCS as ICRS coordinates
-    x = np.arange(-num_pix/2, num_pix/2) + 1
-    y = np.arange(-num_pix/2, num_pix/2) + 1
+    x = np.arange(-num_pix / 2, num_pix / 2) + 1
+    y = np.arange(-num_pix / 2, num_pix / 2) + 1
     X = np.meshgrid(x, y, np.arange(1), np.arange(1), np.arange(1), np.arange(1), indexing='ij')
     coords_pix = np.stack([x.flatten() for x in X], axis=1)
     coords_world = w.all_pix2world(coords_pix, 0)
@@ -296,3 +300,194 @@ def write_diagonal_a_term_correction_file(a_term_file: str, diagonal_gain_fits_f
         # It supports tukey, hann, raised_hann, rectangular or gaussian.
         # If not specified, raised_hann is used, which generally performs best.
         f.write("diagonal.window = raised_hann")
+
+class ImageModel(SerialisableBaseModel):
+    phase_tracking: ac.ICRS
+    obs_time: at.Time
+    dl: au.Quantity
+    dm: au.Quantity
+    freqs: au.Quantity  # [num_freqs]
+    coherencies: List[Literal[
+        'XX', 'XY', 'YX', 'YY',
+        'I', 'Q', 'U', 'V',
+        'RR', 'RL', 'LR', 'LL'
+    ]]  # [num_coherencies]
+    beam_major: au.Quantity
+    beam_minor: au.Quantity
+    beam_pa: au.Quantity
+    unit: Literal['JY/BEAM', 'JY/PIXEL'] = 'JY/PIXEL'
+    object_name: str = 'undefined'
+    image: au.Quantity  # [num_l, num_m, num_freqs, num_coherencies]
+
+    def __init__(self, **data) -> None:
+        # Call the superclass __init__ to perform the standard validation
+        super(ImageModel, self).__init__(**data)
+        # Use _check_measurement_set_meta_v0 as instance-wise validator
+        _check_image_model(self)
+
+    def save_image_to_fits(self, file_path: str, overwrite: bool = False):
+        """
+        Saves an image to FITS using SIN projection.
+
+        Args:
+            file_path: the path to the output FITS file
+            overwrite: whether to overwrite the file if it already exists
+        """
+        save_image_to_fits(file_path=file_path, image_model=self, overwrite=overwrite)
+
+
+def _check_image_model(image_model: ImageModel):
+    # Check units
+    if not image_model.dl.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError("dl must be in radians")
+    if not image_model.dm.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError("dm must be in radians")
+    if not image_model.freqs.unit.is_equivalent(au.Hz):
+        raise ValueError("freqs must be in Hz")
+    if not image_model.image.unit.is_equivalent(au.Jy):
+        raise ValueError("image must be in Jy")
+    if not image_model.beam_major.unit.is_equivalent(au.deg):
+        raise ValueError("beam_major must be in degrees")
+    if not image_model.beam_minor.unit.is_equivalent(au.deg):
+        raise ValueError("beam_minor must be in degrees")
+    if not image_model.beam_pa.unit.is_equivalent(au.deg):
+        raise ValueError("beam_pa must be in degrees")
+    # Check shapes
+    if not image_model.phase_tracking.isscalar:
+        raise ValueError("phase_tracking must be scalar")
+    if not image_model.dl.isscalar:
+        raise ValueError("dl must be scalar")
+    if not image_model.dm.isscalar:
+        raise ValueError("dm must be scalar")
+    if not image_model.freqs.isscalar:
+        image_model.freqs = image_model.freqs.reshape((-1,))
+    if image_model.image.isscalar:
+        raise ValueError("image must be a 2D array")
+    if not image_model.beam_major.isscalar:
+        raise ValueError("beam_major must be scalar")
+    if not image_model.beam_minor.isscalar:
+        raise ValueError("beam_minor must be scalar")
+    if not image_model.beam_pa.isscalar:
+        raise ValueError("beam_pa must be scalar")
+    if len(image_model.image.shape) != 4:
+        raise ValueError(f"image shape must be (num_l, num_m, num_freqs, num_coherencies), "
+                         f"got {image_model.image.shape}")
+    if image_model.image.shape[2] != len(image_model.freqs):
+        raise ValueError(f"num_freqs must match image[2] shape, "
+                         f"got {image_model.image.shape[2]} != {len(image_model.freqs)}")
+    if image_model.image.shape[3] != len(image_model.coherencies):
+        raise ValueError(f"num_coherencies must match image[3] shape, "
+                         f"got {image_model.image.shape[3]} != {len(image_model.coherencies)}")
+    if image_model.coherencies not in [
+        ['XX', 'XY', 'YX', 'YY'],
+        ['I', 'Q', 'U', 'V'],
+        ['RR', 'RL', 'LR', 'LL'],
+        ['I']
+    ]:
+        raise ValueError(f"coherencies format {image_model.coherencies} is invalid.")
+    # Ensure freqs are uniformly spaced
+    dfreq = np.diff(image_model.freqs.to(au.Hz).value)
+    if not np.allclose(dfreq, dfreq[0], atol=1e-6):
+        raise ValueError("freqs must be uniformly spaced")
+    # dl is negative
+    if image_model.dl.value >= 0:
+        raise ValueError("dl is always negative.")
+    # dm is positive
+    if image_model.dm.value <= 0:
+        raise ValueError("dm is always positive.")
+    # Check beam
+    if image_model.beam_major.value <= 0:
+        raise ValueError("beam_major must be positive")
+    if image_model.beam_minor.value <= 0:
+        raise ValueError("beam_minor must be positive")
+
+
+def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool = False):
+    """
+    Saves an image to FITS using SIN projection.
+
+    Args:
+        file_path: the path to the output FITS file
+        image_model: the image model
+
+    Raises:
+        FileExistsError: if the file already exists and overwrite is False
+    """
+
+    # SIMPLE  =                    T / file does conform to FITS standard
+    # BITPIX  =                  -32 / number of bits per data pixel
+    # NAXIS   =                    4 / number of data axes
+    # NAXIS1  =                 1300 / length of data axis 1
+    # NAXIS2  =                 1300 / length of data axis 2
+    # NAXIS3  =                    1 / length of data axis 3
+    # NAXIS4  =                    1 / length of data axis 4
+    # EXTEND  =                    T / FITS dataset may contain extensions
+    # COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy
+    # COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H
+    # BSCALE  =                   1.
+    # BZERO   =                   0.
+    # BUNIT   = 'JY/BEAM '           / Units are in Jansky per beam
+    # BMAJ    =  0.00264824850407388
+    # BMIN    =  0.00205277482609264
+    # BPA     =     88.7325624575301
+    # EQUINOX =                2000. / J2000
+    # BTYPE   = 'Intensity'
+    # TELESCOP= 'LOFAR   '
+    # OBSERVER= 'unknown '
+    # OBJECT  = 'BEAM_0  '
+    # ORIGIN  = 'WSClean '           / W-stacking imager written by Andre Offringa
+    # CTYPE1  = 'RA---SIN'           / Right ascension angle cosine
+    # CRPIX1  =                 651.
+    # CRVAL1  =    -9.13375000000008
+    # CDELT1  = -0.000555555555555556
+    # CUNIT1  = 'deg     '
+    # CTYPE2  = 'DEC--SIN'           / Declination angle cosine
+    # CRPIX2  =                 651.
+    # CRVAL2  =        58.8117777778
+    # CDELT2  = 0.000555555555555556
+    # CUNIT2  = 'deg     '
+    # CTYPE3  = 'FREQ    '           / Central frequency
+    # CRPIX3  =                   1.
+    # CRVAL3  =     53807067.8710938
+    # CDELT3  =            47656250.
+    # CUNIT3  = 'Hz      '
+    # CTYPE4  = 'STOKES  '
+    # CRPIX4  =                   1.
+    # CRVAL4  =                   1.
+    # CDELT4  =                   1.
+    # CUNIT4  = '        '
+    # SPECSYS = 'TOPOCENT'
+    # DATE-OBS= '2015-08-26T16:30:05.0'
+    # END
+    if not overwrite and os.path.exists(file_path):
+        raise FileExistsError(f"File {file_path} already exists")
+
+    # Create the WCS
+    w = wcs.WCS(naxis=4)  # 4D image [l, m, freq, coherency]
+    w.wcs.ctype = ["RA--SIN", "DEC-SIN", "FREQ", "STOKES"]
+    w.wcs.crpix = [image_model.image.shape[0] / 2 + 1, image_model.image.shape[1] / 2 + 1, 1, 1]
+    w.wcs.cdelt = [image_model.dl.value, image_model.dm.value,
+                   image_model.freqs[1].to(au.Hz).value - image_model.freqs[0].to(au.Hz).value, 1]
+    w.wcs.crval = [image_model.phase_tracking.ra.deg, image_model.phase_tracking.dec.deg,
+                   image_model.freqs[0].to('Hz').value, 1]
+    w.wcs.cunit = ['deg', 'deg', 'Hz', '']
+    w.wcs.set()
+    # Set beam
+    header = w.to_header()
+    header["BUNIT"] = image_model.unit
+    header["BSCALE"] = 1
+    header["BZERO"] = 0
+    header["BTYPE"] = "Intensity"
+    header["BMAJ"] = image_model.beam_major.to(au.deg).value
+    header["BMIN"] = image_model.beam_minor.to(au.deg).value
+    header["BPA"] = image_model.beam_pa.to(au.deg).value
+    header["TELESCOP"] = "DSA2000"
+    header["OBSERVER"] = "unknown"
+    header["OBJECT"] = image_model.object_name
+    header["RADESYS"] = 'ICRS'
+    header["SPECSYS"] = "TOPOCENT"
+    header["MJD-OBS"] = image_model.obs_time.mjd
+
+    # Save the image
+    hdu = fits.PrimaryHDU(data=quantity_to_np(image_model.image, 'Jy').T, header=header)
+    hdu.writeto(file_path, overwrite=overwrite)
