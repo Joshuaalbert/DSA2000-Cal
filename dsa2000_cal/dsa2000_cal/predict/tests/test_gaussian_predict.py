@@ -44,6 +44,7 @@ def test_gaussian_predict(di_gains: bool, order_approx:int):
         visibility_coords=visibility_coords
     )
     assert np.all(np.isfinite(visibilities))
+    assert np.shape(visibilities) == (row, chan, 2,2)
 
 
 def test_with_sharding():

@@ -1,16 +1,14 @@
 import os
 
-import astropy.coordinates as ac
-import astropy.time as at
-import astropy.units as au
 import numpy as np
-from astropy import io
+import pytest
+from astropy import io, time as at, coordinates as ac, units as au
 from astropy.io import fits
 from astropy.wcs import WCS
 
 from dsa2000_cal.assets.mocks.mock_data import MockData
 from dsa2000_cal.common.fits_utils import transform_to_wsclean_model, down_sample_fits, prepare_gain_fits, haversine, \
-    nearest_neighbors_sphere
+    nearest_neighbors_sphere, ImageModel, save_image_to_fits
 
 
 def test_repoint_fits():
@@ -150,7 +148,6 @@ def mock_data():
     return pointing_centre, gains, directions, freq_hz, times, num_pix
 
 
-
 def test_fits_file_content(tmp_path):
     pointing_centre, gains, directions, freq_hz, times, num_pix = mock_data()
     output_file = tmp_path / "test_output.fits"
@@ -186,3 +183,91 @@ def test_fits_file_content(tmp_path):
         assert np.isclose(wcs.wcs.crval[4], freq_hz.min(), atol=1e-6)
         assert np.isclose(wcs.wcs.crval[5], times.mjd.min() * 86400, atol=1e-6)
         assert not np.any(np.isnan(data))
+
+
+def test_image_model():
+    # Test ImageModel
+    obs_time = at.Time.now()
+    x = ImageModel(
+        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        obs_time=obs_time,
+        dl=au.Quantity(-1, au.dimensionless_unscaled),
+        dm=au.Quantity(1, au.dimensionless_unscaled),
+        freqs=au.Quantity([100, 200, 300], au.MHz),
+        image=au.Quantity(np.ones((10, 10, 3, 4)), au.Jy),
+        coherencies=['XX', 'XY', 'YX', 'YY'],
+        beam_major=au.Quantity(0.1, au.deg),
+        beam_minor=au.Quantity(0.1, au.deg),
+        beam_pa=au.Quantity(0, au.deg),
+        unit='JY/PIXEL'
+    )
+    _ = ImageModel.parse_raw(x.json())
+    # dl positive
+    with pytest.raises(ValueError):
+        _ = ImageModel(
+            phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+            obs_time=obs_time,
+            dl=au.Quantity(1, au.dimensionless_unscaled),
+            dm=au.Quantity(1, au.dimensionless_unscaled),
+            freqs=au.Quantity([100, 200, 300], au.MHz),
+            image=au.Quantity(np.ones((10, 10, 3, 4)), au.Jy),
+            coherencies=['XX', 'XY', 'YX', 'YY'],
+            beam_major=au.Quantity(0.1, au.deg),
+            beam_minor=au.Quantity(0.1, au.deg),
+            beam_pa=au.Quantity(0, au.deg),
+            unit='JY/PIXEL'
+        )
+    # image dim doesn't match coherencies
+    with pytest.raises(ValueError):
+        _ = ImageModel(
+            phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+            obs_time=obs_time,
+            dl=au.Quantity(-1, au.dimensionless_unscaled),
+            dm=au.Quantity(1, au.dimensionless_unscaled),
+            freqs=au.Quantity([100, 200, 300], au.MHz),
+            image=au.Quantity(np.ones((10, 10, 3, 3)), au.Jy),
+            coherencies=['XX', 'XY', 'YX', 'YY'],
+            beam_major=au.Quantity(0.1, au.deg),
+            beam_minor=au.Quantity(0.1, au.deg),
+            beam_pa=au.Quantity(0, au.deg),
+            unit='JY/PIXEL'
+        )
+    # beam_major negative
+    with pytest.raises(ValueError):
+        _ = ImageModel(
+            phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+            obs_time=obs_time,
+            dl=au.Quantity(-1, au.dimensionless_unscaled),
+            dm=au.Quantity(1, au.dimensionless_unscaled),
+            freqs=au.Quantity([100, 200, 300], au.MHz),
+            image=au.Quantity(np.ones((10, 10, 3, 4)), au.Jy),
+            coherencies=['XX', 'XY', 'YX', 'YY'],
+            beam_major=au.Quantity(-0.1, au.deg),
+            beam_minor=au.Quantity(0.1, au.deg),
+            beam_pa=au.Quantity(0, au.deg),
+            unit='JY/PIXEL'
+        )
+
+
+def test_save_image_to_fits(tmp_path):
+    # Test save_image_to_fits
+    obs_time = at.Time.now()
+    image_model = ImageModel(
+        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        obs_time=obs_time,
+        dl=au.Quantity(-0.01, au.dimensionless_unscaled),
+        dm=au.Quantity(0.01, au.dimensionless_unscaled),
+        freqs=au.Quantity([100, 200, 300], au.MHz),
+        image=au.Quantity(np.random.normal(size=(10, 10, 3, 4)), au.Jy),
+        coherencies=['XX', 'XY', 'YX', 'YY'],
+        beam_major=au.Quantity(0.1, au.deg),
+        beam_minor=au.Quantity(0.1, au.deg),
+        beam_pa=au.Quantity(0, au.deg),
+        unit='JY/PIXEL'
+    )
+    save_image_to_fits(str(tmp_path / "test1.fits"), image_model, overwrite=False)
+    image_model.save_image_to_fits(str(tmp_path / "test2.fits"), overwrite=False)
+    with pytest.raises(FileExistsError):
+        save_image_to_fits(str(tmp_path / "test1.fits"), image_model, overwrite=False)
+    # Assert files are the same
+    assert np.all(fits.getdata(str(tmp_path / "test1.fits")) == fits.getdata(str(tmp_path / "test2.fits")))

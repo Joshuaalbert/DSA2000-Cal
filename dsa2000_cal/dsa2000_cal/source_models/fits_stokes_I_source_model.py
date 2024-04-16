@@ -1,33 +1,28 @@
 import dataclasses
 import os
-from functools import partial
-from typing import List, Tuple
+from typing import List
 
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-import jax
 import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 from astropy.coordinates import StokesCoord
 from astropy.io import fits
 from astropy.wcs import WCS
-from ducc0 import wgridder
-from jax import lax
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights
-from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
-from dsa2000_cal.source_models.corr_translation import stokes_to_linear
+from dsa2000_cal.common.interp_utils import get_centred_insert_index
+from dsa2000_cal.common.quantity_utils import quantity_to_np
 
 
 @dataclasses.dataclass(eq=False)
-class FitsSourceModel(AbstractSourceModel):
+class FitsStokesISourceModel(AbstractSourceModel):
     """
-    Predict vis for point source.
+    Predict vis from Stokes I images.
     """
     freqs: au.Quantity  # [num_freqs] Frequencies
     images: List[au.Quantity]  # num_freqs list of [Nm, Nl] images
@@ -41,6 +36,17 @@ class FitsSourceModel(AbstractSourceModel):
     num_threads: int | None = 1
 
     dtype: SupportsDType = jnp.complex64
+
+    def flux_weighted_lmn(self) -> au.Quantity:
+        Nm, Nl = self.images[0].shape
+        lvec = np.arange(-Nl // 2, Nl // 2) * self.dl[0] + self.l0[0]
+        mvec = np.arange(-Nm // 2, Nm // 2) * self.dm[0] + self.m0[0]
+        M, L = np.meshgrid(mvec, lvec, indexing='ij')
+        flux_model = self.images[0]  # [Nm, Nl]
+        m_avg = np.sum(M * flux_model) / np.sum(flux_model)
+        l_avg = np.sum(L * flux_model) / np.sum(flux_model)
+        lmn = np.asarray([l_avg, m_avg, np.sqrt(1. - l_avg ** 2 - m_avg ** 2)]) * au.dimensionless_unscaled
+        return lmn
 
     def __post_init__(self):
         if not self.freqs.unit.is_equivalent(au.Hz):
@@ -89,27 +95,50 @@ class FitsSourceModel(AbstractSourceModel):
             self.num_threads = num_cpus // 2
 
     @staticmethod
-    def from_wsclean_model(wsclean_freqs_and_fits: List[Tuple[au.Quantity, str]], time: at.Time,
+    def from_wsclean_model(wsclean_fits_files: List[str],
+                           time: at.Time,
                            phase_tracking: ac.ICRS,
-                           freqs: au.Quantity, **kwargs) -> 'FitsSourceModel':
+                           freqs: au.Quantity,
+                           ignore_out_of_bounds: bool = False,
+                           **kwargs) -> 'FitsStokesISourceModel':
         """
         Create a FitsSourceModel from a wsclean model file.
 
         Args:
-            wsclean_freqs_and_fits: list of tuples of frequency and fits file
+            wsclean_fits_files: list of tuples of frequency and fits file
             time: the time of the observation
             phase_tracking: the phase tracking center
             freqs: the frequencies to use
             **kwargs:
 
         Returns:
-
+            FitsSourceModel
         """
+
+        wsclean_fits_freqs_and_fits = []
+        for fits_file in wsclean_fits_files:
+            # Get frequency from header, open with astropy
+            with fits.open(fits_file) as hdul:
+                header = hdul[0].header
+                # Try to find freq
+                if 'FREQ' in header:
+                    frequency = header['FREQ'] * au.Hz
+                elif 'RESTFRQ' in header:
+                    frequency = header['RESTFRQ'] * au.Hz
+                elif 'CRVAL3' in header:  # Assuming the frequency is in the third axis
+                    frequency = header['CRVAL3'] * au.Hz
+                else:
+                    raise KeyError("Frequency information not found in FITS header.")
+                wsclean_fits_freqs_and_fits.append((frequency, fits_file))
+
+        # Sort by freq
+        wsclean_fits_freqs_and_fits = sorted(wsclean_fits_freqs_and_fits, key=lambda x: x[0])
+
         # Each fits file is a 2D image, and we linearly interpolate between frequencies
-        available_freqs = au.Quantity([freq for freq, _ in wsclean_freqs_and_fits])
-        (i0, alpha0), (i1, alpha1) = jax.tree_map(np.asarray, get_interp_indices_and_weights(
-            quantity_to_jnp(freqs), quantity_to_jnp(available_freqs)
-        ))
+        available_freqs = au.Quantity([freq for freq, _ in wsclean_fits_freqs_and_fits])
+        i0 = get_centred_insert_index(insert_value=quantity_to_np(freqs), grid_centres=quantity_to_np(available_freqs),
+                                      ignore_out_of_bounds=ignore_out_of_bounds)
+
         images = []
         l0s = []
         m0s = []
@@ -118,8 +147,7 @@ class FitsSourceModel(AbstractSourceModel):
 
         for freq_idx in range(len(freqs)):
             # interpolate between the two closest frequencies
-
-            with fits.open(wsclean_freqs_and_fits[i0[freq_idx]][1]) as hdul0:
+            with fits.open(wsclean_fits_freqs_and_fits[i0[freq_idx]][1]) as hdul0:
                 # image = hdul0[0].data.T[:, :, 0, 0].T # [Nm, Nl]
                 image = hdul0[0].data[0, 0, :, :]  # [Nm, Nl]
                 w0 = WCS(hdul0[0].header)
@@ -174,7 +202,13 @@ class FitsSourceModel(AbstractSourceModel):
             m0s.append(m0)
             dls.append(dl)
             dms.append(dm)
-        return FitsSourceModel(
+
+        for image in images:
+            # Ensure shape is same for each
+            if image.shape != images[0].shape:
+                raise ValueError("All images must have the same shape")
+
+        return FitsStokesISourceModel(
             freqs=freqs,
             images=images,
             dl=au.Quantity(dls),
@@ -183,57 +217,6 @@ class FitsSourceModel(AbstractSourceModel):
             m0=au.Quantity(m0s),
             **kwargs
         )
-
-    def predict(self, uvw: au.Quantity) -> jax.Array:
-        num_rows = np.shape(uvw)[0]
-        output_vis = np.zeros((num_rows, self.num_freqs, 4), dtype=self.dtype)
-        float_dtype = str(np.ones(1, dtype=self.dtype).real.dtype)
-        for freq_idx, (freq, image, dl, dm, l0, m0) in enumerate(
-                zip(
-                    self.freqs,
-                    self.images,
-                    self.dl,
-                    self.dm,
-                    self.l0,
-                    self.m0
-                )
-        ):
-
-            if len(np.shape(image)) != 2:
-                raise ValueError(f"Expected image to have 2 dimensions, got {len(np.shape(image))}")
-            if np.shape(image)[0] % 2 != 0 or np.shape(image)[1] % 2 != 0:
-                raise ValueError("Both dimensions must be even")
-
-            wgridder.dirty2vis(
-                uvw=quantity_to_np(uvw, dtype=np.float64),
-                freq=quantity_to_np(freq, dtype=np.float64)[None],
-                dirty=quantity_to_np(image, 'Jy', dtype=float_dtype),
-                pixsize_x=-float(quantity_to_np(dl)),
-                pixsize_y=float(quantity_to_np(dm)),
-                center_x=float(quantity_to_np(l0)),
-                center_y=float(quantity_to_np(m0)),
-                epsilon=self.epsilon,
-                do_wgridding=True,
-                flip_v=False,
-                divide_by_n=True,
-                sigma_min=1.1,
-                sigma_max=2.6,
-                nthreads=self.num_threads,
-                verbosity=0,
-                vis=output_vis[:, freq_idx:freq_idx + 1, 0],
-                allow_nshift=True,
-                gpu=False
-            )
-
-        return self._translate_to_linear(jnp.asarray(output_vis))
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _translate_to_linear(self, vis_I: jax.Array):
-        shape = np.shape(vis_I)
-        vis_I = lax.reshape(vis_I, (shape[0] * shape[1], 4))  # [num_rows * num_freqs, 4]
-        vis_linear = jax.vmap(lambda y: stokes_to_linear(y, flat_output=True))(vis_I)
-        vis_linear = lax.reshape(vis_linear, shape)
-        return vis_linear
 
     def get_flux_model(self, lvec=None, mvec=None):
         # Use imshow to plot the sky model evaluated over a LM grid

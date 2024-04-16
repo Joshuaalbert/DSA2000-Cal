@@ -11,6 +11,7 @@ from jax._src.typing import SupportsDType
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
+from dsa2000_cal.predict.check_utils import check_dft_predict_inputs
 from dsa2000_cal.predict.vec_utils import kron_product
 from dsa2000_cal.source_models.corr_translation import linear_to_stokes, stokes_to_linear
 
@@ -33,14 +34,20 @@ class GaussianPredict:
 
     def predict(self, freqs: jax.Array, gaussian_model_data: GaussianModelData,
                 visibility_coords: VisibilityCoords) -> jax.Array:
+
+        direction_dependent_gains = check_dft_predict_inputs(
+            freqs=freqs,
+            image=gaussian_model_data.image,
+            gains=gaussian_model_data.gains,
+            lmn=gaussian_model_data.lmn
+        )
+
         g1 = gaussian_model_data.gains[
              ..., visibility_coords.time_idx, visibility_coords.antenna_1, :, :, :
              ]  # [[source,] row, chan, 2, 2]
         g2 = gaussian_model_data.gains[
              ..., visibility_coords.time_idx, visibility_coords.antenna_2, :, :, :
              ]  # [[source,] row, chan, 2, 2]
-
-        direction_dependent_gains = len(np.shape(g1)) == 5
 
         # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
         # We want the outer broadcast to be over chan, so we'll do this order:

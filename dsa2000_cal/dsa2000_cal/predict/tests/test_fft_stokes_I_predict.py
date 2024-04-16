@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
-from dsa2000_cal.predict.faint_predict import FaintPredict, FaintModelData
+from dsa2000_cal.predict.fft_stokes_I_predict import FFTStokesIPredict, FFTStokesIModelData
 
 
 @pytest.mark.parametrize("gain_has_chan", [True, False])
 @pytest.mark.parametrize("image_has_chan", [True, False])
 def test_gaint_predict(gain_has_chan: bool, image_has_chan: bool):
-    faint_predict = FaintPredict()
+    faint_predict = FFTStokesIPredict()
     Nx = 100
     Ny = 100
     chan = 4
@@ -34,7 +34,7 @@ def test_gaint_predict(gain_has_chan: bool, image_has_chan: bool):
         dl = -0.01 * jnp.ones(())
         dm = 0.01 * jnp.ones(())
     image = jnp.ones(image_shape, dtype=jnp.float32)
-    model_data = FaintModelData(
+    model_data = FFTStokesIModelData(
         image=image,
         gains=jnp.ones(gain_shape,
                        dtype=jnp.complex64),
@@ -54,6 +54,7 @@ def test_gaint_predict(gain_has_chan: bool, image_has_chan: bool):
         visibility_coords=visibility_coords
     )
     assert np.all(np.isfinite(visibilities))
+    assert np.shape(visibilities) == (row, chan, 2,2)
 
 
 def test_with_sharding():
@@ -70,7 +71,7 @@ def test_with_sharding():
     def tree_device_put(tree, sharding):
         return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
 
-    faint_predict = FaintPredict()
+    faint_predict = FFTStokesIPredict()
     Nx = 100
     Ny = 100
     chan = 4
@@ -79,11 +80,11 @@ def test_with_sharding():
     row = 1000
     image = jnp.ones((chan, Nx, Ny), dtype=jnp.float32)
     gains = jnp.ones((time, ant, chan, 2, 2), dtype=jnp.complex64)
-    l0 = jnp.ones((chan,))
-    m0 = jnp.ones((chan,))
-    dl = jnp.ones((chan,))
-    dm = jnp.ones((chan,))
-    model_data = FaintModelData(
+    l0 = jnp.zeros((chan,))
+    m0 = jnp.zeros((chan,))
+    dl = -0.1*jnp.ones((chan,))
+    dm = 0.1*jnp.ones((chan,))
+    model_data = FFTStokesIModelData(
         image=tree_device_put(image, NamedSharding(mesh, P('chan'))),
         gains=tree_device_put(gains, NamedSharding(mesh, P(None, None, 'chan'))),
         l0=tree_device_put(l0, NamedSharding(mesh, P('chan'))),

@@ -106,7 +106,8 @@ def wsclean_log_spectral_index_spectrum_fn(stokesI, ref_nu, nu, spectral_indices
         logsumexp(spectral_indices * np.log(dimensionless(nu[:, None] / ref_nu)) ** exponents, axis=-1))
 
 
-def wsclean_linear_spectral_index_spectrum_fn(stokesI: au.Quantity, ref_nu: au.Quantity, nu: au.Quantity, spectral_indices: np.ndarray):
+def wsclean_linear_spectral_index_spectrum_fn(stokesI: au.Quantity, ref_nu: au.Quantity, nu: au.Quantity,
+                                              spectral_indices: np.ndarray):
     # flux(nu) = stokesI + term0 (nu/refnu - 1) + term1 (nu/refnu - 1)^2 + ...
     exponents = np.arange(len(spectral_indices)) + 1
     return stokesI + np.sum(spectral_indices * (dimensionless(nu[:, None] / ref_nu) - 1.) ** exponents, axis=-1)

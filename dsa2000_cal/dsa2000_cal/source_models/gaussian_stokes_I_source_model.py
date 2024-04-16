@@ -1,6 +1,4 @@
 import dataclasses
-from functools import partial
-from typing import NamedTuple
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -12,15 +10,11 @@ import pylab as plt
 import sympy as sp
 from astropy import constants
 from astropy.coordinates import offset_by
-from jax import lax
 from jax._src.scipy.optimize.minimize import minimize
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.source_models.corr_translation import stokes_to_linear
 from dsa2000_cal.source_models.wsclean_util import parse_and_process_wsclean_source_line
 
 
@@ -127,14 +121,21 @@ class GaussianSourceModel(AbstractSourceModel):
         self.n0 = np.sqrt(1 - self.l0 ** 2 - self.m0 ** 2)  # [num_sources]
         self.wavelengths = constants.c / self.freqs  # [num_freqs]
 
+    def flux_weighted_lmn(self) -> au.Quantity:
+        A_avg = np.mean(self.A, axis=1)  # [num_sources]
+        m_avg = np.sum(self.m0 * A_avg) / np.sum(A_avg)
+        l_avg = np.sum(self.l0 * A_avg) / np.sum(A_avg)
+        lmn = np.stack([l_avg, m_avg, np.sqrt(1 - l_avg ** 2 - m_avg ** 2)]) * au.dimensionless_unscaled
+        return lmn
+
     @staticmethod
-    def from_wsclean_model(wsclean_file: str, time: at.Time, phase_tracking: ac.ICRS,
+    def from_wsclean_model(wsclean_clean_component_file: str, time: at.Time, phase_tracking: ac.ICRS,
                            freqs: au.Quantity, lmn_transform_params: bool = True, **kwargs) -> 'GaussianSourceModel':
         """
         Create a GaussianSourceModel from a wsclean model file.
 
         Args:
-            wsclean_file: the wsclean model file
+            wsclean_clean_component_file: the wsclean model file
             time: the time of the observation
             phase_tracking: the phase tracking center
             freqs: the frequencies to use
@@ -155,7 +156,7 @@ class GaussianSourceModel(AbstractSourceModel):
         major = []
         minor = []
         theta = []
-        with open(wsclean_file, 'r') as fp:
+        with open(wsclean_clean_component_file, 'r') as fp:
             for line in fp:
                 line = line.strip()
                 if line == '':
@@ -239,181 +240,6 @@ class GaussianSourceModel(AbstractSourceModel):
             theta=theta_tangent,
             **kwargs
         )
-
-    def _gaussian_fourier(self, u, v, wavelength, A, l0, m0, major, minor, theta):
-        """
-        Computes the Fourier transform of the Gaussian source, over given u, v coordinates.
-
-        Args:
-            u: scalar
-            v: scalar
-            wavelength: scalar
-            A: scalar
-            l0: scalar
-            m0: scalar
-            major: scalar
-            minor: scalar
-            theta: scalar
-
-        Returns:
-            Fourier transformed Gaussian source evaluated at uvw
-        """
-        # l = l0 + R @ r @ l_circ
-        # Gaussian source: e^(- l_circ(l)^2 / (2 * FWHM^2)) such that 1/2 = e^(-1/(2 * FWHM^2))
-        # FWHM = 1/sqrt(2*log(2))
-        # FT(l -> u) = FT(l_circ -> u')
-
-        fwhm = 1. / np.sqrt(2.0 * np.log(2.0))
-
-        # Scale uvw by wavelength
-        u /= wavelength
-        v /= wavelength
-
-        # Spectral shape, Convert to l-projection, m-projection: u' = (r @ R @ u)
-        u_prime = u * minor * jnp.cos(theta) - v * minor * jnp.sin(theta)
-        v_prime = u * major * jnp.sin(theta) + v * major * jnp.cos(theta)
-
-        # phase shift
-        phase_shift = -2 * jnp.pi * (u * l0 + v * m0)
-
-        # Calculate spectral decay: FT[exp(-a x^2)] = sqrt(pi/a) * exp(-pi^2 u^2 / a)
-        # With a = 1 / (2 FWHM**2)
-        # 2D norm_factor: pi / a
-        norm_factor = np.pi * 2.0 * fwhm ** 2
-        spectral_decay_factor = (-np.pi ** 2 * 2. * fwhm ** 2) * (u_prime ** 2 + v_prime ** 2)
-        spectral_decay = norm_factor * jnp.exp(spectral_decay_factor)
-
-        # Calculate the fourier transform
-        return (A * spectral_decay) * (jnp.cos(phase_shift) + jnp.sin(phase_shift) * 1j)
-
-    def _single_predict(self, u, v, w,
-                        wavelength, A,
-                        l0, m0, n0, major, minor, theta):
-        F = lambda u, v: self._gaussian_fourier(
-            u, v,
-            wavelength=wavelength,
-            A=A,
-            l0=l0,
-            m0=m0,
-            major=major,
-            minor=minor,
-            theta=theta
-        )
-
-        w_term = jnp.exp(-2j * jnp.pi * w * (n0 - 1)) / n0
-
-        C = w_term
-
-        if self.order_approx == 0:
-            vis = F(u, v) * C
-        elif self.order_approx == 1:
-            # F[I(l,m) * (C + (l - l0) * A + (m - m0) * B)]
-            # = F[I(l,m)] * (C - l0 * A - m0 * B) + A * i / (2pi) * d/du F[I(l,m)] + B * i / (2pi) * d/dv F[I(l,m)]
-            A = l0 * (1. + 2j * jnp.pi * w * n0) * w_term / n0 ** 2
-            B = m0 * (1. + 2j * jnp.pi * w * n0) * w_term / n0 ** 2
-
-            F_jvp = JVPLinearOp(F)(u, v)
-            vec = jnp.asarray([
-                (A / (2 * jnp.pi)) * 1j,
-                (B / (2 * jnp.pi)) * 1j
-            ])
-
-            vis = F(u, v) * (C - l0 * A - m0 * B) + F_jvp @ vec
-        else:
-            raise ValueError("order_approx must be 0 or 1")
-        return vis
-
-    def predict(self, uvw: au.Quantity) -> jax.Array:
-        return self._predict_jax(quantity_to_jnp(uvw))
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _predict_jax(self, uvw: jax.Array) -> jax.Array:
-        """
-        Predict the visibilities for Gaussian sources.
-
-        Args:
-            uvw: [num_rows, 3] UVW coordinates
-
-        Returns:
-            [num_rows, num_freqs] Predicted visibilities
-        """
-        # We use a lax.scan to accumulate the visibilities over sources
-        l0 = quantity_to_jnp(self.l0)  # [num_sources]
-        m0 = quantity_to_jnp(self.m0)  # [num_sources]
-        n0 = quantity_to_jnp(self.n0)  # [num_sources]
-        wavelengths = quantity_to_jnp(self.wavelengths)  # [num_freqs]
-        A = quantity_to_jnp(self.A)  # [num_sources, num_freqs]
-        major = quantity_to_jnp(self.major)  # [num_sources]
-        minor = quantity_to_jnp(self.minor)  # [num_sources]
-        theta = quantity_to_jnp(self.theta)  # [num_sources]
-
-        @partial(
-            jax.vmap,
-            in_axes=(
-                    0, 0, 0,  # Over Row
-                    None, None,
-                    None, None, None, None, None, None
-            )
-        )
-        @partial(
-            jax.vmap,
-            in_axes=(
-                    None, None, None,
-                    0, 0,  # Over Freq
-                    None, None, None, None, None, None
-            ))
-        def source_predict(
-                u, v, w,
-                wavelength, A,
-                l0, m0, n0, major, minor, theta
-        ):
-            vis_I = self._single_predict(u, v, w, wavelength, A, l0, m0, n0, major, minor, theta)
-            zero = jnp.zeros_like(vis_I)
-            vis_stokes = jnp.asarray([vis_I, zero, zero, zero])
-            return stokes_to_linear(vis_stokes, flat_output=True)
-
-        class XType(NamedTuple):
-            A: jax.Array  # [num_freqs]
-            l0: jax.Array  # scalar
-            m0: jax.Array  # scalar
-            n0: jax.Array  # scalar
-            major: jax.Array  # scalar
-            minor: jax.Array  # scalar
-            theta: jax.Array  # scalar
-
-        def reduce_fn(accumulated_vis: jax.Array, x: XType):
-            # Compute the visibility for a single source
-            vis_s = source_predict(
-                uvw[:, 0], uvw[:, 1], uvw[:, 2],
-                wavelengths, x.A,
-                x.l0, x.m0, x.n0,
-                x.major, x.minor, x.theta
-            )
-            accumulated_vis = accumulated_vis + vis_s
-            return accumulated_vis
-
-        def body_fn(accumulated_vis: jax.Array, x: XType):
-            return reduce_fn(accumulated_vis, x), ()
-
-        num_rows = np.shape(uvw)[0]
-        num_freqs = self.freqs.shape[0]
-
-        init_vis = jnp.zeros((num_rows, num_freqs, 4), dtype=self.dtype)
-        xs = XType(
-            A=A,
-            l0=l0,
-            m0=m0,
-            n0=n0,
-            major=major,
-            minor=minor,
-            theta=theta
-        )
-        accumulated_vis, _ = lax.scan(
-            body_fn,
-            init_vis,
-            xs
-        )
-        return accumulated_vis
 
     def get_flux_model(self, lvec=None, mvec=None):
         # Use imshow to plot the sky model evaluated over a LM grid

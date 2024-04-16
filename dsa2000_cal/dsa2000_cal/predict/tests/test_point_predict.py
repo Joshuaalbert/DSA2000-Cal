@@ -4,11 +4,12 @@ import numpy as np
 import pytest
 
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
-from dsa2000_cal.predict.dft_predict import DFTPredict, DFTModelData
+from dsa2000_cal.predict.point_predict import PointPredict, PointModelData
+
 
 @pytest.mark.parametrize("di_gains", [True, False])
 def test_dft_predict(di_gains: bool):
-    dft_predict = DFTPredict()
+    dft_predict = PointPredict()
     row = 100
     chan = 4
     source = 1
@@ -21,7 +22,7 @@ def test_dft_predict(di_gains: bool):
         gain_shape = (time, ant, chan, 2, 2)
     else:
         gain_shape = (source, time, ant, chan, 2, 2)
-    model_data = DFTModelData(
+    model_data = PointModelData(
         image=jnp.ones((source, chan, 2, 2), dtype=jnp.complex64),
         gains=jnp.ones(gain_shape, dtype=jnp.complex64),
         lmn=lmn
@@ -40,6 +41,7 @@ def test_dft_predict(di_gains: bool):
         visibility_coords=visibility_coords
     )
     assert np.all(np.isfinite(visibilities))
+    assert np.shape(visibilities) == (row, chan, 2, 2)
 
 
 def test_with_sharding():
@@ -56,7 +58,7 @@ def test_with_sharding():
     def tree_device_put(tree, sharding):
         return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
 
-    dft_predict = DFTPredict()
+    dft_predict = PointPredict()
     row = 100
     chan = 4
     source = 1
@@ -69,7 +71,7 @@ def test_with_sharding():
     image = jnp.ones((source, chan, 2, 2), dtype=jnp.float64)
     gains = jnp.ones((source, time, ant, chan, 2, 2), dtype=jnp.complex64)
 
-    model_data = DFTModelData(
+    model_data = PointModelData(
         image=tree_device_put(image, NamedSharding(mesh, P(None, 'chan'))),
         gains=tree_device_put(gains, NamedSharding(mesh, P(None, None, None, 'chan'))),
         lmn=tree_device_put(lmn, NamedSharding(mesh, P()))

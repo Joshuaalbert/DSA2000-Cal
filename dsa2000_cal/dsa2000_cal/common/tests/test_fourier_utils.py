@@ -2,7 +2,7 @@ import pylab as plt
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.common.fourier_utils import ApertureTransform
+from dsa2000_cal.common.fourier_utils import ApertureTransform, find_optimal_fft_size
 
 
 @pytest.mark.parametrize('convention', ['fourier', 'casa'])
@@ -52,3 +52,18 @@ def test_fourier_conventions(convention):
 
     # This passes for both conventions
     jnp.testing.assert_allclose(f_image, rec_f_image, atol=1e-6)
+
+
+def test_find_next_magic_size():
+    for i in range(1, 100):
+        assert find_optimal_fft_size(i, required_radix={4}) % 4 == 0
+
+    import pylab as plt
+    x = []
+    y = []
+    for i in range(1, 10000, 1):
+        x.append(i)
+        y.append(find_optimal_fft_size(i, required_radix={4}))
+    plt.scatter(x, y)
+    plt.show()
+    print(sorted(set(y)))

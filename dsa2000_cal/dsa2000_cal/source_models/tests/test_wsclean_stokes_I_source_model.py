@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
-from dsa2000_cal.source_models.wsclean_source_model import WSCleanSourceModel
+from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 
 
 def test_wsclean_sources():
@@ -13,7 +13,7 @@ def test_wsclean_sources():
     time = at.Time('2021-01-01T00:00:00', scale='utc')
 
     # -00:36:28.234,58.50.46.396
-    source_file = source_model_registry.get_instance(source_model_registry.get_match('cas_a')).get_wsclean_source_file()
+    source_file = source_model_registry.get_instance(source_model_registry.get_match('cas_a')).get_wsclean_clean_component_file()
     # phase_tracking = ac.SkyCoord("-00h36m28.234s", "58d50m46.396s", frame='icrs')
     phase_tracking = ac.SkyCoord("-00h36m28.234s", "78d50m46.396s", frame='icrs')
 
@@ -24,7 +24,7 @@ def test_wsclean_sources():
     freqs = au.Quantity([50e6, 80e6], 'Hz')
 
     wsclean_sources = WSCleanSourceModel.from_wsclean_model(
-        wsclean_file=source_file,
+        wsclean_clean_component_file=source_file,
         time=time,
         phase_tracking=phase_tracking,
         freqs=freqs
@@ -39,10 +39,10 @@ def test_wsclean_sources_projection_effect():
     freqs = au.Quantity([50e6, 80e6], 'Hz')
 
     # -00:36:28.234,58.50.46.396
-    source_file = source_model_registry.get_instance(source_model_registry.get_match('cyg_a')).get_wsclean_source_file()
+    source_file = source_model_registry.get_instance(source_model_registry.get_match('cyg_a')).get_wsclean_clean_component_file()
     phase_tracking = ac.SkyCoord("-04h00m28.608s", "40d43m33.595s", frame='icrs')
     wsclean_sources = WSCleanSourceModel.from_wsclean_model(
-        wsclean_file=source_file,
+        wsclean_clean_component_file=source_file,
         time=time,
         phase_tracking=phase_tracking,
         freqs=freqs,
@@ -53,7 +53,7 @@ def test_wsclean_sources_projection_effect():
     # phase_tracking = ac.SkyCoord("-00h36m28.234s", "78d50m46.396s", frame='icrs')
 
     wsclean_sources = WSCleanSourceModel.from_wsclean_model(
-        wsclean_file=source_file,
+        wsclean_clean_component_file=source_file,
         time=time,
         phase_tracking=phase_tracking,
         freqs=freqs,

@@ -1,16 +1,14 @@
 import dataclasses
-from typing import List
 
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-import jax
 import numpy as np
 import pylab as plt
 
 from dsa2000_cal.abc import AbstractSourceModel
-from dsa2000_cal.source_models.gaussian_source_model import GaussianSourceModel
-from dsa2000_cal.source_models.point_source_model import PointSourceModel
+from dsa2000_cal.source_models.gaussian_stokes_I_source_model import GaussianSourceModel
+from dsa2000_cal.source_models.point_stokes_I_source_model import PointSourceModel
 
 
 @dataclasses.dataclass(eq=False)
@@ -20,20 +18,34 @@ class WSCleanSourceModel(AbstractSourceModel):
     """
     point_source_model: PointSourceModel
     gaussian_source_model: GaussianSourceModel
+    freqs: au.Quantity
 
     def __post_init__(self):
         # Ensure same frequencies
         if np.any(self.point_source_model.freqs != self.gaussian_source_model.freqs):
             raise ValueError("Point and Gaussian source models must have the same frequencies")
+        if np.any(self.freqs != self.point_source_model.freqs):
+            raise ValueError("Frequencies must match point source frequencies")
+
+    def flux_weighted_lmn(self) -> au.Quantity:
+        A_avg_points = np.mean(self.point_source_model.A, axis=1)  # [num_sources]
+        A_avg_gaussians = np.mean(self.gaussian_source_model.A, axis=1)  # [num_sources]
+        l_avg = (np.sum(A_avg_points * self.point_source_model.l0) + np.sum(
+            A_avg_gaussians * self.gaussian_source_model.l0)) / (np.sum(A_avg_points) + np.sum(A_avg_gaussians))
+        m_avg = (np.sum(A_avg_points * self.point_source_model.m0) + np.sum(
+            A_avg_gaussians * self.gaussian_source_model.m0)) / (np.sum(A_avg_points) + np.sum(A_avg_gaussians))
+        lmn = np.asarray([l_avg, m_avg, np.sqrt(1 - l_avg ** 2 - m_avg ** 2)]) * au.dimensionless_unscaled
+        return lmn
 
     @staticmethod
-    def from_wsclean_model(wsclean_file: str, time: at.Time, phase_tracking: ac.ICRS,
+    def from_wsclean_model(wsclean_clean_component_file: str,
+                           time: at.Time, phase_tracking: ac.ICRS,
                            freqs: au.Quantity, lmn_transform_params: bool = True, **kwargs) -> 'WSCleanSourceModel':
         """
         Create a GaussianSourceModel from a wsclean model file.
 
         Args:
-            wsclean_file: the wsclean model file
+            wsclean_clean_component_file: the wsclean model file
             time: the time of the observation
             phase_tracking: the phase tracking center
             freqs: the frequencies to use
@@ -45,7 +57,7 @@ class WSCleanSourceModel(AbstractSourceModel):
         """
         return WSCleanSourceModel(
             gaussian_source_model=GaussianSourceModel.from_wsclean_model(
-                wsclean_file=wsclean_file,
+                wsclean_clean_component_file=wsclean_clean_component_file,
                 time=time,
                 phase_tracking=phase_tracking,
                 freqs=freqs,
@@ -53,16 +65,14 @@ class WSCleanSourceModel(AbstractSourceModel):
                 **kwargs
             ),
             point_source_model=PointSourceModel.from_wsclean_model(
-                wsclean_file=wsclean_file,
+                wsclean_clean_component_file=wsclean_clean_component_file,
                 time=time,
                 phase_tracking=phase_tracking,
                 freqs=freqs,
                 **kwargs
-            )
+            ),
+            freqs=freqs
         )
-
-    def predict(self, uvw: au.Quantity) -> jax.Array:
-        return self.point_source_model.predict(uvw) + self.gaussian_source_model.predict(uvw)
 
     def get_flux_model(self, lvec=None, mvec=None):
         lvec_point, mvec_point, flux_model_point = self.point_source_model.get_flux_model(lvec=lvec, mvec=mvec)
@@ -121,25 +131,3 @@ class WSCleanSourceModel(AbstractSourceModel):
 
         fig.tight_layout()
         plt.show()
-
-    def __add__(self, other: 'WSCleanSourceModel') -> 'WSCleanSourceModel':
-        return WSCleanSourceModel(
-            point_source_model=self.point_source_model + other.point_source_model,
-            gaussian_source_model=self.gaussian_source_model + other.gaussian_source_model
-        )
-
-    def __or__(self, other: 'AbstractSourceModel') -> 'ConcatenatedSourceModel':
-        if isinstance(other, ConcatenatedSourceModel):
-            return ConcatenatedSourceModel(source_models=[self, *other.source_models])
-        return ConcatenatedSourceModel(source_models=[self, other])
-
-
-@dataclasses.dataclass(eq=False)
-class ConcatenatedSourceModel(AbstractSourceModel):
-    source_models: List[WSCleanSourceModel]
-
-    def predict(self, uvw: au.Quantity) -> jax.Array:
-        vis = self.source_models[0].predict(uvw)
-        for source_model in self.source_models[1:]:
-            vis += source_model.predict(uvw)
-        return vis
