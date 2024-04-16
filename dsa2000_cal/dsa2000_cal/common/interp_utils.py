@@ -151,7 +151,7 @@ def get_interp_indices_and_weights(x, xp) -> tuple[
         raise ValueError("xp must be non-empty")
     if np.shape(xp)[0] == 1:
         return (jnp.zeros_like(x, dtype=jnp.int32), jnp.ones_like(x)), (
-        jnp.zeros_like(x, dtype=jnp.int32), jnp.zeros_like(x))
+            jnp.zeros_like(x, dtype=jnp.int32), jnp.zeros_like(x))
 
     # xp_arr = np.concatenate([xp[:1], xp, xp[-1:]])
     xp_arr = xp
@@ -243,3 +243,36 @@ def batched_convolved_interp(x, y, z, k=3, mode='scaled_euclidean', unroll=1):
 
     _, z_interp_batched = lax.scan(body_fn, (), x, unroll=unroll)
     return z_interp_batched
+
+
+def get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray,
+                             ignore_out_of_bounds: bool = False) -> np.ndarray:
+    """
+    Get the insert_idx to insert the values at. Values are all relative. Since grid_centre represent
+    the centre of intervals we need to find the insert indexes that respect this centring.
+
+    Args:
+        insert_value: the values to insert
+        grid_centres: the centre grids to insert into
+
+    Returns:
+        the insert_indsec to insert the values at
+
+    Raises:
+        ValueError: if insert values is too far outside range
+    """
+    # Finds the index such that t[i] <= t_insert < t[i+1],
+    # where t[i] = t_centre[i] - 0.5 * dt and t[i+1] = t_centre[i] + 0.5 * dt
+    if len(grid_centres) == 0:
+        return np.zeros_like(insert_value, dtype=np.int32)
+    dt0 = grid_centres[1] - grid_centres[0]
+    edge = grid_centres - 0.5 * np.diff(grid_centres, prepend=grid_centres[0] - dt0)
+    edge = np.append(edge, edge[-1] + dt0)
+    insert_idx = np.searchsorted(edge, insert_value, side='right') - 1
+    if not ignore_out_of_bounds and (np.any(insert_idx < 0) or np.any(insert_idx >= len(grid_centres))):
+        raise ValueError("Insert value is too far outside range. "
+                         f"{insert_value[insert_idx < 0]} < {edge[0]} or "
+                         f"{insert_value[insert_idx >= len(grid_centres)]} > {edge[-1]}")
+    elif ignore_out_of_bounds:
+        insert_idx = np.clip(insert_idx, 0, len(grid_centres) - 1)
+    return insert_idx

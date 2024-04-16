@@ -1,10 +1,11 @@
 import astropy.time as at
 import astropy.units as au
 import numpy as np
+import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.interp_utils import optimized_interp_jax_safe, multilinear_interp_2d, \
-    get_interp_indices_and_weights, _left_broadcast_multiply, convolved_interp
+    get_interp_indices_and_weights, _left_broadcast_multiply, convolved_interp, get_centred_insert_index
 
 
 def test_linear_interpolation():
@@ -220,3 +221,29 @@ def test_convolved_interp():
     z_interp = convolved_interp(x, y, z, k=2, mode='euclidean')
     print(z_interp)
     np.testing.assert_allclose(z_interp, jnp.array([0.5, 1.5]), rtol=1e-6)
+
+
+def test__get_centred_insert_index():
+    time_centres = np.asarray([0.5, 1.5, 2.5])
+
+    times_to_insert = np.asarray([0, 1, 2])
+    expected_time_idx = np.asarray([0, 1, 2])
+    time_idx = get_centred_insert_index(times_to_insert, time_centres)
+    np.testing.assert_array_equal(time_idx, expected_time_idx)
+
+    times_to_insert = np.asarray([1, 2, 3 - 1e-10])
+    expected_time_idx = np.asarray([1, 2, 2])
+    time_idx = get_centred_insert_index(times_to_insert, time_centres)
+    np.testing.assert_array_equal(time_idx, expected_time_idx)
+
+    with pytest.raises(ValueError):
+        get_centred_insert_index(np.asarray([3]), time_centres)
+
+    with pytest.raises(ValueError):
+        get_centred_insert_index(np.asarray([0 - 1e-10]), time_centres)
+
+    # Try with out of bounds
+    times_to_insert = np.asarray([-10, 10])
+    expected_time_idx = np.asarray([0, 2])
+    time_idx = get_centred_insert_index(times_to_insert, time_centres, ignore_out_of_bounds=True)
+    np.testing.assert_array_equal(time_idx, expected_time_idx)
