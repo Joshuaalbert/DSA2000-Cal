@@ -1,6 +1,7 @@
 import logging
 from typing import Tuple
 
+import astropy.units as au
 import numpy as np
 import pylab as plt
 
@@ -127,28 +128,61 @@ def find_num_pixels(antenna_model: AbstractAntennaModel, beam_width: float, test
             return num_pix
 
 
-def get_beam_width(antenna_model: AbstractAntennaModel, threshold: float = 0.01) -> float:
+def get_beam_widths(amplitude: au.Quantity, theta: au.Quantity, freqs: au.Quantity, threshold: float = 0.5) -> Tuple[
+    au.Quantity, au.Quantity]:
+    """
+    Get the antenna recpetion beam width in degrees.
+
+    Args:
+        amplitude: [theta, phi, freq]
+        theta: [theta]
+        freqs: [freq]
+        threshold: float, threshold value to use to determine beam width, 0.5 is half-power beam width
+
+    Returns:
+        freqs: [freq]
+        beam_widths: [freq]
+    """
+    if not amplitude.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError(f"Expected amplitude to be dimensionless but got {amplitude.unit}"
+                         f" with shape {amplitude.shape}.")
+    if not theta.unit.is_equivalent(au.deg):
+        raise ValueError(f"Expected theta to be in degrees but got {theta.unit}.")
+    if not freqs.unit.is_equivalent(au.Hz):
+        raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}.")
+
+    circular_mean = np.mean(amplitude, axis=1)  # [theta, freq]
+    theta_order = np.argsort(theta)
+
+    beam_widths = []
+    for i, freq in enumerate(freqs):
+        for k in theta_order:
+            th = theta[k]
+            if circular_mean[k, i] < threshold * circular_mean[theta_order[0], i]:
+                beam_widths.append(th)
+                break
+
+    beam_widths = au.Quantity(beam_widths)
+    return freqs, beam_widths
+
+
+def get_dish_model_beam_widths(antenna_model: AbstractAntennaModel, threshold: float = 0.5) -> Tuple[
+    au.Quantity, au.Quantity]:
     """
     Get the antenna recpetion beam width in degrees.
 
     Args:
         antenna_model: antenna model
-        threshold: threshold value to use to determine beam width
+        threshold: threshold value to use to determine beam width, 0.5 is half-power beam width
 
     Returns:
         beam width in degrees
     """
-    voltage_gain = antenna_model.get_voltage_gain()
-    amplitude = antenna_model.get_amplitude() / voltage_gain
-    circular_mean = np.mean(amplitude, axis=1)
+    amplitude = antenna_model.get_amplitude()  # [theta, phi, freq]
+    freqs = antenna_model.get_freqs()
     theta = antenna_model.get_theta()
-    max_theta = 0.
-    for i, freq in enumerate(antenna_model.get_freqs()):
-        for k, th in enumerate(theta):
-            if circular_mean[k, i] < threshold:
-                break
-        max_theta = max(max_theta, th)
-    return max_theta
+
+    return get_beam_widths(amplitude, theta, freqs, threshold=threshold)
 
 
 def plot_circular_beam(antenna_model: AbstractAntennaModel, theshold: float = 0.01):
@@ -160,16 +194,17 @@ def plot_circular_beam(antenna_model: AbstractAntennaModel, theshold: float = 0.
         threshold: threshold value to use to determine beam part to plot
     """
 
-    voltage_gain = antenna_model.get_voltage_gain()
-    amplitude = antenna_model.get_amplitude() / voltage_gain
+    amplitude = antenna_model.get_amplitude()
+    amplitude /= np.max(amplitude, axis=(0, 1))
     circular_mean = np.mean(amplitude, axis=1)
     theta = antenna_model.get_theta()
-    norm = plt.Normalize(vmin=antenna_model.get_freqs().min(), vmax=antenna_model.get_freqs().max())
+    norm = plt.Normalize(vmin=antenna_model.get_freqs().value.min(), vmax=antenna_model.get_freqs().value.max())
     for i, freq in enumerate(antenna_model.get_freqs()):
         for k, th in enumerate(theta):
             if circular_mean[k, i] < theshold:
                 break
-        plt.plot(theta[:k], circular_mean[:k, i], label=freq, color=plt.cm.get_cmap('jet_r')(norm(freq)))
+        plt.plot(theta[:k], circular_mean[:k, i],
+                 label=freq, color=plt.cm.get_cmap('jet_r')(norm(freq.value)))
         print(f"Freq: {i}, {freq}, theta: {k}, {th}")
     plt.xlabel('Theta (deg)')
     plt.ylabel('Amplitude')

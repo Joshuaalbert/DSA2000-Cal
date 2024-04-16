@@ -1,13 +1,19 @@
+import time as time_mod
+
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, array_registry
-from dsa2000_cal.calibration.calibration import Calibration
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.simulation.simulate_systematics import SimulateSystematics
+from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 
@@ -34,7 +40,7 @@ def mock_calibrator_source_models(tmp_path):
         coherencies=['XX', 'XY', 'YX', 'YY'],
         pointings=phase_tracking,
         times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(2) * au.s,
-        freqs=au.Quantity([50, 70], unit=au.MHz),
+        freqs=au.Quantity([700, 1400], unit=au.MHz),
         antennas=antennas,
         antenna_names=array.get_antenna_names(),
         antenna_diameters=array.get_antenna_diameter(),
@@ -43,41 +49,19 @@ def mock_calibrator_source_models(tmp_path):
     )
     ms = MeasurementSet.create_measurement_set(str(tmp_path), meta)
 
-    # Load source models
-    wsclean_fits_files = source_model_registry.get_instance(
-        source_model_registry.get_match('mock')).get_wsclean_fits_files()
+    return ms
 
-    fits_sources = FitsStokesISourceModel.from_wsclean_model(
-        wsclean_fits_files=wsclean_fits_files,
-        time=ms.ref_time,
-        phase_tracking=ms.meta.phase_tracking,
-        freqs=ms.meta.freqs
+
+def test_simulate_systematics(mock_calibrator_source_models):
+    ms = mock_calibrator_source_models
+
+    simulator = SimulateSystematics(
+        dish_effect_params=DishEffectsGainModelParams(),
+        ionosphere_specification='light_dawn',
+        plot_folder='plots',
+        cache_folder='cache',
+        ionosphere_seed=0,
+        dish_effects_seed=1
     )
-
-    source_file = source_model_registry.get_instance(
-        source_model_registry.get_match('mock')).get_wsclean_clean_component_file()
-
-    wsclean_sources = WSCleanSourceModel.from_wsclean_model(
-        wsclean_clean_component_file=source_file,
-        time=ms.ref_time,
-        phase_tracking=ms.meta.phase_tracking,
-        freqs=ms.meta.freqs
-    )
-
-    return fits_sources, wsclean_sources, ms
-
-
-def test_calibration(mock_calibrator_source_models):
-    fits_sources, wsclean_sources, ms = mock_calibrator_source_models
-
-    # print(fits_sources, wsclean_sources, ms)
-
-    calibration = Calibration(
-        num_iterations=10,
-        wsclean_source_models=[wsclean_sources],
-        fits_source_models=[fits_sources],
-        preapply_gain_model=None,
-        inplace_subtract=True,
-        verbose=True
-    )
-    calibration.calibrate(ms)
+    system_gain_model = simulator.simulate(ms=ms)
+    print(system_gain_model)

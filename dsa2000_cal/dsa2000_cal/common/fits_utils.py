@@ -301,6 +301,7 @@ def write_diagonal_a_term_correction_file(a_term_file: str, diagonal_gain_fits_f
         # If not specified, raised_hann is used, which generally performs best.
         f.write("diagonal.window = raised_hann")
 
+
 class ImageModel(SerialisableBaseModel):
     phase_tracking: ac.ICRS
     obs_time: at.Time
@@ -387,11 +388,11 @@ def _check_image_model(image_model: ImageModel):
         raise ValueError(f"coherencies format {image_model.coherencies} is invalid.")
     # Ensure freqs are uniformly spaced
     dfreq = np.diff(image_model.freqs.to(au.Hz).value)
-    if not np.allclose(dfreq, dfreq[0], atol=1e-6):
+    if len(dfreq) > 0 and not np.allclose(dfreq, dfreq[0], atol=1e-6):
         raise ValueError("freqs must be uniformly spaced")
     # dl is negative
-    if image_model.dl.value >= 0:
-        raise ValueError("dl is always negative.")
+    if image_model.dl.value <= 0:
+        raise ValueError("dl is always positive.")
     # dm is positive
     if image_model.dm.value <= 0:
         raise ValueError("dm is always positive.")
@@ -466,8 +467,12 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     w = wcs.WCS(naxis=4)  # 4D image [l, m, freq, coherency]
     w.wcs.ctype = ["RA--SIN", "DEC-SIN", "FREQ", "STOKES"]
     w.wcs.crpix = [image_model.image.shape[0] / 2 + 1, image_model.image.shape[1] / 2 + 1, 1, 1]
-    w.wcs.cdelt = [image_model.dl.value, image_model.dm.value,
-                   image_model.freqs[1].to(au.Hz).value - image_model.freqs[0].to(au.Hz).value, 1]
+    if len(image_model.freqs) > 1:
+        dfreq = image_model.freqs[1].to(au.Hz) - image_model.freqs[0].to(au.Hz)
+    else:
+        dfreq = 1 * au.Hz
+    w.wcs.cdelt = [-image_model.dl.value * 180. / np.pi, image_model.dm.value * 180. / np.pi,
+                   dfreq.to('Hz').value, 1]
     w.wcs.crval = [image_model.phase_tracking.ra.deg, image_model.phase_tracking.dec.deg,
                    image_model.freqs[0].to('Hz').value, 1]
     w.wcs.cunit = ['deg', 'deg', 'Hz', '']

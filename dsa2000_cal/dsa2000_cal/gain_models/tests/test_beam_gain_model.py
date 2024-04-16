@@ -1,9 +1,10 @@
 import numpy as np
+import pylab as plt
 from astropy import units as au, coordinates as ac, time as at
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.gain_models.beam_gain_model import lmn_from_phi_theta, BeamGainModel, beam_gain_model_factory
-import pylab as plt
+
 
 def test_phi_theta_to_cartesian():
     # L = -Y, M = X, N = Z
@@ -68,9 +69,7 @@ def test_beam_gain_model_real_data():
     gains = beam_gain_model.compute_gain(
         freqs=freqs,
         sources=sources, phase_tracking=phase_tracking, array_location=array_location, time=time
-    ) # (source_shape) + [num_ant, num_freq, 2, 2]
-
-
+    )  # (source_shape) + [num_ant, num_freq, 2, 2]
 
     # print(gains)
     assert gains.shape == (len(sources), beam_gain_model.num_antenna, len(freqs), 2, 2)
@@ -79,13 +78,13 @@ def test_beam_gain_model_real_data():
     lvec = np.linspace(-1, 1, 100) * au.dimensionless_unscaled
     mvec = np.linspace(-1, 1, 100) * au.dimensionless_unscaled
     M, L = np.meshgrid(mvec, lvec, indexing='ij')
-    lmn = np.stack([L, M, np.sqrt(1. - L**2 - M**2)], axis=-1) # [100, 100, 3]
+    lmn = np.stack([L, M, np.sqrt(1. - L ** 2 - M ** 2)], axis=-1)  # [100, 100, 3]
     sources = lmn_to_icrs(lmn=lmn, time=time, phase_tracking=phase_tracking)
     gains = beam_gain_model.compute_gain(
         freqs=freqs[:1],
         sources=sources, phase_tracking=phase_tracking, array_location=array_location, time=time
     )  # [100, 100, num_ant, num_freq, 2, 2]
-    gains = gains[..., 0, 0, 0, 0] # [100, 100]
+    gains = gains[..., 0, 0, 0, 0]  # [100, 100]
     fig, axs = plt.subplots(1, 1, figsize=(10, 10), sharex=True, sharey=True, squeeze=False)
     im = axs[0, 0].imshow(
         np.abs(gains),
@@ -98,7 +97,3 @@ def test_beam_gain_model_real_data():
     axs[0, 0].set_ylabel('m')
     axs[0, 0].set_title('Amplitude')
     plt.show()
-
-
-
-

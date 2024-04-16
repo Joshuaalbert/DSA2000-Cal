@@ -128,6 +128,7 @@ def lmn_to_icrs(lmn: Quantity, time: at.Time, phase_tracking: ac.ICRS) -> ac.ICR
     cartesian_rep = ac.CartesianRepresentation(lmn[:, 2], lmn[:, 0], lmn[:, 1])
     sources = ac.SkyCoord(cartesian_rep, frame=frame).transform_to(ac.ICRS)
     sources = sources.reshape(shape[:-1])
+    sources = ac.ICRS(sources.ra, sources.dec)
     return sources
 
 

@@ -1,9 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Literal
 
-import numpy as np
-from astropy import coordinates as ac
-from tomographic_kernel.frames import ENU
+import astropy.units as au
 
 
 class AbstractSourceModel(ABC):
@@ -23,7 +20,7 @@ class AbstractAntennaModel(ABC):
         ...
 
     @abstractmethod
-    def get_amplitude(self) -> np.ndarray:
+    def get_amplitude(self) -> au.Quantity:
         """
         Get the antenna beam model amplitude. This has peak value of 1 typically along bore sight.
 
@@ -34,7 +31,7 @@ class AbstractAntennaModel(ABC):
         ...
 
     @abstractmethod
-    def get_voltage_gain(self) -> float:
+    def get_voltage_gain(self) -> au.Quantity:
         """
         Get the voltage gain of the antenna beam model. This is basically the maximum value of the amplitude.
 
@@ -44,7 +41,7 @@ class AbstractAntennaModel(ABC):
         ...
 
     @abstractmethod
-    def get_freqs(self) -> np.ndarray:
+    def get_freqs(self) -> au.Quantity:
         """
         Get the frequency axis, in Hz.
 
@@ -54,7 +51,7 @@ class AbstractAntennaModel(ABC):
         ...
 
     @abstractmethod
-    def get_theta(self) -> np.ndarray:
+    def get_theta(self) -> au.Quantity:
         """
         Get the theta axis, in degrees, measured from the pointing direction. Domain is [0, 180].
 
@@ -64,30 +61,12 @@ class AbstractAntennaModel(ABC):
         ...
 
     @abstractmethod
-    def get_phi(self) -> np.ndarray:
+    def get_phi(self) -> au.Quantity:
         """
         Get the phi axis, in degrees, measured from the x-axis. Domain is [0, 360].
 
         Returns:
             A 1D array of shape [num_phi] where num_phi is the number of phi values.
-        """
-        ...
-
-    @abstractmethod
-    def compute_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
-                          pol: Literal['X', 'Y']) -> np.ndarray:
-        """
-        Compute the amplitude of the antenna at a given pointing and source.
-
-        Args:
-            pointing: The pointing direction in ICRS frame.
-            source: The source direction in ICRS frame.
-            freq_hz: The frequency in Hz.
-            enu_frame: The ENU frame.
-            pol: The polarisation, one of ['X', 'Y'].
-
-        Returns:
-            The amplitude of the antenna beam.
         """
         ...
 
@@ -101,23 +80,5 @@ class AbstractAntennaBeam(ABC):
 
         Returns:
             antenna_model: AbstractAntennaModel
-        """
-        ...
-
-    @abstractmethod
-    def compute_beam_amplitude(self, pointing: ac.ICRS, source: ac.ICRS, freq_hz: float, enu_frame: ENU,
-                               pol: Literal['X', 'Y']) -> np.ndarray:
-        """
-        Get the amplitude of the antenna beam at a given pointing and source.
-
-        Args:
-            pointing: The pointing direction in ICRS frame.
-            source: The source direction in ICRS frame.
-            freq_hz: The frequency in Hz.
-            enu_frame: The ENU frame.
-            pol: The polarisation, one of ['X', 'Y'].
-
-        Returns:
-            The amplitude of the antenna beam.
         """
         ...

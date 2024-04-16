@@ -1,13 +1,17 @@
+import time as time_mod
+
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, array_registry
-from dsa2000_cal.calibration.calibration import Calibration
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 
@@ -67,17 +71,47 @@ def mock_calibrator_source_models(tmp_path):
     return fits_sources, wsclean_sources, ms
 
 
-def test_calibration(mock_calibrator_source_models):
+def test_predict_model_visibilties(mock_calibrator_source_models):
     fits_sources, wsclean_sources, ms = mock_calibrator_source_models
 
     # print(fits_sources, wsclean_sources, ms)
 
-    calibration = Calibration(
-        num_iterations=10,
+    simulation = SimulateVisibilities(
         wsclean_source_models=[wsclean_sources],
         fits_source_models=[fits_sources],
-        preapply_gain_model=None,
-        inplace_subtract=True,
         verbose=True
     )
-    calibration.calibrate(ms)
+
+    freqs = quantity_to_jnp(ms.meta.freqs)
+
+    apply_gains = jnp.tile(
+        jnp.eye(2)[None, None, None, None, :, :],
+        (simulation.num_sources, len(ms.meta.times), len(ms.meta.antennas), len(freqs), 1, 1)
+    ).astype(simulation.dtype)
+
+    gen = ms.create_block_generator(relative_time_idx=True, num_blocks=2)
+    gen_response = None
+    while True:
+        try:
+            time, coords, data = gen.send(gen_response)
+        except StopIteration:
+            break
+        t0 = time_mod.time()
+        vis = simulation.predict_model_visibilities(freqs=freqs, apply_gains=apply_gains, vis_coords=coords)
+        vis.block_until_ready()
+        t1 = time_mod.time()
+        print(f"Time to simulate: {t1 - t0}")
+        assert not np.any(np.isnan(vis))
+
+#
+# def test_simulate_visibilties(mock_calibrator_source_models):
+#     fits_sources, wsclean_sources, ms = mock_calibrator_source_models
+#
+#     # print(fits_sources, wsclean_sources, ms)
+#
+#     simulation = SimulateVisibilities(
+#         wsclean_source_models=[wsclean_sources],
+#         fits_source_models=[fits_sources],
+#         verbose=True
+#     )
+#     simulation.simulate(ms=ms,system_gain_model=)

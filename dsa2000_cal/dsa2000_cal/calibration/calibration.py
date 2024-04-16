@@ -1,7 +1,10 @@
+import time as time_mod
 from dataclasses import dataclass
 from functools import partial
 from typing import NamedTuple, Tuple, List
 
+import astropy.coordinates as ac
+import astropy.time as at
 import astropy.units as au
 import jax
 import jaxopt
@@ -13,14 +16,12 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.jax_utils import pytree_unravel, promote_pytree
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, VisibilityData, MeasurementSet
-from dsa2000_cal.predict.fft_stokes_I_predict import FFTStokesIPredict, FFTStokesIModelData
-from dsa2000_cal.predict.gaussian_predict import GaussianPredict, GaussianModelData
-from dsa2000_cal.predict.point_predict import PointPredict, PointModelData
 from dsa2000_cal.predict.vec_utils import kron_product
-from dsa2000_cal.source_models.corr_translation import flatten_coherencies, stokes_to_linear
+from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
+from dsa2000_cal.source_models.corr_translation import flatten_coherencies
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 
@@ -41,6 +42,18 @@ class CalibrationData(NamedTuple):
     obs_vis_weight: jnp.ndarray  # [row, chan, 2, 2]
 
 
+class CalibrationSolutions(SerialisableBaseModel):
+    """
+    Calibration solutions, stored in a serialisable format.
+    """
+    directions: ac.ICRS  # [source]
+    times: at.Time  # [time]
+    antennas: ac.EarthLocation  # [ant]
+    antenna_labels: List[str]  # [ant]
+    freqs: au.Quantity  # [chan]
+    gains: np.ndarray  # [source, time, ant, chan, 2, 2]
+
+
 @dataclass(eq=False)
 class Calibration:
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
@@ -52,16 +65,34 @@ class Calibration:
     # Calibration parameters
     inplace_subtract: bool
     num_iterations: int
+    solution_cadence: au.Quantity | None = None
+    average_interval: au.Quantity | None = None
     residual_ms_folder: str | None = None
     seed: int = 42
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
+    verbose: bool = False
 
     def __post_init__(self):
         self.num_calibrators = len(self.wsclean_source_models) + len(self.fits_source_models)
         self.key = jax.random.PRNGKey(self.seed)
+        if self.solution_cadence is not None and not self.solution_cadence.unit.is_equivalent(au.s):
+            raise ValueError("solution_cadence must be in seconds.")
+        if self.average_interval is not None and not self.average_interval.unit.is_equivalent(au.s):
+            raise ValueError("average_interval must be in seconds.")
 
     def calibrate(self, ms: MeasurementSet):
+
+        # We perform averaging, by holding the gains constant for a period of time (average_interval)
+        # 0, 1 --> integration_time = 1s, average_interval = 2.2s --> num_blocks = 2
+        # 0, 1 --> integration_time = 1s, average_interval = 0.5s --> num_blocks = 1
+        if self.average_interval is None:
+            num_blocks = 1
+        else:
+            num_blocks = max(1, int(self.average_interval / ms.meta.integration_time))
+            rounded_average_interval = num_blocks * ms.meta.integration_time
+            print(f"Rounded average interval: {rounded_average_interval}")
+
         # Ensure the freqs are the same in the models
         for wsclean_source_model in self.wsclean_source_models:
             if not np.allclose(ms.meta.freqs.to('Hz'), wsclean_source_model.freqs.to('Hz')):
@@ -74,15 +105,13 @@ class Calibration:
                 raise ValueError("If not inplace subtracting, residual_ms_folder must be provided.")
             ms = ms.clone(ms_folder=self.residual_ms_folder)
 
-        gen = ms.create_block_generator(vis=True, weights=True, flags=True, relative_time_idx=True)
-        gen_response = None
-
         init_params = self.get_init_params(
             num_source=self.num_calibrators,
-            num_time=1,
+            num_time=num_blocks if self.average_interval is None else 1,
+            # If averaging, we only have one gain per average interval
             num_ant=len(ms.meta.antennas),
             num_chan=len(ms.meta.freqs)
-        )  # [num_source, 1, num_ant, num_freqs, 2, 2]
+        )  # [num_source, num_blocks/1 , num_ant, num_freqs, 2, 2]
 
         calibrator_lmn = au.Quantity(
             np.stack(
@@ -94,31 +123,45 @@ class Calibration:
                 axis=0)
         )  # [num_calibrators, 3]
 
+        cal_sources = lmn_to_icrs(
+            lmn=calibrator_lmn,
+            phase_tracking=ms.meta.phase_tracking,
+            time=ms.ref_time
+        )  # [num_calibrators]
+
+        solutions = []
+        # TODO: Apply UV cutoff to ignore galactic plane
+        gen = ms.create_block_generator(vis=True, weights=True, flags=True, relative_time_idx=True,
+                                        num_blocks=num_blocks)
+        gen_response = None
         while True:
             try:
-                time, visibility_coords, data = gen.send(gen_response)
+                times, visibility_coords, data = gen.send(gen_response)
             except StopIteration:
                 break
 
-            cal_sources = lmn_to_icrs(lmn=calibrator_lmn, phase_tracking=ms.meta.phase_tracking, time=time)
-
             if self.preapply_gain_model is not None:
                 # Since we pass a single `time` we need time_idx to be relative.
-                preapply_gains = self.preapply_gain_model.compute_gain(
-                    freqs=ms.meta.freqs,
-                    time=time,
-                    phase_tracking=ms.meta.phase_tracking,
-                    array_location=ms.meta.array_location,
-                    sources=cal_sources
-                )  # [num_calibrators, num_ant, num_chan, 2, 2]
+                preapply_gains = []
+                for time in times:
+                    _preapply_gains = self.preapply_gain_model.compute_gain(
+                        freqs=ms.meta.freqs,
+                        time=time,
+                        phase_tracking=ms.meta.phase_tracking,
+                        array_location=ms.meta.array_location,
+                        sources=cal_sources
+                    )  # [num_calibrators, num_ant, num_chan, 2, 2]
+                    preapply_gains.append(_preapply_gains)
+                preapply_gains = jnp.stack(preapply_gains,
+                                           axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
             else:
                 preapply_gains = jnp.tile(
-                    jnp.eye(2, dtype=self.float_dtype)[None, None, None, ...],
-                    reps=(self.num_calibrators, len(ms.meta.antennas), len(ms.meta.freqs), 1, 1)
+                    jnp.eye(2, dtype=self.float_dtype)[None, None, None, None, :, :],
+                    reps=(self.num_calibrators, num_blocks, len(ms.meta.antennas), len(ms.meta.freqs), 1, 1)
                 )
 
             self.key, key = jax.random.split(self.key)
-
+            t0 = time_mod.time()
             params, results = self.solve(
                 freqs=ms.meta.freqs,
                 preapply_gains=preapply_gains,
@@ -126,133 +169,51 @@ class Calibration:
                 vis_data=data,
                 vis_coords=visibility_coords
             )
-
-            # Subtract the model from the data and store in subtracted MS
-
-            # Store params
+            solutions.append(np.asarray(params.gains_real + 1j * params.gains_imag))
+            t1 = time_mod.time()
+            if self.verbose:
+                print(results)
+                print(f"Time to solve: {t1 - t0}")
+            # Pass forward
             init_params = params
 
-    def _stokes_I_to_linear(self, image_I: jax.Array) -> jax.Array:
-        """
-        Convert Stokes I to linear.
-
-        Args:
-            image_I: [...]
-
-        Returns:
-            image_linear: [..., 2, 2]
-        """
-        shape = np.shape(image_I)
-        image_I = lax.reshape(image_I, (np.size(image_I),))
-        zero = jnp.zeros_like(image_I)
-        image_stokes = jnp.stack([image_I, zero, zero, image_I], axis=-1)  # [..., 4]
-        image_linear = jax.vmap(partial(stokes_to_linear, flat_output=False))(image_stokes)  # [..., 2, 2]
-        return lax.reshape(image_linear, shape + (2, 2))
+        gains = np.concatenate(solutions, axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
+        calibration_solutions = CalibrationSolutions(
+            gains=gains,
+            directions=cal_sources,
+            times=ms.meta.times,
+            antennas=ms.meta.antennas,
+            antenna_labels=ms.meta.antenna_names,
+            freqs=ms.meta.freqs
+        )
+        with open("calibration_solutions.json", "w") as fp:
+            fp.write(calibration_solutions.json(indent=2))
 
     def _build_log_likelihood(self, freqs: jax.Array, preapply_gains: jax.Array, vis_data: VisibilityData,
                               vis_coords: VisibilityCoords):
-        num_rows, num_freqs, _ = vis_data.vis.shape
-        vis = jnp.zeros((self.num_calibrators, num_rows, num_freqs, 2, 2),
-                        vis_data.vis.dtype)  # [cal_dirs, num_rows, num_chans, 2, 2]
-        # Predict the visibilities with pre-applied gains
-        dft_predict = PointPredict(convention=self.convention,
-                                   dtype=self.dtype)
-        gaussian_predict = GaussianPredict(convention=self.convention,
-                                           dtype=self.dtype)
-        faint_predict = FFTStokesIPredict(convention=self.convention,
-                                          dtype=self.dtype)
-        # Each calibrator has a source model which is a collection of sources that make up the calibrator.
-        cal_idx = 0
-        for wsclean_source_model in self.wsclean_source_models:
-            preapply_gains_cal = preapply_gains[cal_idx]  # [num_ant, num_chan, 2, 2]
-            # Add time dime
-            preapply_gains_cal = preapply_gains_cal[None, ...]  # [1, num_ant, num_chan, 2, 2]
-            # Points
-            l0 = quantity_to_jnp(wsclean_source_model.point_source_model.l0)  # [source]
-            m0 = quantity_to_jnp(wsclean_source_model.point_source_model.m0)  # [source]
-            n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
+        """
+        Build the log likelihood function.
 
-            lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
-            image_I = quantity_to_jnp(wsclean_source_model.point_source_model.A)  # [source, chan]
-            image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
+        Args:
+            freqs: [num_chans] the frequencies in Hz
+            preapply_gains: [num_cal, num_time, num_ant, num_chan, 2, 2]
+            vis_data: [num_row] batched visibility data
+            vis_coords: [num_row] visibility coordinates
 
-            dft_model_data = PointModelData(
-                gains=preapply_gains_cal,  # [1, num_ant, num_chan, 2, 2]
-                lmn=lmn,
-                image=image_linear
-            )
-            vis = vis.at[cal_idx].set(
-                dft_predict.predict(
-                    freqs=freqs, dft_model_data=dft_model_data,
-                    visibility_coords=vis_coords
-                )  # [num_rows, num_chans, 2, 2]
-            )
+        Returns:
+            log_likelihood: Callable[[gains], jax.Array]
+        """
 
-            # Gaussians
-            l0 = quantity_to_jnp(wsclean_source_model.gaussian_source_model.l0)  # [source]
-            m0 = quantity_to_jnp(wsclean_source_model.gaussian_source_model.m0)  # [source]
-            n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
+        simulator = SimulateVisibilities(
+            wsclean_source_models=self.wsclean_source_models,
+            fits_source_models=self.fits_source_models,
+            convention=self.convention,
+            dtype=self.dtype,
+            verbose=self.verbose
+        )
 
-            lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
-            image_I = quantity_to_jnp(wsclean_source_model.gaussian_source_model.A)  # [source, chan]
-            image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
-
-            ellipse_params = jnp.stack([
-                quantity_to_jnp(wsclean_source_model.gaussian_source_model.major),
-                quantity_to_jnp(wsclean_source_model.gaussian_source_model.minor),
-                quantity_to_jnp(wsclean_source_model.gaussian_source_model.theta)
-            ],
-                axis=-1)  # [source, 3]
-
-            gaussian_model_data = GaussianModelData(
-                image=image_linear,  # [source, chan, 2, 2]
-                gains=preapply_gains_cal,  # [1, num_ant, num_chan, 2, 2]
-                ellipse_params=ellipse_params,  # [source, 3]
-                lmn=lmn  # [source, 3]
-            )
-
-            vis = vis.at[cal_idx].add(
-                gaussian_predict.predict(
-                    freqs=freqs,  # [chan]
-                    gaussian_model_data=gaussian_model_data,  # [source, chan, 2, 2]
-                    visibility_coords=vis_coords  # [row, 3]
-                )  # [num_rows, num_chans, 2, 2]
-            )
-
-            cal_idx += 1
-
-        for fits_source_model in self.fits_source_models:
-            preapply_gains_cal = preapply_gains[cal_idx]  # [num_ant, num_chan, 2, 2]
-            # Add time dime
-            preapply_gains_cal = preapply_gains_cal[None, ...]  # [1, num_ant, num_chan, 2, 2]
-            l0 = quantity_to_jnp(fits_source_model.l0)  # [num_chan]
-            m0 = quantity_to_jnp(fits_source_model.m0)  # [num_chan]
-            dl = quantity_to_jnp(fits_source_model.dl)  # [num_chan]
-            dm = quantity_to_jnp(fits_source_model.dm)  # [num_chan]
-            image = jnp.stack(
-                [
-                    quantity_to_jnp(img)
-                    for img in fits_source_model.images
-                ],
-                axis=0
-            )  # [num_chan, Nx, Ny]
-
-            faint_model_data = FFTStokesIModelData(
-                image=image,  # [num_chan, Nx, Ny]
-                gains=preapply_gains_cal,  # [1, num_ant, num_chan, 2, 2]
-                l0=l0,  # [num_chan]
-                m0=m0,  # [num_chan]
-                dl=dl,  # [num_chan]
-                dm=dm  # [num_chan]
-            )
-
-            vis = vis.at[cal_idx].set(
-                faint_predict.predict(
-                    freqs=freqs,
-                    faint_model_data=faint_model_data,
-                    visibility_coords=vis_coords
-                )
-            )
+        vis = simulator.predict_model_visibilities(freqs=freqs, apply_gains=preapply_gains,
+                                                   vis_coords=vis_coords)  # [num_cal, num_row, num_chan, 2, 2]
 
         # vis now contains the model visibilities for each calibrator
 
@@ -261,17 +222,21 @@ class Calibration:
             Compute the log probability of the data given the gains.
 
             Args:
-                gains: [cal_dirs, num_ant, num_time, num_chans, 2, 2]
+                gains: [cal_dirs, num_ant, num_time / 1, num_chans, 2, 2]
 
             Returns:
                 log_prob: scalar
             """
+            if self.average_interval is None:
+                # There is one time index anyways, and it's the same gain for all times.
+                time_selection = 0
+            else:
+                # We index into the time dimension based on the time index in the visibility coordinates.
+                time_selection = vis_coords.time_idx
 
             # V_ij = G_i * V_ij * G_j^H
-            g1 = gains[:, vis_coords.antenna_1, vis_coords.time_idx,
-                 ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
-            g2 = gains[:, vis_coords.antenna_2, vis_coords.time_idx,
-                 ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
+            g1 = gains[:, vis_coords.antenna_1, time_selection, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
+            g2 = gains[:, vis_coords.antenna_2, time_selection, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
 
             @partial(jax.vmap, in_axes=(2, 2, 2), out_axes=2)  # over num_chans
             @partial(jax.vmap, in_axes=(0, 0, 0))  # over cal_dirs
@@ -286,8 +251,8 @@ class Calibration:
             vis_stddev = jnp.sqrt(vis_variance)
             obs_dist_real = tfpd.Normal(*promote_pytree('vis_real', (vis_data.vis.real, vis_stddev)))
             obs_dist_imag = tfpd.Normal(*promote_pytree('vis_imag', (vis_data.vis.imag, vis_stddev)))
-            log_prob = obs_dist_real.log_prob(model_vis.real) + obs_dist_imag.log_prob(
-                model_vis.imag)  # [num_rows, num_chan, 4]
+            log_prob = obs_dist_real.log_prob(jnp.real(model_vis)) + obs_dist_imag.log_prob(
+                jnp.imag(model_vis))  # [num_rows, num_chan, 4]
 
             # Mask out flagged data or zero-weighted data.
             log_prob = jnp.where(jnp.bitwise_or(vis_data.weights == 0, vis_data.flags), -jnp.inf, log_prob)
@@ -341,7 +306,7 @@ class Calibration:
         solver = jaxopt.LBFGS(
             fun=objective_fn,
             maxiter=self.num_iterations,
-            jit=False,
+            jit=True,
             unroll=False,
             use_gamma=True
         )
@@ -354,7 +319,7 @@ class Calibration:
 
         carry = (init_params_flat, solver.init_state(init_params=init_params_flat))
 
-        (params_flat, _), results = lax.scan(body_fn, carry, xs=jnp.arange(self.num_iterations))
+        (params_flat, final_state), results = lax.scan(body_fn, carry, xs=jnp.arange(self.num_iterations))
 
         params = unravel_fn(params_flat)
-        return params, results
+        return params, (results, final_state)

@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from astropy import units as au, coordinates as ac, time as at
 
+from dsa2000_cal.antenna_model.utils import get_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
@@ -96,6 +97,7 @@ class BeamGainModel(GainModel):
         )
         self.lmn_data = au.Quantity(jnp.stack([y, x, z_bore], axis=-1), unit=au.dimensionless_unscaled)  # [num_dir, 3]
 
+
     @partial(jax.jit, static_argnums=(0,))
     def _compute_gain_jax(self, freqs: jax.Array, lmn_sources: jax.Array):
         """
@@ -164,14 +166,14 @@ def beam_gain_model_factory(array_name: str) -> BeamGainModel:
         raise ValueError(f"Array {array_name} not found in registry. Add it to use the BeamGainModel factory.") from e
 
     dish_model = array.get_antenna_beam().get_model()
-    theta = dish_model.get_theta() * au.deg
-    phi = dish_model.get_phi() * au.deg
+    theta = dish_model.get_theta()
+    phi = dish_model.get_phi()
     theta, phi = np.meshgrid(theta, phi, indexing='ij')
     theta = theta.reshape((-1,))
     phi = phi.reshape((-1,))
     num_antenna = len(array.get_antennas())
 
-    model_freqs = dish_model.get_freqs() * au.Hz
+    model_freqs = dish_model.get_freqs()
     amplitude = dish_model.get_amplitude()  # [num_theta, num_phi, num_freqs]
     amplitude = amplitude.reshape((-1, len(model_freqs)))  # [num_dir, num_freqs]
     voltage_gain = dish_model.get_voltage_gain()

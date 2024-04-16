@@ -1,3 +1,4 @@
+import time
 from typing import Optional
 
 __all__ = [
@@ -170,7 +171,6 @@ def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
     return py_tree, _remove_extra
 
 
-
 V = TypeVar('V')
 Y = TypeVar('Y')
 
@@ -256,3 +256,15 @@ def cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: Int
     )
 
     return final_accumulate, final_output
+
+
+def get_time_jax(*deps, **kwargs):
+    def _get_time(*deps, **kwargs):
+        return np.asarray(time.time(), np.float32)
+
+    result_shape_dtype = jax.ShapeDtypeStruct(
+        shape=(),
+        dtype=jnp.float32
+    )
+
+    return jax.pure_callback(_get_time, result_shape_dtype, *deps, vectorized=False, **kwargs)
