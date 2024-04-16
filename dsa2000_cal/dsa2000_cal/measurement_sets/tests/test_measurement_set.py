@@ -6,8 +6,7 @@ import tables as tb
 from astropy import coordinates as ac, units as au, time as at
 
 from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
-    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData, \
-    _get_centred_insert_index
+    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData
 
 
 def test__combination_with_replacementindex():
@@ -64,6 +63,8 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
         assert ms.num_rows == 10 * 5 * 6 // 2
     else:
         assert ms.num_rows == 10 * 5 * 4 // 2
+
+    assert ms.num_rows % ms.block_size == 0
 
     with tb.open_file(ms.data_file, 'r') as f:
         rows = ms.get_rows(f.root.antenna_1[:], f.root.antenna_2[:], f.root.time_idx[:])
@@ -184,21 +185,63 @@ def test_measurement_setting_put(tmp_path, with_autocorr):
         assert np.bitwise_not(np.any(data.flags))
 
 
-def test__get_centred_insert_index():
-    time_centres = np.asarray([0.5, 1.5, 2.5])
-
-    times_to_insert = np.asarray([0, 1, 2])
-    expected_time_idx = np.asarray([0, 1, 2])
-    time_idx = _get_centred_insert_index(times_to_insert, time_centres)
-    np.testing.assert_array_equal(time_idx, expected_time_idx)
-
-    times_to_insert = np.asarray([1, 2, 3 - 1e-10])
-    expected_time_idx = np.asarray([1, 2, 2])
-    time_idx = _get_centred_insert_index(times_to_insert, time_centres)
-    np.testing.assert_array_equal(time_idx, expected_time_idx)
+@pytest.mark.parametrize("with_autocorr", [True, False])
+def test_multi_block_gen(tmp_path, with_autocorr):
+    meta = MeasurementSetMetaV0(
+        array_name="test_array",
+        array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
+        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        channel_width=au.Quantity(1, au.Hz),
+        integration_time=au.Quantity(1, au.s),
+        coherencies=['XX', 'XY', 'YX', 'YY'],
+        pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
+        times=at.Time.now() + np.arange(10) * au.s,
+        freqs=au.Quantity([1, 2, 3], au.Hz),
+        antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
+        antenna_names=[f"antenna_{i}" for i in range(5)],
+        antenna_diameters=au.Quantity(np.ones(5), au.m),
+        with_autocorr=with_autocorr,
+        mount_types='ALT-AZ',
+        system_equivalent_flux_density=au.Quantity(1, au.Jy)
+    )
+    ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
 
     with pytest.raises(ValueError):
-        _get_centred_insert_index(np.asarray([3]), time_centres)
-
+        gen = ms.create_block_generator(num_blocks=0)
+        next(gen)
     with pytest.raises(ValueError):
-        _get_centred_insert_index(np.asarray([0 - 1e-10]), time_centres)
+        gen = ms.create_block_generator(num_blocks=4)
+        next(gen)
+
+    gen = ms.create_block_generator(num_blocks=2)
+    gen_response = None
+
+    block_count = 0
+    while True:
+        try:
+            times, coords, data = gen.send(gen_response)
+        except StopIteration:
+            break
+
+        block_count += 2
+        assert len(times) == 2
+        assert coords.uvw.shape == (ms.block_size * 2, 3)
+        assert coords.time_obs.shape == (ms.block_size * 2,)
+        assert coords.antenna_1.shape == (ms.block_size * 2,)
+        assert coords.antenna_2.shape == (ms.block_size * 2,)
+        assert coords.time_idx.shape == (ms.block_size * 2,)
+        assert data.vis.shape == (ms.block_size * 2, 3, 4)
+        assert data.weights.shape == (ms.block_size * 2, 3, 4)
+        assert data.flags.shape == (ms.block_size * 2, 3, 4)
+        for time_idx in coords.time_idx:
+            assert ms.meta.times[time_idx] in times
+        for time in times:
+            assert time in ms.meta.times[coords.time_idx]
+
+        gen_response = VisibilityData(
+            vis=np.ones((ms.block_size * 2, 3, 4), dtype=np.complex64),
+            weights=np.zeros((ms.block_size * 2, 3, 4), dtype=np.float16),
+            flags=np.ones((ms.block_size * 2, 3, 4), dtype=np.bool_)
+        )
+
+    assert block_count == 10

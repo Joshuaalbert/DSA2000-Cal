@@ -16,7 +16,7 @@ import tables as tb
 from pydantic import Field
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 
@@ -224,34 +224,6 @@ class VisibilityData(NamedTuple):
     flags: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the flags
 
 
-def _get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray) -> np.ndarray:
-    """
-    Get the insert_idx to insert the values at. Values are all relative. Since grid_centre represent
-    the centre of intervals we need to find the insert indexes that respect this centring.
-
-    Args:
-        insert_value: the values to insert
-        grid_centres: the centre grids to insert into
-
-    Returns:
-        the insert_indsec to insert the values at
-
-    Raises:
-        ValueError: if insert values is too far outside range
-    """
-    # Finds the index such that t[i] <= t_insert < t[i+1],
-    # where t[i] = t_centre[i] - 0.5 * dt and t[i+1] = t_centre[i] + 0.5 * dt
-    if len(grid_centres) == 0:
-        return np.zeros_like(insert_value, dtype=np.int32)
-    dt0 = grid_centres[1] - grid_centres[0]
-    edge = grid_centres - 0.5 * np.diff(grid_centres, prepend=grid_centres[0] - dt0)
-    edge = np.append(edge, edge[-1] + dt0)
-    insert_idx = np.searchsorted(edge, insert_value, side='right') - 1
-    if np.any(insert_idx < 0) or np.any(insert_idx >= len(grid_centres)):
-        raise ValueError("Insert value is too far outside range.")
-    return insert_idx
-
-
 @dataclasses.dataclass(eq=False)
 class MeasurementSet:
     ms_folder: str
@@ -309,6 +281,7 @@ class MeasurementSet:
         """
         Get the reference time of the measurement set.
         """
+        # Casa convention is to use the first time as the reference time, also for FITS
         return self.meta.times[0]
 
     def clone(self, ms_folder: str, preserve_symbolic_links: bool = False) -> 'MeasurementSet':
@@ -412,10 +385,10 @@ class MeasurementSet:
         """
         Put the visibility data for the given antenna pair and time index.
         """
-        time_idx = _get_centred_insert_index((times - self.ref_time).sec, (self.meta.times - self.ref_time).sec)
+        time_idx = get_centred_insert_index((times - self.ref_time).sec, (self.meta.times - self.ref_time).sec)
         if freqs is not None:
-            freqs_idx = _get_centred_insert_index((freqs.value - self.meta.freqs[0]).to('Hz').value,
-                                                  (self.meta.freqs - self.meta.freqs[0]).to('Hz').value)
+            freqs_idx = get_centred_insert_index((freqs.value - self.meta.freqs[0]).to('Hz').value,
+                                                 (self.meta.freqs - self.meta.freqs[0]).to('Hz').value)
             freqs_idx = _try_get_slice(freqs_idx)
         else:
             freqs_idx = slice(None, None, None)
@@ -531,9 +504,37 @@ class MeasurementSet:
         )
 
     def create_block_generator(self, start_time_idx: int = 0, end_time_idx: int | None = None,
-                               vis: bool = True, weights: bool = True, flags: bool = True) -> Generator[
+                               vis: bool = True, weights: bool = True, flags: bool = True,
+                               relative_time_idx: bool = False, num_blocks: int = 1) -> Generator[
         Tuple[at.Time, VisibilityCoords, VisibilityData], VisibilityData | None, None
     ]:
+        """
+        Create a block generator for the measurement set.
+
+        Args:
+            start_time_idx: the start time index, default 0
+            end_time_idx: the end time index, default the end
+            vis: whether to include visibilities, default True
+            weights: whether to include weights, default True
+            flags: whether to include flags, default True
+            relative_time_idx: if True, the time index is relative to the start time index, default False
+                This is required if indexing gains produced per block.
+            num_blocks: the number of blocks to yield at a time, default 1
+
+        Returns:
+            a generator that yields:
+                time: [num_blocks] the times
+                coords: [num_rows] batched coordinates
+                data: [num_rows] batched data
+
+        Raises:
+            ValueError: if the number of blocks is not positive
+            ValueError: if the total rows is not divisible by the block size and number of blocks
+            RuntimeError: if the time index is out of bounds
+            RuntimeError: if the row is out of bounds
+        """
+        if num_blocks <= 0:
+            raise ValueError(f"Number of blocks {num_blocks} must be positive.")
         if self.meta.with_autocorr:
             start_antenna_1 = 0
             start_antenna_2 = 0
@@ -548,30 +549,48 @@ class MeasurementSet:
         else:
             end_row = self.get_rows(start_antenna_1, start_antenna_2, end_time_idx) + self.block_size
 
+        total_rows = end_row - start_row
+        if total_rows % (self.block_size * num_blocks) != 0:
+            raise ValueError(
+                f"Total rows {total_rows} must be divisible by "
+                f"block size {self.block_size} and number of blocks {num_blocks}."
+            )
+
         time_obs = jnp.asarray((self.meta.times - self.ref_time).sec, dtype=jnp.float32)
 
         with tb.open_file(self.data_file, 'r+') as f:
-            time_idx = start_time_idx
-            for row in range(start_row, end_row, self.block_size):
-                time = self.meta.times[time_idx]
-                time_idx += 1
+            from_time_idx = start_time_idx
+            for from_row in range(start_row, end_row, self.block_size * num_blocks):
+                to_time_idx = from_time_idx + num_blocks
+                if to_time_idx > len(self.meta.times):
+                    raise RuntimeError(f"Time index {to_time_idx} out of bounds.")
+                time = self.meta.times[from_time_idx:to_time_idx]
+                from_time_idx += num_blocks
+                to_row = from_row + self.block_size * num_blocks
+                if to_row > end_row:
+                    raise RuntimeError(f"Row {from_row} + block size {self.block_size} * num blocks {num_blocks}.")
+                output_time_idx = f.root.time_idx[from_row:to_row]
+                output_time_obs = time_obs[output_time_idx]
+                if relative_time_idx:
+                    output_time_idx = output_time_idx - from_time_idx
+
                 coords = VisibilityCoords(
-                    uvw=f.root.uvw[row:row + self.block_size],
-                    time_obs=time_obs[f.root.time_idx[row:row + self.block_size]],
-                    antenna_1=f.root.antenna_1[row:row + self.block_size],
-                    antenna_2=f.root.antenna_2[row:row + self.block_size],
-                    time_idx=f.root.time_idx[row:row + self.block_size]
+                    uvw=f.root.uvw[from_row:to_row],
+                    time_obs=output_time_obs,
+                    antenna_1=f.root.antenna_1[from_row:to_row],
+                    antenna_2=f.root.antenna_2[from_row:to_row],
+                    time_idx=output_time_idx
                 )
                 data = VisibilityData(
-                    vis=f.root.vis[row:row + self.block_size] if vis else None,
-                    weights=f.root.weights[row:row + self.block_size] if weights else None,
-                    flags=f.root.flags[row:row + self.block_size] if flags else None
+                    vis=f.root.vis[from_row:to_row] if vis else None,
+                    weights=f.root.weights[from_row:to_row] if weights else None,
+                    flags=f.root.flags[from_row:to_row] if flags else None
                 )
                 response = yield (time, coords, data)
                 if response is not None and isinstance(response, VisibilityData):
                     if response.vis is not None:
-                        f.root.vis[row:row + self.block_size] = response.vis
+                        f.root.vis[from_row:to_row] = response.vis
                     if response.weights is not None:
-                        f.root.weights[row:row + self.block_size] = response.weights
+                        f.root.weights[from_row:to_row] = response.weights
                     if response.flags is not None:
-                        f.root.flags[row:row + self.block_size] = response.flags
+                        f.root.flags[from_row:to_row] = response.flags
