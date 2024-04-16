@@ -4,7 +4,7 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import config
 
-from dsa2000_cal.source_models.wsclean_source_model import WSCleanSourceModel
+from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 
 config.update("jax_enable_x64", True)
 # Set num jax devices
@@ -24,16 +24,16 @@ def main(ms_folder: str):
 
     # Create a sky model for calibration
     fill_registries()
-    cas_a_source_file = source_model_registry.get_instance(source_model_registry.get_match('cas_a')).get_wsclean_source_file()
+    cas_a_source_file = source_model_registry.get_instance(source_model_registry.get_match('cas_a')).get_wsclean_clean_component_file()
     cas_a_sky_model = WSCleanSourceModel.from_wsclean_model(
-        wsclean_file=cas_a_source_file,
+        wsclean_clean_component_file=cas_a_source_file,
         freqs=ms.meta.freqs,
         time=ms.meta.times[0],
         phase_tracking=ms.meta.phase_tracking
     )
-    cyg_a_source_file = source_model_registry.get_instance(source_model_registry.get_match('cyg_a')).get_wsclean_source_file()
+    cyg_a_source_file = source_model_registry.get_instance(source_model_registry.get_match('cyg_a')).get_wsclean_clean_component_file()
     cyg_a_sky_model = WSCleanSourceModel.from_wsclean_model(
-        wsclean_file=cyg_a_source_file,
+        wsclean_clean_component_file=cyg_a_source_file,
         freqs=ms.meta.freqs,
         time=ms.meta.times[0],
         phase_tracking=ms.meta.phase_tracking

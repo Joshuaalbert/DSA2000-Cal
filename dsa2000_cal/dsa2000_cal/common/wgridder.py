@@ -165,10 +165,10 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
         mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
         npix_x: number of pixels in x direction.
         npix_y: number of pixels in y direction.
-        pixsize_x: scalar, pixel size in x direction.
-        pixsize_y: scalar, pixel size in y direction.
-        center_x: scalar, center of image in x direction.
-        center_y: scalar, center of image in y direction.
+        pixsize_x: scalar, pixel size in x direction in projected radians (l-units)
+        pixsize_y: scalar, pixel size in y direction in projected radians (l-units)
+        center_x: scalar, center of image in x direction in projected radians (l-units)
+        center_y: scalar, center of image in y direction in projected radians (l-units)
         epsilon: scalar, gridding kernel width.
         do_wgridding: scalar, whether to do w-gridding.
         flip_v: scalar, whether to flip the v axis.
