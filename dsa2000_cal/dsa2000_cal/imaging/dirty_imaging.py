@@ -12,6 +12,9 @@ from astropy.coordinates import offset_by
 from jax import lax
 from jax._src.typing import SupportsDType
 
+from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
+from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common import wgridder
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.fits_utils import ImageModel
@@ -28,11 +31,11 @@ class DirtyImaging:
     """
 
     # Imaging parameters
-    field_of_view: au.Quantity
 
     plot_folder: str
     cache_folder: str
 
+    field_of_view: au.Quantity | None = None
     oversample_factor: float = 2.5
     epsilon: float = 1e-4
     convention: str = 'casa'
@@ -42,7 +45,7 @@ class DirtyImaging:
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
         os.makedirs(self.cache_folder, exist_ok=True)
-        if not self.field_of_view.unit.is_equivalent(au.deg):
+        if self.field_of_view is not None and not self.field_of_view.unit.is_equivalent(au.deg):
             raise ValueError(f"Expected field_of_view to be in degrees, got {self.field_of_view.unit}")
 
     def image(self, image_name: str, ms: MeasurementSet) -> ImageModel:
@@ -66,14 +69,31 @@ class DirtyImaging:
         flags = jnp.concatenate(flags, axis=0)  # [num_rows, chan]
         freqs = quantity_to_jnp(ms.meta.freqs)
 
+        wavelengths = quantity_to_np(constants.c / ms.meta.freqs)
+        if self.field_of_view is not None:
+            field_of_view = self.field_of_view
+        else:
+            # Try to get HPFW from the actual beam
+            try:
+                fill_registries()
+                antenna_beam = array_registry.get_instance(
+                    array_registry.get_match(ms.meta.array_name)).get_antenna_beam()
+                _freqs, _beam_widths = get_dish_model_beam_widths(antenna_beam.get_model())
+                field_of_view = np.interp(ms.meta.freqs, _freqs, _beam_widths)
+            except NoMatchFound:
+                field_of_view = au.Quantity(
+                    1.22 * np.max(wavelengths) / np.min(quantity_to_np(ms.meta.antenna_diameters)),
+                    au.rad
+                )
+
         # Get the maximum baseline length
+        min_wavelength = np.min(wavelengths)
         max_baseline = np.max(np.linalg.norm(uvw, axis=-1))
-        # minimum wavelength
-        min_wavelength = quantity_to_np(np.min(constants.c / ms.meta.freqs))
+
         # Number of pixels
         diffraction_limit_resolution = 1.22 * min_wavelength / max_baseline
         num_pixel = find_optimal_fft_size(
-            int(self.oversample_factor * self.field_of_view.to('rad').value / diffraction_limit_resolution)
+            int(self.oversample_factor * field_of_view.to('rad').value / diffraction_limit_resolution)
         )
         lon_top, lat_top = offset_by(
             lon=ms.meta.phase_tracking.ra,

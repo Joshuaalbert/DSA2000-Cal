@@ -125,10 +125,10 @@ class PointSourceModel(AbstractSourceModel):
 
         if lvec is None or mvec is None:
             # Use imshow to plot the sky model evaluated over a LM grid
-            l_min = np.min(self.l0)
-            m_min = np.min(self.m0)
-            l_max = np.max(self.l0)
-            m_max = np.max(self.m0)
+            l_min = np.min(self.l0) - 0.01
+            m_min = np.min(self.m0) - 0.01
+            l_max = np.max(self.l0) + 0.01
+            m_max = np.max(self.m0) + 0.01
             lvec = np.linspace(l_min.value, l_max.value, 100)
             mvec = np.linspace(m_min.value, m_max.value, 100)
 

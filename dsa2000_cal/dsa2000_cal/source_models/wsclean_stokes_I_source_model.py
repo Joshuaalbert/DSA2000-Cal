@@ -16,24 +16,40 @@ class WSCleanSourceModel(AbstractSourceModel):
     """
     Predict vis for Gaussian + point sources.
     """
-    point_source_model: PointSourceModel
-    gaussian_source_model: GaussianSourceModel
+    point_source_model: PointSourceModel | None
+    gaussian_source_model: GaussianSourceModel | None
     freqs: au.Quantity
 
     def __post_init__(self):
+        if self.point_source_model is None and self.gaussian_source_model is None:
+            raise ValueError("At least one of point_source_model or gaussian_source_model must be provided")
         # Ensure same frequencies
-        if np.any(self.point_source_model.freqs != self.gaussian_source_model.freqs):
-            raise ValueError("Point and Gaussian source models must have the same frequencies")
-        if np.any(self.freqs != self.point_source_model.freqs):
+        if self.point_source_model is not None and self.gaussian_source_model is not None:
+            if np.any(self.point_source_model.freqs != self.gaussian_source_model.freqs):
+                raise ValueError("Point and Gaussian source models must have the same frequencies")
+        if self.point_source_model is not None and np.any(self.freqs != self.point_source_model.freqs):
             raise ValueError("Frequencies must match point source frequencies")
+        if self.gaussian_source_model is not None and np.any(self.freqs != self.gaussian_source_model.freqs):
+            raise ValueError("Frequencies must match Gaussian source frequencies")
 
     def flux_weighted_lmn(self) -> au.Quantity:
-        A_avg_points = np.mean(self.point_source_model.A, axis=1)  # [num_sources]
-        A_avg_gaussians = np.mean(self.gaussian_source_model.A, axis=1)  # [num_sources]
-        l_avg = (np.sum(A_avg_points * self.point_source_model.l0) + np.sum(
-            A_avg_gaussians * self.gaussian_source_model.l0)) / (np.sum(A_avg_points) + np.sum(A_avg_gaussians))
-        m_avg = (np.sum(A_avg_points * self.point_source_model.m0) + np.sum(
-            A_avg_gaussians * self.gaussian_source_model.m0)) / (np.sum(A_avg_points) + np.sum(A_avg_gaussians))
+        denom = 0.
+        l_avg = 0.
+        m_avg = 0.
+        if self.point_source_model is not None:
+            A_avg_points = np.mean(self.point_source_model.A, axis=1)  # [num_sources]
+            denom += np.sum(A_avg_points)
+            l_avg += np.sum(A_avg_points * self.point_source_model.l0)
+            m_avg += np.sum(A_avg_points * self.point_source_model.m0)
+
+        if self.gaussian_source_model is not None:
+            A_avg_gaussians = np.mean(self.gaussian_source_model.A, axis=1)  # [num_sources]
+            denom += np.sum(A_avg_gaussians)
+            l_avg += np.sum(A_avg_gaussians * self.gaussian_source_model.l0)
+            m_avg += np.sum(A_avg_gaussians * self.gaussian_source_model.m0)
+
+        l_avg /= denom
+        m_avg /= denom
         lmn = np.asarray([l_avg, m_avg, np.sqrt(1 - l_avg ** 2 - m_avg ** 2)]) * au.dimensionless_unscaled
         return lmn
 
@@ -99,29 +115,41 @@ class WSCleanSourceModel(AbstractSourceModel):
         fig, axs = plt.subplots(3, 1, figsize=(10, 10), squeeze=False,
                                 sharex=True, sharey=True)
 
-        lvec_point, mvec_point, flux_model_point = self.point_source_model.get_flux_model()
-        axs[0][0].imshow(flux_model_point, origin='lower',
-                         extent=(lvec_point[0], lvec_point[-1], mvec_point[0], mvec_point[-1]))
-        axs[0][0].set_title('Point Source')
+        lvec_min = mvec_min = np.inf
+        lvec_max = mvec_max = -np.inf
 
-        lvec_gaussian, mvec_gaussian, flux_model_gaussian = self.gaussian_source_model.get_flux_model()
-        axs[1][0].imshow(flux_model_gaussian, origin='lower',
-                         extent=(lvec_gaussian[0], lvec_gaussian[-1], mvec_gaussian[0], mvec_gaussian[-1]))
-        axs[1][0].set_title('Gaussian Source')
+        if self.point_source_model is not None:
+            lvec_point, mvec_point, flux_model_point = self.point_source_model.get_flux_model()
+            axs[0][0].imshow(flux_model_point, origin='lower',
+                             extent=(lvec_point[0], lvec_point[-1], mvec_point[0], mvec_point[-1]))
+            axs[0][0].set_title('Point Source')
+            lvec_min = min(lvec_point[0], lvec_min)
+            lvec_max = max(lvec_point[-1], lvec_max)
+            mvec_min = min(mvec_point[0], mvec_min)
+            mvec_max = max(mvec_point[-1], mvec_max)
+
+        if self.gaussian_source_model is not None:
+            lvec_gaussian, mvec_gaussian, flux_model_gaussian = self.gaussian_source_model.get_flux_model()
+            axs[1][0].imshow(flux_model_gaussian, origin='lower',
+                             extent=(lvec_gaussian[0], lvec_gaussian[-1], mvec_gaussian[0], mvec_gaussian[-1]))
+            axs[1][0].set_title('Gaussian Source')
+            lvec_min = min(lvec_gaussian[0], lvec_min)
+            lvec_max = max(lvec_gaussian[-1], lvec_max)
+            mvec_min = min(mvec_gaussian[0], mvec_min)
+            mvec_max = max(mvec_gaussian[-1], mvec_max)
 
         # Grid onto common grid
-
-        lvec_min = min(lvec_point[0], lvec_gaussian[0])
-        lvec_max = max(lvec_point[-1], lvec_gaussian[-1])
-        mvec_min = min(mvec_point[0], mvec_gaussian[0])
-        mvec_max = max(mvec_point[-1], mvec_gaussian[-1])
         lvec = np.linspace(lvec_min, lvec_max, 100)
         mvec = np.linspace(mvec_min, mvec_max, 100)
 
         # Get on common grid
-        _, _, flux_model_point = self.point_source_model.get_flux_model(lvec=lvec, mvec=mvec)
-        _, _, flux_model_gaussian = self.gaussian_source_model.get_flux_model(lvec=lvec, mvec=mvec)
-        flux_model = flux_model_point + flux_model_gaussian
+        flux_model = 0.
+        if self.point_source_model is not None:
+            _, _, flux_model_point = self.point_source_model.get_flux_model(lvec=lvec, mvec=mvec)
+            flux_model = flux_model + flux_model_point
+        if self.gaussian_source_model is not None:
+            _, _, flux_model_gaussian = self.gaussian_source_model.get_flux_model(lvec=lvec, mvec=mvec)
+            flux_model = flux_model + flux_model_gaussian
 
         axs[2][0].imshow(flux_model, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
         axs[2][0].set_title('Combined Source')

@@ -26,7 +26,7 @@ from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourc
 
 @dataclasses.dataclass(eq=False)
 class SimulateVisibilities:
-    # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
+    # source models to simulate. Each source gets a gain direction in the flux weighted direction.
     wsclean_source_models: List[WSCleanSourceModel]
     fits_source_models: List[FitsStokesISourceModel]
 
@@ -108,64 +108,68 @@ class SimulateVisibilities:
                                            dtype=self.dtype)
         faint_predict = FFTStokesIPredict(convention=self.convention,
                                           dtype=self.dtype)
+
         # Each calibrator has a source model which is a collection of sources that make up the calibrator.
         cal_idx = 0
         for wsclean_source_model in self.wsclean_source_models:
             preapply_gains_cal = apply_gains[cal_idx]  # [num_time, num_ant, num_chan, 2, 2]
-            # Points
-            l0 = quantity_to_jnp(wsclean_source_model.point_source_model.l0)  # [source]
-            m0 = quantity_to_jnp(wsclean_source_model.point_source_model.m0)  # [source]
-            n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
 
-            lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
-            image_I = quantity_to_jnp(wsclean_source_model.point_source_model.A)  # [source, chan]
-            image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
+            if wsclean_source_model.point_source_model is not None:
+                # Points
+                l0 = quantity_to_jnp(wsclean_source_model.point_source_model.l0)  # [source]
+                m0 = quantity_to_jnp(wsclean_source_model.point_source_model.m0)  # [source]
+                n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
 
-            dft_model_data = PointModelData(
-                gains=preapply_gains_cal,  # [num_time, num_ant, num_chan, 2, 2]
-                lmn=lmn,
-                image=image_linear
-            )
-            vis = vis.at[cal_idx].set(
-                dft_predict.predict(
-                    freqs=freqs,
-                    dft_model_data=dft_model_data,
-                    visibility_coords=vis_coords
-                )  # [num_rows, num_chans, 2, 2]
-            )
+                lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
+                image_I = quantity_to_jnp(wsclean_source_model.point_source_model.A)  # [source, chan]
+                image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
 
-            # Gaussians
-            l0 = quantity_to_jnp(wsclean_source_model.gaussian_source_model.l0)  # [source]
-            m0 = quantity_to_jnp(wsclean_source_model.gaussian_source_model.m0)  # [source]
-            n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
+                dft_model_data = PointModelData(
+                    gains=preapply_gains_cal,  # [num_time, num_ant, num_chan, 2, 2]
+                    lmn=lmn,
+                    image=image_linear
+                )
+                vis = vis.at[cal_idx].set(
+                    dft_predict.predict(
+                        freqs=freqs,
+                        dft_model_data=dft_model_data,
+                        visibility_coords=vis_coords
+                    )  # [num_rows, num_chans, 2, 2]
+                )
 
-            lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
-            image_I = quantity_to_jnp(wsclean_source_model.gaussian_source_model.A)  # [source, chan]
-            image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
+            if wsclean_source_model.gaussian_source_model is not None:
+                # Gaussians
+                l0 = quantity_to_jnp(wsclean_source_model.gaussian_source_model.l0)  # [source]
+                m0 = quantity_to_jnp(wsclean_source_model.gaussian_source_model.m0)  # [source]
+                n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
 
-            ellipse_params = jnp.stack([
-                quantity_to_jnp(wsclean_source_model.gaussian_source_model.major),
-                quantity_to_jnp(wsclean_source_model.gaussian_source_model.minor),
-                quantity_to_jnp(wsclean_source_model.gaussian_source_model.theta)
-            ],
-                axis=-1)  # [source, 3]
+                lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
+                image_I = quantity_to_jnp(wsclean_source_model.gaussian_source_model.A)  # [source, chan]
+                image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
 
-            gaussian_model_data = GaussianModelData(
-                image=image_linear,  # [source, chan, 2, 2]
-                gains=preapply_gains_cal,  # [num_time, num_ant, num_chan, 2, 2]
-                ellipse_params=ellipse_params,  # [source, 3]
-                lmn=lmn  # [source, 3]
-            )
+                ellipse_params = jnp.stack([
+                    quantity_to_jnp(wsclean_source_model.gaussian_source_model.major),
+                    quantity_to_jnp(wsclean_source_model.gaussian_source_model.minor),
+                    quantity_to_jnp(wsclean_source_model.gaussian_source_model.theta)
+                ],
+                    axis=-1)  # [source, 3]
 
-            vis = vis.at[cal_idx].add(
-                gaussian_predict.predict(
-                    freqs=freqs,  # [chan]
-                    gaussian_model_data=gaussian_model_data,  # [source, chan, 2, 2]
-                    visibility_coords=vis_coords  # [row, 3]
-                ),  # [num_rows, num_chans, 2, 2]
-                indices_are_sorted=True,
-                unique_indices=True
-            )
+                gaussian_model_data = GaussianModelData(
+                    image=image_linear,  # [source, chan, 2, 2]
+                    gains=preapply_gains_cal,  # [num_time, num_ant, num_chan, 2, 2]
+                    ellipse_params=ellipse_params,  # [source, 3]
+                    lmn=lmn  # [source, 3]
+                )
+
+                vis = vis.at[cal_idx].add(
+                    gaussian_predict.predict(
+                        freqs=freqs,  # [chan]
+                        gaussian_model_data=gaussian_model_data,  # [source, chan, 2, 2]
+                        visibility_coords=vis_coords  # [row, 3]
+                    ),  # [num_rows, num_chans, 2, 2]
+                    indices_are_sorted=True,
+                    unique_indices=True
+                )
 
             cal_idx += 1
 

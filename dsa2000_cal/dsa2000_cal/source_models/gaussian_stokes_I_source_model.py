@@ -244,10 +244,10 @@ class GaussianSourceModel(AbstractSourceModel):
     def get_flux_model(self, lvec=None, mvec=None):
         # Use imshow to plot the sky model evaluated over a LM grid
         if lvec is None or mvec is None:
-            l_min = np.min(self.l0 - self.major)
-            l_max = np.max(self.l0 + self.major)
-            m_min = np.min(self.m0 - self.major)
-            m_max = np.max(self.m0 + self.major)
+            l_min = np.min(self.l0 - self.major) - 0.01
+            l_max = np.max(self.l0 + self.major) + 0.01
+            m_min = np.min(self.m0 - self.major) - 0.01
+            m_max = np.max(self.m0 + self.major) + 0.01
             lvec = np.linspace(l_min.value, l_max.value, 100)
             mvec = np.linspace(m_min.value, m_max.value, 100)
         M, L = np.meshgrid(mvec, lvec, indexing='ij')

@@ -13,7 +13,7 @@ from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
 from dsa2000_cal.gain_models.gain_model import ProductGainModel
 from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, VisibilityData
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 from dsa2000_cal.simulation.simulate_systematics import SimulateSystematics
 from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
@@ -57,7 +57,6 @@ class ForwardModel:
     def __post_init__(self):
         if not self.field_of_view.unit.is_equivalent(au.deg):
             raise ValueError(f"Expected field_of_view to be in degrees, got {self.field_of_view.unit}")
-        self.beam_gain_model = beam_gain_model_factory(self.ms.meta.array_name)
         self.key = jax.random.PRNGKey(self.seed)
 
     def forward(self):
@@ -121,11 +120,12 @@ class ForwardModel:
         )
 
     def _calibrate_visibilities(self, ms: MeasurementSet) -> MeasurementSet:
+        beam_gain_model = beam_gain_model_factory(ms.meta.array_name)
         calibration = Calibration(
             num_iterations=15,
             wsclean_source_models=self.calibration_wsclean_source_models,
             fits_source_models=self.calibration_fits_source_models,
-            preapply_gain_model=self.beam_gain_model,
+            preapply_gain_model=beam_gain_model,
             inplace_subtract=True,
             average_interval=None,
             solution_cadence=None,

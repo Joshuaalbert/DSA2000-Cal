@@ -153,15 +153,17 @@ def get_beam_widths(amplitude: au.Quantity, theta: au.Quantity, freqs: au.Quanti
 
     circular_mean = np.mean(amplitude, axis=1)  # [theta, freq]
     theta_order = np.argsort(theta)
+    freq_order = np.argsort(freqs)
 
     beam_widths = []
-    for i, freq in enumerate(freqs):
+    for i in freq_order:
         for k in theta_order:
             th = theta[k]
             if circular_mean[k, i] < threshold * circular_mean[theta_order[0], i]:
                 beam_widths.append(th)
                 break
 
+    freqs = freqs[freq_order]
     beam_widths = au.Quantity(beam_widths)
     return freqs, beam_widths
 

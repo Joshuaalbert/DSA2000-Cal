@@ -7,7 +7,6 @@ from dsa2000_cal.common.astropy_utils import create_spherical_grid
 from dsa2000_cal.forward_model.forward_model import ForwardModel
 from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
-from dsa2000_cal.source_models.discrete_sky_model import DiscreteSkyModel
 
 
 def test_forward_model():
@@ -21,7 +20,7 @@ def test_forward_model():
         array_location=array_location,
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=array.get_channel_width(),
-        integration_time=au.Quantity(1, 's'),
+        integration_time=au.Quantity(1.5, 's'),
         coherencies=['XX','XY','YX','YY'],
         pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
         times=at.Time("2021-01-01T00:00:00", scale='utc') + np.arange(1) * au.s,
