@@ -65,7 +65,7 @@ def test_ionosphere_gain_model():
     phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
     model_directions = create_spherical_grid(
         pointing=phase_tracking,
-        angular_width=0.5 * 4 * au.deg,
+        angular_radius=0.5 * 4 * au.deg,
         dr=50 * au.arcmin
     )
     # ac.ICRS(ra=[0, 0.] * au.deg, dec=[0., 1.] * au.deg)

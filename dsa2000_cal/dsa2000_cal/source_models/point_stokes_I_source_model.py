@@ -11,7 +11,50 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.source_models.wsclean_util import parse_and_process_wsclean_source_line
+
+
+class PointSourceModelParams(SerialisableBaseModel):
+    freqs: au.Quantity  # [num_freqs] Frequencies
+    l0: au.Quantity  # [num_sources] l coordinate of the source
+    m0: au.Quantity  # [num_sources] m coordinate of the source
+    A: au.Quantity  # [num_sources, num_freqs] Flex amplitude of the source
+
+    def __init__(self, **data) -> None:
+        # Call the superclass __init__ to perform the standard validation
+        super(PointSourceModelParams, self).__init__(**data)
+        _check_point_source_model_params(self)
+
+
+def _check_point_source_model_params(params: PointSourceModelParams):
+    if not params.freqs.unit.is_equivalent(au.Hz):
+        raise ValueError(f"Expected freqs to be in Hz, got {params.freqs.unit}")
+    if not params.l0.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError(f"Expected l0 to be dimensionless, got {params.l0.unit}")
+    if not params.m0.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError(f"Expected m0 to be dimensionless, got {params.m0.unit}")
+    if not params.A.unit.is_equivalent(au.Jy):
+        raise ValueError(f"Expected A to be in Jy, got {params.A.unit}")
+
+    # Ensure all are 1D vectors
+    if params.freqs.isscalar:
+        params.freqs = params.freqs.reshape((-1,))
+    if params.l0.isscalar:
+        params.l0 = params.l0.reshape((-1,))
+    if params.m0.isscalar:
+        params.m0 = params.m0.reshape((-1,))
+    if params.A.isscalar:
+        params.A = params.A.reshape((-1, 1))
+
+    num_sources = params.l0.shape[0]
+    num_freqs = params.freqs.shape[0]
+
+    if params.A.shape != (num_sources, num_freqs):
+        raise ValueError(f"A must have shape ({num_sources},{num_freqs}) got {params.A.shape}")
+
+    if not all([x.shape == (num_sources,) for x in [params.l0, params.m0]]):
+        raise ValueError("All inputs must have the same shape")
 
 
 @dataclasses.dataclass(eq=False)
@@ -26,34 +69,15 @@ class PointSourceModel(AbstractSourceModel):
 
     dtype: SupportsDType = jnp.complex64
 
-    def __post_init__(self):
-        if not self.freqs.unit.is_equivalent(au.Hz):
-            raise ValueError(f"Expected freqs to be in Hz, got {self.freqs.unit}")
-        if not self.l0.unit.is_equivalent(au.dimensionless_unscaled):
-            raise ValueError(f"Expected l0 to be dimensionless, got {self.l0.unit}")
-        if not self.m0.unit.is_equivalent(au.dimensionless_unscaled):
-            raise ValueError(f"Expected m0 to be dimensionless, got {self.m0.unit}")
-        if not self.A.unit.is_equivalent(au.Jy):
-            raise ValueError(f"Expected A to be in Jy, got {self.A.unit}")
+    @staticmethod
+    def from_point_source_params(params: PointSourceModelParams, **kwargs) -> 'PointSourceModel':
+        return PointSourceModel(**params.dict(), **kwargs)
 
-        # Ensure all are 1D vectors
-        if self.freqs.isscalar:
-            self.freqs = self.freqs.reshape((-1,))
-        if self.l0.isscalar:
-            self.l0 = self.l0.reshape((-1,))
-        if self.m0.isscalar:
-            self.m0 = self.m0.reshape((-1,))
-        if self.A.isscalar:
-            self.A = self.A.reshape((-1, 1))
+    def __post_init__(self):
+        _check_point_source_model_params(self)
 
         self.num_sources = self.l0.shape[0]
         self.num_freqs = self.freqs.shape[0]
-
-        if self.A.shape != (self.num_sources, self.num_freqs):
-            raise ValueError(f"A must have shape ({self.num_sources},{self.num_freqs}) got {self.A.shape}")
-
-        if not all([x.shape == (self.num_sources,) for x in [self.l0, self.m0]]):
-            raise ValueError("All inputs must have the same shape")
 
         self.n0 = np.sqrt(1 - self.l0 ** 2 - self.m0 ** 2)  # [num_sources]
         self.wavelengths = constants.c / self.freqs  # [num_freqs]
@@ -129,8 +153,8 @@ class PointSourceModel(AbstractSourceModel):
             m_min = np.min(self.m0) - 0.01
             l_max = np.max(self.l0) + 0.01
             m_max = np.max(self.m0) + 0.01
-            lvec = np.linspace(l_min.value, l_max.value, 100)
-            mvec = np.linspace(m_min.value, m_max.value, 100)
+            lvec = np.linspace(l_min.value, l_max.value, 256)
+            mvec = np.linspace(m_min.value, m_max.value, 256)
 
         # Evaluate over LM
         flux_model = np.zeros((mvec.size, lvec.size)) * au.Jy

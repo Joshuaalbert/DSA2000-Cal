@@ -2,7 +2,6 @@ import dataclasses
 from typing import List
 
 import astropy.units as au
-import jax
 import jax.numpy as jnp
 from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
@@ -24,8 +23,31 @@ from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourc
 class ForwardModel:
     """
     Runs forward modelling using a sharded data structure over devices.
+
+    Args:
+        simulation_wsclean_source_models: the source models to simulate visibilities
+        simulation_fits_source_models: the source models to simulate visibilities
+        dish_effect_params: the dish effect model parameters
+        ionosphere_specification: the ionosphere model specification, see tomographic_kernel.models.cannonical_models
+        calibration_wsclean_source_models: the source models to calibrate visibilities
+        calibration_fits_source_models: the source models to calibrate visibilities
+        plot_folder: the folder to store plots
+        cache_folder: the folder to store cache
+        ionosphere_seed: the seed for the ionosphere model
+        dish_effects_seed: the seed for the dish effects model
+        simulation_seed: the seed for the simulation
+        calibration_seed: the seed for the calibration
+        imaging_seed: the seed for the imaging
+        field_of_view: the field of view for imaging, default computes from dish model
+        oversample_factor: the oversample factor for imaging, default 2.5
+        epsilon: the epsilon for wgridder, default 1e-4
+        convention: the convention for imaging, default 'casa' which negates uvw coordinates,
+            i.e. FT with e^{2\pi i} unity root
+        dtype: the dtype for imaging, default jnp.complex64
+        verbose: the verbosity for imaging, default False
     """
-    ms: MeasurementSet
+
+    # Simulation parameters
     simulation_wsclean_source_models: List[WSCleanSourceModel]
     simulation_fits_source_models: List[FitsStokesISourceModel]
 
@@ -39,39 +61,43 @@ class ForwardModel:
     calibration_wsclean_source_models: List[WSCleanSourceModel]
     calibration_fits_source_models: List[FitsStokesISourceModel]
 
-    # Imaging parameters
-    field_of_view: au.Quantity
-
+    # Plot and cache folders
     plot_folder: str
     cache_folder: str
-    ionosphere_seed: int
-    dish_effects_seed: int
-    seed: int
 
+    # Seeds
+    ionosphere_seed: int = 42
+    dish_effects_seed: int = 42
+    simulation_seed: int = 424242
+    calibration_seed: int = 42424242
+    imaging_seed: int = 4242424242
+
+    # Imaging parameters
+    field_of_view: au.Quantity | None = None
     oversample_factor: float = 2.5
+
+    # Wgridder parameters
     epsilon: float = 1e-4
+
+    # Common parameters
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
     verbose: bool = False
+    num_shards: int = 1
 
-    def __post_init__(self):
-        if not self.field_of_view.unit.is_equivalent(au.deg):
-            raise ValueError(f"Expected field_of_view to be in degrees, got {self.field_of_view.unit}")
-        self.key = jax.random.PRNGKey(self.seed)
-
-    def forward(self):
+    def forward(self, ms: MeasurementSet):
         # Simulate systematics
         system_gain_model = self._simulate_systematics(
-            ms=self.ms
+            ms=ms
         )
         # Simulate visibilities
         self._simulate_visibilities(
-            ms=self.ms,
+            ms=ms,
             system_gain_model=system_gain_model
         )
         # Calibrate visibilities
         subtracted_ms = self._calibrate_visibilities(
-            ms=self.ms
+            ms=ms
         )
         # Image visibilities
         self._image_visibilities(image_name='dirty_image', ms=subtracted_ms)
@@ -112,7 +138,9 @@ class ForwardModel:
             fits_source_models=self.simulation_fits_source_models,
             convention=self.convention,
             dtype=self.dtype,
-            verbose=self.verbose
+            verbose=self.verbose,
+            seed=self.simulation_seed,
+            num_shards=self.num_shards
         )
         simulator.simulate(
             ms=ms,
@@ -129,7 +157,9 @@ class ForwardModel:
             inplace_subtract=True,
             average_interval=None,
             solution_cadence=None,
-            verbose=self.verbose
+            verbose=self.verbose,
+            seed=self.calibration_seed,
+            num_shards=self.num_shards
         )
 
         return calibration.calibrate(ms=ms)
@@ -138,6 +168,7 @@ class ForwardModel:
         imagor = DirtyImaging(
             plot_folder=self.plot_folder,
             cache_folder=self.cache_folder,
-            field_of_view=self.field_of_view
+            field_of_view=self.field_of_view,
+            seed=self.imaging_seed
         )
         return imagor.image(image_name=image_name, ms=ms)

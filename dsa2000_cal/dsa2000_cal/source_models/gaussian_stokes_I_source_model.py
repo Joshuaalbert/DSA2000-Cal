@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Tuple
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -15,6 +16,7 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.source_models.wsclean_util import parse_and_process_wsclean_source_line
 
 
@@ -44,6 +46,129 @@ def linear_term_derivation():
         -2 * sp.I * sp.pi * w * (n0 - 1)) / n0 ** 3
 
     assert taylor_expansion.equals(correct)
+
+
+class GaussianSourceModelParams(SerialisableBaseModel):
+    freqs: au.Quantity  # [num_freqs] Frequencies
+    l0: au.Quantity  # [num_sources] l coordinate of the source
+    m0: au.Quantity  # [num_sources] m coordinate of the source
+    A: au.Quantity  # [num_sources, num_freqs] Flux amplitude of the source
+    major: au.Quantity  # [num_sources] Major axis of the source
+    minor: au.Quantity  # [num_sources] Minor axis of the source
+    theta: au.Quantity  # [num_sources] Position angle of the source
+
+    def __init__(self, **data) -> None:
+        # Call the superclass __init__ to perform the standard validation
+        super(GaussianSourceModelParams, self).__init__(**data)
+        _check_gaussian_source_model_params(self)
+
+
+def _check_gaussian_source_model_params(params: GaussianSourceModelParams):
+    if not params.freqs.unit.is_equivalent(au.Hz):
+        raise ValueError(f"Expected freqs to be in Hz, got {params.freqs.unit}")
+    if not params.l0.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError(f"Expected l0 to be dimensionless, got {params.l0.unit}")
+    if not params.m0.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError(f"Expected m0 to be dimensionless, got {params.m0.unit}")
+    if not params.A.unit.is_equivalent(au.Jy):
+        raise ValueError(f"Expected A to be in Jy, got {params.A.unit}")
+    if not params.major.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError(f"Expected major to be dimensionless, got {params.major.unit}")
+    if not params.minor.unit.is_equivalent(au.dimensionless_unscaled):
+        raise ValueError(f"Expected minor to be dimensionless, got {params.minor.unit}")
+    if not params.theta.unit.is_equivalent(au.rad):
+        raise ValueError(f"Expected theta to be in radians, got {params.theta.unit}")
+
+    # Ensure all are 1D vectors
+    if params.freqs.isscalar:
+        params.freqs = params.freqs.reshape((-1,))
+    if params.l0.isscalar:
+        params.l0 = params.l0.reshape((-1,))
+    if params.m0.isscalar:
+        params.m0 = params.m0.reshape((-1,))
+    if params.A.isscalar:
+        params.A = params.A.reshape((-1, 1))
+    if params.major.isscalar:
+        params.major = params.major.reshape((-1,))
+    if params.minor.isscalar:
+        params.minor = params.minor.reshape((-1,))
+    if params.theta.isscalar:
+        params.theta = params.theta.reshape((-1,))
+
+    num_sources = params.l0.shape[0]
+    num_freqs = params.freqs.shape[0]
+
+    if params.A.shape != (num_sources, num_freqs):
+        raise ValueError(f"A must have shape ({num_sources},{num_freqs}) got {params.A.shape}")
+
+    if not all([x.shape == (num_sources,) for x in [params.l0, params.m0, params.major, params.minor, params.theta]]):
+        raise ValueError("All inputs must have the same shape")
+
+
+def transform_ellipsoidal_params_to_plane_of_sky(
+        major: au.Quantity,
+        minor: au.Quantity,
+        theta: au.Quantity,
+        source_directions: ac.ICRS,
+        phase_tracking: ac.ICRS,
+        obs_time: at.Time,
+        lmn_transform_params: bool = True) -> Tuple[
+    au.Quantity, au.Quantity, au.Quantity, au.Quantity, au.Quantity]:
+    """
+    Transform the ellipsoidal parameters to the plane of the sky.
+
+    Args:
+        major: [sources] the major axis of the sources
+        minor: [sources] the minor axis of the sources
+        theta: [sources] the position angle of the sources
+        source_directions: [sources] the directions of the sources
+        phase_tracking: the phase tracking center
+        obs_time: the time of the observation
+        lmn_transform_params: whether to transform the ellipsoidal parameters to the plane of the sky
+
+    Returns:
+        l0: [sources] the l coordinate of the sources in the plane of the sky
+        m0: [sources] the m coordinate of the sources in the plane of the sky
+        major_tangent: [sources] the major axis of the sources in the plane of the sky
+        minor_tangent: [sources] the minor axis of the sources in the plane of the sky
+        theta_tangent: [sources] the position angle of the sources in the plane of the sky
+    """
+
+    if not major.unit.is_equivalent(au.rad):
+        raise ValueError(f"Expected major to be in radians, got {major.unit}")
+    if not minor.unit.is_equivalent(au.rad):
+        raise ValueError(f"Expected minor to be in radians, got {minor.unit}")
+    if not theta.unit.is_equivalent(au.rad):
+        raise ValueError(f"Expected theta to be in radians, got {theta.unit}")
+
+    lmn0 = icrs_to_lmn(source_directions, obs_time, phase_tracking)
+    l0 = lmn0[:, 0]
+    m0 = lmn0[:, 1]
+
+    # If you truely treat as ellipsoids on the sphere you get something like this:
+    if lmn_transform_params:
+        def get_constraint_points(posang, distance):
+            s_ra, s_dec = offset_by(
+                lon=source_directions.ra, lat=source_directions.dec,
+                posang=posang, distance=distance
+            )
+            s = ac.ICRS(s_ra, s_dec)
+            lmn = icrs_to_lmn(s, obs_time, phase_tracking)
+            return lmn[:, 0], lmn[:, 1]
+
+        # Offset by theta and a distance of half-major axis ==> half-major in tangent
+        l1, m1 = get_constraint_points(theta, major / 2.)
+        # Offset by theta + 90 and a distance of half-minor axis ==> half-minor in tangent
+        l2, m2 = get_constraint_points(theta + au.Quantity(90, 'deg'), minor / 2.)
+
+        major_tangent = 2. * np.sqrt((l1 - l0) ** 2 + (m1 - m0) ** 2)
+        minor_tangent = 2. * np.sqrt((l2 - l0) ** 2 + (m2 - m0) ** 2)
+        theta_tangent = theta
+    else:
+        major_tangent = major.to(au.rad).value * au.dimensionless_unscaled
+        minor_tangent = minor.to(au.rad).value * au.dimensionless_unscaled
+        theta_tangent = theta
+    return l0, m0, major_tangent, minor_tangent, theta_tangent
 
 
 @dataclasses.dataclass(eq=False)
@@ -78,48 +203,17 @@ class GaussianSourceModel(AbstractSourceModel):
     dtype: SupportsDType = jnp.complex64
 
     def __post_init__(self):
-        if not self.freqs.unit.is_equivalent(au.Hz):
-            raise ValueError(f"Expected freqs to be in Hz, got {self.freqs.unit}")
-        if not self.l0.unit.is_equivalent(au.dimensionless_unscaled):
-            raise ValueError(f"Expected l0 to be dimensionless, got {self.l0.unit}")
-        if not self.m0.unit.is_equivalent(au.dimensionless_unscaled):
-            raise ValueError(f"Expected m0 to be dimensionless, got {self.m0.unit}")
-        if not self.A.unit.is_equivalent(au.Jy):
-            raise ValueError(f"Expected A to be in Jy, got {self.A.unit}")
-        if not self.major.unit.is_equivalent(au.dimensionless_unscaled):
-            raise ValueError(f"Expected major to be dimensionless, got {self.major.unit}")
-        if not self.minor.unit.is_equivalent(au.dimensionless_unscaled):
-            raise ValueError(f"Expected minor to be dimensionless, got {self.minor.unit}")
-        if not self.theta.unit.is_equivalent(au.rad):
-            raise ValueError(f"Expected theta to be in radians, got {self.theta.unit}")
-
-        # Ensure all are 1D vectors
-        if self.freqs.isscalar:
-            self.freqs = self.freqs.reshape((-1,))
-        if self.l0.isscalar:
-            self.l0 = self.l0.reshape((-1,))
-        if self.m0.isscalar:
-            self.m0 = self.m0.reshape((-1,))
-        if self.A.isscalar:
-            self.A = self.A.reshape((-1, 1))
-        if self.major.isscalar:
-            self.major = self.major.reshape((-1,))
-        if self.minor.isscalar:
-            self.minor = self.minor.reshape((-1,))
-        if self.theta.isscalar:
-            self.theta = self.theta.reshape((-1,))
+        _check_gaussian_source_model_params(self)
 
         self.num_sources = self.l0.shape[0]
         self.num_freqs = self.freqs.shape[0]
 
-        if self.A.shape != (self.num_sources, self.num_freqs):
-            raise ValueError(f"A must have shape ({self.num_sources},{self.num_freqs}) got {self.A.shape}")
-
-        if not all([x.shape == (self.num_sources,) for x in [self.l0, self.m0, self.major, self.minor, self.theta]]):
-            raise ValueError("All inputs must have the same shape")
-
         self.n0 = np.sqrt(1 - self.l0 ** 2 - self.m0 ** 2)  # [num_sources]
         self.wavelengths = constants.c / self.freqs  # [num_freqs]
+
+    @staticmethod
+    def from_gaussian_source_params(params: GaussianSourceModelParams, **kwargs) -> 'GaussianSourceModel':
+        return GaussianSourceModel(**params.dict(), **kwargs)
 
     def flux_weighted_lmn(self) -> au.Quantity:
         A_avg = np.mean(self.A, axis=1)  # [num_sources]
@@ -179,57 +273,23 @@ class GaussianSourceModel(AbstractSourceModel):
                 theta.append(parsed_results.theta)
 
         source_directions = ac.concatenate(source_directions).transform_to(ac.ICRS)
-        lmn0 = icrs_to_lmn(source_directions, time, phase_tracking)
-        l0 = lmn0[:, 0]
-        m0 = lmn0[:, 1]
+
         A = jnp.stack(spectrum, axis=0) * au.Jy
         # The ellipsoidal parameters are on the sphere. Let's do a transform to plane of sky.
         major = au.Quantity(major)
         minor = au.Quantity(minor)
         theta = au.Quantity(theta)
 
-        # If you truely treat as ellipsoids on the sphere you get something like this:
-        if lmn_transform_params:
-            def get_constraint_points(posang, distance):
-                s_ra, s_dec = offset_by(
-                    lon=source_directions.ra, lat=source_directions.dec,
-                    posang=posang, distance=distance
-                )
-                s = ac.ICRS(s_ra, s_dec)
-                lmn = icrs_to_lmn(s, time, phase_tracking)
-                return lmn[:, 0], lmn[:, 1]
+        l0, m0, major_tangent, minor_tangent, theta_tangent = transform_ellipsoidal_params_to_plane_of_sky(
+            major=major,
+            minor=minor,
+            theta=theta,
+            source_directions=source_directions,
+            phase_tracking=phase_tracking,
+            obs_time=time,
+            lmn_transform_params=lmn_transform_params
+        )
 
-            # Offset by theta and a distance of half-major axis ==> half-major in tangent
-            l1, m1 = get_constraint_points(theta, major / 2.)
-            # Offset by theta + 90 and a distance of half-minor axis ==> half-minor in tangent
-            l2, m2 = get_constraint_points(theta + au.Quantity(90, 'deg'), minor / 2.)
-            # # Offset by theta + 180 and a distance of half-major axis ==> half-major in tangent
-            # l3, m3 = get_constraint_points(theta + au.Quantity(180, 'deg'), major / 2.)
-
-            major_tangent = 2. * np.sqrt((l1 - l0) ** 2 + (m1 - m0) ** 2)
-            minor_tangent = 2. * np.sqrt((l2 - l0) ** 2 + (m2 - m0) ** 2)
-            theta_tangent = theta
-            # print('l0, m0, l1, m1, l2, m2, l3, m3, init_major_tangent, init_minor_tangent, init_theta_tangent')
-            # print(list(zip(l0, m0, l1, m1, l2, m2, l3, m3,
-            #                init_major_tangent, init_minor_tangent, init_theta_tangent)))
-            # print("Solving for ellipsoid params in plane of sky...")
-            # t0 = at.Time.now()
-            # opt_params, success = parallel_numerically_solve(
-            #     l0, m0, l1, m1, l2, m2, l3, m3,
-            #     init_major_tangent, init_minor_tangent, init_theta_tangent
-            # )
-            # frac_success = np.mean(success)
-            # t1 = at.Time.now()
-            # print(f"Solved in {(t1 - t0).sec} seconds")
-            # print(f"Fraction of successful solutions: {frac_success}")
-            # major_tangent, minor_tangent, theta_tangent = np.asarray(opt_params.T)
-            # major_tangent = major_tangent * au.dimensionless_unscaled
-            # minor_tangent = minor_tangent * au.dimensionless_unscaled
-            # theta_tangent = theta_tangent * au.rad
-        else:
-            major_tangent = major.to(au.rad).value * au.dimensionless_unscaled
-            minor_tangent = minor.to(au.rad).value * au.dimensionless_unscaled
-            theta_tangent = theta
         return GaussianSourceModel(
             freqs=freqs,
             l0=l0,
@@ -244,12 +304,12 @@ class GaussianSourceModel(AbstractSourceModel):
     def get_flux_model(self, lvec=None, mvec=None):
         # Use imshow to plot the sky model evaluated over a LM grid
         if lvec is None or mvec is None:
-            l_min = np.min(self.l0 - self.major) - 0.01
-            l_max = np.max(self.l0 + self.major) + 0.01
-            m_min = np.min(self.m0 - self.major) - 0.01
-            m_max = np.max(self.m0 + self.major) + 0.01
-            lvec = np.linspace(l_min.value, l_max.value, 100)
-            mvec = np.linspace(m_min.value, m_max.value, 100)
+            l_min = np.min(self.l0 - self.major)
+            l_max = np.max(self.l0 + self.major)
+            m_min = np.min(self.m0 - self.major)
+            m_max = np.max(self.m0 + self.major)
+            lvec = np.linspace(l_min.value, l_max.value, 256)
+            mvec = np.linspace(m_min.value, m_max.value, 256)
         M, L = np.meshgrid(mvec, lvec, indexing='ij')
         # Evaluate over LM
         flux_model = np.zeros_like(L) * au.Jy
@@ -258,8 +318,11 @@ class GaussianSourceModel(AbstractSourceModel):
             # print(l0, m0, major, minor, theta)
             fwhm = 1. / np.sqrt(2.0 * np.log(2.0))
             l_circ = (L - l0) * np.cos(theta) / minor + (M - m0) * np.sin(theta) / major
-            m_circ = - (L - l0) * np.sin(theta) / minor + (M - m0) * np.cos(theta) / major
-            return np.exp(-l_circ ** 2 / (2 * fwhm ** 2) - m_circ ** 2 / (2 * fwhm ** 2))
+            m_circ = - (L - l0) * np.sin(-theta) / minor + (M - m0) * np.cos(-theta) / major
+            beam_area = np.pi * major * minor
+            pixel_area = (lvec[1] - lvec[0]) * (mvec[1] - mvec[0])
+            ratio = pixel_area / beam_area
+            return np.exp(-l_circ ** 2 / (2 * fwhm ** 2) - m_circ ** 2 / (2 * fwhm ** 2)) * ratio
 
         for i in range(self.num_sources):
             flux_model += _gaussian_flux(self.l0[i], self.m0[i], self.major[i], self.minor[i],

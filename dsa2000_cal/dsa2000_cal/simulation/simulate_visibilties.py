@@ -30,6 +30,7 @@ class SimulateVisibilities:
     wsclean_source_models: List[WSCleanSourceModel]
     fits_source_models: List[FitsStokesISourceModel]
 
+    num_shards: int = 1  # must divide channels
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
     verbose: bool = False
@@ -218,6 +219,20 @@ class SimulateVisibilities:
             ms: the measurement set to store the results
             system_gain_model: the system gain model
         """
+
+        from jax.experimental import mesh_utils
+        from jax.sharding import Mesh
+        from jax.sharding import PartitionSpec
+        from jax.sharding import NamedSharding
+
+        P = PartitionSpec
+
+        devices = mesh_utils.create_device_mesh((self.num_shards,))
+        mesh = Mesh(devices, axis_names=('chan',))
+
+        def tree_device_put(tree, sharding):
+            return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
+
         source_directions = self.get_source_directions(
             obs_time=ms.ref_time,
             phase_tracking=ms.meta.phase_tracking
@@ -244,7 +259,8 @@ class SimulateVisibilities:
             visibility_coords = jax.tree_map(jnp.asarray, visibility_coords)
 
             self.key, key = jax.random.split(self.key, 2)
-            sim_vis_data = self._simulate_jax(
+
+            data_dict = dict(
                 key=key,
                 freqs=quantity_to_jnp(ms.meta.freqs),
                 channel_width_Hz=quantity_to_jnp(ms.meta.channel_width),
@@ -253,6 +269,22 @@ class SimulateVisibilities:
                     ms.meta.system_equivalent_flux_density, 'Jy'),
                 apply_gains=system_gains,
                 visibility_coords=visibility_coords
+            )
+
+            data_dict = dict(
+                key=tree_device_put(data_dict['key'], NamedSharding(mesh, P())),
+                freqs=tree_device_put(data_dict['freqs'], NamedSharding(mesh, P('chan'))),
+                channel_width_Hz=tree_device_put(data_dict['channel_width_Hz'], NamedSharding(mesh, P())),
+                integration_time_s=tree_device_put(data_dict['integration_time_s'], NamedSharding(mesh, P())),
+                system_equivalent_flux_density_Jy=tree_device_put(data_dict['system_equivalent_flux_density_Jy'],
+                                                                  NamedSharding(mesh, P())),
+                apply_gains=tree_device_put(data_dict['apply_gains'],
+                                            NamedSharding(mesh, P(None, None, 'chan'))),
+                visibility_coords=tree_device_put(data_dict['visibility_coords'], NamedSharding(mesh, P()))
+            )
+
+            sim_vis_data = self._simulate_jax(
+                **data_dict
             )
 
             # Save the results by pushing the response back to the generator

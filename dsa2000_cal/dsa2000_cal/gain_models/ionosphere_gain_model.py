@@ -739,7 +739,7 @@ def ionosphere_gain_model_factory(phase_tracking: ac.ICRS,
         model_times = observation_start_time + np.arange(num_times) * temporal_resolution
     model_directions = create_spherical_grid(
         pointing=phase_tracking,
-        angular_width=0.5 * field_of_view,
+        angular_radius=0.5 * field_of_view,
         dr=angular_separation
     )
 

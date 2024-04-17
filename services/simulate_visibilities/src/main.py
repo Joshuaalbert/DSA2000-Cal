@@ -50,7 +50,7 @@ def main(ms_folder: str):
 
     sources = create_spherical_grid(
         pointing=ac.ICRS(0 * au.deg, 0 * au.deg),
-        angular_width=au.Quantity(1, au.deg),
+        angular_radius=au.Quantity(1, au.deg),
         dr=au.Quantity(0.5, au.deg)
     )
     brightness_I = np.ones((len(sources), len(ms.meta.freqs))) * au.Jy

@@ -120,8 +120,12 @@ class WSCleanSourceModel(AbstractSourceModel):
 
         if self.point_source_model is not None:
             lvec_point, mvec_point, flux_model_point = self.point_source_model.get_flux_model()
-            axs[0][0].imshow(flux_model_point, origin='lower',
-                             extent=(lvec_point[0], lvec_point[-1], mvec_point[0], mvec_point[-1]))
+            axs[0][0].imshow(
+                flux_model_point,
+                origin='lower',
+                extent=(lvec_point[0], lvec_point[-1], mvec_point[0], mvec_point[-1]),
+                interpolation='none'
+            )
             axs[0][0].set_title('Point Source')
             lvec_min = min(lvec_point[0], lvec_min)
             lvec_max = max(lvec_point[-1], lvec_max)
@@ -130,8 +134,12 @@ class WSCleanSourceModel(AbstractSourceModel):
 
         if self.gaussian_source_model is not None:
             lvec_gaussian, mvec_gaussian, flux_model_gaussian = self.gaussian_source_model.get_flux_model()
-            axs[1][0].imshow(flux_model_gaussian, origin='lower',
-                             extent=(lvec_gaussian[0], lvec_gaussian[-1], mvec_gaussian[0], mvec_gaussian[-1]))
+            axs[1][0].imshow(
+                flux_model_gaussian,
+                origin='lower',
+                extent=(lvec_gaussian[0], lvec_gaussian[-1], mvec_gaussian[0], mvec_gaussian[-1]),
+                interpolation='none'
+            )
             axs[1][0].set_title('Gaussian Source')
             lvec_min = min(lvec_gaussian[0], lvec_min)
             lvec_max = max(lvec_gaussian[-1], lvec_max)
@@ -139,8 +147,8 @@ class WSCleanSourceModel(AbstractSourceModel):
             mvec_max = max(mvec_gaussian[-1], mvec_max)
 
         # Grid onto common grid
-        lvec = np.linspace(lvec_min, lvec_max, 100)
-        mvec = np.linspace(mvec_min, mvec_max, 100)
+        lvec = np.linspace(lvec_min, lvec_max, 256)
+        mvec = np.linspace(mvec_min, mvec_max, 256)
 
         # Get on common grid
         flux_model = 0.
@@ -151,7 +159,12 @@ class WSCleanSourceModel(AbstractSourceModel):
             _, _, flux_model_gaussian = self.gaussian_source_model.get_flux_model(lvec=lvec, mvec=mvec)
             flux_model = flux_model + flux_model_gaussian
 
-        axs[2][0].imshow(flux_model, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
+        axs[2][0].imshow(
+            flux_model,
+            origin='lower',
+            extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
+            interpolation='none'
+        )
         axs[2][0].set_title('Combined Source')
 
         # 0 hspce

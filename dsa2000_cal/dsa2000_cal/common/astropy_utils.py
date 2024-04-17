@@ -5,7 +5,8 @@ from astropy.coordinates import Angle
 from astropy.coordinates.angles import offset_by
 
 
-def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.Quantity) -> ac.ICRS:
+def create_spherical_grid(pointing: ac.ICRS, angular_radius: au.Quantity, dr: au.Quantity,
+                          sky_rotation: au.Quantity | None = None) -> ac.ICRS:
     """
     Create a spherical grid around a given coordinate with evenly spaced shells.
 
@@ -13,17 +14,18 @@ def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.
     center_coord (SkyCoord): The central ICRS coordinate.
     angular_width (float): The radius, in degrees.
     dr (float): The angular distance between shells, in degrees.
+    sky_rotation (float): The rotation of the grid in the plane of the sky, in degrees.
 
     Returns:
     list of SkyCoord: The coordinates forming the spherical grid.
     """
-    if not angular_width.unit.is_equivalent(au.deg) or not dr.unit.is_equivalent(au.deg):
+    if not angular_radius.unit.is_equivalent(au.deg) or not dr.unit.is_equivalent(au.deg):
         raise ValueError("Angular width and dr must be in angluar units.")
 
     pointing = ac.SkyCoord(ra=pointing.ra, dec=pointing.dec, frame='icrs')
 
     grid_points = [pointing]
-    num_shells = int(angular_width / dr)
+    num_shells = int(angular_radius / dr)
 
     for i in range(1, num_shells + 1):
         ri = i * dr  # Radius of the shell
@@ -32,6 +34,9 @@ def create_spherical_grid(pointing: ac.ICRS, angular_width: au.Quantity, dr: au.
         # Create even distribution of points on the shell
 
         angle_offsets = np.linspace(0, 2 * np.pi, ni, endpoint=False) * au.rad
+        if sky_rotation is not None:
+            angle_offsets += sky_rotation
+
         distances = np.ones(ni) * ri
 
         # Calculate the point's position in 3D space

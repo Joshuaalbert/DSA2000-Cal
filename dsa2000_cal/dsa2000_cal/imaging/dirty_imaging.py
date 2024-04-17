@@ -41,6 +41,7 @@ class DirtyImaging:
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
     verbose: bool = False
+    seed: int = 42
 
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)

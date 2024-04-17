@@ -15,8 +15,7 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, M
 config.update("jax_enable_x64", True)
 os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
-
-def test_forward_model():
+if __name__ == '__main__':
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W_small'))
     array_location = array.get_array_location()

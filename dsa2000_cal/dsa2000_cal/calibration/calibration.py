@@ -16,6 +16,7 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.jax_utils import pytree_unravel, promote_pytree
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, VisibilityData, MeasurementSet
@@ -72,6 +73,7 @@ class Calibration:
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
     verbose: bool = False
+    num_shards: int = 1
 
     def __post_init__(self):
         self.num_calibrators = len(self.wsclean_source_models) + len(self.fits_source_models)
@@ -91,6 +93,19 @@ class Calibration:
         Returns:
             the subtracted measurement set
         """
+
+        from jax.experimental import mesh_utils
+        from jax.sharding import Mesh
+        from jax.sharding import PartitionSpec
+        from jax.sharding import NamedSharding
+
+        P = PartitionSpec
+
+        devices = mesh_utils.create_device_mesh((self.num_shards,))
+        mesh = Mesh(devices, axis_names=('chan',))
+
+        def tree_device_put(tree, sharding):
+            return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
 
         # We perform averaging, by holding the gains constant for a period of time (average_interval)
         # 0, 1 --> integration_time = 1s, average_interval = 2.2s --> num_blocks = 2
@@ -174,13 +189,27 @@ class Calibration:
                 )
 
             self.key, key = jax.random.split(self.key)
-            t0 = time_mod.time()
-            params, results, residual = self.solve(
-                freqs=ms.meta.freqs,
+
+            data_dict = dict(
+                freqs=quantity_to_jnp(ms.meta.freqs),
                 preapply_gains=preapply_gains,
                 init_params=init_params,
-                vis_data=data,
-                vis_coords=visibility_coords
+                vis_data=jax.tree_map(jnp.asarray, data),
+                vis_coords=jax.tree_map(jnp.asarray, visibility_coords)
+            )
+
+            data_dict = dict(
+                freqs=tree_device_put(data_dict['freqs'], NamedSharding(mesh, P('chan'))),
+                preapply_gains=tree_device_put(data_dict['preapply_gains'],
+                                               NamedSharding(mesh, P(None, None, None, 'chan'))),
+                init_params=tree_device_put(data_dict['init_params'], NamedSharding(mesh, P(None, None, None, 'chan'))),
+                vis_data=tree_device_put(data_dict['vis_data'], NamedSharding(mesh, P(None, 'chan'))),
+                vis_coords=tree_device_put(data_dict['vis_coords'], NamedSharding(mesh, P()))
+            )
+
+            t0 = time_mod.time()
+            params, results, residual = self._solve_jax(
+                **data_dict
             )
             gen_response = VisibilityData(
                 vis=np.asarray(residual)
@@ -314,9 +343,9 @@ class Calibration:
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def solve(self, freqs: jax.Array, preapply_gains: jax.Array, init_params: CalibrationParams,
-              vis_data: VisibilityData,
-              vis_coords: VisibilityCoords) -> Tuple[CalibrationParams, jaxopt.OptStep, jax.Array]:
+    def _solve_jax(self, freqs: jax.Array, preapply_gains: jax.Array, init_params: CalibrationParams,
+                   vis_data: VisibilityData,
+                   vis_coords: VisibilityCoords) -> Tuple[CalibrationParams, jaxopt.OptStep, jax.Array]:
 
         log_prob_fn, subtract_fn = self._build_log_likelihood_and_subtract(freqs=freqs,
                                                                            preapply_gains=preapply_gains,
