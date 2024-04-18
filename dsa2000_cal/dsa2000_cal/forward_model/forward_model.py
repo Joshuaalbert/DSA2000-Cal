@@ -2,6 +2,7 @@ import dataclasses
 from typing import List
 
 import astropy.units as au
+import jax
 import jax.numpy as jnp
 from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
@@ -74,7 +75,7 @@ class ForwardModel:
 
     # Imaging parameters
     field_of_view: au.Quantity | None = None
-    oversample_factor: float = 2.5
+    oversample_factor: float = 1.5
 
     # Wgridder parameters
     epsilon: float = 1e-4
@@ -100,7 +101,9 @@ class ForwardModel:
             ms=ms
         )
         # Image visibilities
-        self._image_visibilities(image_name='dirty_image', ms=subtracted_ms)
+        self._image_visibilities(image_name='dirty_image', ms=ms)
+        # Image subtracted visibilities
+        self._image_visibilities(image_name='subtracted_dirty_image', ms=subtracted_ms)
 
     def _simulate_systematics(self, ms: MeasurementSet) -> ProductGainModel:
         """
@@ -140,7 +143,8 @@ class ForwardModel:
             dtype=self.dtype,
             verbose=self.verbose,
             seed=self.simulation_seed,
-            num_shards=self.num_shards
+            num_shards=self.num_shards,
+            plot_folder=self.plot_folder
         )
         simulator.simulate(
             ms=ms,
@@ -154,12 +158,14 @@ class ForwardModel:
             wsclean_source_models=self.calibration_wsclean_source_models,
             fits_source_models=self.calibration_fits_source_models,
             preapply_gain_model=beam_gain_model,
-            inplace_subtract=True,
+            inplace_subtract=False,
+            residual_ms_folder='residual_ms',
             average_interval=None,
             solution_cadence=None,
             verbose=self.verbose,
             seed=self.calibration_seed,
-            num_shards=self.num_shards
+            num_shards=self.num_shards,
+            plot_folder=self.plot_folder
         )
 
         return calibration.calibrate(ms=ms)
@@ -169,6 +175,8 @@ class ForwardModel:
             plot_folder=self.plot_folder,
             cache_folder=self.cache_folder,
             field_of_view=self.field_of_view,
-            seed=self.imaging_seed
+            seed=self.imaging_seed,
+            oversample_factor=self.oversample_factor,
+            nthreads=len(jax.devices())
         )
         return imagor.image(image_name=image_name, ms=ms)
