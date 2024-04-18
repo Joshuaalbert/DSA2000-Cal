@@ -165,10 +165,15 @@ class WSCleanSourceModel(AbstractSourceModel):
             extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
             interpolation='none'
         )
-        axs[2][0].set_title('Combined Source')
+        axs[2][0].set_title('Combined Source(s)')
 
+        axs[0][0].set_ylabel('m')
+        axs[1][0].set_ylabel('m')
+        axs[2][0].set_ylabel('m')
+        axs[2][0].set_xlabel('l')
         # 0 hspce
         fig.subplots_adjust(hspace=0, wspace=0)
 
         fig.tight_layout()
+        fig.savefig('synthetic_source_model.png', dpi=300)
         plt.show()
