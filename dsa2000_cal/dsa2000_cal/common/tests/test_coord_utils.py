@@ -2,6 +2,7 @@ import numpy as np
 import pylab as plt
 from astropy import coordinates as ac, time as at, units as au
 from astropy.coordinates import offset_by
+from astropy.wcs import WCS
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
@@ -256,3 +257,70 @@ def test_lmn_coords():
     print('West', dwest_icrs)
     print(lmn_dwest)
     assert l_dwest < 0
+
+def test_lmn_ellipse_to_sky():
+
+    # Create an ellipse in LM-coords
+    major = 0.1*au.dimensionless_unscaled
+    minor = 0.05*au.dimensionless_unscaled
+    theta = 45*au.deg
+
+    l0 = 0.*au.dimensionless_unscaled
+    m0 = 0.*au.dimensionless_unscaled
+
+    phi = np.linspace(0, 2*np.pi, 100)*au.rad
+    m_circle = np.cos(phi)
+    l_circle = np.sin(phi)
+
+    # Convert to ellipse using rotation @ scale @ circ_coords
+    l_scaled = l_circle * minor
+    m_scaled = m_circle * major
+
+    # Rotate by theta, m aligns with major
+    R = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
+    circ_vec = np.stack([l_scaled, m_scaled], axis=0)
+    rot_vec = np.dot(R, circ_vec)
+    l_rot = rot_vec[0]
+    m_rot = rot_vec[1]
+
+    # Translate
+    l = l_rot + l0
+    m = m_rot + m0
+
+
+    # Convert to sky
+    phase_tracking = ac.ICRS(15 * au.deg, 75 * au.deg)
+    time = at.Time("2021-01-01T00:00:00", scale='utc')
+    lmn = np.stack([l, m, np.sqrt(1 - l**2 - m**2)], axis=-1)
+    icrs = lmn_to_icrs(lmn, time, phase_tracking)
+
+    # plot
+
+    wcs = WCS(naxis=2)
+    wcs.wcs.ctype = ['RA---AIT', 'DEC--AIT']  # AITOFF projection
+    wcs.wcs.crval = [0, 0]  # Center of the projection
+    wcs.wcs.crpix = [0, 0]
+    wcs.wcs.cdelt = [-1, 1]
+
+    fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(5, 5), subplot_kw=dict(projection=wcs))
+    ax[0][0].plot(icrs.ra.deg, icrs.dec.deg, marker='o',
+                     transform=ax[0][0].get_transform('world'))
+    ax[0][0].set_xlabel('Right Ascension')
+    ax[0][0].set_ylabel('Declination')
+    ax[0][0].set_title("Ellipse on the sky")
+    ax[0][0].grid()
+    fig.tight_layout()
+    fig.savefig('ellipse_on_sky.png')
+    plt.show()
+
+    fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(5, 5))
+
+    ax[0][0].plot(l, m)
+    ax[0][0].set_xlabel('l')
+    ax[0][0].set_ylabel('m')
+    ax[0][0].set_title("Ellipse in LM-coords")
+    ax[0][0].grid()
+    fig.tight_layout()
+    fig.savefig('ellipse_in_plane_of_sky.png')
+    plt.show()
