@@ -231,7 +231,7 @@ class DishEffectsGainModel(GainModel):
 
         self.num_model_times = len(self.model_times)
         self.num_model_freq = len(self.model_freqs)
-        self.model_wavelengths = constants.c / self.model_freqs
+        self.model_wavelengths = (constants.c / self.model_freqs).to('m')
 
         # Check shapes
         if len(self.model_freqs.shape) != 1:
@@ -485,7 +485,7 @@ class DishEffectsGainModel(GainModel):
             time=time
         )  # [2n+1, 2n+1, num_ant, num_model_freq, 2, 2]
         # TODO: assumes identical antennas.
-        # TODO: assumes scalar amplitud, so use [0,0]
+        # TODO: assumes scalar amplitude, so use [0,0]
         image_amplitude = gain_amplitude[..., 0, :, 0, 0]  # [2n+1, 2n+1, num_model_freq]
         return np.asarray(
             self._compute_aperture_amplitude_jax(image_amplitude=image_amplitude)) * au.dimensionless_unscaled
