@@ -1,4 +1,6 @@
 import dataclasses
+import os
+import time as time_mod
 from functools import partial
 from typing import List
 
@@ -7,6 +9,7 @@ import astropy.time as at
 import astropy.units as au
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 from jax import lax
 from jax._src.typing import SupportsDType
@@ -30,6 +33,8 @@ class SimulateVisibilities:
     wsclean_source_models: List[WSCleanSourceModel]
     fits_source_models: List[FitsStokesISourceModel]
 
+    plot_folder: str
+
     num_shards: int = 1  # must divide channels
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
@@ -37,6 +42,7 @@ class SimulateVisibilities:
     seed: int = 42
 
     def __post_init__(self):
+        os.makedirs(self.plot_folder, exist_ok=True)
         self.num_sources = len(self.wsclean_source_models) + len(self.fits_source_models)
         self.key = jax.random.PRNGKey(self.seed)
 
@@ -53,7 +59,7 @@ class SimulateVisibilities:
         shape = np.shape(image_I)
         image_I = lax.reshape(image_I, (np.size(image_I),))
         zero = jnp.zeros_like(image_I)
-        image_stokes = jnp.stack([image_I, zero, zero, image_I], axis=-1)  # [..., 4]
+        image_stokes = jnp.stack([image_I, zero, zero, zero], axis=-1)  # [..., 4]
         image_linear = jax.vmap(partial(stokes_to_linear, flat_output=False))(image_stokes)  # [..., 2, 2]
         return lax.reshape(image_linear, shape + (2, 2))
 
@@ -122,7 +128,7 @@ class SimulateVisibilities:
                 n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
 
                 lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
-                image_I = quantity_to_jnp(wsclean_source_model.point_source_model.A)  # [source, chan]
+                image_I = quantity_to_jnp(wsclean_source_model.point_source_model.A, 'Jy')  # [source, chan]
                 image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
 
                 dft_model_data = PointModelData(
@@ -130,7 +136,7 @@ class SimulateVisibilities:
                     lmn=lmn,
                     image=image_linear
                 )
-                vis = vis.at[cal_idx].set(
+                vis = vis.at[cal_idx].add(
                     dft_predict.predict(
                         freqs=freqs,
                         dft_model_data=dft_model_data,
@@ -145,7 +151,7 @@ class SimulateVisibilities:
                 n0 = jnp.sqrt(1. - l0 ** 2 - m0 ** 2)  # [source]
 
                 lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
-                image_I = quantity_to_jnp(wsclean_source_model.gaussian_source_model.A)  # [source, chan]
+                image_I = quantity_to_jnp(wsclean_source_model.gaussian_source_model.A, 'Jy')  # [source, chan]
                 image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
 
                 ellipse_params = jnp.stack([
@@ -182,7 +188,7 @@ class SimulateVisibilities:
             dm = quantity_to_jnp(fits_source_model.dm)  # [num_chan]
             image = jnp.stack(
                 [
-                    quantity_to_jnp(img)
+                    quantity_to_jnp(img, 'Jy')
                     for img in fits_source_model.images
                 ],
                 axis=0
@@ -197,7 +203,7 @@ class SimulateVisibilities:
                 dm=dm  # [num_chan]
             )
 
-            vis = vis.at[cal_idx].set(
+            vis = vis.at[cal_idx].add(
                 faint_predict.predict(
                     freqs=freqs,
                     faint_model_data=faint_model_data,
@@ -227,7 +233,13 @@ class SimulateVisibilities:
 
         P = PartitionSpec
 
-        devices = mesh_utils.create_device_mesh((self.num_shards,))
+        if len(jax.devices()) < self.num_shards:
+            raise ValueError(
+                f"Number of devices {len(jax.devices())} is less than the number of shards {self.num_shards}"
+            )
+
+        devices = mesh_utils.create_device_mesh((self.num_shards,),
+                                                devices=jax.devices()[:self.num_shards])
         mesh = Mesh(devices, axis_names=('chan',))
 
         def tree_device_put(tree, sharding):
@@ -238,6 +250,10 @@ class SimulateVisibilities:
             phase_tracking=ms.meta.phase_tracking
         )
 
+        # Metrics
+        vis_sum = 0.
+        t0 = time_mod.time()
+        fig, axs = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
         gen = ms.create_block_generator(vis=False, weights=False, flags=False)
         gen_response = None
         while True:
@@ -245,6 +261,8 @@ class SimulateVisibilities:
                 time, visibility_coords, _ = gen.send(gen_response)
             except StopIteration:
                 break
+
+            axs[0][0].scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1], s=1)
 
             # Get gains
             system_gains = system_gain_model.compute_gain(
@@ -255,6 +273,8 @@ class SimulateVisibilities:
                 time=time,
                 mode='fft'
             )  # [num_sources, num_ant, num_freq, 2, 2]
+            # Add time dim
+            system_gains = system_gains[:, None, ...]  # [num_sources, num_time=1, num_ant, num_freq, 2, 2]
 
             visibility_coords = jax.tree_map(jnp.asarray, visibility_coords)
 
@@ -268,7 +288,7 @@ class SimulateVisibilities:
                 system_equivalent_flux_density_Jy=quantity_to_jnp(
                     ms.meta.system_equivalent_flux_density, 'Jy'),
                 apply_gains=system_gains,
-                visibility_coords=visibility_coords
+                vis_coords=visibility_coords
             )
 
             data_dict = dict(
@@ -279,8 +299,8 @@ class SimulateVisibilities:
                 system_equivalent_flux_density_Jy=tree_device_put(data_dict['system_equivalent_flux_density_Jy'],
                                                                   NamedSharding(mesh, P())),
                 apply_gains=tree_device_put(data_dict['apply_gains'],
-                                            NamedSharding(mesh, P(None, None, 'chan'))),
-                visibility_coords=tree_device_put(data_dict['visibility_coords'], NamedSharding(mesh, P()))
+                                            NamedSharding(mesh, P(None, None, None, 'chan'))),
+                vis_coords=tree_device_put(data_dict['vis_coords'], NamedSharding(mesh, P()))
             )
 
             sim_vis_data = self._simulate_jax(
@@ -289,6 +309,15 @@ class SimulateVisibilities:
 
             # Save the results by pushing the response back to the generator
             gen_response = jax.tree_map(np.asarray, sim_vis_data)
+
+            vis_sum += np.sum(sim_vis_data.vis)
+        t1 = time_mod.time()
+        print(f"Completed simulation in {t1 - t0} seconds, with total visibility sum: {vis_sum}")
+        axs[0][0].set_xlabel('u')
+        axs[0][0].set_ylabel('v')
+        axs[0][0].set_title('UV Coverage')
+        fig.savefig(os.path.join(self.plot_folder, 'uv_coverage.png'))
+        plt.close(fig)
 
     @partial(jax.jit, static_argnums=(0,))
     def _simulate_jax(self, key, freqs: jax.Array,
