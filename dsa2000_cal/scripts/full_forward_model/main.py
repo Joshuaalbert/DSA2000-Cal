@@ -18,17 +18,18 @@ os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
 if __name__ == '__main__':
     fill_registries()
-    array = array_registry.get_instance(array_registry.get_match('dsa2000W_small'))
-    array_location = array.get_array_location()
-    antennas = array.get_antennas()
+    array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
+
 
     ms_folder = 'forward_model_ms'
 
     if os.path.exists(ms_folder):
         ms = MeasurementSet(ms_folder)
     else:
+        array_location = array.get_array_location()
+        antennas = array.get_antennas()
         meta = MeasurementSetMetaV0(
-            array_name='dsa2000W_small',
+            array_name='dsa2000W',
             array_location=array_location,
             phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
             channel_width=array.get_channel_width(),
@@ -52,33 +53,40 @@ if __name__ == '__main__':
         freqs=ms.meta.freqs,
         num_bright_sources=7,
         num_faint_sources=7,
-        field_of_view=4 * au.deg
+        field_of_view=2 * au.deg
     )
     sky_model = sky_model_producer.create_sky_model()
 
     with open('sky_model.json', 'w') as fp:
         fp.write(sky_model.json(indent=2))
 
-    wsclean_source_models = sky_model.to_wsclean_source_models()
+    sky_model_source_models = sky_model.to_wsclean_source_models()
+
+    sky_model_calibrators = sky_model_producer.create_sky_model(include_faint=False)
+
+    with open('sky_model_calibrators.json', 'w') as fp:
+        fp.write(sky_model_calibrators.json(indent=2))
+
+    sky_model_calibrators_source_models = sky_model_calibrators.to_wsclean_source_models()
 
     forward_model = ForwardModel(
         dish_effect_params=DishEffectsGainModelParams(
             dish_diameter=array.get_antenna_diameter(),
             focal_length=array.get_focal_length(),
-            elevation_pointing_error_stddev=0. * au.deg,
-            cross_elevation_pointing_error_stddev=0. * au.deg,
-            axial_focus_error_stddev=0. * au.m,
-            elevation_feed_offset_stddev=0. * au.m,
-            cross_elevation_feed_offset_stddev=0. * au.m,
-            horizon_peak_astigmatism_stddev=0. * au.m,
-            surface_error_mean=0. * au.m,
-            surface_error_stddev=0. * au.m
+            # elevation_pointing_error_stddev=0. * au.deg,
+            # cross_elevation_pointing_error_stddev=0. * au.deg,
+            # axial_focus_error_stddev=0. * au.m,
+            # elevation_feed_offset_stddev=0. * au.m,
+            # cross_elevation_feed_offset_stddev=0. * au.m,
+            # horizon_peak_astigmatism_stddev=0. * au.m,
+            # surface_error_mean=0. * au.m,
+            # surface_error_stddev=0. * au.m
         ),
         ionosphere_specification='light_dawn',
         plot_folder='forward_model_plots',
         cache_folder='forward_model_cache',
-        simulation_wsclean_source_models=wsclean_source_models,
-        calibration_wsclean_source_models=wsclean_source_models,
+        simulation_wsclean_source_models=sky_model_source_models,
+        calibration_wsclean_source_models=sky_model_calibrators_source_models,
         simulation_fits_source_models=[],
         calibration_fits_source_models=[],
         num_shards=3,
