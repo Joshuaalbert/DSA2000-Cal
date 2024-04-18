@@ -162,7 +162,7 @@ class IonosphereGainModel(GainModel):
             if cache.seed != self.seed:
                 raise ValueError(f"Seed does not match {cache.seed} != {self.seed}")
 
-            print("Cache loaded successfully.")
+            print(f"Successfully loaded cache {cache_file}.")
 
         if cache is None:
             self.enu_geodesics_data, self.dtec = self.simulate_ionosphere()

@@ -34,10 +34,10 @@ def test_create_sky_model():
     sky_model_producer = SyntheticSkyModelProducer(
         phase_tracking=ac.ICRS(15 * au.deg, 0 * au.deg),
         obs_time=at.Time('2021-01-01T00:00:00'),
-        freqs=au.Quantity([0.7, 1, 2], unit=au.GHz),
-        num_bright_sources=10,
-        num_faint_sources=10,
-        field_of_view=au.Quantity(4, au.deg),
+        freqs=au.Quantity([0.7, 1.4, 2], unit=au.GHz),
+        num_bright_sources=7,
+        num_faint_sources=7,
+        field_of_view=au.Quantity(2, au.deg),
         mean_major=au.Quantity(1, au.arcmin),
         mean_minor=au.Quantity(1, au.arcmin),
         seed=42

@@ -7,7 +7,7 @@ import numpy as np
 from jax import numpy as jnp, lax
 from jax._src.typing import SupportsDType
 
-from dsa2000_cal.common.wgridder import dirty2vis
+from dsa2000_cal.common import wgridder
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
 from dsa2000_cal.predict.check_utils import check_fft_predict_inputs
 from dsa2000_cal.predict.vec_utils import kron_product
@@ -142,7 +142,7 @@ class FFTStokesIPredict:
         if self.convention == 'casa':
             uvw = jnp.negative(uvw)
 
-        vis_I = dirty2vis(
+        vis_I = wgridder.dirty2vis(
             uvw=uvw,
             freqs=freqs,
             dirty=image,

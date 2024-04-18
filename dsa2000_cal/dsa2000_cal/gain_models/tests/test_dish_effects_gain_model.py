@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from astropy import units as au, time as at, coordinates as ac
 from jax import numpy as jnp
@@ -15,12 +16,12 @@ def test_dish_effects_gain_model_real_data(tmp_path, mode):
     dish_effects_gain_model = DishEffectsGainModel(
         beam_gain_model=beam_gain_model,
         model_times=at.Time(['2021-01-01T00:00:00', '2021-01-01T00:01:00'], scale='utc'),
-        dish_effect_params=DishEffectsGainModelParams(elevation_pointing_error_stddev=0.5 * au.deg),
+        dish_effect_params=DishEffectsGainModelParams(),
         cache_folder=str(tmp_path / f'dish_effects_gain_model_cache_{mode}'),
         plot_folder=f'dish_effects_gain_model_plots_{mode}'
     )
 
-    assert jnp.allclose(dish_effects_gain_model.dy / dish_effects_gain_model.dl, 2.5 * au.m, atol=0.1)
+    np.testing.assert_allclose(dish_effects_gain_model.dy / dish_effects_gain_model.dl, 2.5 * au.m, atol=0.1*au.m)
     assert jnp.all(jnp.isfinite(dish_effects_gain_model.aperture_amplitude))
     assert dish_effects_gain_model.dx.unit.is_equivalent(au.m)
     assert dish_effects_gain_model.dy.unit.is_equivalent(au.m)
@@ -71,7 +72,7 @@ def test_dish_effects_gain_model_real_data(tmp_path, mode):
     dish_effects_gain_model = DishEffectsGainModel(
         beam_gain_model=beam_gain_model,
         model_times=at.Time(['2021-01-01T00:00:00', '2021-01-01T00:01:00'], scale='utc'),
-        dish_effect_params=DishEffectsGainModelParams(elevation_pointing_error_stddev=0.5 * au.deg),
+        dish_effect_params=DishEffectsGainModelParams(),
         cache_folder=str(tmp_path / f'dish_effects_gain_model_cache_{mode}'),
         plot_folder=f'dish_effects_gain_model_plots_{mode}'
     )
