@@ -1,5 +1,6 @@
 import dataclasses
 import os
+import time as time_mod
 from functools import partial
 
 import astropy.coordinates as ac
@@ -37,6 +38,7 @@ class DirtyImaging:
 
     field_of_view: au.Quantity | None = None
     oversample_factor: float = 2.5
+    nthreads: int = 1
     epsilon: float = 1e-4
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
@@ -50,6 +52,9 @@ class DirtyImaging:
             raise ValueError(f"Expected field_of_view to be in degrees, got {self.field_of_view.unit}")
 
     def image(self, image_name: str, ms: MeasurementSet) -> ImageModel:
+        print(f"Imaging {ms}")
+        # Metrics
+        t0 = time_mod.time()
         gen = ms.create_block_generator(vis=True, weights=False, flags=True)
         gen_response = None
         uvw = []
@@ -80,8 +85,10 @@ class DirtyImaging:
                 antenna_beam = array_registry.get_instance(
                     array_registry.get_match(ms.meta.array_name)).get_antenna_beam()
                 _freqs, _beam_widths = get_dish_model_beam_widths(antenna_beam.get_model())
-                field_of_view = np.interp(ms.meta.freqs, _freqs, _beam_widths)
-            except NoMatchFound:
+                field_of_view = np.max(np.interp(ms.meta.freqs, _freqs, _beam_widths))
+            except NoMatchFound as e:
+                print(str(e))
+                print(f"Using fallback")
                 field_of_view = au.Quantity(
                     1.22 * np.max(wavelengths) / np.min(quantity_to_np(ms.meta.antenna_diameters)),
                     au.rad
@@ -100,7 +107,7 @@ class DirtyImaging:
             lon=ms.meta.phase_tracking.ra,
             lat=ms.meta.phase_tracking.dec,
             posang=0 * au.deg,  # North
-            distance=self.field_of_view / 2.
+            distance=field_of_view / 2.
         )
         source_top = ac.ICRS(lon_top, lat_top)
 
@@ -108,7 +115,7 @@ class DirtyImaging:
             lon=ms.meta.phase_tracking.ra,
             lat=ms.meta.phase_tracking.dec,
             posang=90 * au.deg,  # East -- increasing RA
-            distance=self.field_of_view / 2.
+            distance=field_of_view / 2.
         )
         source_east = ac.ICRS(lon_east, lat_east)
 
@@ -142,6 +149,9 @@ class DirtyImaging:
             center_m=quantity_to_jnp(center_y)
         )  # [num_pixel, num_pixel]
         dirty_image = dirty_image[:, :, None, None]  # [num_pixel, num_pixel, 1, 1]
+        dirty_image.block_until_ready()
+        t1 = time_mod.time()
+        print(f"Completed imaging in {t1 - t0:.2f} seconds.")
         image_model = ImageModel(
             phase_tracking=ms.meta.phase_tracking,
             obs_time=ms.ref_time,
@@ -159,6 +169,7 @@ class DirtyImaging:
         with open(f"{image_name}.json", 'w') as fp:
             fp.write(image_model.json(indent=2))
         image_model.save_image_to_fits(f"{image_name}.fits", overwrite=False)
+        print(f"Saved FITS image to {image_name}.fits")
         return image_model
 
     @partial(jax.jit, static_argnames=['self', 'num_pixel'])
@@ -199,7 +210,7 @@ class DirtyImaging:
             uvw = jnp.negative(uvw)  # CASA convention
 
         # Mask those needed for stokes I
-        mask = jnp.bitwise_or(flags[..., 0], flags[..., -1])  # [num_rows, num_chan]
+        mask = jnp.bitwise_not(jnp.bitwise_or(flags[..., 0], flags[..., -1]))  # [num_rows, num_chan]
 
         dirty_image = wgridder.vis2dirty(
             uvw=uvw,
@@ -215,7 +226,8 @@ class DirtyImaging:
             do_wgridding=True,
             mask=mask,
             divide_by_n=True,
-            verbosity=0
+            verbosity=0,
+            nthreads=self.nthreads
         )  # [num_pixel, num_pixel]
 
         return dirty_image
