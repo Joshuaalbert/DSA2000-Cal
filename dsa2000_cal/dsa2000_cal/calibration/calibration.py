@@ -9,6 +9,7 @@ import astropy.units as au
 import jax
 import jaxopt
 import numpy as np
+import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import lax
 from jax import numpy as jnp
@@ -66,6 +67,7 @@ class Calibration:
     # Calibration parameters
     num_iterations: int
     inplace_subtract: bool
+    plot_folder: str
     solution_cadence: au.Quantity | None = None
     average_interval: au.Quantity | None = None
     residual_ms_folder: str | None = None
@@ -101,7 +103,13 @@ class Calibration:
 
         P = PartitionSpec
 
-        devices = mesh_utils.create_device_mesh((self.num_shards,))
+        if len(jax.devices()) < self.num_shards:
+            raise ValueError(
+                f"Number of devices {len(jax.devices())} is less than the number of shards {self.num_shards}"
+            )
+
+        devices = mesh_utils.create_device_mesh((self.num_shards,),
+                                                devices=jax.devices()[:self.num_shards])
         mesh = Mesh(devices, axis_names=('chan',))
 
         def tree_device_put(tree, sharding):
@@ -117,6 +125,8 @@ class Calibration:
             rounded_average_interval = num_blocks * ms.meta.integration_time
             print(f"Rounded average interval: {rounded_average_interval}")
 
+        print(f"Running calibration with averaging interval {self.average_interval} / {num_blocks} blocks.")
+
         # Ensure the freqs are the same in the models
         for wsclean_source_model in self.wsclean_source_models:
             if not np.allclose(ms.meta.freqs.to('Hz'), wsclean_source_model.freqs.to('Hz')):
@@ -128,6 +138,7 @@ class Calibration:
             if self.residual_ms_folder is None:
                 raise ValueError("If not inplace subtracting, residual_ms_folder must be provided.")
             ms = ms.clone(ms_folder=self.residual_ms_folder)
+            print("Created a new measurement set for residuals.")
 
         init_params = self.get_init_params(
             num_source=self.num_calibrators,
@@ -153,15 +164,19 @@ class Calibration:
             time=ms.ref_time
         )  # [num_calibrators]
 
+        for cal_idx, cal_source in enumerate(cal_sources):
+            print(f"Calibrator {cal_idx}: {cal_source}")
+
+        # Metrics
+        residual_sum = 0.
+        t0 = time_mod.time()
+
         solutions = []
         # TODO: Apply UV cutoff to ignore galactic plane
-        if not self.inplace_subtract:
-            if self.residual_ms_folder is None:
-                raise ValueError("If not inplace subtracting, residual_ms_folder must be provided.")
-            ms = ms.clone(ms_folder=self.residual_ms_folder)
         gen = ms.create_block_generator(vis=True, weights=True, flags=True, relative_time_idx=True,
                                         num_blocks=num_blocks)
         gen_response = None
+        iteration_idx = 0
         while True:
             try:
                 times, visibility_coords, data = gen.send(gen_response)
@@ -207,20 +222,27 @@ class Calibration:
                 vis_coords=tree_device_put(data_dict['vis_coords'], NamedSharding(mesh, P()))
             )
 
-            t0 = time_mod.time()
-            params, results, residual = self._solve_jax(
+            params, (neg_log_likelihood, final_state), residual = self._solve_jax(
                 **data_dict
             )
             gen_response = VisibilityData(
                 vis=np.asarray(residual)
             )
             solutions.append(np.asarray(params.gains_real + 1j * params.gains_imag))
-            t1 = time_mod.time()
-            if self.verbose:
-                print(results)
-                print(f"Time to solve: {t1 - t0}")
+            residual_sum += np.sum(residual)
+
+            # Plot results
+            fig, axs = plt.subplots(1, 1, figsize=(6, 6), squeeze=False)
+            axs[0][0].plot(neg_log_likelihood)
+            axs[0][0].set_title(fr"Cadence window: {iteration_idx} $-\log \mathcal{{L}}$")
+            axs[0][0].set_xlabel("Solver Iteration")
+            axs[0][0].set_ylabel("Negative Log Likelihood")
+            fig.tight_layout()
+            fig.savefig(f"{self.plot_folder}/solver_progress_neg_log_likelihood_cadence_window_{iteration_idx}.png")
+            plt.close(fig)
             # Pass forward
             init_params = params
+            iteration_idx += 1
 
         gains = np.concatenate(solutions, axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
         calibration_solutions = CalibrationSolutions(
@@ -231,8 +253,14 @@ class Calibration:
             antenna_labels=ms.meta.antenna_names,
             freqs=ms.meta.freqs
         )
-        with open("calibration_solutions.json", "w") as fp:
+        t1 = time_mod.time()
+        solution_file = "calibration_solutions.json"
+        with open(solution_file, "w") as fp:
             fp.write(calibration_solutions.json(indent=2))
+
+        print(f"Completed calibration in {t1 - t0} seconds, with residual sum {residual_sum}. "
+              f"Calibration solutions saved to {solution_file}.")
+        print(f"Residuals stored in {ms}.")
 
         return ms
 
@@ -256,11 +284,14 @@ class Calibration:
             fits_source_models=self.fits_source_models,
             convention=self.convention,
             dtype=self.dtype,
-            verbose=self.verbose
+            verbose=self.verbose,
+            plot_folder=self.plot_folder
         )
 
         vis = simulator.predict_model_visibilities(freqs=freqs, apply_gains=preapply_gains,
                                                    vis_coords=vis_coords)  # [num_cal, num_row, num_chan, 2, 2]
+
+        # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))
 
         # vis now contains the model visibilities for each calibrator
 
@@ -345,7 +376,8 @@ class Calibration:
     @partial(jax.jit, static_argnums=(0,))
     def _solve_jax(self, freqs: jax.Array, preapply_gains: jax.Array, init_params: CalibrationParams,
                    vis_data: VisibilityData,
-                   vis_coords: VisibilityCoords) -> Tuple[CalibrationParams, jaxopt.OptStep, jax.Array]:
+                   vis_coords: VisibilityCoords) -> Tuple[
+        CalibrationParams, Tuple[jax.Array, jaxopt.OptStep], jax.Array]:
 
         log_prob_fn, subtract_fn = self._build_log_likelihood_and_subtract(freqs=freqs,
                                                                            preapply_gains=preapply_gains,
