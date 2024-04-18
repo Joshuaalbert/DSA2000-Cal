@@ -76,7 +76,7 @@ class SyntheticSkyModelProducer:
 
         self.key = jax.random.PRNGKey(self.seed)
 
-    def create_sky_model(self) -> SkyModel:
+    def create_sky_model(self, include_bright:bool=True, include_faint:bool=True) -> SkyModel:
         """
         Create a sky model with bright and faint sources.
 
@@ -87,7 +87,7 @@ class SyntheticSkyModelProducer:
         self.key, key1, key2 = jax.random.split(self.key, 3)
 
         bright_source_params = []
-        if self.num_bright_sources > 0:
+        if include_bright and self.num_bright_sources > 0:
             dr_bright = choose_dr(field_of_view=self.field_of_view, total_n=self.num_bright_sources)
             bright_rotation = float(jax.random.uniform(key1, (), minval=0, maxval=60)) * au.deg
             bright_sources = create_spherical_grid(
@@ -108,7 +108,7 @@ class SyntheticSkyModelProducer:
                     )
                 )
         faint_source_params = []
-        if self.num_faint_sources > 0:
+        if include_faint and self.num_faint_sources > 0:
             dr_faint = choose_dr(field_of_view=self.field_of_view, total_n=self.num_faint_sources)
             faint_rotation = float(jax.random.uniform(key2, (), minval=0, maxval=60)) * au.deg
             faint_sources = create_spherical_grid(
