@@ -1,147 +1,20 @@
-import logging
 import os.path
 import sys
-from typing import Generator, Union
+from typing import Union
 
 import astropy.coordinates as ac
-import astropy.time as at
 import astropy.units as au
 import numpy as np
-import pyrap.tables as pt
 from pydantic import Field
 from scipy.io import loadmat
-from tomographic_kernel.frames import ENU
 from tqdm import tqdm
 
 from dsa2000_cal.assets.content_registry import fill_registries
-
-
-
-from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.assets.rfi.rfi_data import RFIData
-from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-# Constants
-C = 299792458.  # Speed of light [m/s]
 
-
-class RFISimConfig(SerialisableBaseModel):
-    lte_east: float = Field(
-        desciption="Distance east of RFI transmitter from center of the telescope [m].",
-        example=46800. * np.sin(160. * 2 * np.pi / 360 + np.pi)
-    )
-    lte_north: float = Field(
-        description="Distance south of RFI transmitter from center of the telescope [m].",
-        example=46800. * np.cos(160. * 2 * np.pi / 360)
-    )
-    lte_up: float = Field(
-        description="Height of RFI transmitter [m] above array centre.",
-        example=20.
-    )
-    lte_polarization_deg: float = Field(
-        description="Polarization angle of RFI [deg, 0=full XX, 90=full YY].",
-        example=10.
-    )
-    lte_power_W_Hz: float = Field(
-        description="Power of RFI transmitter at the source [W/Hz].",
-        example=6.4e-4
-    )
-    lte_frequency_hz: float = Field(
-        description="Central frequency of RFI signal [Hz].",
-        example=705e6
-    )
-    lte_bandwidth_hz: float = Field(
-        description="Bandwidth of RFI signal [Hz].",
-        example=5e6
-    )
-
-
-class MSData(SerialisableBaseModel):
-    """
-    Data from an MS file that is yielded by the iterator.
-    """
-    array: AbstractArray
-    enu_frame: ENU
-    antennas: ac.ITRS
-    antenna1: np.ndarray
-    antenna2: np.ndarray
-    pointing: ac.ICRS
-    freqs_hz: np.ndarray
-
-
-def iter_ms_data(ms_file: str, array: AbstractArray, overwrite: bool) -> Generator[MSData, np.ndarray, None]:
-    """
-    Iterate over MS data, yielding MSData objects, and storing the response.
-
-    Args:
-        ms_file: MS file to iterate over, and store response in.
-        array: Array object.
-        overwrite: Option to overwrite visibilities in input MS file instead of adding them.
-    """
-    with pt.table(ms_file) as t:
-        ant1 = t.getcol('ANTENNA1')
-        ant2 = t.getcol('ANTENNA2')
-        times = t.getcol('TIME')
-
-    with pt.table(f'{ms_file}/ANTENNA') as t:
-        antenna_position_itrs_m = t.getcol('POSITION')
-
-    with pt.table(ms_file + '/SPECTRAL_WINDOW') as t:
-        freqs_hz = t.getcol('CHAN_FREQ')  # [num_freqs]
-
-    with pt.table(ms_file + '/POINTING') as t:
-        pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
-        pointing = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 0, 1] * au.rad)  # [num_ant]
-
-    times, start_indicies, time_idx = np.unique(times, return_index=True, return_inverse=True)
-    if len(start_indicies) > 1:
-        block_size = start_indicies[1] - start_indicies[0]
-    else:
-        block_size = -1
-    # Iterate over time blocks (which are sequential in the MS)
-    for i, (time, start_idx) in enumerate(zip(times, start_indicies)):
-        select = time_idx == i
-        ant1_select = ant1[select]
-        ant2_select = ant2[select]
-        obstime = at.Time(time / 86400, format='mjd')
-        antennas_itrs = ac.ITRS(
-            x=antenna_position_itrs_m[:, 0] * au.m,
-            y=antenna_position_itrs_m[:, 1] * au.m,
-            z=antenna_position_itrs_m[:, 2] * au.m,
-            obstime=obstime
-        )
-        array_centre = mean_itrs(antennas_itrs)
-        enu = ENU(location=array_centre.earth_location, obstime=obstime)
-        # Yield and get back response (np.ndarray)
-        sim_visibilities = yield MSData(
-            array=array,
-            enu_frame=enu,
-            antennas=antennas_itrs,
-            antenna1=ant1_select,
-            antenna2=ant2_select,
-            pointing=pointing,
-            freqs_hz=freqs_hz
-        )
-        # Store response
-        with pt.table(ms_file, readonly=False) as t:
-            dtype = t.getcol('DATA').dtype
-            _, num_freqs, _ = t.getcol('DATA').shape
-            sim_visibilities = sim_visibilities.astype(dtype)
-            sim_visibilities = np.tile(sim_visibilities, (1, num_freqs, 1))
-            if not overwrite:  # Then we add to existing
-                vis = t.getcol('DATA', startrow=start_idx, nrow=block_size, rowincr=1)
-                sim_visibilities += vis
-            t.putcol(
-                columnname='DATA',
-                value=sim_visibilities,
-                startrow=start_idx,
-                nrow=block_size,
-                rowincr=1
-            )
 
 
 def calculate_free_space_path_loss(rfi_sim_config: RFISimConfig, ms_data: MSData) -> np.ndarray:

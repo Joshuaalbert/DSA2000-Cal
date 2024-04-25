@@ -291,7 +291,8 @@ class Calibration:
         vis = simulator.predict_model_visibilities(freqs=freqs, apply_gains=preapply_gains,
                                                    vis_coords=vis_coords)  # [num_cal, num_row, num_chan, 2, 2]
 
-        # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))
+        # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))'
+        # TODO: https://jax.readthedocs.io/en/latest/notebooks/shard_map.html#fsdp-tp-with-shard-map-at-the-top-level
 
         # vis now contains the model visibilities for each calibrator
 

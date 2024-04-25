@@ -460,25 +460,21 @@ class MeasurementSet:
         rows1, inverse_map1 = np.unique(rows1, return_inverse=True)
         rows1 = _try_get_slice(rows1)
 
-        def _access_non_unique(h5_array, unique_rows, inverse_map):
-            unique_get = h5_array[unique_rows, ...]
-            if len(unique_get) == len(inverse_map):
-                return unique_get
-            # Send back to original shape
-            return unique_get[inverse_map, ...]
+        def access_non_unique(h5_array, unique_rows, inverse_map):
+            return _access_non_unique(h5_array, unique_rows, inverse_map)
 
         with tb.open_file(self.data_file, 'r') as f:
             vis = (
-                    _access_non_unique(f.root.vis, rows0, inverse_map0) * alpha0_time[:, None, None]
-                    + _access_non_unique(f.root.vis, rows1, inverse_map1) * alpha1_time[:, None, None]
+                    access_non_unique(f.root.vis, rows0, inverse_map0) * alpha0_time[:, None, None]
+                    + access_non_unique(f.root.vis, rows1, inverse_map1) * alpha1_time[:, None, None]
             )
             weights = (
-                    _access_non_unique(f.root.weights, rows0, inverse_map0) * alpha0_time[:, None, None]
-                    + _access_non_unique(f.root.weights, rows1, inverse_map1) * alpha1_time[:, None, None]
+                    access_non_unique(f.root.weights, rows0, inverse_map0) * alpha0_time[:, None, None]
+                    + access_non_unique(f.root.weights, rows1, inverse_map1) * alpha1_time[:, None, None]
             )
             flags = (
-                    _access_non_unique(f.root.flags, rows0, inverse_map0) * alpha0_time[:, None, None]
-                    + _access_non_unique(f.root.flags, rows1, inverse_map1) * alpha1_time[:, None, None]
+                    access_non_unique(f.root.flags, rows0, inverse_map0) * alpha0_time[:, None, None]
+                    + access_non_unique(f.root.flags, rows1, inverse_map1) * alpha1_time[:, None, None]
             )
 
         if freqs is not None:
@@ -594,3 +590,82 @@ class MeasurementSet:
                         f.root.weights[from_row:to_row] = response.weights
                     if response.flags is not None:
                         f.root.flags[from_row:to_row] = response.flags
+
+
+def get_non_unqiue(h5_array, indices, axis=0, indices_sorted: bool = False):
+    """
+    Access non-unique elements from an array based on the indices provided.
+
+    :param h5_array: the H5 array to access
+    :param indices: the indices to access
+    :param axis: the axis along which to access the indices
+    :param indices_sorted: whether the indices are sorted. If True, the function will be faster.
+
+    :return:
+        The non-unique elements from the H5 array based on the indices provided
+    """
+    if len(np.shape(indices)) != 1:
+        raise ValueError("Indices must be a 1D array")
+    unique_indices, inverse_map = np.unique(indices, return_inverse=True)
+    if indices_sorted and (len(unique_indices) == len(indices)):
+        unique_indices = indices
+        return _access_non_unique(h5_array, unique_indices, inverse_map, axis, _already_unique=True)
+    # Even if already unique, we need to remap the indices to account for ordering.
+    return _access_non_unique(h5_array, unique_indices, inverse_map, axis)
+
+
+def put_non_unique(h5_array, indices, values, axis=0, indices_sorted: bool = False):
+    """
+    Put non-unique elements into an array based on the indices provided.
+
+    :param h5_array: the H5 array to put into
+    :param indices: the indices to put into. Duplicates are allowed. Only the first occurrence will be used.
+    :param values: the values to put into the array
+    :param axis: the axis along which to put the indices
+    :param indices_sorted: whether the indices are sorted. If True, the function will be faster.
+
+    :return:
+        The H5 array with the non-unique elements put in
+    """
+    if len(np.shape(indices)) != 1:
+        raise ValueError("Indices must be a 1D array")
+    unique_indices = np.unique(indices)
+    if indices_sorted and (len(unique_indices) == len(indices)):
+        return _put_non_unique(h5_array, unique_indices, values, axis, _already_unique=True)
+    return _put_non_unique(h5_array, unique_indices, values, axis)
+
+
+def _access_non_unique(h5_array, unique_indices, inverse_map, axis=0, _already_unique: bool = False):
+    # Prepare an index tuple to handle different axes
+    index_tuple = tuple(
+        unique_indices if i == axis else slice(None)
+        for i in range(h5_array.ndim)
+    )
+
+    # Access the unique elements
+    unique_get = h5_array[index_tuple]
+
+    # Check if remapping is necessary
+    if _already_unique:
+        return unique_get
+
+    # Generate an index tuple for reshaping based on the inverse map
+    reshape_index_tuple = tuple(
+        inverse_map if i == axis else slice(None)
+        for i in range(h5_array.ndim)
+    )
+
+    # Reshape the unique get array back to the shape of the original input
+    return unique_get[reshape_index_tuple]
+
+
+def _put_non_unique(h5_array, unique_indices, values, axis=0, _already_unique: bool = False):
+    # Prepare an index tuple to handle different axes
+    index_tuple = tuple(
+        unique_indices if i == axis else slice(None)
+        for i in range(h5_array.ndim)
+    )
+    if _already_unique:
+        h5_array[index_tuple] = values
+        return
+    h5_array[index_tuple] = values[index_tuple]

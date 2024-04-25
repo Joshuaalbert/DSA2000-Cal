@@ -103,7 +103,7 @@ def icrs_to_lmn(sources: ac.ICRS, time: at.Time, phase_tracking: ac.ICRS) -> Qua
     # Unsure why, but order is not l,m,n but rather n,l,m (verified)
     shape = sources.shape
     sources = sources.reshape((-1,))
-    n, l, m = sources.transform_to(frame).cartesian.xyz.value
+    n, l, m = sources.transform_to(frame).cartesian.xyz
     lmn = ac.CartesianRepresentation(l, m, n).xyz.T
     lmn = lmn.reshape(shape + (3,))
     return lmn
@@ -189,16 +189,9 @@ def earth_location_to_enu(antennas: EarthLocation, array_location: EarthLocation
     shape = antennas.shape
     antennas = antennas.reshape((-1,))
 
-    # Convert antenna pos terrestrial to celestial.  For astropy use
-    # get_gcrs_posvel(t)[0] rather than get_gcrs(t) because if a velocity
-    # is attached to the coordinate astropy will not allow us to do additional
-    # transformations with it (https://github.com/astropy/astropy/issues/6280)
-    array_position, array_velocity = array_location.get_gcrs_posvel(time)
-    antennas_position = antennas.get_gcrs_posvel(time)[0]
-    antennas_gcrs = ac.GCRS(antennas_position,
-                            obstime=time, obsgeoloc=array_position, obsgeovel=array_velocity)
+    antennas_itrs = antennas.get_itrs(obstime=time)
 
     enu_frame = ENU(location=array_location, obstime=time)
-    enu = antennas_gcrs.transform_to(enu_frame).cartesian.xyz.T
+    enu = antennas_itrs.transform_to(enu_frame).cartesian.xyz.T
     enu = enu.reshape(shape + (3,))
     return enu

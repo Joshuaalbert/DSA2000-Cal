@@ -6,7 +6,8 @@ import tables as tb
 from astropy import coordinates as ac, units as au, time as at
 
 from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
-    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData
+    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData, get_non_unqiue, \
+    put_non_unique
 
 
 def test__combination_with_replacementindex():
@@ -245,3 +246,48 @@ def test_multi_block_gen(tmp_path, with_autocorr):
         )
 
     assert block_count == 10
+
+
+def test_get_non_unique():
+    h5_array = np.array([[1, 2], [3, 4], [5, 6]])
+    indices = np.array([0, 1, 0])
+    result = get_non_unqiue(h5_array, indices, axis=0)
+    np.testing.assert_allclose(result, np.array([[1, 2], [3, 4], [1, 2]]))
+
+    indices = np.array([0, 1])
+    result = get_non_unqiue(h5_array, indices, axis=0, indices_sorted=True)
+    np.testing.assert_allclose(result, np.array([[1, 2], [3, 4]]))
+
+    indices = np.array([0, 1, 0])
+    result = get_non_unqiue(h5_array, indices, axis=1)
+    np.testing.assert_allclose(result, np.array([[1, 2, 1], [3, 4, 3], [5, 6, 5]]))
+
+    indices = np.array([0, 1])
+    result = get_non_unqiue(h5_array, indices, axis=1, indices_sorted=True)
+    np.testing.assert_allclose(result, np.array([[1, 2], [3, 4], [5, 6]]))
+
+
+def test_put_non_unique():
+    h5_array = np.array([[1, 2], [3, 4], [5, 6]])
+    indices = np.array([0, 1, 0])
+    values = np.array([[7, 8], [9, 10], [11, 12]])
+    put_non_unique(h5_array, indices, values, axis=0)
+    np.testing.assert_allclose(h5_array, np.array([[7, 8], [9, 10], [5, 6]]))
+
+    h5_array = np.array([[1, 2], [3, 4], [5, 6]])
+    indices = np.array([0, 1])
+    values = np.array([[7, 8], [9, 10]])
+    put_non_unique(h5_array, indices, values, axis=0, indices_sorted=True)
+    np.testing.assert_allclose(h5_array, np.array([[7, 8], [9, 10], [5, 6]]))
+
+    h5_array = np.array([[1, 2], [3, 4], [5, 6]])
+    indices = np.array([0, 1, 0])
+    values = np.array([[7, 8, 9], [10, 11, 12], [13, 14, 15]])
+    put_non_unique(h5_array, indices, values, axis=1)
+    np.testing.assert_allclose(h5_array, np.array([[7, 8], [10, 11], [13, 14]]))
+
+    h5_array = np.array([[1, 2], [3, 4], [5, 6]])
+    indices = np.array([0, 1])
+    values = np.array([[7, 8], [10, 11], [13, 14]])
+    put_non_unique(h5_array, indices, values, axis=1, indices_sorted=True)
+    np.testing.assert_allclose(h5_array, np.array([[7, 8], [10, 11], [13, 14]]))
