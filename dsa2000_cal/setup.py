@@ -28,11 +28,12 @@ def get_all_subdirs(top: str, *dirs) -> List[str]:
 
 
 install_requires = [
-    'ray',
     'pydantic',
     'numpy',
     'ujson',
-    'astropy'
+    'astropy',
+    'jax',
+    'jaxlib'
 ]
 
 with open("README.md", "r") as fh:
