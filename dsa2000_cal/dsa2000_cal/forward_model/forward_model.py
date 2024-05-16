@@ -1,4 +1,5 @@
 import dataclasses
+import os
 from typing import List
 
 import astropy.units as au
@@ -8,6 +9,8 @@ from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.calibration.calibration import Calibration
+from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
+from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
@@ -87,6 +90,7 @@ class ForwardModel:
     num_shards: int = 1
 
     def forward(self, ms: MeasurementSet):
+        start_time = current_utc()
         # Simulate systematics
         system_gain_model = self._simulate_systematics(
             ms=ms
@@ -104,6 +108,13 @@ class ForwardModel:
         self._image_visibilities(image_name='dirty_image', ms=ms)
         # Image subtracted visibilities
         self._image_visibilities(image_name='subtracted_dirty_image', ms=subtracted_ms)
+
+        # Tell Slack we're done
+        post_completed_forward_modelling_run(
+            run_dir=os.getcwd(),
+            start_time=start_time,
+            duration=current_utc() - start_time
+        )
 
     def _simulate_systematics(self, ms: MeasurementSet) -> ProductGainModel:
         """
