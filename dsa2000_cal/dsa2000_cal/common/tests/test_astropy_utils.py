@@ -3,7 +3,7 @@ from astropy import coordinates as ac, units as au
 from matplotlib import pyplot as plt
 
 from dsa2000_cal.common.astropy_utils import random_discrete_skymodel, mean_icrs, \
-    create_spherical_grid, create_spherical_earth_grid
+    create_spherical_grid, create_spherical_earth_grid, create_random_spherical_layout
 
 
 def test_random_discrete_skymodel():
@@ -64,3 +64,10 @@ def test_create_spherical_earth_grid():
                           axis=-1).max() <= radius
 
     print(len(grid_earth))
+
+def test_create_spherical_grid_all_sky():
+    grid = create_random_spherical_layout(10000)
+    plt.scatter(grid.ra.rad, grid.dec.rad, marker='o', alpha=0.1)
+    plt.show()
+
+    assert len(grid) == 10000

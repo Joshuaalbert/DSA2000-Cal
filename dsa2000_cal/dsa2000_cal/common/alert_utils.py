@@ -22,6 +22,7 @@ def post_completed_forward_modelling_run(run_dir: str, start_time: datetime, dur
 
     if hook_url is None:
         warnings.warn("No SLACK_FINISHED_RUNS_HOOK_URL set. Not posting to slack.")
+        return
 
     hostname = socket.gethostname()
 
