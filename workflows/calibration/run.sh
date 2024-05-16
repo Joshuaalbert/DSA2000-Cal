@@ -9,33 +9,24 @@ declare -A gpu_services
 declare -A extras
 
 services_order=(
-  "forward_model"
-  #  "simulate_visibilities"
-  #  "transfer_to_casa_ms"
-  #  "validate_forward_modelling"
-  #  "transfer_from_casa_ms"
-  #  "lwa_full_sky_image"
+  "transfer_from_casa_ms"
+  "lwa_calibration"
+  #  "inspect"
 )
 
 # The values represent whether to use --no-cache or not. 1 for yes, 0 for no.
 cache_options=(
-  ["forward_model"]=0
-  ["transfer_to_casa_ms"]=0
-  ["validate_forward_modelling"]=0
   ["inspect"]=0
   ["transfer_from_casa_ms"]=0
-  ["lwa_full_sky_image"]=0
+  ["lwa_calibration"]=0
 )
 
 # Add special volumes that need to be mounted
 # Use single quotes for variables.
 volumes=(
-    ["forward_model"]='-v $DATA_DIR_HOST:/dsa/data'
-  #  ["transfer_to_casa_ms"]='-v $DATA_DIR_HOST:/dsa/data'
-  #  ["validate_forward_modelling"]='-v $DATA_DIR_HOST:/dsa/data'
-  #  ["inspect"]='-v $DATA_DIR_HOST:/dsa/data'
+  ["lwa_calibration"]='-v $DATA_DIR_HOST:/dsa/data'
+  ["inspect"]='-v $DATA_DIR_HOST:/dsa/data'
   ["transfer_from_casa_ms"]='-v $DATA_DIR_HOST:/dsa/data'
-  ["lwa_full_sky_image"]='-v $DATA_DIR_HOST:/dsa/data'
 )
 
 # Add port forwarding maps, or environment variables (use single quotes to do delayed expand).
@@ -45,12 +36,9 @@ extras=(
 
 # Add other services requiring GPU with a value of 1.
 gpu_services=(
-  ["forward_model"]=0
-  ["transfer_to_casa_ms"]=0
-  ["validate_forward_modelling"]=0
-  ["inspect"]=0
   ["transfer_from_casa_ms"]=0
-  ["lwa_full_sky_image"]=0
+  ["inspect"]=0
+  ["lwa_calibration"]=0
 )
 
 expand_string_from_env() {

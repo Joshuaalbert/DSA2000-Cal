@@ -1,9 +1,6 @@
 import glob
 import os
-from typing import List, Tuple
-
-from astropy import units as au
-from astropy.io import fits
+from typing import List
 
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel

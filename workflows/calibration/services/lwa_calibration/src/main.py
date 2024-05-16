@@ -2,6 +2,8 @@ import os
 
 from jax import config
 
+from dsa2000_cal.calibration.calibration import Calibration
+from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 
 config.update("jax_enable_x64", True)
@@ -41,6 +43,24 @@ def main(ms_folder: str):
 
     # Save the subtracted visibilities
     ...
+
+    beam_gain_model = beam_gain_model_factory(ms.meta.array_name)
+    calibration = Calibration(
+        num_iterations=15,
+        wsclean_source_models=self.calibration_wsclean_source_models,
+        fits_source_models=self.calibration_fits_source_models,
+        preapply_gain_model=beam_gain_model,
+        inplace_subtract=False,
+        residual_ms_folder='residual_ms',
+        average_interval=None,
+        solution_cadence=None,
+        verbose=self.verbose,
+        seed=self.calibration_seed,
+        num_shards=self.num_shards,
+        plot_folder=os.path.join(self.plot_folder, 'calibration')
+    )
+
+    return calibration.calibrate(ms=ms)
 
 
 if __name__ == '__main__':
