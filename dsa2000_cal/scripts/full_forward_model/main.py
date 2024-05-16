@@ -14,14 +14,12 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, M
 # Set num jax devices
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
-if __name__ == '__main__':
+
+def main(ms_folder: str):
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
-
-
-    ms_folder = 'forward_model_ms'
 
     if os.path.exists(ms_folder):
         ms = MeasurementSet(ms_folder)
@@ -45,7 +43,7 @@ if __name__ == '__main__':
             mount_types='ALT-AZ',
             system_equivalent_flux_density=array.get_system_equivalent_flux_density()
         )
-        ms = MeasurementSet.create_measurement_set(ms_folder='forward_model_ms', meta=meta)
+        ms = MeasurementSet.create_measurement_set(ms_folder=ms_folder, meta=meta)
 
     sky_model_producer = SyntheticSkyModelProducer(
         phase_tracking=ms.meta.phase_tracking,
@@ -89,8 +87,12 @@ if __name__ == '__main__':
         calibration_wsclean_source_models=sky_model_calibrators_source_models,
         simulation_fits_source_models=[],
         calibration_fits_source_models=[],
-        num_shards=3,
+        num_shards=len(ms.meta.freqs),
         oversample_factor=1.5,
         field_of_view=4 * au.deg,
     )
     forward_model.forward(ms=ms)
+
+
+if __name__ == '__main__':
+    main(ms_folder='forward_model_ms')
