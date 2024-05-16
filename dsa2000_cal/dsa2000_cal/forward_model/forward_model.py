@@ -155,7 +155,7 @@ class ForwardModel:
             verbose=self.verbose,
             seed=self.simulation_seed,
             num_shards=self.num_shards,
-            plot_folder=self.plot_folder
+            plot_folder=os.path.join(self.plot_folder, 'simulate')
         )
         simulator.simulate(
             ms=ms,
@@ -176,14 +176,14 @@ class ForwardModel:
             verbose=self.verbose,
             seed=self.calibration_seed,
             num_shards=self.num_shards,
-            plot_folder=self.plot_folder
+            plot_folder=os.path.join(self.plot_folder, 'calibration')
         )
 
         return calibration.calibrate(ms=ms)
 
     def _image_visibilities(self, image_name: str, ms: MeasurementSet) -> ImageModel:
         imagor = DirtyImaging(
-            plot_folder=self.plot_folder,
+            plot_folder=os.path.join(self.plot_folder, 'imaging'),
             cache_folder=self.cache_folder,
             field_of_view=self.field_of_view,
             seed=self.imaging_seed,

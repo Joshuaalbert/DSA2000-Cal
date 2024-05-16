@@ -5,8 +5,7 @@ import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dsa2000_cal.calibration.calibration import CalibrationSolutions
-from dsa2000_cal.simulation.simulate_visibilties import SystemGains
+from dsa2000_cal.types import CalibrationSolutions, SystemGains
 
 
 def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):
