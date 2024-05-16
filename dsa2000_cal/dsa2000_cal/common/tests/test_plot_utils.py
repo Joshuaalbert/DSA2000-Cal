@@ -3,7 +3,7 @@ from astropy import time as at, units as au, coordinates as ac
 from matplotlib import pyplot as plt
 
 from dsa2000_cal.common.plot_utils import figs_to_gif, plot_antenna_gains
-from dsa2000_cal.types import SystemGains
+from dsa2000_cal.simulation.simulate_visibilties import SystemGains
 
 
 def test_figs_to_gif():
