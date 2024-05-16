@@ -2,7 +2,7 @@ FROM 1_base:latest
 
 # Prepare run
 WORKDIR /dsa/code
-COPY services/simulate_visibilities/src src
+COPY services/forward_model/src src
 
 # Directies that will be mounted
 RUN mkdir -p /dsa/data
