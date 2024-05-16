@@ -47,8 +47,6 @@ def main(ms_folder: str):
     beam_gain_model = beam_gain_model_factory(ms.meta.array_name)
     calibration = Calibration(
         num_iterations=15,
-        wsclean_source_models=self.calibration_wsclean_source_models,
-        fits_source_models=self.calibration_fits_source_models,
         preapply_gain_model=beam_gain_model,
         inplace_subtract=False,
         residual_ms_folder='residual_ms',

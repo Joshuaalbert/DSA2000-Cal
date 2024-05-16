@@ -39,7 +39,7 @@ class MockGainModel(GainModel):
                      **kwargs):
         shape = sources.shape
         sources = sources.reshape((-1,))
-        gains = self.amplitude * np.exp(1j * self.phase)  # [num_antennas, num_freqs, 2, 2]
+        gains = self.amplitude.value * np.exp(1j * self.phase.to('rad').value)  # [num_antennas, num_freqs, 2, 2]
         gains = np.tile(gains[None], (len(sources), 1, 1, 1, 1))  # [num_sources, num_antennas, num_freqs, 2, 2]
         gains = gains.reshape(shape + gains.shape[1:])  # (source_shape) + [num_antennas, num_freqs, 2, 2]
         return gains
@@ -72,7 +72,8 @@ def mock_calibrator_source_models(tmp_path):
         antenna_names=array.get_antenna_names(),
         antenna_diameters=array.get_antenna_diameter(),
         with_autocorr=True,
-        mount_types='ALT-AZ'
+        mount_types='ALT-AZ',
+        system_equivalent_flux_density=array.get_system_equivalent_flux_density()
     )
     ms = MeasurementSet.create_measurement_set(str(tmp_path), meta)
 
@@ -83,58 +84,35 @@ def mock_calibrator_source_models(tmp_path):
         freqs=ms.meta.freqs,
         num_bright_sources=1,
         num_faint_sources=0,
-        field_of_view=2 * au.deg
+        field_of_view=4 * au.deg
     )
-    sky_model = sky_model_producer.create_sky_model()
-    sky_model_calibrators = sky_model_producer.create_sky_model(include_faint=False)
-
-    sky_model_source_models = sky_model.to_wsclean_source_models()
-    sky_model_calibrators_source_models = sky_model_calibrators.to_wsclean_source_models()
+    sky_model = sky_model_producer.create_sky_model(include_bright=True)
 
     gain_model = MockGainModel(
-
+        amplitude=np.ones((len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.dimensionless_unscaled,
+        phase=np.zeros((len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.rad
     )
 
     simulate_visibilities = SimulateVisibilities(
-        wsclean_source_models=sky_model_source_models,
-        fits_source_models=[]
+        sky_model=sky_model,
+        plot_folder='plots'
     )
+    simulate_visibilities.simulate(ms, gain_model)
 
-    # Load source models
-    wsclean_fits_files = source_model_registry.get_instance(
-        source_model_registry.get_match('mock')).get_wsclean_fits_files()
-
-    fits_sources = FitsStokesISourceModel.from_wsclean_model(
-        wsclean_fits_files=wsclean_fits_files,
-        time=ms.ref_time,
-        phase_tracking=ms.meta.phase_tracking,
-        freqs=ms.meta.freqs
-    )
-
-    source_file = source_model_registry.get_instance(
-        source_model_registry.get_match('mock')).get_wsclean_clean_component_file()
-
-    wsclean_sources = WSCleanSourceModel.from_wsclean_model(
-        wsclean_clean_component_file=source_file,
-        time=ms.ref_time,
-        phase_tracking=ms.meta.phase_tracking,
-        freqs=ms.meta.freqs
-    )
-
-    return fits_sources, wsclean_sources, ms
+    return sky_model, ms
 
 
 def test_calibration(mock_calibrator_source_models):
-    fits_sources, wsclean_sources, ms = mock_calibrator_source_models
+    sky_model, ms = mock_calibrator_source_models
 
     # print(fits_sources, wsclean_sources, ms)
 
     calibration = Calibration(
         num_iterations=10,
-        wsclean_source_models=[wsclean_sources],
-        fits_source_models=[fits_sources],
+        sky_model=sky_model,
         preapply_gain_model=None,
         inplace_subtract=True,
-        verbose=True
+        verbose=True,
+        plot_folder='plots'
     )
     calibration.calibrate(ms)

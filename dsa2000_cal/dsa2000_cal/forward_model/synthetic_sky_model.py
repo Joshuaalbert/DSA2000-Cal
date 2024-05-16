@@ -18,32 +18,14 @@ from dsa2000_cal.source_models.gaussian_stokes_I_source_model import transform_e
 from dsa2000_cal.source_models.point_stokes_I_source_model import PointSourceModel
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 
-
-class SkyModel(SerialisableBaseModel):
+@dataclasses.dataclass(eq=False)
+class SkyModel:
     component_models: List[WSCleanSourceModel]
     fits_models: List[FitsStokesISourceModel]
 
-    def to_wsclean_source_models(self) -> List[WSCleanSourceModel]:
-        source_models = []
-        for source_params in self.bright_sources:
-            source = PointSourceModel.from_point_source_params(source_params)
-            source_models.append(
-                WSCleanSourceModel(
-                    point_source_model=source,
-                    gaussian_source_model=None,
-                    freqs=source.freqs
-                )
-            )
-        for source_params in self.faint_sources:
-            source = GaussianSourceModel.from_gaussian_source_params(source_params)
-            source_models.append(
-                WSCleanSourceModel(
-                    point_source_model=None,
-                    gaussian_source_model=source,
-                    freqs=source.freqs
-                )
-            )
-        return source_models
+    @property
+    def num_sources(self) -> int:
+        return len(self.component_models) + len(self.fits_models)
 
 
 @dataclasses.dataclass(eq=False)
@@ -235,7 +217,7 @@ class SyntheticSkyModelProducer:
         component_models: List[WSCleanSourceModel] = []
         fits_models: List[FitsStokesISourceModel] = []
         key1, key2, key3 = jax.random.split(self.key, 3)
-        if include_bright and self.num_faint_sources > 0:
+        if include_bright and self.num_bright_sources > 0:
             component_models.extend(self.create_bright_sources_inside_fov(key=key1))
         if include_faint and self.num_faint_sources > 0:
             component_models.extend(self.create_faint_sources_inside_fov(key=key2))

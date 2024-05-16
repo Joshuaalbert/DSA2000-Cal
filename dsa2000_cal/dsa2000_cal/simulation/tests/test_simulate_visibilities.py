@@ -10,6 +10,7 @@ import pytest
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, array_registry
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.forward_model.synthetic_sky_model import SkyModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
@@ -77,16 +78,19 @@ def test_predict_model_visibilties(mock_calibrator_source_models):
     # print(fits_sources, wsclean_sources, ms)
 
     simulation = SimulateVisibilities(
-        wsclean_source_models=[wsclean_sources],
-        fits_source_models=[fits_sources],
-        verbose=True
+        sky_model=SkyModel(
+            component_models=[wsclean_sources],
+            fits_models=[fits_sources]
+        ),
+        verbose=True,
+        plot_folder='plots'
     )
 
     freqs = quantity_to_jnp(ms.meta.freqs)
 
     apply_gains = jnp.tile(
         jnp.eye(2)[None, None, None, None, :, :],
-        (simulation.num_sources, len(ms.meta.times), len(ms.meta.antennas), len(freqs), 1, 1)
+        (simulation.sky_model.num_sources, len(ms.meta.times), len(ms.meta.antennas), len(freqs), 1, 1)
     ).astype(simulation.dtype)
 
     gen = ms.create_block_generator(relative_time_idx=True, num_blocks=2)
@@ -97,7 +101,7 @@ def test_predict_model_visibilties(mock_calibrator_source_models):
         except StopIteration:
             break
         t0 = time_mod.time()
-        vis = simulation.predict_model_visibilities(freqs=freqs, apply_gains=apply_gains, vis_coords=coords)
+        vis = simulation.predict_model_visibilities_jax(freqs=freqs, apply_gains=apply_gains, vis_coords=coords)
         vis.block_until_ready()
         t1 = time_mod.time()
         print(f"Time to simulate: {t1 - t0}")
@@ -110,8 +114,6 @@ def test_predict_model_visibilties(mock_calibrator_source_models):
 #     # print(fits_sources, wsclean_sources, ms)
 #
 #     simulation = SimulateVisibilities(
-#         wsclean_source_models=[wsclean_sources],
-#         fits_source_models=[fits_sources],
 #         verbose=True
 #     )
 #     simulation.simulate(ms=ms,system_gain_model=)

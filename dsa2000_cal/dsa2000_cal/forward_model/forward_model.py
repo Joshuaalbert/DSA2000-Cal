@@ -12,6 +12,7 @@ from dsa2000_cal.calibration.calibration import Calibration
 from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.fits_utils import ImageModel
+from dsa2000_cal.forward_model.synthetic_sky_model import SkyModel
 from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
 from dsa2000_cal.gain_models.gain_model import ProductGainModel
@@ -29,8 +30,7 @@ class ForwardModel:
     Runs forward modelling using a sharded data structure over devices.
 
     Args:
-        simulation_wsclean_source_models: the source models to simulate visibilities
-        simulation_fits_source_models: the source models to simulate visibilities
+        sky_model: the sky model
         dish_effect_params: the dish effect model parameters
         ionosphere_specification: the ionosphere model specification, see tomographic_kernel.models.cannonical_models
         calibration_wsclean_source_models: the source models to calibrate visibilities
@@ -52,8 +52,7 @@ class ForwardModel:
     """
 
     # Simulation parameters
-    simulation_wsclean_source_models: List[WSCleanSourceModel]
-    simulation_fits_source_models: List[FitsStokesISourceModel]
+    sky_model: SkyModel
 
     # Dish effect model parameters
     dish_effect_params: DishEffectsGainModelParams
@@ -62,8 +61,7 @@ class ForwardModel:
     ionosphere_specification: SPECIFICATION
 
     # Calibration parameters
-    calibration_wsclean_source_models: List[WSCleanSourceModel]
-    calibration_fits_source_models: List[FitsStokesISourceModel]
+    calibration_sky_model: SkyModel
 
     # Plot and cache folders
     plot_folder: str
@@ -148,8 +146,7 @@ class ForwardModel:
             system_gain_model: the system gain model
         """
         simulator = SimulateVisibilities(
-            wsclean_source_models=self.simulation_wsclean_source_models,
-            fits_source_models=self.simulation_fits_source_models,
+            sky_model=self.sky_model,
             convention=self.convention,
             dtype=self.dtype,
             verbose=self.verbose,
@@ -166,8 +163,7 @@ class ForwardModel:
         beam_gain_model = beam_gain_model_factory(ms.meta.array_name)
         calibration = Calibration(
             num_iterations=15,
-            wsclean_source_models=self.calibration_wsclean_source_models,
-            fits_source_models=self.calibration_fits_source_models,
+            sky_model=self.calibration_sky_model,
             preapply_gain_model=beam_gain_model,
             inplace_subtract=False,
             residual_ms_folder='residual_ms',

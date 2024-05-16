@@ -2,7 +2,6 @@ import dataclasses
 import os
 import time as time_mod
 from functools import partial
-from typing import List
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -18,22 +17,20 @@ from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.forward_model.synthetic_sky_model import SkyModel
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, MeasurementSet, VisibilityData
 from dsa2000_cal.predict.fft_stokes_I_predict import FFTStokesIPredict, FFTStokesIModelData
 from dsa2000_cal.predict.gaussian_predict import GaussianPredict, GaussianModelData
 from dsa2000_cal.predict.point_predict import PointPredict, PointModelData
 from dsa2000_cal.source_models.corr_translation import stokes_to_linear, flatten_coherencies
-from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
-from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 from dsa2000_cal.types import SystemGains
 
 
 @dataclasses.dataclass(eq=False)
 class SimulateVisibilities:
     # source models to simulate. Each source gets a gain direction in the flux weighted direction.
-    wsclean_source_models: List[WSCleanSourceModel]
-    fits_source_models: List[FitsStokesISourceModel]
+    sky_model: SkyModel
 
     plot_folder: str
 
@@ -45,10 +42,12 @@ class SimulateVisibilities:
 
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
-        self.num_sources = len(self.wsclean_source_models) + len(self.fits_source_models)
-        self.key = jax.random.PRNGKey(self.seed)
 
-    def _stokes_I_to_linear(self, image_I: jax.Array) -> jax.Array:
+    @property
+    def key(self):
+        return jax.random.PRNGKey(self.seed)
+
+    def _stokes_I_to_linear_jax(self, image_I: jax.Array) -> jax.Array:
         """
         Convert Stokes I to linear.
 
@@ -61,9 +60,9 @@ class SimulateVisibilities:
         shape = np.shape(image_I)
         image_I = lax.reshape(image_I, (np.size(image_I),))
         zero = jnp.zeros_like(image_I)
-        image_stokes = jnp.stack([image_I, zero, zero, zero], axis=-1)  # [..., 4]
-        image_linear = jax.vmap(partial(stokes_to_linear, flat_output=False))(image_stokes)  # [..., 2, 2]
-        return lax.reshape(image_linear, shape + (2, 2))
+        image_stokes = jnp.stack([image_I, zero, zero, zero], axis=-1)  # [_, 4]
+        image_linear = jax.vmap(partial(stokes_to_linear, flat_output=False))(image_stokes)  # [_, 2, 2]
+        return lax.reshape(image_linear, shape + (2, 2))  # [..., 2, 2]
 
     def get_source_directions(self, obs_time: at.Time, phase_tracking: ac.ICRS) -> ac.ICRS:
         """
@@ -79,9 +78,9 @@ class SimulateVisibilities:
         sources_lmn = au.Quantity(
             np.stack(
                 [
-                    model.flux_weighted_lmn() for model in self.wsclean_source_models
+                    model.flux_weighted_lmn() for model in self.sky_model.component_models
                 ] + [
-                    model.flux_weighted_lmn() for model in self.fits_source_models
+                    model.flux_weighted_lmn() for model in self.sky_model.fits_models
                 ],
                 axis=0)
         )  # [num_calibrators, 3]
@@ -91,8 +90,9 @@ class SimulateVisibilities:
             phase_tracking=phase_tracking
         )
 
-    def predict_model_visibilities(self, freqs: jax.Array, apply_gains: jax.Array | None, vis_coords: VisibilityCoords,
-                                   flat_coherencies: bool = False) -> jax.Array:
+    def predict_model_visibilities_jax(self, freqs: jax.Array, apply_gains: jax.Array | None,
+                                       vis_coords: VisibilityCoords,
+                                       flat_coherencies: bool = False) -> jax.Array:
         """
         Simulate visibilities for a set of source models.
 
@@ -108,7 +108,7 @@ class SimulateVisibilities:
         """
         num_rows, _ = np.shape(vis_coords.uvw)
         num_freqs = np.shape(freqs)[0]
-        vis = jnp.zeros((self.num_sources, num_rows, num_freqs, 2, 2),
+        vis = jnp.zeros((self.sky_model.num_sources, num_rows, num_freqs, 2, 2),
                         self.dtype)  # [cal_dirs, num_rows, num_chans, 2, 2]
         # Predict the visibilities with pre-applied gains
         dft_predict = PointPredict(convention=self.convention,
@@ -120,7 +120,7 @@ class SimulateVisibilities:
 
         # Each calibrator has a source model which is a collection of sources that make up the calibrator.
         cal_idx = 0
-        for wsclean_source_model in self.wsclean_source_models:
+        for wsclean_source_model in self.sky_model.component_models:
             preapply_gains_cal = apply_gains[cal_idx]  # [num_time, num_ant, num_chan, 2, 2]
 
             if wsclean_source_model.point_source_model is not None:
@@ -131,14 +131,14 @@ class SimulateVisibilities:
 
                 lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
                 image_I = quantity_to_jnp(wsclean_source_model.point_source_model.A, 'Jy')  # [source, chan]
-                image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
+                image_linear = self._stokes_I_to_linear_jax(image_I)  # [source, chan, 2, 2]
 
                 dft_model_data = PointModelData(
                     gains=preapply_gains_cal,  # [num_time, num_ant, num_chan, 2, 2]
                     lmn=lmn,
                     image=image_linear
                 )
-                vis = vis.at[cal_idx].add(
+                vis = vis.at[cal_idx, ...].add(
                     dft_predict.predict(
                         freqs=freqs,
                         dft_model_data=dft_model_data,
@@ -154,7 +154,7 @@ class SimulateVisibilities:
 
                 lmn = jnp.stack([l0, m0, n0], axis=-1)  # [source, 3]
                 image_I = quantity_to_jnp(wsclean_source_model.gaussian_source_model.A, 'Jy')  # [source, chan]
-                image_linear = self._stokes_I_to_linear(image_I)  # [source, chan, 2, 2]
+                image_linear = self._stokes_I_to_linear_jax(image_I)  # [source, chan, 2, 2]
 
                 ellipse_params = jnp.stack([
                     quantity_to_jnp(wsclean_source_model.gaussian_source_model.major),
@@ -182,7 +182,7 @@ class SimulateVisibilities:
 
             cal_idx += 1
 
-        for fits_source_model in self.fits_source_models:
+        for fits_source_model in self.sky_model.fits_models:
             preapply_gains_cal = apply_gains[cal_idx]  # [num_time, num_ant, num_chan, 2, 2]
             l0 = quantity_to_jnp(fits_source_model.l0)  # [num_chan]
             m0 = quantity_to_jnp(fits_source_model.m0)  # [num_chan]
@@ -214,9 +214,9 @@ class SimulateVisibilities:
             )
         if flat_coherencies:
             # Transform
-            vis = lax.reshape(vis, (self.num_sources * num_rows * num_freqs, 2, 2))
+            vis = lax.reshape(vis, (self.sky_model.num_sources * num_rows * num_freqs, 2, 2))
             vis = jax.vmap(flatten_coherencies)(vis)  # [num_sources*num_rows*num_freqs, 4]
-            vis = lax.reshape(vis, (self.num_sources, num_rows, num_freqs, 4))
+            vis = lax.reshape(vis, (self.sky_model.num_sources, num_rows, num_freqs, 4))
         return vis
 
     def simulate(self, ms: MeasurementSet, system_gain_model: GainModel):
@@ -261,6 +261,7 @@ class SimulateVisibilities:
         fig, axs = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
         gen = ms.create_block_generator(vis=False, weights=False, flags=False)
         gen_response = None
+        key = self.key
         while True:
             try:
                 time, visibility_coords, _ = gen.send(gen_response)
@@ -284,10 +285,10 @@ class SimulateVisibilities:
 
             visibility_coords = jax.tree_map(jnp.asarray, visibility_coords)
 
-            self.key, key = jax.random.split(self.key, 2)
+            key, sim_key = jax.random.split(key, 2)
 
             data_dict = dict(
-                key=key,
+                key=sim_key,
                 freqs=quantity_to_jnp(ms.meta.freqs),
                 channel_width_Hz=quantity_to_jnp(ms.meta.channel_width),
                 integration_time_s=quantity_to_jnp(ms.meta.integration_time),
@@ -353,7 +354,7 @@ class SimulateVisibilities:
                       apply_gains: jax.Array,
                       vis_coords: VisibilityCoords) -> VisibilityData:
 
-        vis = self.predict_model_visibilities(
+        vis = self.predict_model_visibilities_jax(
             freqs=freqs,
             apply_gains=apply_gains,
             vis_coords=vis_coords,

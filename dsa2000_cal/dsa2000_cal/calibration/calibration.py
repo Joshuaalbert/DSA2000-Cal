@@ -1,7 +1,7 @@
 import time as time_mod
 from dataclasses import dataclass
 from functools import partial
-from typing import NamedTuple, Tuple, List
+from typing import NamedTuple, Tuple
 
 import astropy.units as au
 import jax
@@ -17,13 +17,12 @@ from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.jax_utils import pytree_unravel, promote_pytree
 from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.forward_model.synthetic_sky_model import SkyModel
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, VisibilityData, MeasurementSet
 from dsa2000_cal.predict.vec_utils import kron_product
 from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.source_models.corr_translation import flatten_coherencies
-from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
-from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
 from dsa2000_cal.types import CalibrationSolutions
 
 tfpd = tfp.distributions
@@ -46,8 +45,7 @@ class CalibrationData(NamedTuple):
 @dataclass(eq=False)
 class Calibration:
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
-    wsclean_source_models: List[WSCleanSourceModel]
-    fits_source_models: List[FitsStokesISourceModel]
+    sky_model: SkyModel
 
     preapply_gain_model: GainModel | None
 
@@ -65,7 +63,6 @@ class Calibration:
     num_shards: int = 1
 
     def __post_init__(self):
-        self.num_calibrators = len(self.wsclean_source_models) + len(self.fits_source_models)
         self.key = jax.random.PRNGKey(self.seed)
         if self.solution_cadence is not None and not self.solution_cadence.unit.is_equivalent(au.s):
             raise ValueError("solution_cadence must be in seconds.")
@@ -115,10 +112,10 @@ class Calibration:
         print(f"Running calibration with averaging interval {self.average_interval} / {num_blocks} blocks.")
 
         # Ensure the freqs are the same in the models
-        for wsclean_source_model in self.wsclean_source_models:
+        for wsclean_source_model in self.sky_model.component_models:
             if not np.allclose(ms.meta.freqs.to('Hz'), wsclean_source_model.freqs.to('Hz')):
                 raise ValueError("Frequencies in the measurement set and source models must match.")
-        for fits_source_model in self.fits_source_models:
+        for fits_source_model in self.sky_model.fits_models:
             if not np.allclose(ms.meta.freqs.to('Hz'), fits_source_model.freqs.to('Hz')):
                 raise ValueError("Frequencies in the measurement set and source models must match.")
         if not self.inplace_subtract:
@@ -128,7 +125,7 @@ class Calibration:
             print("Created a new measurement set for residuals.")
 
         init_params = self.get_init_params(
-            num_source=self.num_calibrators,
+            num_source=self.sky_model.num_sources,
             num_time=num_blocks if self.average_interval is None else 1,
             # If averaging, we only have one gain per average interval
             num_ant=len(ms.meta.antennas),
@@ -138,9 +135,9 @@ class Calibration:
         calibrator_lmn = au.Quantity(
             np.stack(
                 [
-                    model.flux_weighted_lmn() for model in self.wsclean_source_models
+                    model.flux_weighted_lmn() for model in self.sky_model.component_models
                 ] + [
-                    model.flux_weighted_lmn() for model in self.fits_source_models
+                    model.flux_weighted_lmn() for model in self.sky_model.fits_models
                 ],
                 axis=0)
         )  # [num_calibrators, 3]
@@ -187,7 +184,7 @@ class Calibration:
             else:
                 preapply_gains = jnp.tile(
                     jnp.eye(2, dtype=self.float_dtype)[None, None, None, None, :, :],
-                    reps=(self.num_calibrators, num_blocks, len(ms.meta.antennas), len(ms.meta.freqs), 1, 1)
+                    reps=(self.sky_model.num_sources, num_blocks, len(ms.meta.antennas), len(ms.meta.freqs), 1, 1)
                 )
 
             self.key, key = jax.random.split(self.key)
@@ -272,16 +269,15 @@ class Calibration:
         """
 
         simulator = SimulateVisibilities(
-            wsclean_source_models=self.wsclean_source_models,
-            fits_source_models=self.fits_source_models,
+            sky_model=self.sky_model,
             convention=self.convention,
             dtype=self.dtype,
             verbose=self.verbose,
             plot_folder=self.plot_folder
         )
 
-        vis = simulator.predict_model_visibilities(freqs=freqs, apply_gains=preapply_gains,
-                                                   vis_coords=vis_coords)  # [num_cal, num_row, num_chan, 2, 2]
+        vis = simulator.predict_model_visibilities_jax(freqs=freqs, apply_gains=preapply_gains,
+                                                       vis_coords=vis_coords)  # [num_cal, num_row, num_chan, 2, 2]
 
         # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))'
         # TODO: https://jax.readthedocs.io/en/latest/notebooks/shard_map.html#fsdp-tp-with-shard-map-at-the-top-level
