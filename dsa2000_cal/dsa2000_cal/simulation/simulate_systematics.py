@@ -76,7 +76,7 @@ class SimulateSystematics:
         ionosphere_gain_model = ionosphere_gain_model_factory(
             phase_tracking=ms.meta.phase_tracking,
             field_of_view=field_of_view + 32 * au.arcmin,
-            angular_separation=32 * au.arcmin,
+            angular_separation=48 * au.arcmin,
             spatial_separation=1 * au.km,
             observation_start_time=ms.meta.times[0],
             observation_duration=observation_duration,

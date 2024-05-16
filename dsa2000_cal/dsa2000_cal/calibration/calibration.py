@@ -17,6 +17,7 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.jax_utils import pytree_unravel, promote_pytree
+from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.gain_models.gain_model import GainModel
@@ -261,6 +262,11 @@ class Calibration:
         print(f"Completed calibration in {t1 - t0} seconds, with residual sum {residual_sum}. "
               f"Calibration solutions saved to {solution_file}.")
         print(f"Residuals stored in {ms}.")
+        for antenna_idx in range(len(ms.meta.antennas), len(ms.meta.antennas) // 20):
+            fig = plot_antenna_gains(calibration_solutions, antenna_idx=antenna_idx, direction_idx=0)
+            fig.savefig(f"{self.plot_folder}/antenna_{antenna_idx}_calibration_solutions.png")
+            plt.close(fig)
+        print(f"Plots saved to {self.plot_folder}.")
 
         return ms
 

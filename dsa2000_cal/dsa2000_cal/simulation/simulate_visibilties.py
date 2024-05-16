@@ -16,7 +16,9 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.noise import calc_baseline_noise
+from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, MeasurementSet, VisibilityData
 from dsa2000_cal.predict.fft_stokes_I_predict import FFTStokesIPredict, FFTStokesIModelData
@@ -25,6 +27,18 @@ from dsa2000_cal.predict.point_predict import PointPredict, PointModelData
 from dsa2000_cal.source_models.corr_translation import stokes_to_linear, flatten_coherencies
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
+
+
+class SystemGains(SerialisableBaseModel):
+    """
+    Simulated system gains, stored in a serialisable format.
+    """
+    directions: ac.ICRS  # [source]
+    times: at.Time  # [time]
+    antennas: ac.EarthLocation  # [ant]
+    antenna_labels: List[str]  # [ant]
+    freqs: au.Quantity  # [chan]
+    gains: np.ndarray  # [source, time, ant, chan, 2, 2]
 
 
 @dataclasses.dataclass(eq=False)
@@ -250,6 +264,9 @@ class SimulateVisibilities:
             phase_tracking=ms.meta.phase_tracking
         )
 
+        # Storage system gains
+        simulated_gains = []
+
         # Metrics
         vis_sum = 0.
         t0 = time_mod.time()
@@ -275,6 +292,7 @@ class SimulateVisibilities:
             )  # [num_sources, num_ant, num_freq, 2, 2]
             # Add time dim
             system_gains = system_gains[:, None, ...]  # [num_sources, num_time=1, num_ant, num_freq, 2, 2]
+            simulated_gains.append(system_gains)
 
             visibility_coords = jax.tree_map(jnp.asarray, visibility_coords)
 
@@ -318,6 +336,27 @@ class SimulateVisibilities:
         axs[0][0].set_title('UV Coverage')
         fig.savefig(os.path.join(self.plot_folder, 'uv_coverage.png'))
         plt.close(fig)
+
+        # Store simulated gains
+        simulated_gains = np.concatenate(simulated_gains,
+                                         axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
+        system_gains = SystemGains(
+            gains=simulated_gains,
+            directions=source_directions,
+            times=ms.meta.times,
+            antennas=ms.meta.antennas,
+            antenna_labels=ms.meta.antenna_names,
+            freqs=ms.meta.freqs
+        )
+        solution_file = "system_gains.json"
+        with open(solution_file, "w") as fp:
+            fp.write(system_gains.json(indent=2))
+        print(f"Saved system gains to {solution_file}")
+        for antenna_idx in range(len(ms.meta.antennas), len(ms.meta.antennas) // 20):
+            fig = plot_antenna_gains(system_gains, antenna_idx=antenna_idx, direction_idx=0)
+            fig.savefig(f"{self.plot_folder}/antenna_{antenna_idx}_system_gains.png")
+            plt.close(fig)
+        print(f"Plots saved to {self.plot_folder}.")
 
     @partial(jax.jit, static_argnums=(0,))
     def _simulate_jax(self, key, freqs: jax.Array,
