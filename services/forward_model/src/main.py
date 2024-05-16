@@ -14,7 +14,7 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, M
 # Set num jax devices
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=72"
 
 
 def main(ms_folder: str):
@@ -35,7 +35,7 @@ def main(ms_folder: str):
             coherencies=['XX', 'XY', 'YX', 'YY'],
             pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
             times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(1) * au.s,
-            freqs=au.Quantity([700, 1400, 2000], unit=au.MHz),
+            freqs=au.Quantity(np.linspace(700, 2000, 8000)[:32], unit=au.MHz),
             antennas=antennas,
             antenna_names=array.get_antenna_names(),
             antenna_diameters=array.get_antenna_diameter(),
@@ -87,7 +87,7 @@ def main(ms_folder: str):
         calibration_wsclean_source_models=sky_model_calibrators_source_models,
         simulation_fits_source_models=[],
         calibration_fits_source_models=[],
-        num_shards=3,
+        num_shards=32,
         oversample_factor=1.5,
         field_of_view=4 * au.deg,
     )

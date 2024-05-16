@@ -9,16 +9,17 @@ declare -A gpu_services
 declare -A extras
 
 services_order=(
+  "forward_model"
   #  "simulate_visibilities"
   #  "transfer_to_casa_ms"
   #  "validate_forward_modelling"
   #  "transfer_from_casa_ms"
-  "lwa_full_sky_image"
+  #  "lwa_full_sky_image"
 )
 
 # The values represent whether to use --no-cache or not. 1 for yes, 0 for no.
 cache_options=(
-  ["simulate_visibilities"]=0
+  ["forward_model"]=0
   ["transfer_to_casa_ms"]=0
   ["validate_forward_modelling"]=0
   ["inspect"]=0
@@ -29,7 +30,7 @@ cache_options=(
 # Add special volumes that need to be mounted
 # Use single quotes for variables.
 volumes=(
-  #  ["simulate_visibilities"]='-v $DATA_DIR_HOST:/dsa/data'
+    ["forward_model"]='-v $DATA_DIR_HOST:/dsa/data'
   #  ["transfer_to_casa_ms"]='-v $DATA_DIR_HOST:/dsa/data'
   #  ["validate_forward_modelling"]='-v $DATA_DIR_HOST:/dsa/data'
   #  ["inspect"]='-v $DATA_DIR_HOST:/dsa/data'
@@ -44,7 +45,7 @@ extras=(
 
 # Add other services requiring GPU with a value of 1.
 gpu_services=(
-  ["simulate_visibilities"]=0
+  ["forward_model"]=0
   ["transfer_to_casa_ms"]=0
   ["validate_forward_modelling"]=0
   ["inspect"]=0
