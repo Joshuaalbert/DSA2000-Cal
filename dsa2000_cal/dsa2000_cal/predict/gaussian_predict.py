@@ -14,6 +14,7 @@ from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
 from dsa2000_cal.predict.check_utils import check_dft_predict_inputs
 from dsa2000_cal.predict.vec_utils import kron_product
 from dsa2000_cal.source_models.corr_translation import linear_to_stokes, stokes_to_linear
+from dsa2000_cal.source_models.gaussian_stokes_I_source_model import ellipse_rotation
 
 
 class GaussianModelData(NamedTuple):
@@ -163,33 +164,41 @@ class GaussianPredict:
         Returns:
             Fourier transformed Gaussian source evaluated at uvw
         """
-        # l = l0 + R @ r @ l_circ
-        # Gaussian source: e^(- l_circ(l)^2 / (2 * FWHM^2)) such that 1/2 = e^(-1/(2 * FWHM^2))
-        # FWHM = 1/sqrt(2*log(2))
-        # FT(l -> u) = FT(l_circ -> u')
+        # f(x) = A * e^(-alpha (x - x0)^T R^T D^T D R (x - x0)),
+        # where D = diag(minor/2, major/2)
+        # R = rotation(-posang)
+        # alpha=log(2)
 
-        fwhm = 1. / np.sqrt(2.0 * np.log(2.0))
+        # F(k) = int f(x) e^(-2pi i k^T x) dx
+        # Let y = D R (x - x0) so x = R^T D^-1 y + x0 so dx = det(R^T D^-1) dy = det(D^-1) dy
+        # F(k) = int A e^(-alpha y^T y) e^(-2pi i k^T (R^T D^-1 y + x0)) det(D^-1) dy
+        # = A det(D^-1) e^(-2pi i k^T x0) e^(-alpha y^T y) e^(-2pi i k^T R^T D^-1 y) dy
+        # Let k' = D^-1 R k so
+        # F(k) = A det(D^-1) e^(-2pi i k^T x0) int e^(-alpha y^T y) e^(-2pi i k'^T y) dy
+        # Use fourier of e^(-a x^2) = sqrt(pi/a) e^(-pi^2 u^2 / a)
+        # F(k) = A det(D^-1) e^(-2pi i k^T x0) (pi/alpha) e^(-pi^2 k'^2 / alpha)
+        # = A det(D^-1) e^(-2pi i k^T x0) (pi/alpha) e^(-pi^2 (D^-1 R k)^2 / alpha)
+        # D^-1 = diag(2/minor, 2/major), |D^-1| = 4 / (minor * major)
+        alpha = np.log(2.)
+        norm = 4. * jnp.pi / (alpha * major * minor)
+        A = A / norm  # convert to peak value
 
         # Scale uvw by wavelength
         u /= wavelength
         v /= wavelength
+        k = jnp.asarray([u, v])
+        x0 = jnp.asarray([l0, m0])
+        R = ellipse_rotation(-theta)
+        D_inv = jnp.diag(jnp.asarray([2. / minor, 2. / major]))
+        det_D_inv = 4. / (minor * major)
 
-        # Spectral shape, Convert to l-projection, m-projection: u' = (r @ R @ u)
-        u_prime = u * minor * jnp.cos(theta) - v * minor * jnp.sin(theta)
-        v_prime = u * major * jnp.sin(theta) + v * major * jnp.cos(theta)
+        kx0 = jnp.sum(k * x0)
+        D_inv_R_k = D_inv @ R @ k
+        D_inv_R_k2 = jnp.sum(jnp.square(D_inv_R_k))
 
-        # phase shift
-        phase_shift = -2 * jnp.pi * (u * l0 + v * m0)
-
-        # Calculate spectral decay: FT[exp(-a x^2)] = sqrt(pi/a) * exp(-pi^2 u^2 / a)
-        # With a = 1 / (2 FWHM**2)
-        # 2D norm_factor: pi / a
-        norm_factor = np.pi * 2.0 * fwhm ** 2
-        spectral_decay_factor = (-np.pi ** 2 * 2. * fwhm ** 2) * (u_prime ** 2 + v_prime ** 2)
-        spectral_decay = norm_factor * jnp.exp(spectral_decay_factor)
-
-        # Calculate the fourier transform
-        return (A * spectral_decay) * (jnp.cos(phase_shift) + jnp.sin(phase_shift) * 1j)
+        fourier = A * det_D_inv * (jnp.pi / alpha) * jnp.exp(-2j * jnp.pi * kx0) * jnp.exp(
+            -jnp.pi ** 2 * D_inv_R_k2 / alpha)
+        return fourier
 
     def _single_predict(self, u, v, w,
                         wavelength, A,

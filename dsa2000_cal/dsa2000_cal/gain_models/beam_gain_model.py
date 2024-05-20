@@ -6,7 +6,6 @@ import jax.numpy as jnp
 import numpy as np
 from astropy import units as au, coordinates as ac, time as at
 
-from dsa2000_cal.antenna_model.utils import get_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
@@ -49,7 +48,7 @@ class BeamGainModel(GainModel):
     model_freqs: au.Quantity  # [num_freqs_in_model]
     model_theta: au.Quantity  # [num_dir] # Theta is in [0, 180] measured from bore-sight
     model_phi: au.Quantity  # [num_dir] # Phi is in [0, 360] measured from x-axis
-    model_amplitude: au.Quantity  # [num_dir, num_freqs]
+    model_gains: au.Quantity  # [num_dir, num_freqs, 2, 2]
     num_antenna: int
 
     dtype: jnp.dtype = jnp.complex64
@@ -71,12 +70,9 @@ class BeamGainModel(GainModel):
             raise ValueError(f"Expected theta to have 1 dimension but got {len(self.model_theta.shape)}")
         if len(self.model_phi.shape) != 1:
             raise ValueError(f"Expected phi to have 1 dimension but got {len(self.model_phi.shape)}")
-        if len(self.model_amplitude.shape) != 2:
-            raise ValueError(f"Expected amplitude to have 2 dimensions but got {len(self.model_amplitude.shape)}")
-        if self.model_amplitude.shape != (self.model_theta.shape[0], self.model_freqs.shape[0]):
+        if self.model_gains.shape != (len(self.model_theta), len(self.model_freqs), 2, 2):
             raise ValueError(
-                f"amplitude shape {self.model_amplitude.shape} does not match theta shape {self.model_theta.shape} "
-                f"and freqs shape {self.model_freqs.shape}."
+                f"gains shape {self.model_gains.shape} does not match theta shape (num_dir, num_freqs, 2, 2)."
             )
 
         # Ensure phi,theta,freq units congrutent
@@ -86,8 +82,8 @@ class BeamGainModel(GainModel):
             raise ValueError(f"Expected phi to be in degrees but got {self.model_phi.unit}")
         if not self.model_freqs.unit.is_equivalent(au.Hz):
             raise ValueError(f"Expected model_freqs to be in Hz but got {self.model_freqs.unit}")
-
-        # Amplitude is probably in units, but not worried about it for now
+        if not self.model_gains.unit.is_equivalent(au.dimensionless_unscaled):
+            raise ValueError(f"Expected model_gains to be dimensionless but got {self.model_amplitude.unit}")
 
         # Convert phi,theta to lmn coordinates, where Y-X frame matches L-M frame
         # First to cartesian
@@ -96,7 +92,6 @@ class BeamGainModel(GainModel):
             theta=quantity_to_jnp(self.model_theta, 'rad')
         )
         self.lmn_data = au.Quantity(jnp.stack([y, x, z_bore], axis=-1), unit=au.dimensionless_unscaled)  # [num_dir, 3]
-
 
     @partial(jax.jit, static_argnums=(0,))
     def _compute_gain_jax(self, freqs: jax.Array, lmn_sources: jax.Array):
@@ -110,12 +105,12 @@ class BeamGainModel(GainModel):
             (source_shape) + [num_ant, num_freq, 2, 2] The beam gain at the given source coordinates.
         """
         lmn_data = quantity_to_jnp(self.lmn_data)
-        amplitude = quantity_to_jnp(self.model_amplitude)
+        gains = jnp.asarray(quantity_to_jnp(self.model_gains), dtype=self.dtype)
         model_freqs = quantity_to_jnp(self.model_freqs)
 
         # Interpolate in freq
         (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(freqs, model_freqs)
-        amplitude = amplitude[..., i0] * alpha0 + amplitude[..., i1] * alpha1  # [num_dir, num_freqs]
+        gains = gains[..., i0, :, :] * alpha0 + gains[..., i1, :, :] * alpha1  # [num_dir, num_freqs, 2, 2]
 
         shape = lmn_sources.shape[:-1]
         lmn_sources = lmn_sources.reshape((-1, 3))
@@ -123,17 +118,15 @@ class BeamGainModel(GainModel):
                           axis=-1)  # [num_sources, num_dir]
         closest = jnp.argmin(dist_sq, axis=-1)  # [num_sources]
 
-        amplitude = amplitude[closest, :]  # [num_sources, num_freqs]
+        gains = gains[closest, :, :, :]  # [num_sources, num_freqs, 2 ,2]
         evanescent_mask = jnp.isnan(lmn_sources[..., 2])  # [num_sources]
-        amplitude = jnp.where(evanescent_mask[:, None], np.nan, amplitude)  # [num_sources, num_freqs]
+        gains = jnp.where(evanescent_mask[:, None, None, None], jnp.nan,
+                          gains)  # [num_sources, num_freqs, 2, 2]
 
-        amplitude = jnp.repeat(amplitude[:, None, :], self.num_antenna, axis=1)  # [num_sources, num_ant, num_freqs]
-        # set diagonal
-        gains = jnp.zeros(amplitude.shape + (2, 2), self.dtype)
-        gains = gains.at[..., 0, 0].set(amplitude)
-        gains = gains.at[..., 1, 1].set(amplitude)
+        gains = jnp.repeat(gains[:, None, :, :, :], self.num_antenna,
+                           axis=1)  # [num_sources, num_ant, num_freqs, 2, 2]
 
-        gains = gains.reshape(shape + gains.shape[1:])
+        gains = gains.reshape(shape + gains.shape[1:])  # (source_shape) + [num_ant, num_freq, 2, 2]
 
         return gains
 
@@ -174,16 +167,19 @@ def beam_gain_model_factory(array_name: str) -> BeamGainModel:
     num_antenna = len(array.get_antennas())
 
     model_freqs = dish_model.get_freqs()
-    amplitude = dish_model.get_amplitude()  # [num_theta, num_phi, num_freqs]
-    amplitude = amplitude.reshape((-1, len(model_freqs)))  # [num_dir, num_freqs]
-    voltage_gain = dish_model.get_voltage_gain()
-    amplitude = au.Quantity(amplitude / voltage_gain)
+    amplitude = dish_model.get_amplitude()  # [num_theta, num_phi, num_freqs, 2, 2]
+    voltage_gain = dish_model.get_voltage_gain()  # [num_freqs]
+    amplitude = au.Quantity(amplitude / voltage_gain[:, None, None])  # [num_theta, num_phi, num_freqs, 2, 2]
+
+    phase = dish_model.get_phase()  # [num_theta, num_phi, num_freqs, 2, 2]
+    gains = amplitude * np.exp(1j * phase)
+    gains = gains.reshape((-1, len(model_freqs), 2, 2)) * au.dimensionless_unscaled  # [num_dir, num_freqs, 2, 2]
 
     beam_gain_model = BeamGainModel(
         model_freqs=model_freqs,
         model_theta=theta,
         model_phi=phi,
-        model_amplitude=amplitude,
+        model_gains=gains,
         num_antenna=num_antenna
     )
     return beam_gain_model

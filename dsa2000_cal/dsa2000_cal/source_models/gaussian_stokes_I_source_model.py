@@ -5,17 +5,17 @@ import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import jax
-import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 import sympy as sp
 from astropy import constants
 from astropy.coordinates import offset_by
-from jax._src.scipy.optimize.minimize import minimize
+from jax import numpy as jnp
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.source_models.wsclean_util import parse_and_process_wsclean_source_line
 
@@ -314,19 +314,25 @@ class GaussianSourceModel(AbstractSourceModel):
         # Evaluate over LM
         flux_model = np.zeros_like(L) * au.Jy
 
-        def _gaussian_flux(l0, m0, major, minor, theta):
-            # print(l0, m0, major, minor, theta)
-            fwhm = 1. / np.sqrt(2.0 * np.log(2.0))
-            l_circ = (L - l0) * np.cos(theta) / minor + (M - m0) * np.sin(theta) / major
-            m_circ = - (L - l0) * np.sin(-theta) / minor + (M - m0) * np.cos(-theta) / major
-            beam_area = np.pi * major * minor
-            pixel_area = (lvec[1] - lvec[0]) * (mvec[1] - mvec[0])
-            ratio = pixel_area / beam_area
-            return np.exp(-l_circ ** 2 / (2 * fwhm ** 2) - m_circ ** 2 / (2 * fwhm ** 2)) * ratio
+        @jax.jit
+        def _gaussian_flux(A, l0, m0, major, minor, theta):
+            return jax.vmap(
+                lambda l, m: ellipse_eval(A, major, minor, theta, l, m, l0, m0)
+            )(jnp.asarray(L).flatten(), jnp.asarray(M).flatten()).reshape(L.shape)
+
+        pixel_area = (lvec[1] - lvec[0]) * (mvec[1] - mvec[0])
+        print(quantity_to_jnp(self.A[0, :], 'Jy'))
 
         for i in range(self.num_sources):
-            flux_model += _gaussian_flux(self.l0[i], self.m0[i], self.major[i], self.minor[i],
-                                         self.theta[i]) * self.A[i, 0]
+            args = (
+                quantity_to_jnp(self.A[i, 0], 'Jy'),
+                quantity_to_jnp(self.l0[i]),
+                quantity_to_jnp(self.m0[i]),
+                quantity_to_jnp(self.major[i]),
+                quantity_to_jnp(self.minor[i]),
+                quantity_to_jnp(self.theta[i]))
+            beam_area = (np.pi / (2. * np.log(2.))) * quantity_to_jnp(self.major[i]) * quantity_to_jnp(self.minor[i])
+            flux_model += np.asarray(_gaussian_flux(*args)) * pixel_area / beam_area * au.Jy
         return lvec, mvec, flux_model
 
     def plot(self):
@@ -369,44 +375,34 @@ def derive_transform():
     print(solution[v].simplify())
 
 
-def _numerically_solve_jax(l0, m0, l1, m1, l2, m2, l3, m3,
-                           major_guess=1., minor_guess=1., theta_guess=0.):
-    # Use JAX to solve above
-
-    def loss(params):
-        log_major, log_minor, theta = params
-        major = jnp.exp(log_major)
-        minor = jnp.exp(log_minor)
-
-        def to_circular(l, m):
-            l_circ = (l - l0) * jnp.cos(theta) / minor + (m - m0) * jnp.sin(theta) / major
-            m_circ = -(l - l0) * jnp.sin(theta) / minor + (m - m0) * jnp.cos(theta) / major
-            return l_circ, m_circ
-
-        def constaint(l, m):
-            l_circ, m_circ = to_circular(l, m)
-            return l_circ ** 2 + m_circ ** 2 - 1
-
-        return constaint(l1, m1) ** 2 + constaint(l2, m2) ** 2 + constaint(l3, m3) ** 2
-
-    init_param = jnp.asarray([jnp.log(major_guess), jnp.log(minor_guess), theta_guess])
-    results = minimize(loss, x0=init_param, method='BFGS')
-    log_major, log_minor, theta = results.x
-    major = jnp.exp(log_major)
-    minor = jnp.exp(log_minor)
-    return jnp.asarray([major, minor, theta]), results.success
+def ellipse_rotation(pos_angle):
+    return jnp.asarray([[jnp.cos(pos_angle), jnp.sin(pos_angle)], [-jnp.sin(pos_angle), jnp.cos(pos_angle)]])
 
 
-@jax.jit
-def parallel_numerically_solve(l0, m0, l1, m1, l2, m2, l3, m3,
-                               init_major, init_minor, init_theta):
-    opt_params, success = jax.vmap(_numerically_solve_jax)(
-        l0, m0, l1, m1, l2, m2, l3, m3,
-        init_major, init_minor, init_theta
-    )
-    return opt_params, success
+def ellipse_eval(A, b_major, b_minor, pos_angle, l, m, l0, m0):
+    """
+    Evaluate the elliptical Gaussian at the given l, m coordinates.
 
+    Args:
+        b_major: the major axis
+        b_minor: the minor axis
+        pos_angle: the position angle
+        l: the l coordinate
+        m: the m coordinate
 
-if __name__ == '__main__':
-    pass
-    # linear_term_derivation()
+    Returns:
+        the value of the Gaussian at the given l, m coordinates
+    """
+    # For all points x on ellipse, |D^{-1} R^{-1} (x - x0)|^2 = 1.
+    # Define alpha s.t. 1/2 = e^(-alpha/2 * |D^{-1} R^{-1} (x - x0)|^2)
+    R_inv = ellipse_rotation(-pos_angle)
+    D_diag = jnp.asarray([0.5 * b_minor, 0.5 * b_major])
+    alpha = np.log(2.)
+    diff = jnp.asarray([l - l0, m - m0])
+    diff = R_inv @ diff
+    diff = diff / D_diag
+    dist2 = jnp.sum(jnp.square(diff))
+    # A = int F * e^(-alpha * |D^{-1} R^{-1} (x - x0)|^2) dx = F *  pi / alpha
+    # A = int F * e^(-alpha * y^2) dy /(bmajor/2 * bminor/2) = F *  4 * pi / (alpha * bmajor * bminor)
+    norm = 4. * jnp.pi / (alpha * b_major * b_minor)
+    return (A / norm) * jnp.exp(-alpha * dist2)

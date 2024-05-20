@@ -14,9 +14,10 @@ class AbstractAntennaModel(ABC):
 
     @abstractmethod
     def plot_polar_amplitude(self):
-        """
-        Plot the antenna beam model in polar coordinates.
-        """
+        ...
+
+    @abstractmethod
+    def plot_polar_phase(self):
         ...
 
     @abstractmethod
@@ -25,7 +26,18 @@ class AbstractAntennaModel(ABC):
         Get the antenna beam model amplitude. This has peak value of 1 typically along bore sight.
 
         Returns:
-            A 3D array of shape [num_theta, num_phi, num_freqs] where num_theta is the number of theta values,
+            A 3D array of shape [num_theta, num_phi, num_freqs, 2, 2] where num_theta is the number of theta values,
+            num_phi is the number of phi values, and num_freqs is the number of frequency values.
+        """
+        ...
+
+    @abstractmethod
+    def get_phase(self) -> au.Quantity:
+        """
+        Get the antenna beam model phase.
+
+        Returns:
+            A 3D array of shape [num_theta, num_phi, num_freqs, 2, 2] where num_theta is the number of theta values,
             num_phi is the number of phi values, and num_freqs is the number of frequency values.
         """
         ...

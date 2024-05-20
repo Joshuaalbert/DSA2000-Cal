@@ -43,6 +43,7 @@ def test_gaussian_predict(di_gains: bool, order_approx:int):
         gaussian_model_data=model_data,
         visibility_coords=visibility_coords
     )
+    print(order_approx, visibilities)
     assert np.all(np.isfinite(visibilities))
     assert np.shape(visibilities) == (row, chan, 2,2)
 

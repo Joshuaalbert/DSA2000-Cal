@@ -18,7 +18,7 @@ def test_wsclean_sources():
 
     # -00:36:28.234,58.50.46.396
     source_file = source_model_registry.get_instance(
-        source_model_registry.get_match('cas_a')).get_wsclean_clean_component_file()
+        source_model_registry.get_match('cyg_a')).get_wsclean_clean_component_file()
     # phase_tracking = ac.SkyCoord("-00h36m28.234s", "58d50m46.396s", frame='icrs')
     phase_tracking = ac.SkyCoord("-00h36m28.234s", "78d50m46.396s", frame='icrs')
 
@@ -26,7 +26,7 @@ def test_wsclean_sources():
     # source_file = source_model_registry.get_instance(source_model_registry.get_match('cyg_a')).get_wsclean_source_file()
     # phase_tracking = ac.SkyCoord("-04h00m28.608s", "40d43m33.595s", frame='icrs')
 
-    freqs = au.Quantity([50e6, 80e6], 'Hz')
+    freqs = au.Quantity([65e6, 77e6], 'Hz')
 
     wsclean_sources = WSCleanSourceModel.from_wsclean_model(
         wsclean_clean_component_file=source_file,

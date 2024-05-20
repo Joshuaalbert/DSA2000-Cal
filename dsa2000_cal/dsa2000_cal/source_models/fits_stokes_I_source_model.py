@@ -153,15 +153,23 @@ class FitsStokesISourceModel(AbstractSourceModel):
                 w0 = WCS(hdul0[0].header)
                 image = au.Quantity(image, 'Jy')
                 if hdul0[0].header['BUNIT'] == 'JY/PIXEL':
+                    pixel_size_x = au.Quantity(w0.wcs.cdelt[0], au.deg)
+                    pixel_size_y = au.Quantity(w0.wcs.cdelt[1], au.deg)
+                    pass
+                elif hdul0[0].header['BUNIT'] == 'JY/BEAM':
+                    # Convert to JY/PIXEL
                     bmaj = hdul0[0].header['BMAJ'] * au.deg
                     bmin = hdul0[0].header['BMIN'] * au.deg
-                    beam_area = np.pi * bmaj * bmin
+                    beam_area = (np.pi / (2. * np.log(2))) * bmaj * bmin
                     pixel_size_x = au.Quantity(w0.wcs.cdelt[0], au.deg)
                     pixel_size_y = au.Quantity(w0.wcs.cdelt[1], au.deg)
                     pixel_area = np.abs(pixel_size_x * pixel_size_y)
 
                     beam_per_pixel = beam_area / pixel_area
-                    image = image / beam_per_pixel
+                    image *= beam_per_pixel
+                else:
+                    raise ValueError(f"Unknown BUNIT {hdul0[0].header['BUNIT']}")
+                print(f"Pixel shape: {pixel_size_x}, {pixel_size_y}")
                 centre_x_pix, centre_y_pix = w0.wcs.crpix[0], w0.wcs.crpix[1]
                 pointing_coord, spectral_coord, stokes_coord = w0.pixel_to_world(
                     centre_x_pix, centre_y_pix, 0, 0

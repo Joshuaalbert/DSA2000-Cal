@@ -22,7 +22,7 @@ def test_dish_effects_gain_model_real_data(tmp_path, mode):
     )
 
     np.testing.assert_allclose(dish_effects_gain_model.dy / dish_effects_gain_model.dl, 2.5 * au.m, atol=0.1*au.m)
-    assert jnp.all(jnp.isfinite(dish_effects_gain_model.aperture_amplitude))
+    assert jnp.all(jnp.isfinite(dish_effects_gain_model.aperture_gains))
     assert dish_effects_gain_model.dx.unit.is_equivalent(au.m)
     assert dish_effects_gain_model.dy.unit.is_equivalent(au.m)
     assert dish_effects_gain_model.dl.unit.is_equivalent(au.dimensionless_unscaled)

@@ -7,14 +7,13 @@ import numpy as np
 import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import source_model_registry, array_registry
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.calibration.calibration import Calibration
 from dsa2000_cal.forward_model.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
-from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
-from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
+from dsa2000_cal.types import CalibrationSolutions
 
 
 @dataclasses.dataclass(eq=False)
@@ -116,3 +115,9 @@ def test_calibration(mock_calibrator_source_models):
         plot_folder='plots'
     )
     calibration.calibrate(ms)
+
+def test_inspect():
+    solutions = CalibrationSolutions.parse_file('calibration_solutions.json') # [source, time, ant, chan, 2, 2]
+    print(solutions.gains.shape) # (1, 2, 62, 2, 2, 2)
+    # Only antenna 0 is calibrated
+    print(solutions.gains[0, 0, :, :, 0, 0]) # 0.0

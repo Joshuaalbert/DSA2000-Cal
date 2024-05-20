@@ -5,7 +5,8 @@ from astropy import coordinates as ac
 from astropy import units as au
 
 from dsa2000_cal.abc import AbstractAntennaBeam
-from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaBeam, MatlabAntennaModelV1
+from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaBeam
+from dsa2000_cal.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs
@@ -18,7 +19,7 @@ class LWAArray(AbstractArray):
     """
 
     def get_channel_width(self) -> au.Quantity:
-        return (86874511.71875-40960937.5)/1920 * au.Hz
+        return (86874511.71875 - 40960937.5) / 1920 * au.Hz
 
     def get_array_location(self) -> ac.EarthLocation:
         return mean_itrs(self.get_antennas().get_itrs()).earth_location
@@ -51,14 +52,20 @@ class LWAArray(AbstractArray):
         return 5070. * au.Jy  # Jy
 
     def get_system_efficency(self) -> au.Quantity:
-        raise NotImplementedError("System efficiency not implemented for LWA")
+        return 1. * au.dimensionless_unscaled
 
     def get_antenna_beam(self) -> AbstractAntennaBeam:
         return AltAzAntennaBeam(
-            antenna_model=MatlabAntennaModelV1(
-                antenna_model_file=os.path.join(*self.content_path, 'lwa_antenna_model.mat'),
-                model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
+            antenna_model=H5AntennaModelV1(
+                beam_file=os.path.join(*self.content_path, 'OVRO-LWA_soil_pt.h5')
             )
         )
 
 
+def test_H5AntennaModelV1():
+    beam = LWAArray(seed='test').get_antenna_beam()
+    model = beam.get_model()
+    assert model.get_amplitude().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
+    assert model.get_phase().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
+    beam.get_model().plot_polar_amplitude()
+    beam.get_model().plot_polar_phase()

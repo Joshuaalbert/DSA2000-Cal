@@ -22,7 +22,7 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     Args:
         uvw: [num_rows, 3] array of uvw coordinates.
         freqs: [num_freqs] array of frequencies.
-        dirty: [num_x, num_y] array of dirty image.
+        dirty: [num_x, num_y] array of dirty image, in units of JY/PIXEL.
         pixsize_x: scalar, pixel size in x direction.
         pixsize_y: scalar, pixel size in y direction.
         center_x: scalar, center of image in x direction.
@@ -88,7 +88,7 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Args:
         uvw: [num_rows, 3] array of uvw coordinates.
         freqs: [num_freqs] array of frequencies.
-        dirty: [num_x, num_y] array of dirty image.
+        dirty: [num_x, num_y] array of dirty image, in units of JY/PIXEL.
         wgt: [num_rows, num_freqs] array of weights, multiplied with output visibilities.
         mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
         pixsize_x: scalar, pixel size in x direction.
@@ -181,7 +181,7 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
             errors for special cases.
 
     Returns:
-        [npix_x, npix_y] array of dirty image.
+        [npix_x, npix_y] array of dirty image, in units of JY/PIXEL.
     """
 
     if len(np.shape(uvw)) != 2:
@@ -253,7 +253,7 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
             errors for special cases.
 
     Returns:
-        [npix_x, npix_y] array of dirty image.
+        [npix_x, npix_y] array of dirty image, in units of JY/PIXEL.
     """
     uvw = np.asarray(uvw, dtype=np.float64)
     freqs = np.asarray(freqs, dtype=np.float64)

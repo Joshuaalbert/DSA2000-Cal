@@ -104,8 +104,8 @@ def find_num_pixels(antenna_model: AbstractAntennaModel, beam_width: float, test
     Returns:
         number of pixels
     """
-    voltage_gain = antenna_model.get_voltage_gain()
-    amplitude = antenna_model.get_amplitude() / voltage_gain
+    voltage_gain = antenna_model.get_voltage_gain() # [num_freq]
+    amplitude = antenna_model.get_amplitude()[..., 0, 0] / voltage_gain # [theta, phi, freq]
     circular_mean = np.mean(amplitude, axis=1)
     theta = antenna_model.get_theta()
     freqs = antenna_model.get_freqs()

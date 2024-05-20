@@ -4,7 +4,6 @@ from typing import NamedTuple
 import numpy as np
 from astropy import coordinates as ac, units as au
 from h5parm.utils import parse_coordinates_bbs
-from scipy.special import logsumexp
 
 from dsa2000_cal.common.astropy_utils import dimensionless
 
@@ -100,14 +99,19 @@ def parse_and_process_wsclean_source_line(line, freqs: au.Quantity) -> WSCleanLi
 
 
 def wsclean_log_spectral_index_spectrum_fn(stokesI, ref_nu, nu, spectral_indices):
-    # flux(nu) = exp ( log stokesI + term0 log(nu/refnu) + term1 log(nu/refnu)^2 + ... )
-    exponents = np.arange(len(spectral_indices)) + 1
-    return stokesI * np.exp(
-        logsumexp(spectral_indices * np.log(dimensionless(nu[:, None] / ref_nu)) ** exponents, axis=-1))
+    # Wrong -> flux(nu) = exp ( log stokesI + term0 log(nu/refnu) + term1 log(nu/refnu)^2 + ... )
+    # Correct -> flux(nu) = I0 * (v/v0) ^ (c0 + c1 * log10(v/v0) + c2 * log10(v/v0)^2 + …)
+    exponents = np.arange(len(spectral_indices))  # [n]
+    freq_ratio = dimensionless(nu / ref_nu)  # [num_freq]
+    tmp = spectral_indices * np.log10(freq_ratio[:, None]) ** exponents  # [num_freq, n]
+    scaling = freq_ratio ** np.sum(tmp, axis=-1)  # [num_freq]
+    return stokesI * scaling
 
 
 def wsclean_linear_spectral_index_spectrum_fn(stokesI: au.Quantity, ref_nu: au.Quantity, nu: au.Quantity,
                                               spectral_indices: np.ndarray):
-    # flux(nu) = stokesI + term0 (nu/refnu - 1) + term1 (nu/refnu - 1)^2 + ...
-    exponents = np.arange(len(spectral_indices)) + 1
-    return stokesI + np.sum(spectral_indices * (dimensionless(nu[:, None] / ref_nu) - 1.) ** exponents, axis=-1)
+    # flux(nu) = I0 + c0 * (v/v0 - 1) + c1 * (v /v0 - 1)^2 + c2 * (v/v0 -1)^3 + …
+    exponents = np.arange(len(spectral_indices)) + 1  # [n]
+    freq_ratio = dimensionless(nu / ref_nu)  # [num_freq]
+    shift = spectral_indices * (freq_ratio[:, None] - 1.) ** exponents  # [num_freq, n]
+    return stokesI + np.sum(shift, axis=-1)
