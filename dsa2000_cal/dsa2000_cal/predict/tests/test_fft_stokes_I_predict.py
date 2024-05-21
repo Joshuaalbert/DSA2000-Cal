@@ -9,7 +9,7 @@ from dsa2000_cal.predict.fft_stokes_I_predict import FFTStokesIPredict, FFTStoke
 
 @pytest.mark.parametrize("gain_has_chan", [True, False])
 @pytest.mark.parametrize("image_has_chan", [True, False])
-def test_gaint_predict(gain_has_chan: bool, image_has_chan: bool):
+def test_faint_predict(gain_has_chan: bool, image_has_chan: bool):
     faint_predict = FFTStokesIPredict()
     Nx = 100
     Ny = 100
@@ -54,7 +54,7 @@ def test_gaint_predict(gain_has_chan: bool, image_has_chan: bool):
         visibility_coords=visibility_coords
     )
     assert np.all(np.isfinite(visibilities))
-    assert np.shape(visibilities) == (row, chan, 2,2)
+    assert np.shape(visibilities) == (row, chan, 2, 2)
 
 
 def test_with_sharding():
@@ -82,8 +82,8 @@ def test_with_sharding():
     gains = jnp.ones((time, ant, chan, 2, 2), dtype=jnp.complex64)
     l0 = jnp.zeros((chan,))
     m0 = jnp.zeros((chan,))
-    dl = -0.1*jnp.ones((chan,))
-    dm = 0.1*jnp.ones((chan,))
+    dl = -0.1 * jnp.ones((chan,))
+    dm = 0.1 * jnp.ones((chan,))
     model_data = FFTStokesIModelData(
         image=tree_device_put(image, NamedSharding(mesh, P('chan'))),
         gains=tree_device_put(gains, NamedSharding(mesh, P(None, None, 'chan'))),
@@ -115,3 +115,85 @@ def test_with_sharding():
         visibility_coords=visibility_coords
     )
     assert np.all(np.isfinite(visibilities))
+
+
+@pytest.mark.parametrize("gain_has_chan", [True, False])
+@pytest.mark.parametrize("image_has_chan", [True, False])
+def test_grads_work(gain_has_chan: bool, image_has_chan: bool):
+    predict = FFTStokesIPredict()
+    row = 100
+    chan = 4
+    Nx = Ny = 256
+    time = 2
+    ant = 3
+    if gain_has_chan:
+        gain_shape = (time, ant, chan, 2, 2)
+    else:
+        gain_shape = (time, ant, 2, 2)
+
+    freqs = jnp.linspace(700e6, 2000e6, chan)
+
+    antennas = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (ant, 3))
+    antenna_1 = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, ant)
+    antenna_2 = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, ant)
+
+    uvw = antennas[antenna_2] - antennas[antenna_1]
+    uvw = uvw.at[:, 2].mul(1e-3)
+
+    times = jnp.linspace(0, 1, time)
+    time_idx = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, time)
+    time_obs = times[time_idx]
+
+    if image_has_chan:
+        image = jax.random.normal(jax.random.PRNGKey(0), (chan, Nx, Ny), dtype=jnp.float32)
+        l0 = jnp.zeros((chan,))
+        m0 = jnp.zeros((chan,))
+        dl = -0.01 / Nx * jnp.ones((chan,))
+        dm = 0.01 / Nx * jnp.ones((chan,))
+    else:
+        image = jax.random.normal(jax.random.PRNGKey(0), (Nx, Ny), dtype=jnp.float32)
+        l0 = jnp.zeros(())
+        m0 = jnp.zeros(())
+        dl = -0.01 / Nx * jnp.ones(())
+        dm = 0.01 / Nx * jnp.ones(())
+
+    gains = jax.random.normal(jax.random.PRNGKey(42), gain_shape) + 1j * jax.random.normal(jax.random.PRNGKey(43),
+                                                                                           gain_shape)
+
+    visibility_coords = VisibilityCoords(
+        uvw=uvw,
+        time_obs=time_obs,
+        antenna_1=antenna_1,
+        antenna_2=antenna_2,
+        time_idx=time_idx
+    )
+
+    def func(gains):
+        model_data = FFTStokesIModelData(
+            image=image,
+            gains=gains,
+            l0=l0, m0=m0, dl=dl, dm=dm
+        )
+
+        vis = predict.predict(
+            freqs=freqs,
+            faint_model_data=model_data,
+            visibility_coords=visibility_coords
+        )
+
+        return vis
+
+    gains_grad = jax.grad(lambda gains: jnp.sum(jnp.abs(func(gains)) ** 2), argnums=0)(gains)
+    # print(func(freqs, model_data, uvw))
+    # print(grad)
+    # gain_shape = (time, ant, chan, 2, 2)
+    for t in range(time):
+        for a in range(ant):
+            print(f"Time: {t}, Ant: {a}")
+
+            print("\tXX", gains_grad[t, a, ..., 0, 0])
+            print("\tXY", gains_grad[t, a, ..., 0, 1])
+            print("\tYX", gains_grad[t, a, ..., 1, 0])
+            print("\tYY", gains_grad[t, a, ..., 1, 1])
+            # Ensure gradient is not zero
+            assert np.all(np.abs(gains_grad[t, a]) > 1e-10)

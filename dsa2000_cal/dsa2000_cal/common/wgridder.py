@@ -41,6 +41,11 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
+    # print uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
+    #               pixsize_x: float | jax.Array, pixsize_y: float | jax.Array,
+    #               center_x: float | jax.Array, center_y: float | jax.Array,
+    #               epsilon: float, do_wgridding: bool = True,
+    # print(uvw.dtype, freqs.dtype, dirty.dtype, pixsize_x.dtype, pixsize_y.dtype, center_x.dtype, center_y.dtype, epsilon, do_wgridding)
 
     if len(np.shape(uvw)) != 2:
         raise ValueError(f"Expected uvw to be shape (num_rows, 3), got {np.shape(uvw)}")

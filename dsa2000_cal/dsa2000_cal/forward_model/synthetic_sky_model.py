@@ -11,12 +11,12 @@ from dsa2000_cal.assets.content_registry import NoMatchFound
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_random_spherical_layout
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
 from dsa2000_cal.source_models.gaussian_stokes_I_source_model import transform_ellipsoidal_params_to_plane_of_sky, \
     GaussianSourceModel
 from dsa2000_cal.source_models.point_stokes_I_source_model import PointSourceModel
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
+
 
 @dataclasses.dataclass(eq=False)
 class SkyModel:
@@ -132,7 +132,7 @@ class SyntheticSkyModelProducer:
     def create_faint_sources_inside_fov(self, key) -> List[WSCleanSourceModel]:
         shrink_factor = 0.75  # Shrink the field of view to avoid sources at the edge
         source_models = []
-        key1, key2 = jax.random.split(key, 4)
+        key1, key2 = jax.random.split(key, 2)
 
         dr_faint = choose_dr(field_of_view=self.field_of_view, total_n=self.num_faint_sources)
         faint_rotation = float(jax.random.uniform(key1, (), minval=0, maxval=60)) * au.deg
@@ -188,7 +188,7 @@ class SyntheticSkyModelProducer:
                 time=self.obs_time,
                 freqs=self.freqs,
                 phase_tracking=self.phase_tracking,
-                ignore_out_of_bounds=False
+                ignore_out_of_bounds=True
             )
             source_models.append(source_model)
         return source_models

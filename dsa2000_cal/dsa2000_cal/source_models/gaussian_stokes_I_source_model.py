@@ -15,6 +15,7 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.common.ellipse_utils import ellipse_eval
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.source_models.wsclean_util import parse_and_process_wsclean_source_line
@@ -375,34 +376,3 @@ def derive_transform():
     print(solution[v].simplify())
 
 
-def ellipse_rotation(pos_angle):
-    return jnp.asarray([[jnp.cos(pos_angle), jnp.sin(pos_angle)], [-jnp.sin(pos_angle), jnp.cos(pos_angle)]])
-
-
-def ellipse_eval(A, b_major, b_minor, pos_angle, l, m, l0, m0):
-    """
-    Evaluate the elliptical Gaussian at the given l, m coordinates.
-
-    Args:
-        b_major: the major axis
-        b_minor: the minor axis
-        pos_angle: the position angle
-        l: the l coordinate
-        m: the m coordinate
-
-    Returns:
-        the value of the Gaussian at the given l, m coordinates
-    """
-    # For all points x on ellipse, |D^{-1} R^{-1} (x - x0)|^2 = 1.
-    # Define alpha s.t. 1/2 = e^(-alpha/2 * |D^{-1} R^{-1} (x - x0)|^2)
-    R_inv = ellipse_rotation(-pos_angle)
-    D_diag = jnp.asarray([0.5 * b_minor, 0.5 * b_major])
-    alpha = np.log(2.)
-    diff = jnp.asarray([l - l0, m - m0])
-    diff = R_inv @ diff
-    diff = diff / D_diag
-    dist2 = jnp.sum(jnp.square(diff))
-    # A = int F * e^(-alpha * |D^{-1} R^{-1} (x - x0)|^2) dx = F *  pi / alpha
-    # A = int F * e^(-alpha * y^2) dy /(bmajor/2 * bminor/2) = F *  4 * pi / (alpha * bmajor * bminor)
-    norm = 4. * jnp.pi / (alpha * b_major * b_minor)
-    return (A / norm) * jnp.exp(-alpha * dist2)

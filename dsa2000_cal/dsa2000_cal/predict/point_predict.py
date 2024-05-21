@@ -28,7 +28,8 @@ class PointPredict:
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
 
-    def predict(self, freqs: jax.Array, dft_model_data: PointModelData, visibility_coords: VisibilityCoords) -> jax.Array:
+    def predict(self, freqs: jax.Array, dft_model_data: PointModelData,
+                visibility_coords: VisibilityCoords) -> jax.Array:
         """
         Predict visibilities from DFT model data.
 
@@ -48,6 +49,11 @@ class PointPredict:
             lmn=dft_model_data.lmn
         )
 
+        if direction_dependent_gains:
+            print(f"Point prediction with unique gains per source.")
+        else:
+            print(f"Point prediction with shared gains across sources.")
+
         g1 = dft_model_data.gains[
              ..., visibility_coords.time_idx, visibility_coords.antenna_1, :, :, :
              ]  # [[source,] row, chan, 2, 2]
@@ -65,7 +71,7 @@ class PointPredict:
         # g1, g2: [[source,] row, chan, 2, 2]
         # freq: [chan]
         # image: [source, chan, 2, 2]
-        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, 1])
+        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, -3])
         # lmn: [source, 3]
         # uvw: [rows, 3]
         # g1, g2: [[source,] row, 2, 2]
@@ -99,7 +105,7 @@ class PointPredict:
         )  # [chan, source, row, 2, 2]
         visibilities = jnp.sum(visibilities, axis=1)  # [chan, row, 2, 2]
         # make sure the output is [row, chan, 2, 2]
-        return lax.transpose(visibilities, (1, 0, 2, 3))
+        return lax.transpose(visibilities, (1, 0, 2, 3))  # [row, chan, 2, 2]
 
     def _single_compute_visibilty(self, lmn, uvw, g1, g2, freq, image):
         """
@@ -131,7 +137,7 @@ class PointPredict:
         delay = l * u + m * v + (n - 1.) * w  # scalar
 
         phi = jnp.asarray(
-            -2j * np.pi * delay,
+            (-2j * np.pi) * delay,
             dtype=self.dtype
         )  # scalar
         fringe = (jnp.exp(phi) / n)
