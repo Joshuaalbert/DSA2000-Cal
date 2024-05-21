@@ -57,19 +57,23 @@ class H5AntennaModelV1(AltAzAntennaModel):
             raise ValueError(f"Antenna model file {self.beam_file} does not exist")
         print_h5_structure(self.beam_file)
         with tb.open_file(self.beam_file, 'r') as file:
-            # self.freqs = file.root.freqs.read() * au.Hz
-            self.freqs = file.get_node("/Freq(Hz)").read() * au.Hz
-            self.theta = file.root.theta_pts.read() * au.deg
-            self.phi = file.root.phi_pts.read() * au.deg
+            # self.freqs = file.get_node("/Freq(Hz)").read() * au.Hz
+            self.freqs = file.root.freq_Hz.read() * au.Hz
+            self.theta = file.root.theta_pts.read() * au.rad
+            self.phi = file.root.phi_pts.read() * au.rad
 
-            e_field_X_theta = file.get_node("/X-pol_Efields/etheta").read()  # [freq, theta, phi]
+            # e_field_X_theta = file.get_node("/X-pol_Efields/etheta").read()  # [freq, theta, phi]
+            e_field_X_theta = file.root.X_pol_Efields.etheta.read()  # [freq, theta, phi]
             e_field_X_theta = np.transpose(e_field_X_theta, (1, 2, 0))  # [theta, phi, freq]
-            e_field_X_phi = file.get_node("/X-pol_Efields/ephi").read()  # [freq, theta, phi]
+            # e_field_X_phi = file.get_node("/X-pol_Efields/ephi").read()  # [freq, theta, phi]
+            e_field_X_phi = file.root.X_pol_Efields.ephi.read()  # [freq, theta, phi]
             e_field_X_phi = np.transpose(e_field_X_phi, (1, 2, 0))  # [theta, phi, freq]
 
-            e_field_Y_theta = file.get_node("/Y-pol_Efields/etheta").read()  # [freq, theta, phi]
+            # e_field_Y_theta = file.get_node("/Y-pol_Efields/etheta").read()  # [freq, theta, phi]
+            e_field_Y_theta = file.root.Y_pol_Efields.etheta.read()  # [freq, theta, phi]
             e_field_Y_theta = np.transpose(e_field_Y_theta, (1, 2, 0))  # [theta, phi, freq]
-            e_field_Y_phi = file.get_node("/Y-pol_Efields/ephi").read()  # [freq, theta, phi]
+            # e_field_Y_phi = file.get_node("/Y-pol_Efields/ephi").read()  # [freq, theta, phi]
+            e_field_Y_phi = file.root.Y_pol_Efields.ephi.read()  # [freq, theta, phi]
             e_field_Y_phi = np.transpose(e_field_Y_phi, (1, 2, 0))  # [theta, phi, freq]
 
             E_x_X_dipole, E_y_X_dipole, _ = convert_spherical_e_field_to_cartesian(
@@ -81,7 +85,7 @@ class H5AntennaModelV1(AltAzAntennaModel):
 
             jones = np.transpose(np.asarray([[E_x_X_dipole, E_y_X_dipole],
                                              [E_x_Y_dipole, E_y_Y_dipole]]),
-                                 (2, 3, 4, 0, 1))
+                                 (2, 3, 4, 0, 1)) # [theta, phi, freq, 2, 2]
 
             self.amplitude = np.abs(jones) * au.dimensionless_unscaled
             self.phase = np.angle(jones) * au.rad

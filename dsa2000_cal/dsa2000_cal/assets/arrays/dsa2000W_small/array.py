@@ -4,7 +4,7 @@ from typing import List
 import numpy as np
 from astropy import coordinates as ac
 
-from dsa2000_cal.abc import AbstractAntennaBeam
+from dsa2000_cal.abc import AbstractAntennaModel
 from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_earth_grid
@@ -17,12 +17,12 @@ class DSA2000WSmallArray(DSA2000WArray):
     """
 
     @cached_property
-    def _get_antenna_beam(self) -> AbstractAntennaBeam:
+    def _get_antenna_model(self) -> AbstractAntennaModel:
         array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
-        return array.get_antenna_beam()
+        return array.get_antenna_model()
 
-    def get_antenna_beam(self) -> AbstractAntennaBeam:
-        return self._get_antenna_beam
+    def get_antenna_model(self) -> AbstractAntennaModel:
+        return self._get_antenna_model
 
     @cached_property
     def _get_antennas(self) -> ac.EarthLocation:

@@ -13,11 +13,27 @@ class AbstractAntennaModel(ABC):
     """
 
     @abstractmethod
-    def plot_polar_amplitude(self):
+    def plot_polar_amplitude(self, nu: int = 0, p: int = 0, q: int = 0):
+        """
+        Plot the amplitude of the antenna beam model.
+
+        Args:
+            nu: the frequency index
+            p: the first polarization index
+            q: the second polarization index
+        """
         ...
 
     @abstractmethod
-    def plot_polar_phase(self):
+    def plot_polar_phase(self, nu: int = 0, p: int = 0, q: int = 0):
+        """
+        Plot the phase of the antenna beam model.
+
+        Args:
+            nu: the frequency index
+            p: the first polarization index
+            q: the second polarization index
+        """
         ...
 
     @abstractmethod
@@ -79,18 +95,5 @@ class AbstractAntennaModel(ABC):
 
         Returns:
             A 1D array of shape [num_phi] where num_phi is the number of phi values.
-        """
-        ...
-
-
-class AbstractAntennaBeam(ABC):
-
-    @abstractmethod
-    def get_model(self) -> AbstractAntennaModel:
-        """
-        Get the antenna model.
-
-        Returns:
-            antenna_model: AbstractAntennaModel
         """
         ...

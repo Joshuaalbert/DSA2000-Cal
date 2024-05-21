@@ -5,7 +5,7 @@ import astropy.coordinates as ac
 import astropy.units as au
 from astropy.coordinates import CartesianRepresentation, ITRS
 
-from dsa2000_cal.abc import AbstractAntennaBeam
+from dsa2000_cal.abc import AbstractAntennaModel
 from dsa2000_cal.assets.base_content import BaseContent
 
 
@@ -80,7 +80,7 @@ class AbstractArray(ABC, BaseContent):
         _check_quantity(self.get_channel_width(), au.Hz, is_scalar=True)
         _check_quantity(self.get_antenna_diameter(), au.m, is_scalar=True)
         _check_quantity(self.get_system_equivalent_flux_density(), au.Jy, is_scalar=True)
-        _check_quantity(self.get_system_efficency(), au.dimensionless_unscaled, is_scalar=True)
+        _check_quantity(self.get_system_efficiency(), au.dimensionless_unscaled, is_scalar=True)
         _array_location = self.get_array_location()
         if not isinstance(_array_location, ac.EarthLocation):
             raise TypeError(f"Expected an EarthLocation, got {type(_array_location)}")
@@ -193,7 +193,7 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def get_system_efficency(self) -> au.Quantity:
+    def get_system_efficiency(self) -> au.Quantity:
         """
         Get system efficiency
 
@@ -203,7 +203,7 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def get_antenna_beam(self) -> AbstractAntennaBeam:
+    def get_antenna_model(self) -> AbstractAntennaModel:
         """
         Get antenna beam.
 

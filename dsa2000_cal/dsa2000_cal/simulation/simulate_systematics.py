@@ -46,7 +46,7 @@ class SimulateSystematics:
 
         fill_registries()
         array = array_registry.get_instance(array_registry.get_match(ms.meta.array_name))
-        dish_model = array.get_antenna_beam().get_model()
+        dish_model = array.get_antenna_model().get_model()
 
         _freqs, _half_power_widths = get_dish_model_beam_widths(antenna_model=dish_model, threshold=0.5)
 

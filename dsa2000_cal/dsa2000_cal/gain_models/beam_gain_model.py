@@ -158,7 +158,7 @@ def beam_gain_model_factory(array_name: str) -> BeamGainModel:
     except NoMatchFound as e:
         raise ValueError(f"Array {array_name} not found in registry. Add it to use the BeamGainModel factory.") from e
 
-    dish_model = array.get_antenna_beam().get_model()
+    dish_model = array.get_antenna_model()
     theta = dish_model.get_theta()
     phi = dish_model.get_phi()
     theta, phi = np.meshgrid(theta, phi, indexing='ij')

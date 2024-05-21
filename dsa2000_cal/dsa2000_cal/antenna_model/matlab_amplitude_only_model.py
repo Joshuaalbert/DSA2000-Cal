@@ -43,7 +43,8 @@ class MatlabAntennaModelV1(AltAzAntennaModel):
 
     @cached_property
     def _get_voltage_gain(self) -> au.Quantity:
-        return np.max(np.max(self.get_amplitude()[..., 0, 0], axis=0), axis=0) * au.dimensionless_unscaled  # [num_freqs]
+        return np.max(np.max(self.get_amplitude()[..., 0, 0], axis=0),
+                      axis=0) * au.dimensionless_unscaled  # [num_freqs]
 
     def get_voltage_gain(self) -> au.Quantity:
         """

@@ -82,9 +82,9 @@ class DirtyImaging:
             # Try to get HPFW from the actual beam
             try:
                 fill_registries()
-                antenna_beam = array_registry.get_instance(
-                    array_registry.get_match(ms.meta.array_name)).get_antenna_beam()
-                _freqs, _beam_widths = get_dish_model_beam_widths(antenna_beam.get_model())
+                antenna_model = array_registry.get_instance(
+                    array_registry.get_match(ms.meta.array_name)).get_antenna_model()
+                _freqs, _beam_widths = get_dish_model_beam_widths(antenna_model)
                 field_of_view = np.max(np.interp(ms.meta.freqs, _freqs, _beam_widths))
             except NoMatchFound as e:
                 print(str(e))

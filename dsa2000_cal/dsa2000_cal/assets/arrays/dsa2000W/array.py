@@ -4,8 +4,7 @@ from typing import List
 from astropy import coordinates as ac
 from astropy import units as au
 
-from dsa2000_cal.abc import AbstractAntennaBeam
-from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaBeam
+from dsa2000_cal.abc import AbstractAntennaModel
 from dsa2000_cal.antenna_model.matlab_amplitude_only_model import MatlabAntennaModelV1
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
@@ -50,15 +49,11 @@ class DSA2000WArray(AbstractArray):
     def get_system_equivalent_flux_density(self) -> au.Quantity:
         return 5022. * au.Jy  # Jy
 
-    def get_system_efficency(self) -> au.Quantity:
+    def get_system_efficiency(self) -> au.Quantity:
         return 0.7 * au.dimensionless_unscaled
 
-    def get_antenna_beam(self) -> AbstractAntennaBeam:
-        return AltAzAntennaBeam(
-            antenna_model=MatlabAntennaModelV1(
-                antenna_model_file=os.path.join(*self.content_path, 'dsa2000_antenna_model.mat'),
-                model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
-            )
+    def get_antenna_model(self) -> AbstractAntennaModel:
+        return MatlabAntennaModelV1(
+            antenna_model_file=os.path.join(*self.content_path, 'dsa2000_antenna_model.mat'),
+            model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
         )
-
-

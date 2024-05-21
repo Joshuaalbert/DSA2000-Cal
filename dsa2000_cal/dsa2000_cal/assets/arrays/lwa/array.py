@@ -4,8 +4,7 @@ from typing import List
 from astropy import coordinates as ac
 from astropy import units as au
 
-from dsa2000_cal.abc import AbstractAntennaBeam
-from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaBeam
+from dsa2000_cal.abc import AbstractAntennaModel
 from dsa2000_cal.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
@@ -51,21 +50,10 @@ class LWAArray(AbstractArray):
         # At 55 MHz
         return 5070. * au.Jy  # Jy
 
-    def get_system_efficency(self) -> au.Quantity:
+    def get_system_efficiency(self) -> au.Quantity:
         return 1. * au.dimensionless_unscaled
 
-    def get_antenna_beam(self) -> AbstractAntennaBeam:
-        return AltAzAntennaBeam(
-            antenna_model=H5AntennaModelV1(
-                beam_file=os.path.join(*self.content_path, 'OVRO-LWA_soil_pt.h5')
-            )
+    def get_antenna_model(self) -> AbstractAntennaModel:
+        return H5AntennaModelV1(
+            beam_file=os.path.join(*self.content_path, 'OVRO-LWA_soil_pt.h5')
         )
-
-
-def test_H5AntennaModelV1():
-    beam = LWAArray(seed='test').get_antenna_beam()
-    model = beam.get_model()
-    assert model.get_amplitude().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
-    assert model.get_phase().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
-    beam.get_model().plot_polar_amplitude()
-    beam.get_model().plot_polar_phase()

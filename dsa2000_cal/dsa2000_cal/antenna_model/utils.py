@@ -104,8 +104,8 @@ def find_num_pixels(antenna_model: AbstractAntennaModel, beam_width: float, test
     Returns:
         number of pixels
     """
-    voltage_gain = antenna_model.get_voltage_gain() # [num_freq]
-    amplitude = antenna_model.get_amplitude()[..., 0, 0] / voltage_gain # [theta, phi, freq]
+    voltage_gain = antenna_model.get_voltage_gain()  # [num_freq]
+    amplitude = antenna_model.get_amplitude()[..., 0, 0] / voltage_gain  # [theta, phi, freq]
     circular_mean = np.mean(amplitude, axis=1)
     theta = antenna_model.get_theta()
     freqs = antenna_model.get_freqs()
@@ -131,7 +131,7 @@ def find_num_pixels(antenna_model: AbstractAntennaModel, beam_width: float, test
 def get_beam_widths(amplitude: au.Quantity, theta: au.Quantity, freqs: au.Quantity, threshold: float = 0.5) -> Tuple[
     au.Quantity, au.Quantity]:
     """
-    Get the antenna recpetion beam width in degrees.
+    Get the antenna beam width in degrees for a given threshold. Uses the circularised beam.
 
     Args:
         amplitude: [theta, phi, freq]
@@ -160,7 +160,8 @@ def get_beam_widths(amplitude: au.Quantity, theta: au.Quantity, freqs: au.Quanti
         for k in theta_order:
             th = theta[k]
             if circular_mean[k, i] < threshold * circular_mean[theta_order[0], i]:
-                beam_widths.append(th)
+                # Multiply by 2 to get full width, not radius
+                beam_widths.append(th * 2)
                 break
 
     freqs = freqs[freq_order]
@@ -180,11 +181,11 @@ def get_dish_model_beam_widths(antenna_model: AbstractAntennaModel, threshold: f
     Returns:
         beam width in degrees
     """
-    amplitude = antenna_model.get_amplitude()  # [theta, phi, freq]
+    amplitude = antenna_model.get_amplitude()  # [theta, phi, freq, 2, 2]
     freqs = antenna_model.get_freqs()
     theta = antenna_model.get_theta()
-
-    return get_beam_widths(amplitude, theta, freqs, threshold=threshold)
+    # Use XX to define beamwidth
+    return get_beam_widths(amplitude[..., 0, 0], theta, freqs, threshold=threshold)
 
 
 def plot_circular_beam(antenna_model: AbstractAntennaModel, theshold: float = 0.01):
