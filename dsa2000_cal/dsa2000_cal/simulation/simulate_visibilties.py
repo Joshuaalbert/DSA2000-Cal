@@ -90,7 +90,7 @@ class SimulateVisibilities:
             phase_tracking=phase_tracking
         )
 
-    def predict_model_visibilities_jax(self, freqs: jax.Array, apply_gains: jax.Array | None,
+    def predict_model_visibilities_jax(self, freqs: jax.Array, apply_gains: jax.Array,
                                        vis_coords: VisibilityCoords,
                                        flat_coherencies: bool = False) -> jax.Array:
         """
@@ -98,7 +98,7 @@ class SimulateVisibilities:
 
         Args:
             freqs: [num_chans]
-            apply_gains: [num_cal, num_time, num_ant, num_chan, 2, 2] or None
+            apply_gains: [num_cal, num_time, num_ant, num_chan, 2, 2]
             vis_coords: [num_row] visibility coordinates
             flat_coherencies: whether to return the visibilities as a flat coherencies
 
@@ -118,7 +118,7 @@ class SimulateVisibilities:
         faint_predict = FFTStokesIPredict(convention=self.convention,
                                           dtype=self.dtype)
 
-        # Each calibrator has a source model which is a collection of sources that make up the calibrator.
+        # Each calibrator has a model which is a collection of sources that make up the calibrator.
         cal_idx = 0
         for wsclean_source_model in self.sky_model.component_models:
             preapply_gains_cal = apply_gains[cal_idx]  # [num_time, num_ant, num_chan, 2, 2]
@@ -138,7 +138,7 @@ class SimulateVisibilities:
                     lmn=lmn,
                     image=image_linear
                 )
-                vis = vis.at[cal_idx, ...].add(
+                vis = vis.at[cal_idx, ...].set(
                     dft_predict.predict(
                         freqs=freqs,
                         dft_model_data=dft_model_data,
@@ -205,18 +205,17 @@ class SimulateVisibilities:
                 dm=dm  # [num_chan]
             )
 
-            vis = vis.at[cal_idx].add(
+            vis = vis.at[cal_idx].set(
                 faint_predict.predict(
                     freqs=freqs,
                     faint_model_data=faint_model_data,
                     visibility_coords=vis_coords
                 )
             )
+            cal_idx += 1
+
         if flat_coherencies:
-            # Transform
-            vis = lax.reshape(vis, (self.sky_model.num_sources * num_rows * num_freqs, 2, 2))
-            vis = jax.vmap(flatten_coherencies)(vis)  # [num_sources*num_rows*num_freqs, 4]
-            vis = lax.reshape(vis, (self.sky_model.num_sources, num_rows, num_freqs, 4))
+            vis = jax.vmap(jax.vmap(jax.vmap(flatten_coherencies)))(vis)  # [num_sources, num_rows, num_freqs, 4]
         return vis
 
     def simulate(self, ms: MeasurementSet, system_gain_model: GainModel):
@@ -373,7 +372,7 @@ class SimulateVisibilities:
         # Simulate measurement noise
         key1, key2 = jax.random.split(key)
         # Divide by sqrt(2) to account for polarizations
-        noise = (noise_scale / jnp.sqrt(2.)) * (
+        noise = (noise_scale / np.sqrt(2.)) * (
                 jax.random.normal(key1, vis.shape) + 1j * jax.random.normal(key2, vis.shape)
         )
 

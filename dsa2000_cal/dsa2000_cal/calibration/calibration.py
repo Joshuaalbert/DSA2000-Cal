@@ -296,14 +296,23 @@ class Calibration:
             g1 = gains[:, vis_coords.antenna_1, time_selection, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
             g2 = gains[:, vis_coords.antenna_2, time_selection, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
 
-            @partial(jax.vmap, in_axes=(2, 2, 2), out_axes=2)  # over num_chans
+            # g1, g2: [cal_dirs, num_rows, num_chans, 2, 2]
+            # vis: [cal_dirs, num_rows, num_chans, 2, 2]
+            @partial(jax.vmap, in_axes=(2, 2, 2))  # over num_chans
+            # g1, g2: [cal_dirs, num_rows, 2, 2]
+            # vis: [cal_dirs, num_rows, 2, 2]
             @partial(jax.vmap, in_axes=(0, 0, 0))  # over cal_dirs
+            # g1, g2: [num_rows, 2, 2]
+            # vis: [num_rows, 2, 2]
             @partial(jax.vmap, in_axes=(0, 0, 0))  # over num_rows
+            # g1, g2: [2, 2]
+            # vis: [2, 2]
             def transform(g1, g2, vis):
                 return flatten_coherencies(kron_product(g1, vis, g2.T.conj()))  # [4]
 
-            model_vis = transform(g1, g2, vis)  # [cal_dirs, num_rows, num_chan, 4]
-            model_vis = jnp.sum(model_vis, axis=0)  # [num_rows, num_chan, 4]
+            model_vis = transform(g1, g2, vis)  # [num_chan, cal_dirs, num_rows, 4]
+            model_vis = jnp.sum(model_vis, axis=1)  # [num_chan, num_rows, 4]
+            model_vis = lax.transpose(model_vis, (1, 0, 2))  # [num_rows, num_chan, 4]
             return model_vis
 
         def _subtract_model(gains: jax.Array):
@@ -325,14 +334,15 @@ class Calibration:
 
             vis_variance = 1. / vis_data.weights  # Should probably use measurement set SIGMA here
             vis_stddev = jnp.sqrt(vis_variance)
-            obs_dist_real = tfpd.Normal(*promote_pytree('vis_real', (vis_data.vis.real, vis_stddev)))
-            obs_dist_imag = tfpd.Normal(*promote_pytree('vis_imag', (vis_data.vis.imag, vis_stddev)))
-            log_prob = obs_dist_real.log_prob(jnp.real(model_vis)) + obs_dist_imag.log_prob(
-                jnp.imag(model_vis))  # [num_rows, num_chan, 4]
+            obs_dist_real = tfpd.Normal(*promote_pytree('vis_real', (jnp.real(vis_data.vis), vis_stddev)))
+            obs_dist_imag = tfpd.Normal(*promote_pytree('vis_imag', (jnp.imag(vis_data.vis), vis_stddev)))
+            log_prob_real = obs_dist_real.log_prob(jnp.real(model_vis))
+            log_prob_imag = obs_dist_imag.log_prob(jnp.imag(model_vis))  # [num_rows, num_chan, 4]
+            log_prob = log_prob_real + log_prob_imag # [num_rows, num_chan, 4]
 
             # Mask out flagged data or zero-weighted data.
-            log_prob = jnp.where(jnp.bitwise_or(vis_data.weights == 0, vis_data.flags), -jnp.inf, log_prob)
-
+            mask = jnp.logical_or(vis_data.weights == 0, vis_data.flags)
+            log_prob = jnp.where(mask, 0., log_prob)
             return jnp.sum(log_prob)
 
         return _log_likelihood, _subtract_model
