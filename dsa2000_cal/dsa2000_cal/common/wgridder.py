@@ -127,7 +127,7 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     output_dtype = (1j * np.ones(1, dtype=dirty.dtype)).dtype
 
     output_vis = np.zeros((num_rows, num_freqs), dtype=output_dtype)
-    return wgridder.dirty2vis(
+    _ = wgridder.dirty2vis(
         uvw=uvw,
         freq=freqs,
         dirty=dirty,
@@ -147,6 +147,7 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
         verbosity=verbosity,
         vis=output_vis
     )
+    return output_vis
 
 
 def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
@@ -278,7 +279,14 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
     if npix_x < 32 or npix_y < 32:
         raise ValueError("npix_x and npix_y must be at least 32.")
 
-    return wgridder.vis2dirty(
+    # Make sure the output is in JY/PIXEL
+    num_rows = np.shape(uvw)[0]
+    num_freqs = np.shape(freqs)[0]
+    adjoint_factor = np.reciprocal((4. * num_rows - np.sqrt(8. * num_rows + 1.) - 1)) * 4. / num_freqs
+    if wgt is not None:
+        adjoint_factor /= np.mean(wgt)
+
+    return adjoint_factor * wgridder.vis2dirty(
         uvw=uvw,
         freq=freqs,
         vis=vis,
