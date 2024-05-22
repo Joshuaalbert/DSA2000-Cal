@@ -9,7 +9,7 @@ declare -A gpu_services
 declare -A extras
 
 services_order=(
-    "transfer_to_casa_ms"
+  "transfer_to_casa_ms"
 )
 
 # The values represent whether to use --no-cache or not. 1 for yes, 0 for no.
@@ -20,7 +20,7 @@ cache_options=(
 # Add special volumes that need to be mounted
 # Use single quotes for variables.
 volumes=(
-    ["transfer_to_casa_ms"]='-v $DATA_DIR_HOST:/dsa/data'
+  ["transfer_to_casa_ms"]='-v $DATA_DIR_HOST:/dsa/data'
 )
 
 # Add port forwarding maps, or environment variables (use single quotes to do delayed expand).
@@ -87,7 +87,7 @@ run_services() {
 
     # Build the Docker image
     echo "Building Docker image for $service_name..."
-    docker build $cache_option -t "$service_name" -f "$script_dir/services/$service_name/Dockerfile" "$script_dir" || {
+    docker build $cache_option -t "$service_name" -f "$script_dir/services/$service_name/Dockerfile" "$script_dir/../.." || {
       echo "Failed to build Docker image for $service_name"
       exit 1
     }
@@ -156,7 +156,7 @@ build_base_images() {
 
     # Build the base image
     echo "Building or updating base image $base_image_name..."
-    docker build -t "$base_image_name" -f "$base_dockerfile" "$script_dir" || {
+    docker build -t "$base_image_name" -f "$base_dockerfile" "$script_dir/../.." || {
       echo "Failed to build base image $base_image_name"
       exit 1
     }

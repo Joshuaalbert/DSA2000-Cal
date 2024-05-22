@@ -34,7 +34,6 @@ class DirtyImaging:
     # Imaging parameters
 
     plot_folder: str
-    cache_folder: str
 
     field_of_view: au.Quantity | None = None
     oversample_factor: float = 2.5
@@ -47,7 +46,6 @@ class DirtyImaging:
 
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
-        os.makedirs(self.cache_folder, exist_ok=True)
         if self.field_of_view is not None and not self.field_of_view.unit.is_equivalent(au.deg):
             raise ValueError(f"Expected field_of_view to be in degrees, got {self.field_of_view.unit}")
 

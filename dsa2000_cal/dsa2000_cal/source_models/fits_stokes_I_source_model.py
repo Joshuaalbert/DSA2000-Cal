@@ -169,7 +169,7 @@ class FitsStokesISourceModel(AbstractSourceModel):
                     image *= beam_per_pixel
                 else:
                     raise ValueError(f"Unknown BUNIT {hdul0[0].header['BUNIT']}")
-                print(f"Pixel shape: {pixel_size_x}, {pixel_size_y}")
+                # print(f"Pixel shape: {pixel_size_x}, {pixel_size_y}")
                 centre_x_pix, centre_y_pix = w0.wcs.crpix[0], w0.wcs.crpix[1]
                 pointing_coord, spectral_coord, stokes_coord = w0.pixel_to_world(
                     centre_x_pix, centre_y_pix, 0, 0

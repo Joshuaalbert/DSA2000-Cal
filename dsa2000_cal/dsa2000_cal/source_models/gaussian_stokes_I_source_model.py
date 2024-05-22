@@ -374,5 +374,3 @@ def derive_transform():
                          v_prime - u * major * sp.sin(theta) - v * major * sp.cos(theta)], (u, v))
     print(solution[u].simplify())
     print(solution[v].simplify())
-
-

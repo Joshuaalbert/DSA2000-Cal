@@ -11,21 +11,12 @@ from dsa2000_cal.assets.content_registry import NoMatchFound
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_random_spherical_layout
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.forward_model.sky_model import SkyModel
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
 from dsa2000_cal.source_models.gaussian_stokes_I_source_model import transform_ellipsoidal_params_to_plane_of_sky, \
     GaussianSourceModel
 from dsa2000_cal.source_models.point_stokes_I_source_model import PointSourceModel
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
-
-
-@dataclasses.dataclass(eq=False)
-class SkyModel:
-    component_models: List[WSCleanSourceModel]
-    fits_models: List[FitsStokesISourceModel]
-
-    @property
-    def num_sources(self) -> int:
-        return len(self.component_models) + len(self.fits_models)
 
 
 @dataclasses.dataclass(eq=False)

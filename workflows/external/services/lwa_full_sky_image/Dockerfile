@@ -3,7 +3,7 @@ FROM 1_wsclean_base:latest
 
 # Prepare run
 WORKDIR /dsa/code
-COPY services/lwa_full_sky_image/src src
+COPY workflows/external/services/lwa_full_sky_image/src src
 
 RUN mkdir -p /dsa/data
 RUN mkdir -p /dsa/run

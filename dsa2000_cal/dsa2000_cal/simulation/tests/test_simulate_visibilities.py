@@ -10,7 +10,7 @@ import pytest
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, array_registry
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.forward_model.synthetic_sky_model import SkyModel
+from dsa2000_cal.forward_model.sky_model import SkyModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel

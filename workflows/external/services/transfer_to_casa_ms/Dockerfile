@@ -2,7 +2,7 @@ FROM 1_makems_base:latest
 
 # Prepare run
 WORKDIR /dsa/code
-COPY services/transfer_to_casa_ms/src src
+COPY workflows/external/services/transfer_to_casa_ms/src src
 
 # Directies that will be mounted
 RUN mkdir -p /dsa/data

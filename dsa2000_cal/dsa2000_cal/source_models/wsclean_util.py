@@ -3,7 +3,6 @@ from typing import NamedTuple
 
 import numpy as np
 from astropy import coordinates as ac, units as au
-from h5parm.utils import parse_coordinates_bbs
 
 from dsa2000_cal.common.astropy_utils import dimensionless
 
@@ -51,6 +50,36 @@ class WSCleanLine(NamedTuple):
     major: au.Quantity | None
     minor: au.Quantity | None
     theta: au.Quantity | None
+
+
+def parse_coordinates_bbs(ra_str, dec_str) -> ac.ICRS:
+    """
+    Parses the ra/dec strings of sky model in BBS format and converts them into an ICRS SkyCoord object.
+    """
+    ra = ra_str.strip()
+    dec = dec_str.strip()
+
+    # Converts ra_str, dec_str from "-11:29:02.665", "12.17.10.033"
+    # Into "-11h29m02.665s", "+12d17m10.033s"
+    ra_regex = re.compile(r'^([-+]?\d{1,2}):(\d{1,2}):(\d{1,2}(?:\.\d*)?)$')
+    ra_match = ra_regex.match(ra)
+    if ra_match is None:
+        raise ValueError(f"Invalid RA format: '{ra}', expected form '-hh:mm:ss.sss'")
+    ra_str = f'{ra_match.group(1)}h{ra_match.group(2)}m{ra_match.group(3)}s'
+
+    # DEC regex to handle optional decimal part in the last section
+    dec_regex = re.compile(r'^([-+]?\d{1,2})\.(\d{1,2})\.(\d{1,2}(?:\.\d*)?)$')
+    dec_match = dec_regex.match(dec)
+    if dec_match is None:
+        raise ValueError(f"Invalid DEC format: '{dec}', expected form '+dd.mm.ss(.sss)'")
+    # Adjusting the format to ensure a '+' sign is included if not present
+    sign = '+' if dec[0] not in '-+' else ''
+    dec_str = f'{sign}{dec_match.group(1)}d{dec_match.group(2)}m{dec_match.group(3)}s'
+
+    # Convert to ICRS
+    ra = ac.Angle(ra_str, unit='hourangle')
+    dec = ac.Angle(dec_str, unit='deg')
+    return ac.ICRS(ra=ra, dec=dec)
 
 
 def parse_and_process_wsclean_source_line(line, freqs: au.Quantity) -> WSCleanLine | None:

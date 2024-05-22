@@ -110,7 +110,7 @@ class BeamGainModel(GainModel):
 
         # Interpolate in freq
         (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(freqs, model_freqs)
-        gains = gains[..., i0, :, :] * alpha0 + gains[..., i1, :, :] * alpha1  # [num_dir, num_freqs, 2, 2]
+        gains = gains[..., i0, :, :] * alpha0[:, None, None] + gains[..., i1, :, :] * alpha1[:, None, None]  # [num_dir, num_freqs, 2, 2]
 
         shape = lmn_sources.shape[:-1]
         lmn_sources = lmn_sources.reshape((-1, 3))
@@ -172,7 +172,7 @@ def beam_gain_model_factory(array_name: str) -> BeamGainModel:
     amplitude = au.Quantity(amplitude / voltage_gain[:, None, None])  # [num_theta, num_phi, num_freqs, 2, 2]
 
     phase = dish_model.get_phase()  # [num_theta, num_phi, num_freqs, 2, 2]
-    gains = amplitude * np.exp(1j * phase)
+    gains = amplitude * np.exp(1j * phase.to('rad').value)  # [num_theta, num_phi, num_freqs, 2, 2]
     gains = gains.reshape((-1, len(model_freqs), 2, 2)) * au.dimensionless_unscaled  # [num_dir, num_freqs, 2, 2]
 
     beam_gain_model = BeamGainModel(

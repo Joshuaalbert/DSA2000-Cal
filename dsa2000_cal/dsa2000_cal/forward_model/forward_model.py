@@ -12,7 +12,7 @@ from dsa2000_cal.calibration.calibration import Calibration
 from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.fits_utils import ImageModel
-from dsa2000_cal.forward_model.synthetic_sky_model import SkyModel
+from dsa2000_cal.forward_model.sky_model import SkyModel
 from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
 from dsa2000_cal.gain_models.gain_model import ProductGainModel
@@ -180,7 +180,6 @@ class ForwardModel:
     def _image_visibilities(self, image_name: str, ms: MeasurementSet) -> ImageModel:
         imagor = DirtyImaging(
             plot_folder=os.path.join(self.plot_folder, 'imaging'),
-            cache_folder=self.cache_folder,
             field_of_view=self.field_of_view,
             seed=self.imaging_seed,
             oversample_factor=self.oversample_factor,

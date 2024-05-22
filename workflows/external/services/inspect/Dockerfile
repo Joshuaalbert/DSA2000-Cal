@@ -2,7 +2,7 @@ FROM 1_base:latest
 
 # Prepare run
 WORKDIR /dsa/code
-COPY services/inspect/src src
+COPY workflows/external/services/inspect/src src
 RUN pip install -r src/requirements.txt
 
 # Directies that will be mounted

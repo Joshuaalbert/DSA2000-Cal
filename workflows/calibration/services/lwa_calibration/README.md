@@ -1,1 +1,1 @@
-# Simulate visibilities
+# Calibrate LWA Casa MS

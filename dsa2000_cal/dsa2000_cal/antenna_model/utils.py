@@ -179,7 +179,8 @@ def get_dish_model_beam_widths(antenna_model: AbstractAntennaModel, threshold: f
         threshold: threshold value to use to determine beam width, 0.5 is half-power beam width
 
     Returns:
-        beam width in degrees
+        freqs: [freq] the frequencies
+        beam_widths: [freq] the beam widths at the frequencies
     """
     amplitude = antenna_model.get_amplitude()  # [theta, phi, freq, 2, 2]
     freqs = antenna_model.get_freqs()

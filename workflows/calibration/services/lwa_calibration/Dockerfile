@@ -2,7 +2,7 @@ FROM 1_base:latest
 
 # Prepare run
 WORKDIR /dsa/code
-COPY services/lwa_calibration/src src
+COPY workflows/calibration/services/lwa_calibration/src src
 
 # Directies that will be mounted
 RUN mkdir -p /dsa/data

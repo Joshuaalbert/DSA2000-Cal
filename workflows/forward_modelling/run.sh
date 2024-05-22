@@ -91,7 +91,7 @@ run_services() {
 
     # Build the Docker image
     echo "Building Docker image for $service_name..."
-    docker build $cache_option -t "$service_name" -f "$script_dir/services/$service_name/Dockerfile" "$script_dir" || {
+    docker build $cache_option -t "$service_name" -f "$script_dir/services/$service_name/Dockerfile" "$script_dir/../.." || {
       echo "Failed to build Docker image for $service_name"
       exit 1
     }
@@ -160,7 +160,7 @@ build_base_images() {
 
     # Build the base image
     echo "Building or updating base image $base_image_name..."
-    docker build -t "$base_image_name" -f "$base_dockerfile" "$script_dir" || {
+    docker build -t "$base_image_name" -f "$base_dockerfile" "$script_dir/../.." || {
       echo "Failed to build base image $base_image_name"
       exit 1
     }

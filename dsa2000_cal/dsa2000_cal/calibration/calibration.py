@@ -17,7 +17,7 @@ from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.jax_utils import pytree_unravel, promote_pytree
 from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.forward_model.synthetic_sky_model import SkyModel
+from dsa2000_cal.forward_model.sky_model import SkyModel
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, VisibilityData, MeasurementSet
 from dsa2000_cal.predict.vec_utils import kron_product

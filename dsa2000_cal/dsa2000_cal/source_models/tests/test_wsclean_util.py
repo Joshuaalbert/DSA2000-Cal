@@ -1,7 +1,8 @@
 import numpy as np
-from astropy import units as au
+from astropy import units as au, coordinates as ac
 
-from dsa2000_cal.source_models.wsclean_util import parse_wsclean_source_line, parse_and_process_wsclean_source_line
+from dsa2000_cal.source_models.wsclean_util import parse_wsclean_source_line, parse_and_process_wsclean_source_line, \
+    parse_coordinates_bbs
 
 
 def test_correct_parsing():
@@ -83,3 +84,20 @@ def test_empty_input():
     line = ""
     result = parse_wsclean_source_line(line)
     assert result is None
+
+
+def test_parse_coordinates_bbs():
+    ra_str, dec_str = "-11:29:02.665", "-12.17.10.033"
+    coord = parse_coordinates_bbs(ra_str, dec_str)
+    expected_coord = ac.SkyCoord(ra=ac.Angle('-11h29m02.665s'), dec=ac.Angle('-12d17m10.033s'), frame='icrs')
+    assert coord == expected_coord
+
+    ra_str, dec_str = "11:29:29", "12.17.10"
+    coord = parse_coordinates_bbs(ra_str, dec_str)
+    expected_coord = ac.SkyCoord(ra=ac.Angle('11h29m29s'), dec=ac.Angle('12d17m10s'), frame='icrs')
+    assert coord == expected_coord
+
+    ra_str, dec_str = "+11:29:02.665", "+12.17.10.033"
+    coord = parse_coordinates_bbs(ra_str, dec_str)
+    expected_coord = ac.SkyCoord(ra=ac.Angle('+11h29m02.665s'), dec=ac.Angle('+12d17m10.033s'), frame='icrs')
+    assert coord == expected_coord

@@ -2,7 +2,7 @@ FROM 1_base:latest
 
 # Prepare run
 WORKDIR /dsa/code
-COPY services/forward_model/src src
+COPY workflows/forward_modelling/services/forward_model/src src
 
 # Directies that will be mounted
 RUN mkdir -p /dsa/data

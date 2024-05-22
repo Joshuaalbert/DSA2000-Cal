@@ -264,6 +264,8 @@ def get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray,
     # Finds the index such that t[i] <= t_insert < t[i+1],
     # where t[i] = t_centre[i] - 0.5 * dt and t[i+1] = t_centre[i] + 0.5 * dt
     if len(grid_centres) == 0:
+        raise ValueError("Grid centres must be non-empty")
+    elif len(grid_centres) == 1:
         return np.zeros_like(insert_value, dtype=np.int32)
     dt0 = grid_centres[1] - grid_centres[0]
     edge = grid_centres - 0.5 * np.diff(grid_centres, prepend=grid_centres[0] - dt0)
