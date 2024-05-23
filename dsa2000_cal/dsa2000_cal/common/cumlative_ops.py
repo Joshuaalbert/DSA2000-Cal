@@ -1,6 +1,7 @@
 from typing import TypeVar, Callable, Tuple, Optional
 
 import jax
+import numpy as np
 from jax import lax, numpy as jnp, tree_util
 from tensorflow_probability.substrates.jax import math as tfp_math
 
@@ -9,6 +10,25 @@ from dsa2000_cal.common.types import int_type
 X = TypeVar('X')
 V = TypeVar('V')
 Y = TypeVar('Y')
+
+
+def _compute_max_num_levels(batch_size: int) -> int:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    # max_num_levels: Python `int`. The `axis` of the tensors in `elems` must have
+    # size less than `2**(max_num_levels + 1)`
+    # max_num_levels = inf{L : batch_size < 2**(L + 1)}
+    # batch_size == 2**(max_num_levels + 1) - 1
+    # ==> max_num_levels = log2(batch_size + 1) - 1
+    return max(0, int(np.ceil(np.log2(batch_size + 1) - 1)))
+
+
+def test_compute_max_num_levels():
+    for batch_size in range(1, 1000):
+        max_num_levels = _compute_max_num_levels(batch_size)
+        print(batch_size, max_num_levels)
+        assert batch_size < 2 ** (max_num_levels + 1)
+        assert batch_size >= 2 ** (max_num_levels)
 
 
 def scan_associative_cumulative_op(op: Callable[[X, X], X], init: X, xs: X, pre_op: bool = False) -> Tuple[X, X]:
@@ -30,8 +50,14 @@ def scan_associative_cumulative_op(op: Callable[[X, X], X], init: X, xs: X, pre_
     # Prepare the input array by prepending the initial value
     full_input = jax.tree.map(lambda x, y: jnp.concatenate([x[None], y], axis=0), init, xs)
 
+    batch_size = np.shape(jax.tree.leaves(full_input)[0])[0]
+    max_num_levels = _compute_max_num_levels(batch_size)
+
     # Apply the operation to accumulate results using scan_associative
-    scanned_results = tfp_math.scan_associative(associative_op, full_input)
+    scanned_results = tfp_math.scan_associative(
+        associative_op, full_input,
+        max_num_levels=max_num_levels
+    )
 
     # The final accumulated value is the last element in the results
     final_accumulate = jax.tree.map(lambda x: x[-1], scanned_results)
