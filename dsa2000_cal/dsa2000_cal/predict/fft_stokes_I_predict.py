@@ -11,14 +11,22 @@ from dsa2000_cal.common import wgridder
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
 from dsa2000_cal.predict.check_utils import check_fft_predict_inputs
 from dsa2000_cal.predict.vec_utils import kron_product
-from dsa2000_cal.source_models.corr_translation import stokes_to_linear, flatten_coherencies
+from dsa2000_cal.source_models.corr_translation import stokes_to_linear
 
 
 class FFTStokesIModelData(NamedTuple):
     """
     Data for predicting with FFT.
+
+    Args:
+        image: jax.Array  # [[chan,] Nl, Nm] in Stokes I
+        gains: jax.Array  # [time, ant, [chan,] 2, 2]
+        l0: jax.Array  # [[chan,]]
+        m0: jax.Array  # [[chan,]]
+        dl: jax.Array  # [[chan,]] increasing along l-dim
+        dm: jax.Array  # [[chan,]]
     """
-    image: jax.Array  # [[chan,] Nx, Ny] in Stokes I
+    image: jax.Array  # [[chan,] Nl, Nm] in Stokes I
     gains: jax.Array  # [time, ant, [chan,] 2, 2]
     l0: jax.Array  # [[chan,]]
     m0: jax.Array  # [[chan,]]
@@ -41,7 +49,7 @@ class FFTStokesIPredict:
 
         If the image has a frequency dimension then it must match freqs, and we feed in image by image.
 
-        If the image doesn't have a frequency dimension then it must be shaped (Nx, Ny), and we replicate the image
+        If the image doesn't have a frequency dimension then it must be shaped (Nm, Nl), and we replicate the image
         for all frequencies.
 
         Similarly, for gains we replicate the gains for all frequencies if they don't have a frequency dimension.
@@ -97,7 +105,7 @@ class FFTStokesIPredict:
 
         # g1, g2: [row, [chan,] 2, 2]
         # freqs: [chan]
-        # image: [[chan',] Nx, Ny]
+        # image: [[chan',] Nl, Nm]
         # dl, dm, l0, m0: [[chan']]
         # uvw: [row, 3]
         def compute_visibility(g1: jax.Array, g2: jax.Array,
@@ -132,7 +140,7 @@ class FFTStokesIPredict:
             g1: [row, [num_freqs,] 2, 2]
             g2: [row, [num_freqs,] 2, 2]
             freqs: [num_freqs]
-            image: [[num_freqs,] Nx, Ny]
+            image: [[num_freqs,] Nl, Nm]
             dl: [[num_freqs,]]
             dm: [[num_freqs,]]
             l0: [[num_freqs,]]
@@ -145,7 +153,7 @@ class FFTStokesIPredict:
         if self.convention == 'casa':
             uvw = jnp.negative(uvw)
 
-        # image: [[num_freqs,] Nx, Ny]
+        # image: [[num_freqs,] Nm, Nl]
         # freqs: [num_freqs]
         image_has_chans = len(np.shape(image)) == 3
 
@@ -159,17 +167,19 @@ class FFTStokesIPredict:
             def predict(freqs: jax.Array, image: jax.Array, dl: jax.Array, dm: jax.Array, l0: jax.Array,
                         m0: jax.Array) -> jax.Array:
                 if len(np.shape(image)) != 2:
-                    raise ValueError(f"Expected image to have shape [Nx, Ny], got {np.shape(image)}")
+                    raise ValueError(f"Expected image to have shape [Nm, Nl], got {np.shape(image)}")
                 if np.shape(dl) != () or np.shape(dm) != () or np.shape(l0) != () or np.shape(m0) != ():
                     raise ValueError("If image doesn't have a channel then l0, m0, dl, and dm must be scalars.")
                 vis = wgridder.dirty2vis(
                     uvw=uvw,
                     freqs=freqs[None],
                     dirty=image,
-                    pixsize_x=-dl,
-                    pixsize_y=dm,
-                    center_x=l0,
-                    center_y=m0,
+                    pixsize_m=dm,
+                    pixsize_l=dl,
+                    center_m=m0,
+                    center_l=l0,
+                    wgt=None,  # Always None
+                    flip_v=False,
                     epsilon=self.epsilon
                 )  # [num_rows, 1]
                 return vis[:, 0]  # [num_rows]
@@ -181,10 +191,12 @@ class FFTStokesIPredict:
                 uvw=uvw,
                 freqs=freqs,
                 dirty=image,
-                pixsize_x=-dl,
-                pixsize_y=dm,
-                center_x=l0,
-                center_y=m0,
+                pixsize_m=dm,
+                pixsize_l=dl,
+                center_m=m0,
+                center_l=l0,
+                wgt=None,
+                flip_v=False,
                 epsilon=self.epsilon
             )  # [num_rows, num_freqs]
 
@@ -224,9 +236,8 @@ class FFTStokesIPredict:
         # vis: [4]
         def transform(g1, g2, vis_stokes):
             vis_linear = stokes_to_linear(vis_stokes, flat_output=False)  # [2, 2]
-            vis_linear = kron_product(g1, vis_linear, g2.T.conj()) # [2, 2]
+            vis_linear = kron_product(g1, vis_linear, g2.T.conj())  # [2, 2]
             return vis_linear  # [2, 2]
-
 
         vis_linear = transform(g1, g2, vis_stokes)  # [num_freqs, num_rows, 2, 2]
         vis_linear = lax.transpose(vis_linear, (1, 0, 2, 3))  # [num_rows, num_freqs, 2, 2]

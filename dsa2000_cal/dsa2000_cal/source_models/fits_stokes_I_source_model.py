@@ -25,8 +25,8 @@ class FitsStokesISourceModel(AbstractSourceModel):
     Predict vis from Stokes I images.
     """
     freqs: au.Quantity  # [num_freqs] Frequencies
-    images: List[au.Quantity]  # num_freqs list of [Nm, Nl] images
-    dl: au.Quantity  # [num_freqs] l pixel size
+    images: List[au.Quantity]  # num_freqs list of [Nl, Nm] images
+    dl: au.Quantity  # [num_freqs] l pixel size (increasing)
     dm: au.Quantity  # [num_freqs] m pixel size
     l0: au.Quantity  # [num_freqs] image centre l coordinates (usually 0, but need not be)
     m0: au.Quantity  # [num_freqs] image centre m coordinates (usually 0, but need not be)
@@ -136,7 +136,8 @@ class FitsStokesISourceModel(AbstractSourceModel):
 
         # Each fits file is a 2D image, and we linearly interpolate between frequencies
         available_freqs = au.Quantity([freq for freq, _ in wsclean_fits_freqs_and_fits])
-        i0 = get_centred_insert_index(insert_value=quantity_to_np(freqs), grid_centres=quantity_to_np(available_freqs),
+        i0 = get_centred_insert_index(insert_value=quantity_to_np(freqs),
+                                      grid_centres=quantity_to_np(available_freqs),
                                       ignore_out_of_bounds=ignore_out_of_bounds)
 
         images = []
@@ -152,31 +153,37 @@ class FitsStokesISourceModel(AbstractSourceModel):
                 image = hdul0[0].data[0, 0, :, :]  # [Nm, Nl]
                 w0 = WCS(hdul0[0].header)
                 image = au.Quantity(image, 'Jy')
+                # RA--SIN and DEC--SIN
+                cos_dec = np.cos(w0.wcs.crval[1] * np.pi / 180.)
                 if hdul0[0].header['BUNIT'] == 'JY/PIXEL':
-                    pixel_size_x = au.Quantity(w0.wcs.cdelt[0], au.deg)
-                    pixel_size_y = au.Quantity(w0.wcs.cdelt[1], au.deg)
+                    pixel_size_l = au.Quantity(w0.wcs.cdelt[0], au.deg)
+                    pixel_size_m = cos_dec * au.Quantity(w0.wcs.cdelt[1], au.deg)
                     pass
                 elif hdul0[0].header['BUNIT'] == 'JY/BEAM':
                     # Convert to JY/PIXEL
                     bmaj = hdul0[0].header['BMAJ'] * au.deg
                     bmin = hdul0[0].header['BMIN'] * au.deg
                     beam_area = (np.pi / (2. * np.log(2))) * bmaj * bmin
-                    pixel_size_x = au.Quantity(w0.wcs.cdelt[0], au.deg)
-                    pixel_size_y = au.Quantity(w0.wcs.cdelt[1], au.deg)
-                    pixel_area = np.abs(pixel_size_x * pixel_size_y)
+                    pixel_size_l = au.Quantity(w0.wcs.cdelt[0], au.deg)
+                    pixel_size_m = cos_dec * au.Quantity(w0.wcs.cdelt[1], au.deg)
+                    pixel_area = np.abs(pixel_size_l * pixel_size_m)
 
                     beam_per_pixel = beam_area / pixel_area
                     image *= beam_per_pixel
                 else:
                     raise ValueError(f"Unknown BUNIT {hdul0[0].header['BUNIT']}")
-                # print(f"Pixel shape: {pixel_size_x}, {pixel_size_y}")
-                centre_x_pix, centre_y_pix = w0.wcs.crpix[0], w0.wcs.crpix[1]
+                centre_l_pix, centre_m_pix = w0.wcs.crpix[0], w0.wcs.crpix[1]
+                centre_l, centre_m = w0.wcs.crval[0], w0.wcs.crval[1]
+                Nm, Nl = image.shape
+                print(f"dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
+                      f"centre_ra={centre_l}, centre_dec={centre_m}\n"
+                      f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"
+                      f"num_l={Nl}, num_m={Nm}")
                 pointing_coord, spectral_coord, stokes_coord = w0.pixel_to_world(
-                    centre_x_pix, centre_y_pix, 0, 0
+                    centre_l_pix, centre_m_pix, 0, 0
                 )
-                # print(w0.pixel_to_world(centre_x_pix, centre_y_pix, 0, 0))
-                # Increasing y is decreasing m
-                # Increasing x is increasing l
+                # Increasing y is increasing m
+                # Increasing x is decreasing l
                 if stokes_coord != StokesCoord("I"):
                     raise ValueError(f"Expected Stokes I, got {stokes_coord}")
                 center_icrs = pointing_coord.transform_to(ac.ICRS)
@@ -184,26 +191,31 @@ class FitsStokesISourceModel(AbstractSourceModel):
                 l0, m0 = lmn0[:2]
                 # I don't trust the wcs cdelt values, so I will compute them.
                 # compute l over for m[centre_y_pix] and take mean diff
-                Nm, Nl = image.shape
+
+                # Order is l, m, freq, stokes
+                # compute l over for m=centre_m and take mean diff
                 pointing_coord, _, _ = w0.pixel_to_world(
-                    np.arange(Nl) + 1, centre_y_pix * np.ones(Nl), 0, 0
+                    [1, Nl], [centre_m_pix, centre_m_pix], 0, 0
                 )
                 pointing_icrs = pointing_coord.transform_to(ac.ICRS)
                 lmn1 = icrs_to_lmn(pointing_icrs, time, phase_tracking)
-                l1, m1 = lmn1[:, 0], lmn1[:, 1]
-                dl = np.mean(np.diff(l1))
-                # compute m over for l[centre_x_pix] and take mean diff
+                l1 = lmn1[:, 0]
+                dl = (l1[-1] - l1[0]) / (Nl - 1)
+                # dl = np.mean(np.diff(l1))
+                # compute m over for l[centre_l_pix] and take mean diff
                 pointing_coord, _, _ = w0.pixel_to_world(
-                    centre_x_pix * np.ones(Nm), np.arange(Nm) + 1, 0, 0
+                    [centre_l_pix, centre_l_pix], [1, Nm], 0, 0
                 )
                 pointing_icrs = pointing_coord.transform_to(ac.ICRS)
                 lmn1 = icrs_to_lmn(pointing_icrs, time, phase_tracking)
-                l1, m1 = lmn1[:, 0], lmn1[:, 1]
-                dm = np.mean(np.diff(m1))
-                # For RA--SIN and DEC--SIN we can always do:
-                # dl = au.Quantity(w0.wcs.cdelt[0], au.deg).to(au.rad).value * au.dimensionless_unscaled
-                # dm = au.Quantity(w0.wcs.cdelt[1], au.deg).to(au.rad).value * au.dimensionless_unscaled
-                # print(dl, dm)
+                m1 = lmn1[:, 1]
+                dm = (m1[-1] - m1[0]) / (Nm - 1)
+                # dm = np.mean(np.diff(m1))
+                print(f"My dl={dl}, dm={dm}")
+
+                # Convert to [Nl, Nm], with increasing l
+                image = image[:, ::-1].T  # [Nl, Nm]
+                dl = -dl
 
             images.append(image)
             l0s.append(l0)
@@ -228,17 +240,18 @@ class FitsStokesISourceModel(AbstractSourceModel):
 
     def get_flux_model(self, lvec=None, mvec=None):
         # Use imshow to plot the sky model evaluated over a LM grid
-        Nm, Nl = self.images[0].shape
+        Nl, Nm = self.images[0].shape
         lvec = np.arange(-Nl // 2, Nl // 2) * self.dl[0] + self.l0[0]
         mvec = np.arange(-Nm // 2, Nm // 2) * self.dm[0] + self.m0[0]
-        flux_model = self.images[0]  # [Nm, Nl]
+        flux_model = self.images[0].T  # [Nm, Nl]
         return lvec, mvec, flux_model
 
     def plot(self):
-        lvec, mvec, flux_model = self.get_flux_model()
+        lvec, mvec, flux_model = self.get_flux_model()  # [Nm, Nl]
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
-        im = axs.imshow(flux_model, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
+        im = axs.imshow(flux_model, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
+                        cmap='inferno')
         # colorbar
         plt.colorbar(im, ax=axs)
         axs.set_xlabel('l')

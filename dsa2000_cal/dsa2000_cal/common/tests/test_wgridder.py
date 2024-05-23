@@ -30,8 +30,8 @@ def test_dirty2vis():
     verbosity = 0
     visibilities = dirty2vis(
         uvw=uvw, freqs=freqs, dirty=dirty, wgt=wgt,
-        pixsize_x=pixsize_x, pixsize_y=pixsize_y,
-        center_x=center_x, center_y=center_y,
+        pixsize_m=pixsize_x, pixsize_l=pixsize_y,
+        center_m=center_x, center_l=center_y,
         epsilon=epsilon, do_wgridding=do_wgridding,
         flip_v=flip_v, divide_by_n=divide_by_n,
         sigma_min=sigma_min, sigma_max=sigma_max,
@@ -42,8 +42,8 @@ def test_dirty2vis():
     # wgt works as expected
     visibilities2 = dirty2vis(
         uvw=uvw, freqs=freqs, dirty=dirty, wgt=2 * wgt,
-        pixsize_x=pixsize_x, pixsize_y=pixsize_y,
-        center_x=center_x, center_y=center_y,
+        pixsize_m=pixsize_x, pixsize_l=pixsize_y,
+        center_m=center_x, center_l=center_y,
         epsilon=epsilon, do_wgridding=do_wgridding,
         flip_v=flip_v, divide_by_n=divide_by_n,
         sigma_min=sigma_min, sigma_max=sigma_max,
@@ -56,8 +56,8 @@ def test_dirty2vis():
     fn = jax.jit(lambda uvw:
                  dirty2vis(
                      uvw=uvw, freqs=freqs, dirty=dirty, wgt=wgt,
-                     pixsize_x=pixsize_x, pixsize_y=pixsize_y,
-                     center_x=center_x, center_y=center_y,
+                     pixsize_m=pixsize_x, pixsize_l=pixsize_y,
+                     center_m=center_x, center_l=center_y,
                      epsilon=epsilon, do_wgridding=do_wgridding,
                      flip_v=flip_v, divide_by_n=divide_by_n,
                      sigma_min=sigma_min, sigma_max=sigma_max,
@@ -85,8 +85,8 @@ def test_vis2dirty():
     nthreads = 1
     verbosity = 0
     dirty = vis2dirty(
-        uvw=uvw, freqs=freqs, vis=vis, npix_x=npix_x, npix_y=npix_y,
-        pixsize_x=pixsize_x, pixsize_y=pixsize_y, center_x=center_x, center_y=center_y,
+        uvw=uvw, freqs=freqs, vis=vis, npix_m=npix_x, npix_l=npix_y,
+        pixsize_m=pixsize_x, pixsize_l=pixsize_y, center_m=center_x, center_l=center_y,
         epsilon=epsilon, do_wgridding=do_wgridding, flip_v=flip_v, divide_by_n=divide_by_n,
         sigma_min=sigma_min, sigma_max=sigma_max, nthreads=nthreads, verbosity=verbosity
     )
@@ -94,8 +94,8 @@ def test_vis2dirty():
 
     # wgt works as expected
     dirty2 = vis2dirty(
-        uvw=uvw, freqs=freqs, vis=vis, wgt=2 * vis, npix_x=npix_x, npix_y=npix_y,
-        pixsize_x=pixsize_x, pixsize_y=pixsize_y, center_x=center_x, center_y=center_y,
+        uvw=uvw, freqs=freqs, vis=vis, wgt=2 * vis, npix_m=npix_x, npix_l=npix_y,
+        pixsize_m=pixsize_x, pixsize_l=pixsize_y, center_m=center_x, center_l=center_y,
         epsilon=epsilon, do_wgridding=do_wgridding, flip_v=flip_v, divide_by_n=divide_by_n,
         sigma_min=sigma_min, sigma_max=sigma_max, nthreads=nthreads, verbosity=verbosity
     )
@@ -105,9 +105,9 @@ def test_vis2dirty():
     # JIT works
     fn = jax.jit(lambda uvw:
                  vis2dirty(
-                     uvw=uvw, freqs=freqs, vis=vis, npix_x=npix_x, npix_y=npix_y,
-                     pixsize_x=pixsize_x, pixsize_y=pixsize_y, center_x=center_x,
-                     center_y=center_y, epsilon=epsilon, do_wgridding=do_wgridding,
+                     uvw=uvw, freqs=freqs, vis=vis, npix_m=npix_x, npix_l=npix_y,
+                     pixsize_m=pixsize_x, pixsize_l=pixsize_y, center_m=center_x,
+                     center_l=center_y, epsilon=epsilon, do_wgridding=do_wgridding,
                      flip_v=flip_v, divide_by_n=divide_by_n, sigma_min=sigma_min,
                      sigma_max=sigma_max, nthreads=nthreads, verbosity=verbosity))
 
@@ -146,10 +146,10 @@ def test_gh53(num_ants: int, num_freqs: int):
         freqs=freqs,
         dirty=dirty,
         wgt=None,
-        pixsize_x=pixsize,
-        pixsize_y=pixsize,
-        center_x=0.,
-        center_y=0.,
+        pixsize_m=pixsize,
+        pixsize_l=pixsize,
+        center_m=0.,
+        center_l=0.,
         epsilon=1e-4,
         do_wgridding=True,
         flip_v=False,
@@ -163,13 +163,13 @@ def test_gh53(num_ants: int, num_freqs: int):
         uvw=uvw,
         freqs=freqs,
         vis=vis,
-        npix_x=n,
-        npix_y=n,
-        pixsize_x=pixsize,
-        pixsize_y=pixsize,
+        npix_m=n,
+        npix_l=n,
+        pixsize_m=pixsize,
+        pixsize_l=pixsize,
         wgt=wgt,
-        center_x=0.,
-        center_y=0.,
+        center_m=0.,
+        center_l=0.,
         epsilon=1e-4,
         do_wgridding=True,
         flip_v=False,
@@ -216,3 +216,133 @@ def test_gh53(num_ants: int, num_freqs: int):
     # print(vis_point_predict_stokes)
     # np.testing.assert_allclose(vis_point_predict_stokes, vis, atol=1e-3)
     np.testing.assert_allclose(dirty_rec, dirty, atol=0.1)
+
+
+def test_gh55():
+    # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
+    np.random.seed(42)
+    import pylab as plt
+    # Validate the units of image
+    # To do this we simulate an image with a single point source in the centre, and compute the visibilties from that.
+    N = 256
+    num_ants = 100
+    num_freqs = 1
+
+    pixsize = 5 * np.pi / 180 / 3600.  # 5 arcsec
+    x0 = 0.
+    y0 = 0.
+    l0 = y0
+    m0 = x0
+    dl = pixsize
+    dm = pixsize
+    dirty = np.zeros((N, N)) # [Nl, Nm]
+    # place a central pixel: 0, 1, 2, 3 ==> 4/2 - 0.5 = 1.5 == l0
+    # ==> l(n) = l0 + (n - (N - 1)/2) * dl
+    # l(0) = l0 - (N-1)/2 * dl
+    dirty[N // 2, N // 2] = 1.
+    dirty[N // 3, N // 3] = 1.
+
+    def pixel_to_lmn(xi, yi):
+        l = l0 + (-N/2 + xi) * dl
+        m = m0 + (-N/2 + yi) * dm
+        n = np.sqrt(1. - l ** 2 - m ** 2)
+        return np.asarray([l, m, n])
+
+    lmn1 = pixel_to_lmn(N // 2, N // 2)
+    lmn2 = pixel_to_lmn(N // 3, N // 3)
+
+    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
+
+    num_rows = len(antenna_1)
+    antennas = 10e3 * np.random.normal(size=(num_ants, 3))
+    antennas[:, 2] *= 0.001
+    uvw = antennas[antenna_2] - antennas[antenna_1]
+
+    plt.scatter(uvw[:, 0], uvw[:, 1])
+    plt.show()
+    freqs = np.linspace(700e6, 2000e6, num_freqs)
+
+    wgt = None#np.ones((num_rows, num_freqs))
+    # wgt = np.random.uniform(size=(num_rows, num_freqs))
+
+    vis = dirty2vis(
+        uvw=uvw,
+        freqs=freqs,
+        dirty=dirty,
+        wgt=None,
+        pixsize_m=dm,
+        pixsize_l=dl,
+        center_m=x0,
+        center_l=y0,
+        epsilon=1e-4,
+        do_wgridding=True,
+        flip_v=False,
+        divide_by_n=True,
+        nthreads=1,
+        verbosity=0,
+    )
+    print(vis)
+
+    dirty_rec = vis2dirty(
+        uvw=uvw,
+        freqs=freqs,
+        vis=vis,
+        npix_m=N,
+        npix_l=N,
+        pixsize_m=dm,
+        pixsize_l=dl,
+        wgt=wgt,
+        center_m=0.,
+        center_l=0.,
+        epsilon=1e-4,
+        do_wgridding=True,
+        flip_v=False,
+        divide_by_n=True,
+        nthreads=1,
+        verbosity=0
+    )
+
+    plt.imshow(dirty_rec, origin='lower',
+               interpolation='nearest', cmap='inferno')
+    plt.colorbar()
+    plt.show()
+    plt.imshow(dirty, origin='lower',
+               interpolation='nearest', cmap='inferno')
+    plt.colorbar()
+    plt.show()
+
+    diff_dirty = dirty_rec - dirty
+    plt.imshow(diff_dirty, origin='lower',
+               interpolation='nearest', cmap='inferno')
+    plt.colorbar()
+    plt.show()
+
+    predict = PointPredict(convention='fourier')
+    image = np.zeros((2, num_freqs, 2, 2))  # [source, chan, 2, 2]
+    image[:, :, 0, 0] = 0.5
+    image[:, :, 1, 1] = 0.5
+    gains = np.zeros((2, num_ants, num_freqs, 2, 2))  # [[source,] time, ant, chan, 2, 2]
+    gains[..., 0, 0] = 1.
+    gains[..., 1, 1] = 1.
+    lmn = np.stack([lmn1, lmn2], axis=0)  # [source, 3]
+
+    vis_point_predict_linear = predict.predict(
+        freqs=freqs,
+        dft_model_data=PointModelData(
+            image=image,
+            gains=gains,
+            lmn=lmn
+        ),
+        visibility_coords=VisibilityCoords(
+            uvw=uvw,
+            time_obs=np.zeros(num_rows),
+            antenna_1=antenna_1,
+            antenna_2=antenna_2,
+            time_idx=np.zeros(num_rows, jnp.int64)
+        )
+    )  # [row, chan, 2, 2]
+    vis_point_predict_stokes = jax.vmap(jax.vmap(linear_to_stokes))(vis_point_predict_linear)[:, :, 0, 0]
+    print(vis_point_predict_stokes)
+    np.testing.assert_allclose(vis_point_predict_stokes.real, vis.real, atol=1e-3)
+    np.testing.assert_allclose(vis_point_predict_stokes.imag, vis.imag, atol=1e-3)
+    np.testing.assert_allclose(dirty_rec, dirty, atol=0.11)

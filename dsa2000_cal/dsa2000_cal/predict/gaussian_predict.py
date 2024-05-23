@@ -209,7 +209,7 @@ class GaussianPredict:
             theta=theta
         )
 
-        w_term = jnp.exp(-2j * jnp.pi * w * (n0 - 1)) / n0
+        w_term = jnp.exp(-2j * jnp.pi * w * (1. - n0)) / n0
 
         C = w_term
 
@@ -224,7 +224,7 @@ class GaussianPredict:
 
             def wkernel(l, m):
                 n = jnp.sqrt(1. - l ** 2 - m ** 2)
-                return jnp.exp(-2j * jnp.pi * w * (n - 1)) / n
+                return jnp.exp(-2j * jnp.pi * w * (1. - n)) / n
 
             C = wkernel(l0, m0)
 

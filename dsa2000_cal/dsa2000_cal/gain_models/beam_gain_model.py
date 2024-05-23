@@ -51,6 +51,8 @@ class BeamGainModel(GainModel):
     model_gains: au.Quantity  # [num_dir, num_freqs, 2, 2]
     num_antenna: int
 
+    tracking: bool = True # If True, track the phase centre, else Zenith
+
     dtype: jnp.dtype = jnp.complex64
 
     def __post_init__(self):

@@ -25,13 +25,13 @@ def test_faint_predict(gain_has_chan: bool, image_has_chan: bool):
         image_shape = (chan, Nx, Ny)
         l0 = jnp.zeros((chan,))
         m0 = jnp.zeros((chan,))
-        dl = -0.01 * jnp.ones((chan,))
+        dl = 0.01 * jnp.ones((chan,))
         dm = 0.01 * jnp.ones((chan,))
     else:
         image_shape = (Nx, Ny)
         l0 = jnp.zeros(())
         m0 = jnp.zeros(())
-        dl = -0.01 * jnp.ones(())
+        dl = 0.01 * jnp.ones(())
         dm = 0.01 * jnp.ones(())
     image = jnp.ones(image_shape, dtype=jnp.float32)
     model_data = FFTStokesIModelData(
@@ -82,7 +82,7 @@ def test_with_sharding():
     gains = jnp.ones((time, ant, chan, 2, 2), dtype=jnp.complex64)
     l0 = jnp.zeros((chan,))
     m0 = jnp.zeros((chan,))
-    dl = -0.1 * jnp.ones((chan,))
+    dl = 0.1 * jnp.ones((chan,))
     dm = 0.1 * jnp.ones((chan,))
     model_data = FFTStokesIModelData(
         image=tree_device_put(image, NamedSharding(mesh, P('chan'))),
@@ -148,13 +148,13 @@ def test_grads_work(gain_has_chan: bool, image_has_chan: bool):
         image = jax.random.normal(jax.random.PRNGKey(0), (chan, Nx, Ny), dtype=jnp.float32)
         l0 = jnp.zeros((chan,))
         m0 = jnp.zeros((chan,))
-        dl = -0.01 / Nx * jnp.ones((chan,))
+        dl = 0.01 / Nx * jnp.ones((chan,))
         dm = 0.01 / Nx * jnp.ones((chan,))
     else:
         image = jax.random.normal(jax.random.PRNGKey(0), (Nx, Ny), dtype=jnp.float32)
         l0 = jnp.zeros(())
         m0 = jnp.zeros(())
-        dl = -0.01 / Nx * jnp.ones(())
+        dl = 0.01 / Nx * jnp.ones(())
         dm = 0.01 / Nx * jnp.ones(())
 
     gains = jax.random.normal(jax.random.PRNGKey(42), gain_shape) + 1j * jax.random.normal(jax.random.PRNGKey(43),

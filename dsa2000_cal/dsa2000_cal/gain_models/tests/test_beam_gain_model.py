@@ -117,3 +117,23 @@ def test_beam_gain_model_real_data():
     axs[0, 0].set_ylabel('m')
     axs[0, 0].set_title('Amplitude')
     plt.show()
+
+
+def test_beam_gain_model_factory():
+    beam_gain_model = beam_gain_model_factory(array_name='lwa')
+    sc = plt.scatter(beam_gain_model.lmn_data[:, 0], beam_gain_model.lmn_data[:, 1], s=1, alpha=0.5,
+                     c=np.log10(np.abs(beam_gain_model.model_gains[:, 0, 0, 0])))
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('log10(Amplitude)')
+    plt.show()
+
+    sc = plt.scatter(beam_gain_model.lmn_data[:, 0], beam_gain_model.lmn_data[:, 1], s=1, alpha=0.5,
+                     c=np.angle(beam_gain_model.model_gains[:, 0, 0, 0]),
+                     cmap='hsv', vmin=-np.pi, vmax=np.pi)
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('Phase')
+    plt.show()

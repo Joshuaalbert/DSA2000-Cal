@@ -4,13 +4,14 @@ import numpy as np
 from ducc0 import wgridder
 
 __all__ = [
-    'dirty2vis'
+    'dirty2vis',
+    'vis2dirty'
 ]
 
 
 def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
-              pixsize_x: float | jax.Array, pixsize_y: float | jax.Array,
-              center_x: float | jax.Array, center_y: float | jax.Array,
+              pixsize_m: float | jax.Array, pixsize_l: float | jax.Array,
+              center_m: float | jax.Array, center_l: float | jax.Array,
               epsilon: float, do_wgridding: bool = True,
               wgt: jax.Array | None = None, mask: jax.Array | None = None,
               flip_v: bool = False, divide_by_n: bool = True,
@@ -22,11 +23,11 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     Args:
         uvw: [num_rows, 3] array of uvw coordinates.
         freqs: [num_freqs] array of frequencies.
-        dirty: [num_x, num_y] array of dirty image, in units of JY/PIXEL.
-        pixsize_x: scalar, pixel size in x direction.
-        pixsize_y: scalar, pixel size in y direction.
-        center_x: scalar, center of image in x direction.
-        center_y: scalar, center of image in y direction.
+        dirty: [num_l, num_m] array of dirty image, in units of JY/PIXEL.
+        pixsize_m: scalar, pixel size in x direction.
+        pixsize_l: scalar, pixel size in y direction.
+        center_m: scalar, center of image in x direction.
+        center_l: scalar, center of image in y direction.
         epsilon: scalar, gridding kernel width.
         do_wgridding: scalar, whether to do w-gridding.
         wgt: [num_rows, num_freqs] array of weights, multiplied with output visibilities.
@@ -41,18 +42,13 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
-    # print uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
-    #               pixsize_x: float | jax.Array, pixsize_y: float | jax.Array,
-    #               center_x: float | jax.Array, center_y: float | jax.Array,
-    #               epsilon: float, do_wgridding: bool = True,
-    # print(uvw.dtype, freqs.dtype, dirty.dtype, pixsize_x.dtype, pixsize_y.dtype, center_x.dtype, center_y.dtype, epsilon, do_wgridding)
 
     if len(np.shape(uvw)) != 2:
         raise ValueError(f"Expected uvw to be shape (num_rows, 3), got {np.shape(uvw)}")
     if len(np.shape(freqs)) != 1:
         raise ValueError(f"Expected freqs to be shape (num_freqs,), got {np.shape(freqs)}")
     if len(np.shape(dirty)) != 2:
-        raise ValueError(f"Expected dirty to be shape (num_x, num_y), got {np.shape(dirty)}")
+        raise ValueError(f"Expected dirty to be shape (num_m, num_l), got {np.shape(dirty)}")
     if wgt is not None and len(np.shape(wgt)) != 2:
         raise ValueError(f"Expected wgt to be shape (num_rows, num_freqs), got {np.shape(wgt)}")
     if mask is not None and len(np.shape(mask)) != 2:
@@ -70,7 +66,7 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     )
 
     args = (
-        uvw, freqs, dirty, wgt, mask, pixsize_x, pixsize_y, center_x, center_y,
+        uvw, freqs, dirty, wgt, mask, pixsize_m, pixsize_l, center_m, center_l,
         epsilon, do_wgridding, flip_v, divide_by_n, sigma_min, sigma_max,
         nthreads, verbosity
     )
@@ -81,8 +77,8 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
 def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
                     dirty: np.ndarray, wgt: np.ndarray | None,
                     mask: np.ndarray | None,
-                    pixsize_x: float, pixsize_y: float,
-                    center_x: float, center_y: float,
+                    pixsize_m: float, pixsize_l: float,
+                    center_m: float, center_l: float,
                     epsilon: float, do_wgridding: bool,
                     flip_v: bool, divide_by_n: bool,
                     sigma_min: float, sigma_max: float,
@@ -93,13 +89,13 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Args:
         uvw: [num_rows, 3] array of uvw coordinates.
         freqs: [num_freqs] array of frequencies.
-        dirty: [num_x, num_y] array of dirty image, in units of JY/PIXEL.
+        dirty: [num_l, num_m] array of dirty image, in units of JY/PIXEL.
         wgt: [num_rows, num_freqs] array of weights, multiplied with output visibilities.
         mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
-        pixsize_x: scalar, pixel size in x direction.
-        pixsize_y: scalar, pixel size in y direction.
-        center_x: scalar, center of image in x direction.
-        center_y: scalar, center of image in y direction.
+        pixsize_m: scalar, pixel size in x direction.
+        pixsize_l: scalar, pixel size in y direction.
+        center_m: scalar, center of image in x direction.
+        center_l: scalar, center of image in y direction.
         epsilon: scalar, gridding kernel width.
         do_wgridding: scalar, whether to do w-gridding.
         flip_v: scalar, whether to flip the v axis.
@@ -133,10 +129,10 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
         dirty=dirty,
         wgt=wgt,
         mask=mask,
-        pixsize_x=float(pixsize_x),
-        pixsize_y=float(pixsize_y),
-        center_x=float(center_x),
-        center_y=float(center_y),
+        pixsize_x=float(pixsize_l),
+        pixsize_y=float(pixsize_m),
+        center_x=float(center_l),
+        center_y=float(center_m),
         epsilon=float(epsilon),
         do_wgridding=do_wgridding,
         flip_v=flip_v,
@@ -151,9 +147,9 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
 
 
 def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
-              npix_x: int, npix_y: int,
-              pixsize_x: float | jax.Array, pixsize_y: float | jax.Array,
-              center_x: float | jax.Array, center_y: float | jax.Array,
+              npix_m: int, npix_l: int,
+              pixsize_m: float | jax.Array, pixsize_l: float | jax.Array,
+              center_m: float | jax.Array, center_l: float | jax.Array,
               epsilon: float, do_wgridding: bool = True,
               wgt: jax.Array | None = None, mask: jax.Array | None = None,
               flip_v: bool = False, divide_by_n: bool = True,
@@ -169,12 +165,12 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
         vis: [num_rows, num_freqs] array of visibilities.
         wgt: [num_rows, num_freqs] array of weights, multiplied with input visibilities.
         mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
-        npix_x: number of pixels in x direction.
-        npix_y: number of pixels in y direction.
-        pixsize_x: scalar, pixel size in x direction in projected radians (l-units)
-        pixsize_y: scalar, pixel size in y direction in projected radians (l-units)
-        center_x: scalar, center of image in x direction in projected radians (l-units)
-        center_y: scalar, center of image in y direction in projected radians (l-units)
+        npix_m: number of pixels in y direction.
+        npix_l: number of pixels in x direction.
+        pixsize_m: scalar, pixel size in y direction in projected radians (l-units)
+        pixsize_l: scalar, pixel size in x direction in projected radians (l-units)
+        center_m: scalar, center of image in y direction in projected radians (l-units)
+        center_l: scalar, center of image in x direction in projected radians (l-units)
         epsilon: scalar, gridding kernel width.
         do_wgridding: scalar, whether to do w-gridding.
         flip_v: scalar, whether to flip the v axis.
@@ -187,7 +183,7 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
             errors for special cases.
 
     Returns:
-        [npix_x, npix_y] array of dirty image, in units of JY/PIXEL.
+        [npix_l, npix_m] array of dirty image, in units of JY/PIXEL.
     """
 
     if len(np.shape(uvw)) != 2:
@@ -208,13 +204,13 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
 
     # Define the expected shape & dtype of output.
     result_shape_dtype = jax.ShapeDtypeStruct(
-        shape=(npix_x, npix_y),
+        shape=(npix_m, npix_l),
         dtype=output_dtype
     )
 
     args = (
-        uvw, freqs, vis, wgt, mask, npix_x, npix_y, pixsize_x, pixsize_y,
-        center_x, center_y, epsilon, do_wgridding, flip_v, divide_by_n,
+        uvw, freqs, vis, wgt, mask, npix_m, npix_l, pixsize_m, pixsize_l,
+        center_m, center_l, epsilon, do_wgridding, flip_v, divide_by_n,
         sigma_min, sigma_max, nthreads, verbosity, double_precision_accumulation
     )
 
@@ -224,9 +220,9 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
 def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
                     vis: np.ndarray, wgt: np.ndarray | None,
                     mask: np.ndarray | None,
-                    npix_x: int, npix_y: int,
-                    pixsize_x: float, pixsize_y: float,
-                    center_x: float, center_y: float,
+                    npix_m: int, npix_l: int,
+                    pixsize_m: float, pixsize_l: float,
+                    center_m: float, center_l: float,
                     epsilon: float, do_wgridding: bool,
                     flip_v: bool, divide_by_n: bool,
                     sigma_min: float, sigma_max: float,
@@ -241,12 +237,12 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         vis: [num_rows, num_freqs] array of visibilities.
         wgt: [num_rows, num_freqs] array of weights, multiplied with input visibilities.
         mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
-        npix_x: number of pixels in x direction.
-        npix_y: number of pixels in y direction.
-        pixsize_x: scalar, pixel size in x direction.
-        pixsize_y: scalar, pixel size in y direction.
-        center_x: scalar, center of image in x direction.
-        center_y: scalar, center of image in y direction.
+        npix_m: number of pixels in y direction.
+        npix_l: number of pixels in x direction.
+        pixsize_m: scalar, pixel size in y direction.
+        pixsize_l: scalar, pixel size in x direction.
+        center_m: scalar, center of image in x direction.
+        center_l: scalar, center of image in y direction.
         epsilon: scalar, gridding kernel width.
         do_wgridding: scalar, whether to do w-gridding.
         flip_v: scalar, whether to flip the v axis.
@@ -259,13 +255,13 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
             errors for special cases.
 
     Returns:
-        [npix_x, npix_y] array of dirty image, in units of JY/PIXEL.
+        [npix_l, npix_m] array of dirty image, in units of JY/PIXEL.
     """
     uvw = np.asarray(uvw, dtype=np.float64)
     freqs = np.asarray(freqs, dtype=np.float64)
 
     float_dtype = (np.ones(1, dtype=vis.dtype).real).dtype
-    dirty = np.zeros((npix_x, npix_y), dtype=float_dtype)
+    dirty = np.zeros((npix_m, npix_l), dtype=float_dtype)
 
     if wgt is not None:
         wgt = wgt.astype(float_dtype)
@@ -273,15 +269,16 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
     if mask is not None:
         mask = mask.astype(np.uint8)
 
-    if npix_x % 2 != 0 or npix_y % 2 != 0:
-        raise ValueError("npix_x and npix_y must both be even.")
+    if npix_m % 2 != 0 or npix_l % 2 != 0:
+        raise ValueError("npix_m and npix_l must both be even.")
 
-    if npix_x < 32 or npix_y < 32:
+    if npix_m < 32 or npix_l < 32:
         raise ValueError("npix_x and npix_y must be at least 32.")
 
     # Make sure the output is in JY/PIXEL
     num_rows = np.shape(uvw)[0]
     num_freqs = np.shape(freqs)[0]
+    # Factor to convert adjoint gridding and degridding into inverses in the limit of total uvw coverage.
     adjoint_factor = np.reciprocal((4. * num_rows - np.sqrt(8. * num_rows + 1.) - 1)) * 4. / num_freqs
     if wgt is not None:
         adjoint_factor /= np.mean(wgt)
@@ -292,12 +289,12 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         vis=vis,
         wgt=wgt,
         mask=mask,
-        npix_x=npix_x,
-        npix_y=npix_y,
-        pixsize_x=pixsize_x,
-        pixsize_y=pixsize_y,
-        center_x=center_x,
-        center_y=center_y,
+        npix_x=npix_l,
+        npix_y=npix_m,
+        pixsize_x=pixsize_l,
+        pixsize_y=pixsize_m,
+        center_x=center_l,
+        center_y=center_m,
         epsilon=epsilon,
         do_wgridding=do_wgridding,
         flip_v=flip_v,

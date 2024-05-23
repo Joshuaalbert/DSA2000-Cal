@@ -214,18 +214,20 @@ class DirtyImaging:
             uvw=uvw,
             freqs=freqs,
             vis=vis_I,
-            npix_x=num_pixel,
-            npix_y=num_pixel,
-            pixsize_x=dl,
-            pixsize_y=dm,
-            center_x=center_l,
-            center_y=center_m,
+            npix_m=num_pixel,
+            npix_l=num_pixel,
+            pixsize_m=dm,
+            pixsize_l=dl,
+            center_m=center_m,
+            center_l=center_l,
             epsilon=self.epsilon,
             do_wgridding=True,
+            flip_v=False,
             mask=mask,
+            wgt=None, # TODO: pass weights
             divide_by_n=True,
             verbosity=0,
             nthreads=self.nthreads
-        )  # [num_pixel, num_pixel]
+        )  # [num_l, num_m]
 
         return dirty_image
