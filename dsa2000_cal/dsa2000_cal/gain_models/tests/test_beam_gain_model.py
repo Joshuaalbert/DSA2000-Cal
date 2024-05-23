@@ -6,23 +6,43 @@ from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.gain_models.beam_gain_model import lmn_from_phi_theta, BeamGainModel, beam_gain_model_factory
 
 
-def test_phi_theta_to_cartesian():
+def test_lmn_from_phi_theta():
     # L = -Y, M = X, N = Z
 
+    # Bore-sight
     phi = 0.
     theta = 0.
     lmn = lmn_from_phi_theta(phi, theta)
     np.testing.assert_allclose(lmn, [0, 0, 1], atol=5e-8)
 
     phi = np.pi / 2.
+    theta = 0.
+    lmn = lmn_from_phi_theta(phi, theta)
+    np.testing.assert_allclose(lmn, [0, 0, 1], atol=5e-8)
+
+    # Points to right on sky == -L
+    phi = np.pi / 2.
     theta = np.pi / 2.
     lmn = lmn_from_phi_theta(phi, theta)
     np.testing.assert_allclose(lmn, [-1, 0, 0], atol=5e-8)
 
+    # Points to left on sky == L
+    phi = - np.pi / 2.
+    theta = np.pi / 2.
+    lmn = lmn_from_phi_theta(phi, theta)
+    np.testing.assert_allclose(lmn, [1, 0, 0], atol=5e-8)
+
+    # Points up on sky == M
     phi = 0.
     theta = np.pi / 2.
     lmn = lmn_from_phi_theta(phi, theta)
     np.testing.assert_allclose(lmn, [0, 1, 0], atol=5e-8)
+
+    # Points down on sky == -M
+    phi = np.pi
+    theta = np.pi / 2.
+    lmn = lmn_from_phi_theta(phi, theta)
+    np.testing.assert_allclose(lmn, [0, -1, 0], atol=1e-7)
 
 
 def test_beam_gain_model():

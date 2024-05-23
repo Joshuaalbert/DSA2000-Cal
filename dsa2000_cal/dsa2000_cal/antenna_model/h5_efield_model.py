@@ -21,7 +21,6 @@ def convert_spherical_e_field_to_cartesian(e_phi, e_theta, phi, theta):
     Returns:
         The cartesian electric field components.
     """
-    e_phi, e_theta, phi, theta = np.broadcast_arrays(e_phi, e_theta, phi[None, None, :], theta[None, :, None])
     # Calculate the cartesian electric field components
     e_x = e_theta * np.cos(theta) * np.cos(phi) - e_phi * np.sin(phi)
     e_y = e_theta * np.cos(theta) * np.sin(phi) + e_phi * np.cos(phi)
@@ -58,9 +57,9 @@ class H5AntennaModelV1(AltAzAntennaModel):
         print_h5_structure(self.beam_file)
         with tb.open_file(self.beam_file, 'r') as file:
             # self.freqs = file.get_node("/Freq(Hz)").read() * au.Hz
-            self.freqs = file.root.freq_Hz.read() * au.Hz
-            self.theta = file.root.theta_pts.read() * au.rad
-            self.phi = file.root.phi_pts.read() * au.rad
+            self.freqs = file.root.freq_Hz.read() * au.Hz  # [num_freqs]
+            self.theta = file.root.theta_pts.read() * au.rad  # [num_theta]
+            self.phi = file.root.phi_pts.read() * au.rad  # [num_phi]
 
             # e_field_X_theta = file.get_node("/X-pol_Efields/etheta").read()  # [freq, theta, phi]
             e_field_X_theta = file.root.X_pol_Efields.etheta.read()  # [freq, theta, phi]
@@ -77,15 +76,15 @@ class H5AntennaModelV1(AltAzAntennaModel):
             e_field_Y_phi = np.transpose(e_field_Y_phi, (1, 2, 0))  # [theta, phi, freq]
 
             E_x_X_dipole, E_y_X_dipole, _ = convert_spherical_e_field_to_cartesian(
-                e_field_X_theta, e_field_X_phi, self.theta, self.phi
+                *np.broadcast_arrays(e_field_X_phi, e_field_X_theta, self.phi[None, :, None], self.theta[:, None, None])
             )  # [theta, phi, freq]
             E_x_Y_dipole, E_y_Y_dipole, _ = convert_spherical_e_field_to_cartesian(
-                e_field_Y_theta, e_field_Y_phi, self.theta, self.phi
+                *np.broadcast_arrays(e_field_Y_phi, e_field_Y_theta, self.phi[None, :, None], self.theta[:, None, None])
             )  # [theta, phi, freq]
 
             jones = np.transpose(np.asarray([[E_x_X_dipole, E_y_X_dipole],
                                              [E_x_Y_dipole, E_y_Y_dipole]]),
-                                 (2, 3, 4, 0, 1)) # [theta, phi, freq, 2, 2]
+                                 (2, 3, 4, 0, 1))  # [theta, phi, freq, 2, 2]
 
             self.amplitude = np.abs(jones) * au.dimensionless_unscaled
             self.phase = np.angle(jones) * au.rad
