@@ -68,44 +68,51 @@ class GaussianPredict:
 
         # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
         # We want the outer broadcast to be over chan, so we'll do this order:
-        # chan -> source -> row
-        # TODO: explore other orders
+        # chan -> row -> source
+        # vmap(vmap(scan)) is the preferred approach for this, Which avoids setting up vmap overhead.
 
-        # Over chan
         # lmn: [source, 3]
         # uvw: [rows, 3]
         # g1, g2: [[source,] row, chan, 2, 2]
         # freq: [chan]
         # image: [source, chan, 2, 2]
         # ellipse_params: [source, 3]
-        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, -3, None])
-        # Over source
+        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, -3, None])  # -> chan
         # lmn: [source, 3]
         # uvw: [rows, 3]
         # g1, g2: [[source,] row, 2, 2]
         # freq: []
         # image: [source, 2, 2]
         # ellipse_params: [source, 3]
-        @partial(jax.vmap, in_axes=[0, None,
-                                    0 if direction_dependent_gains else None,
-                                    0 if direction_dependent_gains else None,
-                                    None, 0, 0])
-        # Over row
-        # lmn: [3]
-        # uvw: [rows, 3]
-        # g1, g2: [row, 2, 2]
-        # freq: []
-        # image: [2, 2]
-        # ellipse_params: [3]
-        @partial(jax.vmap, in_axes=[None, 0, 0, 0, None, None, None])
-        # lmn: [3]
+        @partial(jax.vmap, in_axes=[None, 0, -3, -3, None, None, None])  # -> row
+        # lmn: [source, 3]
         # uvw: [3]
-        # g1, g2: [2, 2]
+        # g1, g2: [[source,] 2, 2]
         # freq: []
-        # image: [2, 2]
-        # ellipse_params: [3]
-        def compute_visibility(*args):
-            return self._single_compute_visibilty(*args)
+        # image: [source, 2, 2]
+        # ellipse_params: [source, 3]
+        def compute_visibility(lmn, uvw, g1, g2, freq, image, ellipse_params):
+            # TODO: Can use associative_scan here.
+            if direction_dependent_gains:
+                def body_fn(accumulate, x):
+                    (lmn, g1, g2, image, ellipse_params) = x
+                    delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image, ellipse_params)  # [2, 2]
+                    accumulate += delta
+                    return accumulate, ()
+
+                xs = (lmn, g1, g2, image, ellipse_params)
+            else:
+                def body_fn(accumulate, x):
+                    (lmn, image, ellipse_params) = x
+                    delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image, ellipse_params)  # [2, 2]
+                    accumulate += delta
+                    return accumulate, ()
+
+                xs = (lmn, image, ellipse_params)
+
+            init_accumulate = jnp.zeros((2, 2), dtype=self.dtype)
+            vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=1)
+            return vis_accumulation  # [2, 2]
 
         visibilities = compute_visibility(
             gaussian_model_data.lmn,
@@ -115,8 +122,7 @@ class GaussianPredict:
             freqs,
             gaussian_model_data.image,
             gaussian_model_data.ellipse_params
-        )  # [chan, source, row, 2, 2]
-        visibilities = jnp.sum(visibilities, axis=1)  # [chan, row, 2, 2]
+        )  # [chan, row, 2, 2]
         # make sure the output is [row, chan, 2, 2]
         return lax.transpose(visibilities, (1, 0, 2, 3))  # [row, chan, 2, 2]
 

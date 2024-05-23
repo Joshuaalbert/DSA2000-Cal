@@ -105,6 +105,8 @@ class PointPredict:
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [2, 2]
                     accumulate += delta
                     return accumulate, ()
+
+                xs = (lmn, g1, g2, image)
             else:
                 def body_fn(accumulate, x):
                     (lmn, image) = x
@@ -112,11 +114,8 @@ class PointPredict:
                     accumulate += delta
                     return accumulate, ()
 
-            init_accumulate = jnp.zeros((2, 2), dtype=self.dtype)
-            if direction_dependent_gains:
-                xs = (lmn, g1, g2, image)
-            else:
                 xs = (lmn, image)
+            init_accumulate = jnp.zeros((2, 2), dtype=self.dtype)
             vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=1)
             return vis_accumulation  # [2, 2]
 
