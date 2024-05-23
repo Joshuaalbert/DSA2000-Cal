@@ -126,7 +126,7 @@ def test_gh53(num_ants: int, num_freqs: int):
     dirty = np.zeros((n, n))
     # [0, 1, 3]
     dirty[n // 2, n // 2] = 1.
-    # dirty[n // 3, n // 3] = 1.
+    dirty[n // 3, n // 3] = 1.
     antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
 
     num_rows = len(antenna_1)

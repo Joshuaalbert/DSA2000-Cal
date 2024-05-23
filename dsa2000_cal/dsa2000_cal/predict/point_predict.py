@@ -63,37 +63,62 @@ class PointPredict:
 
         # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
         # We want the outer broadcast to be over chan, so we'll do this order:
-        # chan -> source -> row
-        # TODO: explore other orders
+        # chan -> row -> source
+        # vmap(vmap(scan)) is the preferred approach for this, Which avoids setting up vmap overhead.
 
         # lmn: [source, 3]
         # uvw: [rows, 3]
         # g1, g2: [[source,] row, chan, 2, 2]
         # freq: [chan]
         # image: [source, chan, 2, 2]
-        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, -3])
+        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, -3])  # -> chan
         # lmn: [source, 3]
         # uvw: [rows, 3]
         # g1, g2: [[source,] row, 2, 2]
         # freq: []
         # image: [source, 2, 2]
-        @partial(jax.vmap, in_axes=[0, None,
-                                    0 if direction_dependent_gains else None,
-                                    0 if direction_dependent_gains else None,
-                                    None, 0])
-        # lmn: [3]
-        # uvw: [rows, 3]
-        # g1, g2: [row, 2, 2]
-        # freq: []
-        # image: [2, 2]
-        @partial(jax.vmap, in_axes=[None, 0, 0, 0, None, None])
-        # lmn: [3]
+        @partial(jax.vmap, in_axes=[None, 0, -3, -3, None, None])  # -> row
+        # lmn: [source, 3]
         # uvw: [3]
-        # g1, g2: [2, 2]
+        # g1, g2: [[source,] 2, 2]
         # freq: []
-        # image: [2, 2]
-        def compute_visibility(*args):
-            return self._single_compute_visibilty(*args)
+        # image: [source, 2, 2]
+        def compute_visibility(lmn, uvw, g1, g2, freq, image):
+            """
+            Compute visibilities for a single row, channel, accumulating over sources.
+
+            Args:
+                lmn: [source, 3]
+                uvw: [3]
+                g1: [[source,] 2, 2]
+                g2: [[source,] 2, 2]
+                freq: []
+                image: [source, 2, 2]
+
+            Returns:
+                vis_accumulation: [2, 2] visibility for given baseline, accumulated over all provided directions.
+            """
+            # TODO: Can use associative_scan here.
+            if direction_dependent_gains:
+                def body_fn(accumulate, x):
+                    (lmn, g1, g2, image) = x
+                    delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [2, 2]
+                    accumulate += delta
+                    return accumulate, ()
+            else:
+                def body_fn(accumulate, x):
+                    (lmn, image) = x
+                    delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [2, 2]
+                    accumulate += delta
+                    return accumulate, ()
+
+            init_accumulate = jnp.zeros((2, 2), dtype=self.dtype)
+            if direction_dependent_gains:
+                xs = (lmn, g1, g2, image)
+            else:
+                xs = (lmn, image)
+            vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=1)
+            return vis_accumulation  # [2, 2]
 
         visibilities = compute_visibility(
             dft_model_data.lmn,
@@ -102,8 +127,7 @@ class PointPredict:
             g2,
             freqs,
             dft_model_data.image
-        )  # [chan, source, row, 2, 2]
-        visibilities = jnp.sum(visibilities, axis=1)  # [chan, row, 2, 2]
+        )  # [chan, row, 2, 2]
         # make sure the output is [row, chan, 2, 2]
         return lax.transpose(visibilities, (1, 0, 2, 3))  # [row, chan, 2, 2]
 
