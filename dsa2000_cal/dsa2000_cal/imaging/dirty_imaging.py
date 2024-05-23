@@ -224,10 +224,10 @@ class DirtyImaging:
             do_wgridding=True,
             flip_v=False,
             mask=mask,
-            wgt=None, # TODO: pass weights
-            divide_by_n=True,
+            wgt=None,  # TODO: pass weights
+            divide_by_n=False,  # Don't divide by n
             verbosity=0,
             nthreads=self.nthreads
         )  # [num_l, num_m]
-
+        # TODO: Should actually multiply by n.
         return dirty_image

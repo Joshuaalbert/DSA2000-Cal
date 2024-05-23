@@ -311,9 +311,13 @@ class GaussianSourceModel(AbstractSourceModel):
             m_max = np.max(self.m0 + self.major) + 0.01
             lvec = np.linspace(l_min.value, l_max.value, 256)
             mvec = np.linspace(m_min.value, m_max.value, 256)
+
+        dl = lvec[1] - lvec[0]
+        dm = mvec[1] - mvec[0]
+
         M, L = np.meshgrid(mvec, lvec, indexing='ij')
         # Evaluate over LM
-        flux_model = np.zeros_like(L) * au.Jy
+        flux_density = np.zeros_like(L) * au.Jy
 
         @jax.jit
         def _gaussian_flux(A, l0, m0, major, minor, theta):
@@ -322,7 +326,6 @@ class GaussianSourceModel(AbstractSourceModel):
             )(jnp.asarray(L).flatten(), jnp.asarray(M).flatten()).reshape(L.shape)
 
         pixel_area = (lvec[1] - lvec[0]) * (mvec[1] - mvec[0])
-        print(quantity_to_jnp(self.A[0, :], 'Jy'))
 
         for i in range(self.num_sources):
             args = (
@@ -332,9 +335,8 @@ class GaussianSourceModel(AbstractSourceModel):
                 quantity_to_jnp(self.major[i]),
                 quantity_to_jnp(self.minor[i]),
                 quantity_to_jnp(self.theta[i]))
-            beam_area = (np.pi / (2. * np.log(2.))) * quantity_to_jnp(self.major[i]) * quantity_to_jnp(self.minor[i])
-            flux_model += np.asarray(_gaussian_flux(*args)) * pixel_area / beam_area * au.Jy
-        return lvec, mvec, flux_model
+            flux_density += np.asarray(_gaussian_flux(*args)) * au.Jy
+        return lvec, mvec, flux_density * pixel_area
 
     def plot(self):
         lvec, mvec, flux_model = self.get_flux_model()

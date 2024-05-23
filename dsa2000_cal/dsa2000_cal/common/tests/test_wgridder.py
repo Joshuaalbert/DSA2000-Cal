@@ -1,5 +1,6 @@
 import itertools
 
+import astropy.units as au
 import jax
 import numpy as np
 import pytest
@@ -7,8 +8,10 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.wgridder import dirty2vis, vis2dirty
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
+from dsa2000_cal.predict.gaussian_predict import GaussianPredict, GaussianModelData
 from dsa2000_cal.predict.point_predict import PointPredict, PointModelData
 from dsa2000_cal.source_models.corr_translation import linear_to_stokes
+from dsa2000_cal.source_models.gaussian_stokes_I_source_model import GaussianSourceModel
 
 
 def test_dirty2vis():
@@ -235,7 +238,7 @@ def test_gh55():
     m0 = x0
     dl = pixsize
     dm = pixsize
-    dirty = np.zeros((N, N)) # [Nl, Nm]
+    dirty = np.zeros((N, N))  # [Nl, Nm]
     # place a central pixel: 0, 1, 2, 3 ==> 4/2 - 0.5 = 1.5 == l0
     # ==> l(n) = l0 + (n - (N - 1)/2) * dl
     # l(0) = l0 - (N-1)/2 * dl
@@ -243,8 +246,8 @@ def test_gh55():
     dirty[N // 3, N // 3] = 1.
 
     def pixel_to_lmn(xi, yi):
-        l = l0 + (-N/2 + xi) * dl
-        m = m0 + (-N/2 + yi) * dm
+        l = l0 + (-N / 2 + xi) * dl
+        m = m0 + (-N / 2 + yi) * dm
         n = np.sqrt(1. - l ** 2 - m ** 2)
         return np.asarray([l, m, n])
 
@@ -262,7 +265,7 @@ def test_gh55():
     plt.show()
     freqs = np.linspace(700e6, 2000e6, num_freqs)
 
-    wgt = None#np.ones((num_rows, num_freqs))
+    wgt = None  # np.ones((num_rows, num_freqs))
     # wgt = np.random.uniform(size=(num_rows, num_freqs))
 
     vis = dirty2vis(
@@ -297,7 +300,7 @@ def test_gh55():
         epsilon=1e-4,
         do_wgridding=True,
         flip_v=False,
-        divide_by_n=True,
+        divide_by_n=False,
         nthreads=1,
         verbosity=0
     )
@@ -346,3 +349,150 @@ def test_gh55():
     np.testing.assert_allclose(vis_point_predict_stokes.real, vis.real, atol=1e-3)
     np.testing.assert_allclose(vis_point_predict_stokes.imag, vis.imag, atol=1e-3)
     np.testing.assert_allclose(dirty_rec, dirty, atol=0.11)
+
+
+def test_compare_gaussian_predict():
+    # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
+    np.random.seed(42)
+    import pylab as plt
+    # Validate the units of image
+    # To do this we simulate an image with a single point source in the centre, and compute the visibilties from that.
+    N = 1024
+    num_ants = 200
+    num_freqs = 1
+    freqs = np.linspace(700e6, 2000e6, num_freqs)
+
+    pixsize = 1. * np.pi / 180 / 3600.  # 5 arcsec
+    x0 = 0.
+    y0 = 0.
+    l0 = y0
+    m0 = x0
+    dl = pixsize
+    dm = pixsize
+    L, M = np.meshgrid(-N / 2 + np.arange(N), -N / 2 + np.arange(N), indexing='ij')
+    L *= pixsize
+    M *= pixsize
+
+    g = GaussianSourceModel(
+        l0=l0 * au.dimensionless_unscaled,
+        m0=m0 * au.dimensionless_unscaled,
+        A=1. * au.Jy,
+        major=pixsize * 10 * au.dimensionless_unscaled,
+        minor=pixsize * 10 * au.dimensionless_unscaled,
+        theta=0. * au.rad,
+        freqs=freqs * au.Hz
+    )
+    dirty = g.get_flux_model(lvec=(-N / 2 + np.arange(N)) * pixsize,
+                             mvec=(-N / 2 + np.arange(N)) * pixsize)[2].T  # [Nl, Nm]
+    plt.imshow(dirty.T, origin='lower')
+    plt.colorbar()
+    plt.show()
+    np.testing.assert_allclose(np.sum(dirty), 1. * au.Jy)
+
+    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
+
+    num_rows = len(antenna_1)
+    antennas = 10e3 * np.random.normal(size=(num_ants, 3))
+    antennas[:, 2] *= 0.001
+    uvw = antennas[antenna_2] - antennas[antenna_1]
+
+    wgt = None  # np.ones((num_rows, num_freqs))
+    # wgt = np.random.uniform(size=(num_rows, num_freqs))
+
+    vis = dirty2vis(
+        uvw=uvw,
+        freqs=freqs,
+        dirty=dirty,
+        wgt=None,
+        pixsize_m=dm,
+        pixsize_l=dl,
+        center_m=m0,
+        center_l=l0,
+        epsilon=1e-4,
+        do_wgridding=True,
+        flip_v=False,
+        divide_by_n=True,
+        nthreads=1,
+        verbosity=0,
+    )
+    print(vis)
+
+    sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis)[:, 0], s=1, alpha=0.5)
+    plt.colorbar(sc)
+    plt.show()
+    predict = GaussianPredict(convention='fourier')
+    image = np.zeros((1, num_freqs, 2, 2))  # [source, chan, 2, 2]
+    image[:, :, 0, 0] = 0.5
+    image[:, :, 1, 1] = 0.5
+    gains = np.zeros((1, num_ants, num_freqs, 2, 2))  # [[source,] time, ant, chan, 2, 2]
+    gains[..., 0, 0] = 1.
+    gains[..., 1, 1] = 1.
+    lmn = np.asarray([[0., 0., 1.]])  # [source, 3]
+
+    vis_point_predict_linear = predict.predict(
+        freqs=freqs,
+        gaussian_model_data=GaussianModelData(
+            image=image,
+            gains=gains,
+            lmn=lmn,
+            ellipse_params=np.asarray([[10 * pixsize, 10 * pixsize, 0.]])
+        ),
+        visibility_coords=VisibilityCoords(
+            uvw=uvw,
+            time_obs=np.zeros(num_rows),
+            antenna_1=antenna_1,
+            antenna_2=antenna_2,
+            time_idx=np.zeros(num_rows, jnp.int64)
+        ),
+
+    )  # [row, chan, 2, 2]
+    vis_point_predict_stokes = jax.vmap(jax.vmap(linear_to_stokes))(vis_point_predict_linear)[:, :, 0, 0]
+    print(vis_point_predict_stokes)
+    sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis_point_predict_stokes)[:, 0], s=1, alpha=0.5)
+    plt.colorbar(sc)
+    plt.show()
+
+    sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis_point_predict_stokes - vis)[:, 0], s=1, alpha=0.5)
+    plt.colorbar(sc)
+    plt.show()
+
+    dirty_rec = vis2dirty(
+        uvw=uvw,
+        freqs=freqs,
+        # vis=vis,
+        vis=vis_point_predict_stokes,
+        # vis=vis - vis_point_predict_stokes,
+        npix_m=N,
+        npix_l=N,
+        pixsize_m=dm,
+        pixsize_l=dl,
+        wgt=wgt,
+        center_m=m0,
+        center_l=l0,
+        epsilon=1e-4,
+        do_wgridding=True,
+        flip_v=False,
+        divide_by_n=False,
+        nthreads=1,
+        verbosity=0
+    )
+
+    plt.imshow(dirty_rec.T, origin='lower',
+               interpolation='nearest', cmap='inferno')
+    plt.colorbar()
+    plt.show()
+    plt.imshow(dirty.T, origin='lower',
+               interpolation='nearest', cmap='inferno')
+    plt.colorbar()
+    plt.show()
+
+    diff_dirty = dirty_rec - dirty
+    plt.imshow(diff_dirty.T, origin='lower',
+               interpolation='nearest', cmap='inferno')
+    plt.colorbar()
+    plt.show()
+
+    np.testing.assert_allclose(dirty_rec, dirty.value, atol=0.11)
+
+    np.testing.assert_allclose(vis_point_predict_stokes.real, vis.real, atol=1e-3)
+    np.testing.assert_allclose(vis_point_predict_stokes.imag, vis.imag, atol=1e-3)

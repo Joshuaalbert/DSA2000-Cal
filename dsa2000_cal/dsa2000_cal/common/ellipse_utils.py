@@ -34,6 +34,10 @@ class Gaussian:
         Compute the Fourier transform of the Gaussian at the given k coordinates.
 
             F(k) = int_R^2 f(x) e^(-2pi i k^T x) dx
+                 = e^(-2pi i k^T x0) e^(-2 pi^2 k^T Sigma k)
+
+                 Sigma^-1 = R^-T D^-T D^-1 R^-1
+                 Sigma = R D D^T R^T
         Args:
             k: [2] the k coordinates
 
@@ -42,16 +46,16 @@ class Gaussian:
         """
         if np.shape(k) != (2,):
             raise ValueError(f"k must have shape (2,), got {np.shape(k)}")
-        R = ellipse_rotation(-self.pos_angle)
+        RT = ellipse_rotation(-self.pos_angle)
         fwhm = 2. * np.sqrt(2. * np.log(2))
         sigma_major = self.major_fwhm / fwhm
         sigma_minor = self.minor_fwhm / fwhm
         D_diag = jnp.asarray([sigma_minor, sigma_major])
-        dk = D_diag * (R @ k)
+        dk = D_diag * (RT @ k)
         return self.total_flux * jnp.exp(-2j * jnp.pi * jnp.sum(k * self.x0)) * jnp.exp(
-            -2 * jnp.pi ** 2 * jnp.sum(jnp.square(dk)))
+            -2. * jnp.pi ** 2 * jnp.sum(jnp.square(dk)))
 
-    def compute_flux(self, x: jax.Array) -> jax.Array:
+    def compute_flux_density(self, x: jax.Array) -> jax.Array:
         """
         Compute the flux of the Gaussian at the given x coordinates.
 
@@ -77,7 +81,7 @@ class Gaussian:
         norm_inv = jnp.reciprocal(sigma_major * sigma_minor * 2 * jnp.pi)
         return norm_inv * self.total_flux * jnp.exp(-0.5 * dist2)
 
-    def peak_flux(self) -> jax.Array:
+    def peak_flux_density(self) -> jax.Array:
         """
         Calculate the peak flux of the ellipse. The F s.t.:
 
@@ -114,4 +118,4 @@ def ellipse_eval(A, b_major, b_minor, pos_angle, l, m, l0, m0):
         pos_angle=pos_angle,
         total_flux=A
     )
-    return gaussian.compute_flux(jnp.asarray([l, m]))
+    return gaussian.compute_flux_density(jnp.asarray([l, m]))

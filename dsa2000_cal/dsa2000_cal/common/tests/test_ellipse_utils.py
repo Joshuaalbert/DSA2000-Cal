@@ -11,27 +11,29 @@ def test_ellipse():
         x0=jnp.asarray([1., 0.]),
         major_fwhm=2.5,
         minor_fwhm=1.5,
-        pos_angle=np.pi / 4,
+        pos_angle=np.pi/4.,
         total_flux=1.
     )
 
     x_vec = jnp.linspace(-5, 5, n)
+    dx = x_vec[1] - x_vec[0]
     X, Y = jnp.meshgrid(x_vec, x_vec, indexing='ij')
     x = jnp.stack([X.flatten(), Y.flatten()], axis=-1)
-    flux = jax.vmap(ellipse.compute_flux)(x).reshape(X.shape)
+    flux_density = jax.vmap(ellipse.compute_flux_density)(x).reshape(X.shape)  # [Nl, Nm]
+    flux = flux_density * dx ** 2
     import matplotlib.pyplot as plt
     plt.imshow(flux.T, origin='lower', extent=[x_vec.min(), x_vec.max(), x_vec.min(), x_vec.max()],
                interpolation='none', )
     plt.colorbar()
     plt.show()
 
-    total_flux_estimate = jnp.sum(flux * (x_vec[1] - x_vec[0]) ** 2)
+    total_flux_estimate = jnp.sum(flux)
     np.testing.assert_allclose(total_flux_estimate, ellipse.total_flux, atol=1e-2)
-    np.testing.assert_allclose(jnp.max(flux), ellipse.peak_flux(), atol=1e-2)
+    np.testing.assert_allclose(jnp.max(flux), ellipse.peak_flux_density() * dx ** 2, atol=1e-2)
 
     # Compute beam area
     mask = flux >= 0.5 * flux.max()
-    beam_area_approx = jnp.sum(mask) * (x_vec[1] - x_vec[0]) ** 2
+    beam_area_approx = jnp.sum(mask) * dx ** 2
     np.testing.assert_allclose(beam_area_approx, ellipse.beam_area(), atol=1e-2)
 
     plt.imshow(mask.T, origin='lower', extent=[x_vec.min(), x_vec.max(), x_vec.min(), x_vec.max()],
@@ -39,10 +41,10 @@ def test_ellipse():
     plt.colorbar()
     plt.show()
 
-    k_vec = jnp.fft.fftshift(jnp.fft.fftfreq(n, d=(x_vec[1] - x_vec[0])))
+    k_vec = jnp.fft.fftshift(jnp.fft.fftfreq(n, d=dx))
 
     K1, K2 = jnp.meshgrid(k_vec, k_vec, indexing='ij')
-    fourier_flux_estimate = jnp.fft.fftshift(jnp.fft.fft2(flux)) * (x_vec[1] - x_vec[0]) ** 2
+    fourier_flux_estimate = jnp.fft.fftshift(jnp.fft.fft2(flux))
 
     k = jnp.stack([K1.flatten(), K2.flatten()], axis=-1)
     fourier = jax.vmap(ellipse.fourier)(k).reshape(K1.shape)
@@ -67,18 +69,19 @@ def test_ellipse():
 
     diff = fourier_flux_estimate - fourier
 
-    plt.imshow(jnp.abs(diff).T, origin='lower',
+    plt.imshow(np.log10(jnp.abs(diff).T), origin='lower',
                interpolation='none',
                extent=[k_vec.min(), k_vec.max(), k_vec.min(), k_vec.max()])
     plt.colorbar()
     plt.show()
 
-    fourier_inv = jnp.fft.fftshift(jnp.fft.ifft2(jnp.fft.ifftshift(fourier / (x_vec[1] - x_vec[0]) ** 2)))
-    plt.imshow(jnp.abs(fourier_inv).T, origin='lower',
+    fourier_inv = jnp.fft.fftshift(jnp.fft.ifft2(jnp.fft.ifftshift(fourier))).real
+    plt.imshow(fourier_inv.T, origin='lower',
                interpolation='none',
                extent=[x_vec.min(), x_vec.max(), x_vec.min(), x_vec.max()])
     plt.colorbar()
     plt.show()
+    np.testing.assert_allclose(fourier_inv, flux, atol=1e-3)
 
 
 def test_ellipse_rotation():
