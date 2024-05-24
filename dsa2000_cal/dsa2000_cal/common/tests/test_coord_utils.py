@@ -58,6 +58,17 @@ def test_icrs_to_lmn():
     lmn2 = icrs_to_lmn(sources, time, pointing)
     assert np.all(lmn1 != lmn2)
 
+    # Test when at zentih
+    array_location = ac.EarthLocation.of_site('vla')
+    obstime = at.Time('2000-01-01T00:00:00', format='isot')
+    frame = ac.AltAz(location=array_location, obstime=obstime)
+    zenith = ac.SkyCoord(alt=90 * au.deg, az=0 * au.deg, frame=frame).transform_to(ac.ICRS)
+    lmn = icrs_to_lmn(zenith, obstime, zenith)
+    np.testing.assert_allclose(lmn, np.array([0, 0, 1]), atol=1e-10)
+
+    lmn = icrs_to_lmn(sources, obstime, zenith)
+    print(lmn)
+
 
 def test_lmn_to_icrs_near_poles():
     time = at.Time("2021-01-01T00:00:00", scale='utc')

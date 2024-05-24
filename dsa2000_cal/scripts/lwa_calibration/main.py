@@ -43,7 +43,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
 
     sky_model = SkyModel(component_models=source_models, fits_models=[])
 
-    beam_gain_model = beam_gain_model_factory(array_name)
+    beam_gain_model = beam_gain_model_factory(array_name, zenith_pointing=True)
     num_shards = len(jax.devices())
     while len(ms.meta.freqs) % num_shards != 0:
         num_shards -= 1

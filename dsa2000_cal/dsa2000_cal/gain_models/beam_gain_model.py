@@ -51,7 +51,7 @@ class BeamGainModel(GainModel):
     model_gains: au.Quantity  # [num_dir, num_freqs, 2, 2]
     num_antenna: int
 
-    tracking: bool = True # If True, track the phase centre, else Zenith
+    zenith_pointing: bool = False  # If True, antennas point at zenith
 
     dtype: jnp.dtype = jnp.complex64
 
@@ -93,7 +93,7 @@ class BeamGainModel(GainModel):
             phi=quantity_to_jnp(self.model_phi, 'rad'),
             theta=quantity_to_jnp(self.model_theta, 'rad')
         )
-        self.lmn_data = au.Quantity(jnp.stack([y, x, z_bore], axis=-1), unit=au.dimensionless_unscaled)  # [num_dir, 3]
+        self.lmn_data = au.Quantity(np.stack([y, x, z_bore], axis=-1), unit=au.dimensionless_unscaled)  # [num_dir, 3]
 
     @partial(jax.jit, static_argnums=(0,))
     def _compute_gain_jax(self, freqs: jax.Array, lmn_sources: jax.Array):
@@ -101,6 +101,7 @@ class BeamGainModel(GainModel):
         Compute the beam gain at the given source coordinates.
 
         Args:
+            freqs: (num_freqs) The frequencies at which to compute the beam gain.
             lmn_sources: (source_shape) + [3] The source coordinates in the L-M-N frame.
 
         Returns:
@@ -112,7 +113,8 @@ class BeamGainModel(GainModel):
 
         # Interpolate in freq
         (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(freqs, model_freqs)
-        gains = gains[..., i0, :, :] * alpha0[:, None, None] + gains[..., i1, :, :] * alpha1[:, None, None]  # [num_dir, num_freqs, 2, 2]
+        gains = gains[..., i0, :, :] * alpha0[:, None, None] + gains[..., i1, :, :] * alpha1[:, None,
+                                                                                      None]  # [num_dir, num_freqs, 2, 2]
 
         shape = lmn_sources.shape[:-1]
         lmn_sources = lmn_sources.reshape((-1, 3))
@@ -143,7 +145,15 @@ class BeamGainModel(GainModel):
         if not freqs.unit.is_equivalent(au.Hz):
             raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}")
 
-        lmn_sources = icrs_to_lmn(sources=sources, time=time, phase_tracking=phase_tracking)  # (source_shape) + [3]
+        if not self.zenith_pointing:
+            # Use pointing to get lmn
+            frame = ac.AltAz(location=array_location, obstime=time)
+            zenith = ac.SkyCoord(alt=90 * au.deg, az=0 * au.deg, frame=frame).transform_to(ac.ICRS)
+            # TODO: This should be per antenna.
+            reference_dir = zenith
+        else:
+            reference_dir = phase_tracking
+        lmn_sources = icrs_to_lmn(sources=sources, time=time, phase_tracking=reference_dir)  # (source_shape) + [3]
 
         gains = self._compute_gain_jax(
             freqs=quantity_to_jnp(freqs),
@@ -153,7 +163,7 @@ class BeamGainModel(GainModel):
         return gains
 
 
-def beam_gain_model_factory(array_name: str) -> BeamGainModel:
+def beam_gain_model_factory(array_name: str, **kwargs) -> BeamGainModel:
     fill_registries()
     try:
         array = array_registry.get_instance(array_registry.get_match(array_name))
@@ -182,6 +192,7 @@ def beam_gain_model_factory(array_name: str) -> BeamGainModel:
         model_theta=theta,
         model_phi=phi,
         model_gains=gains,
-        num_antenna=num_antenna
+        num_antenna=num_antenna,
+        **kwargs
     )
     return beam_gain_model
