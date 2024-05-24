@@ -151,7 +151,14 @@ def transfer_from_casa(ms_folder: str,
 
     # Populate the new MS file with visibilities
     print(f"Populating measurement set {ms_folder} with visibilities from {casa_ms}.")
+    uvw_offset = 0.
     with pt.table(casa_ms, readonly=True) as output_ms:
+        uvw_casa = output_ms.getcol('UVW')  # [rows, 3]
+
+        uvw_internal = ms.get_uvw(row_slice=slice(None, None, None))
+        uvw_offset = (uvw_casa - uvw_internal) * au.m
+        print(f"UVW offset: {np.mean(uvw_offset, axis=0)} +- {np.std(uvw_offset, axis=0)}")
+
         start_row = 0
         num_rows = output_ms.nrows()
         while start_row < num_rows:

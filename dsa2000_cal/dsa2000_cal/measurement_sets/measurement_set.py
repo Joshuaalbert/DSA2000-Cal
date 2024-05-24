@@ -197,7 +197,7 @@ def _get_slice(indices):
     return slice(int(indices[0]), int(indices[-1]) + 1, step)
 
 
-def _try_get_slice(indices):
+def _try_get_slice(indices: slice | np.ndarray) -> slice:
     try:
         return _get_slice(indices)
     except NotContiguous:
@@ -428,6 +428,20 @@ class MeasurementSet:
             if data.flags is not None:
                 _check_data("flags", data.flags)
                 f.root.flags[rows, freqs_idx, :] = data.flags
+
+    def get_uvw(self, row_slice: slice) -> np.ndarray:
+        """
+        Get the UVW coordinates for the given row slice.
+
+        Args:
+            row_slice: the row slice
+
+        Returns:
+            the UVW coordinates
+        """
+        row_slice = _try_get_slice(row_slice)
+        with tb.open_file(self.data_file, 'r') as f:
+            return f.root.uvw[row_slice]
 
     def match(self, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int, times: at.Time,
               freqs: au.Quantity | None = None) -> VisibilityData:
