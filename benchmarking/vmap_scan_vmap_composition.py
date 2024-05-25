@@ -5,6 +5,7 @@ import numpy as np
 import jax.numpy as jnp
 from jax import lax
 from jax import random, jit
+import pandas as pd
 
 
 def main(batch_size1, batch_size2, batch_size3, length):
@@ -40,9 +41,23 @@ def main(batch_size1, batch_size2, batch_size3, length):
 
         return jax.vmap(scan_vmap)(xs)  # [batch_size1, batch_size2, batch_size3]
 
+    def vmap_vmap_scan_f(xs):
+        # xs: [batch_size1, batch_size2, batch_size3]
+
+        def scan(x):
+            # x: [batch_size3]
+            def body_fn(carry, x):
+                return (), f(x)
+
+            _, result = lax.scan(body_fn, (), x)  # [batch_size3]
+            return result
+
+        return jax.vmap(jax.vmap(scan))(xs)  # [batch_size1, batch_size2, batch_size3]
+
     # JIT compile the functions
     scan_vmap_vmap_f_jit = jit(scan_vmap_vmap_f).lower(xs).compile()
     vmap_scan_vmap_f_jit = jit(vmap_scan_vmap_f).lower(xs).compile()
+    vmap_vmap_scan_f_jit = jit(vmap_vmap_scan_f).lower(xs).compile()
 
     # Measure execution time for scan(vmap(vmap(f)))
     start_time = time.time()
@@ -58,19 +73,50 @@ def main(batch_size1, batch_size2, batch_size3, length):
     end_time = time.time()
     dt_vmap_scan_vmap = end_time - start_time
 
+    # Measure execution time for vmap(vmap(scan(f)))
+    start_time = time.time()
+    ys_vmap_vmap_scan = vmap_vmap_scan_f_jit(xs)
+    ys_vmap_vmap_scan.block_until_ready()
+    end_time = time.time()
+    dt_vmap_vmap_scan = end_time - start_time
+
     # Check if the results are the same
     np.testing.assert_allclose(ys_scan_vmap_vmap, ys_vmap_scan_vmap)
+    np.testing.assert_allclose(ys_scan_vmap_vmap, ys_vmap_vmap_scan)
 
-    print(f"batch_size1: {batch_size1}, batch_size2: {batch_size2}, batch_size3: {batch_size3}, length: {length}\n"
-          f"\t> scan(vmap(vmap(f))): {dt_scan_vmap_vmap:.2e} s\n"
-          f"\t> vmap(scan(vmap(f))): {dt_vmap_scan_vmap:.2e} s\n"
-          f"\t\t> Winner: {'scan(vmap(vmap(f)))' if dt_scan_vmap_vmap < dt_vmap_scan_vmap else 'vmap(scan(vmap(f)))'}\n"
-          f"\t\t> Speedup: {dt_vmap_scan_vmap / dt_scan_vmap_vmap if dt_scan_vmap_vmap < dt_vmap_scan_vmap else dt_scan_vmap_vmap / dt_vmap_scan_vmap:.2f}x")
+    return {
+        'batch_size1': batch_size1,
+        'batch_size2': batch_size2,
+        'batch_size3': batch_size3,
+        'length': length,
+        'dt_scan_vmap_vmap': dt_scan_vmap_vmap,
+        'dt_vmap_scan_vmap': dt_vmap_scan_vmap,
+        'dt_vmap_vmap_scan': dt_vmap_vmap_scan
+    }
 
 
 if __name__ == '__main__':
+    results = []
     for batch_size1 in [10, 50, 100]:
         for batch_size2 in [10, 50, 100]:
             for batch_size3 in [10, 50, 100]:
                 for length in [1, 10, 100]:
-                    main(batch_size1=batch_size1, batch_size2=batch_size2, batch_size3=batch_size3, length=length)
+                    results.append(main(batch_size1=batch_size1, batch_size2=batch_size2, batch_size3=batch_size3, length=length))
+
+    # Convert results to a DataFrame
+    df = pd.DataFrame(results)
+
+    # Separate the results into three DataFrames
+    vmap_scan_vmap_wins = df[(df['dt_vmap_scan_vmap'] < df['dt_scan_vmap_vmap']) & (df['dt_vmap_scan_vmap'] < df['dt_vmap_vmap_scan'])]
+    scan_vmap_vmap_wins = df[(df['dt_scan_vmap_vmap'] < df['dt_vmap_scan_vmap']) & (df['dt_scan_vmap_vmap'] < df['dt_vmap_vmap_scan'])]
+    vmap_vmap_scan_wins = df[(df['dt_vmap_vmap_scan'] < df['dt_scan_vmap_vmap']) & (df['dt_vmap_vmap_scan'] < df['dt_vmap_scan_vmap'])]
+
+    # Print the results
+    print("vmap(scan(vmap)) wins:")
+    print(vmap_scan_vmap_wins[['batch_size1', 'batch_size2', 'batch_size3', 'length', 'dt_vmap_scan_vmap']])
+
+    print("\nscan(vmap(vmap)) wins:")
+    print(scan_vmap_vmap_wins[['batch_size1', 'batch_size2', 'batch_size3', 'length', 'dt_scan_vmap_vmap']])
+
+    print("\nvmap(vmap(scan)) wins:")
+    print(vmap_vmap_scan_wins[['batch_size1', 'batch_size2', 'batch_size3', 'length', 'dt_vmap_vmap_scan']])
