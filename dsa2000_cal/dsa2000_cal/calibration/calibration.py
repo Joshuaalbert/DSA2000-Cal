@@ -45,6 +45,28 @@ class CalibrationData(NamedTuple):
 
 @dataclass(eq=False)
 class Calibration:
+    """
+    Calibration main class. It loads in a measurement set, and calibrates it block by block, with a single gain
+    solution per block. Calibration is only performed once per cadence block using the last solution for block in
+    between updates. The solution_interval determines how much data is used to compute the solution, and over this time
+    interval a single gain is solved for. The validity_interval determines how long the solution is valid for, meaning
+    that solutions are forward applied until the solutions are older than the validity_interval.
+
+    Args:
+        sky_model: the sky model to calibrate based on. Each model gets a gain direction in the flux weighted direction.
+        preapply_gain_model: the gain model to preapply before calibration.
+        num_iterations: the number of iterations to run the solver for.
+        inplace_subtract: if True, the calibration is performed in place, otherwise a new measurement set is created.
+        plot_folder: the folder to save plots to.
+        validity_interval: the interval over which the solution is valid.
+        solution_interval: the interval over which the solution is computed.
+        residual_ms_folder: the folder to save residuals to.
+        seed: the random seed.
+        convention: the calibration convention.
+        dtype: the dtype to use.
+        verbose: if True, print verbose output.
+        num_shards: the number of shards to use.
+    """
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
     sky_model: SkyModel
 
@@ -54,8 +76,8 @@ class Calibration:
     num_iterations: int
     inplace_subtract: bool
     plot_folder: str
-    solution_cadence: au.Quantity | None = None
-    average_interval: au.Quantity | None = None
+    validity_interval: au.Quantity | None = None
+    solution_interval: au.Quantity | None = None
     residual_ms_folder: str | None = None
     seed: int = 42
     convention: str = 'casa'
@@ -65,9 +87,9 @@ class Calibration:
 
     def __post_init__(self):
         self.key = jax.random.PRNGKey(self.seed)
-        if self.solution_cadence is not None and not self.solution_cadence.unit.is_equivalent(au.s):
+        if self.validity_interval is not None and not self.validity_interval.unit.is_equivalent(au.s):
             raise ValueError("solution_cadence must be in seconds.")
-        if self.average_interval is not None and not self.average_interval.unit.is_equivalent(au.s):
+        if self.solution_interval is not None and not self.solution_interval.unit.is_equivalent(au.s):
             raise ValueError("average_interval must be in seconds.")
 
     def calibrate(self, ms: MeasurementSet) -> MeasurementSet:
@@ -103,14 +125,30 @@ class Calibration:
         # We perform averaging, by holding the gains constant for a period of time (average_interval)
         # 0, 1 --> integration_time = 1s, average_interval = 2.2s --> num_blocks = 2
         # 0, 1 --> integration_time = 1s, average_interval = 0.5s --> num_blocks = 1
-        if self.average_interval is None:
+        if self.solution_interval is None:
             num_blocks = 1
+            cadence_interval = 1
         else:
-            num_blocks = max(1, int(self.average_interval / ms.meta.integration_time))
-            rounded_average_interval = num_blocks * ms.meta.integration_time
-            print(f"Rounded average interval: {rounded_average_interval}")
+            num_blocks = int(self.solution_interval / ms.meta.integration_time)
+            if num_blocks <= 0:
+                raise ValueError(
+                    f"Solution interval {self.solution_interval} "
+                    f"must be at least integration time {ms.meta.integration_time}"
+                )
+            rounded_solution_interval = num_blocks * ms.meta.integration_time
+            print(f"Rounded solution interval: {rounded_solution_interval}")
+            if self.validity_interval is None:
+                cadence_interval = 1
+            else:
+                cadence_interval = int(self.validity_interval / rounded_solution_interval)
+                if cadence_interval <= 0:
+                    raise ValueError(
+                        f"The validity interval {self.validity_interval} "
+                        f"must be at leas the rounded solution interval {rounded_solution_interval}."
+                    )
 
-        print(f"Running calibration with averaging interval {self.average_interval} / {num_blocks} blocks.")
+        print(f"Running with solution interval {self.solution_interval} / {num_blocks} blocks.")
+        print(f"Running with validity interval {self.validity_interval} / {cadence_interval} blocks")
 
         # Ensure the freqs are the same in the models
         for wsclean_source_model in self.sky_model.component_models:
@@ -125,13 +163,9 @@ class Calibration:
             ms = ms.clone(ms_folder=self.residual_ms_folder)
             print("Created a new measurement set for residuals.")
 
-        init_params = self.get_init_params(
-            num_source=self.sky_model.num_sources,
-            num_time=num_blocks if self.average_interval is None else 1,
-            # If averaging, we only have one gain per average interval
-            num_ant=len(ms.meta.antennas),
-            num_chan=len(ms.meta.freqs)
-        )  # [num_source, num_blocks/1 , num_ant, num_freqs, 2, 2]
+        # TODO: abstract, so that model parametrisation and initialisation is done elsewhere.
+        init_params = self.get_init_params(num_source=self.sky_model.num_sources, num_ant=len(ms.meta.antennas),
+                                           num_chan=len(ms.meta.freqs))  # [num_source, num_ant, num_freqs, 2, 2]
 
         calibrator_lmn = au.Quantity(
             np.stack(
@@ -161,7 +195,8 @@ class Calibration:
         gen = ms.create_block_generator(vis=True, weights=True, flags=True, relative_time_idx=True,
                                         num_blocks=num_blocks)
         gen_response = None
-        iteration_idx = 0
+        cadence_idx = 0
+        apply_idx = 0
         while True:
             try:
                 times, visibility_coords, data = gen.send(gen_response)
@@ -202,32 +237,48 @@ class Calibration:
                 freqs=tree_device_put(data_dict['freqs'], NamedSharding(mesh, P('chan'))),
                 preapply_gains=tree_device_put(data_dict['preapply_gains'],
                                                NamedSharding(mesh, P(None, None, None, 'chan'))),
-                init_params=tree_device_put(data_dict['init_params'], NamedSharding(mesh, P(None, None, None, 'chan'))),
+                init_params=tree_device_put(data_dict['init_params'], NamedSharding(mesh, P(None, None, 'chan'))),
                 vis_data=tree_device_put(data_dict['vis_data'], NamedSharding(mesh, P(None, 'chan'))),
                 vis_coords=tree_device_put(data_dict['vis_coords'], NamedSharding(mesh, P()))
             )
 
+            if apply_idx % cadence_interval == 0:
+                num_iterations = self.num_iterations
+            else:
+                num_iterations = 0
+
             params, (neg_log_likelihood, final_state), residual = self._solve_jax(
-                **data_dict
+                **data_dict,
+                num_iterations=num_iterations
             )
             gen_response = VisibilityData(
                 vis=np.asarray(residual)
             )
-            solutions.append(np.asarray(params.gains_real + 1j * params.gains_imag))
+            solution = np.asarray(params.gains_real + 1j * params.gains_imag)  # [num_cal, num_ant, num_chan, 2, 2]
+            # Replicate the solutions along time dimension
+            solution = np.tile(solution[:, None, :, :, :, :],
+                               (1, num_blocks, 1, 1, 1, 1))  # [num_cal, num_blocks, num_ant, num_chan, 2, 2]
+            solutions.append(solution)
             residual_sum += np.sum(residual)
 
-            # Plot results
-            fig, axs = plt.subplots(1, 1, figsize=(6, 6), squeeze=False)
-            axs[0][0].plot(neg_log_likelihood)
-            axs[0][0].set_title(fr"Cadence window: {iteration_idx} $-\log \mathcal{{L}}$")
-            axs[0][0].set_xlabel("Solver Iteration")
-            axs[0][0].set_ylabel("Negative Log Likelihood")
-            fig.tight_layout()
-            fig.savefig(f"{self.plot_folder}/solver_progress_neg_log_likelihood_cadence_window_{iteration_idx}.png")
-            plt.close(fig)
             # Pass forward
             init_params = params
-            iteration_idx += 1
+
+            if apply_idx % cadence_interval == 0:
+                # Plot results
+                fig, axs = plt.subplots(1, 1, figsize=(6, 6), squeeze=False)
+                axs[0][0].plot(neg_log_likelihood)
+                axs[0][0].set_title(fr"Cadence window: {cadence_idx} $-\log \mathcal{{L}}$")
+                axs[0][0].set_xlabel("Solver Iteration")
+                axs[0][0].set_ylabel("Negative Log Likelihood")
+                fig.tight_layout()
+                fig.savefig(f"{self.plot_folder}/solver_progress_neg_log_likelihood_cadence_window_{cadence_idx}.png")
+                plt.close(fig)
+                cadence_idx += 1
+            else:
+                pass
+            apply_idx += 1
+
 
         gains = np.concatenate(solutions, axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
         calibration_solutions = CalibrationSolutions(
@@ -294,21 +345,15 @@ class Calibration:
             Apply the gains to the visibilities.
 
             Args:
-                gains: [num_source, num_time, num_ant, num_chan, 2, 2]
+                gains: [num_source, num_ant, num_chan, 2, 2]
 
             Returns:
 
             """
-            if self.average_interval is None:
-                # There is one time index anyways, and it's the same gain for all times.
-                time_selection = 0
-            else:
-                # We index into the time dimension based on the time index in the visibility coordinates.
-                time_selection = vis_coords.time_idx
 
             # V_ij = G_i * V_ij * G_j^H
-            g1 = gains[:, time_selection, vis_coords.antenna_1, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
-            g2 = gains[:, time_selection, vis_coords.antenna_2, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
+            g1 = gains[:, vis_coords.antenna_1, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
+            g2 = gains[:, vis_coords.antenna_2, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
 
             def body_fn(accumulated_vis, x):
                 g1, g2, vis = x
@@ -342,7 +387,7 @@ class Calibration:
             Compute the log probability of the data given the gains.
 
             Args:
-                gains: [cal_dirs, num_ant, num_time / 1, num_chans, 2, 2]
+                gains: [cal_dirs, num_ant, num_chans, 2, 2]
 
             Returns:
                 log_prob: scalar
@@ -369,36 +414,38 @@ class Calibration:
         # Given self.dtype is complex, find float dtype
         return jnp.real(jnp.zeros((), dtype=self.dtype)).dtype
 
-    def get_init_params(self, num_source: int, num_time: int, num_ant: int, num_chan: int) -> CalibrationParams:
+    def get_init_params(self, num_source: int, num_ant: int, num_chan: int) -> CalibrationParams:
         """
         Get initial parameters.
 
         Args:
             num_source: number of sources
-            num_time: number of times
             num_ant: number of antennas
             num_chan: number of channels
 
         Returns:
-            initial parameters: (gains_real, gains_imag) of shape (num_source, num_time, num_ant, num_chan, 2, 2)
+            initial parameters: (gains_real, gains_imag) of shape (num_source, num_ant, num_chan, 2, 2)
         """
         return CalibrationParams(
-            gains_real=jnp.tile(jnp.eye(2, dtype=self.float_dtype)[None, None, None, None, ...],
-                                (num_source, num_time, num_ant, num_chan, 1, 1)),
-            gains_imag=jnp.tile(jnp.zeros((2, 2), dtype=self.float_dtype)[None, None, None, None, ...],
-                                (num_source, num_time, num_ant, num_chan, 1, 1))
+            gains_real=jnp.tile(jnp.eye(2, dtype=self.float_dtype)[None, None, None, ...],
+                                (num_source, num_ant, num_chan, 1, 1)),
+            gains_imag=jnp.tile(jnp.zeros((2, 2), dtype=self.float_dtype)[None, None, None, ...],
+                                (num_source, num_ant, num_chan, 1, 1))
         )
 
-    @partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, static_argnames=['self', 'num_iterations'])
     def _solve_jax(self, freqs: jax.Array, preapply_gains: jax.Array, init_params: CalibrationParams,
                    vis_data: VisibilityData,
-                   vis_coords: VisibilityCoords) -> Tuple[
+                   vis_coords: VisibilityCoords,
+                   num_iterations: int) -> Tuple[
         CalibrationParams, Tuple[jax.Array, jaxopt.OptStep], jax.Array]:
 
-        log_prob_fn, subtract_fn = self._build_log_likelihood_and_subtract(freqs=freqs,
-                                                                           preapply_gains=preapply_gains,
-                                                                           vis_data=vis_data,
-                                                                           vis_coords=vis_coords)
+        log_prob_fn, subtract_fn = self._build_log_likelihood_and_subtract(
+            freqs=freqs,
+            preapply_gains=preapply_gains,
+            vis_data=vis_data,
+            vis_coords=vis_coords
+        )
 
         ravel_fn, unravel_fn = pytree_unravel(init_params)
         init_params_flat = ravel_fn(init_params)
@@ -413,6 +460,7 @@ class Calibration:
             gains = params.gains_real + 1j * params.gains_imag
 
             vis_residuals = subtract_fn(gains=gains)
+            vis_residuals *= jnp.sqrt(vis_data.weights)
             vis_residuals = lax.reshape(vis_residuals, (np.size(vis_residuals),))
             return jnp.concatenate([jnp.real(vis_residuals), jnp.imag(vis_residuals)])
 
@@ -429,7 +477,7 @@ class Calibration:
 
         carry = (init_params_flat, solver.init_state(init_params=init_params_flat))
 
-        (params_flat, final_state), results = lax.scan(body_fn, carry, xs=jnp.arange(self.num_iterations))
+        (params_flat, final_state), results = lax.scan(body_fn, carry, xs=jnp.arange(num_iterations))
 
         params = unravel_fn(params_flat)
 

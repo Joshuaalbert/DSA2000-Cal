@@ -51,8 +51,8 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
         num_iterations=15,
         inplace_subtract=True,
         plot_folder='plots/calibration',
-        solution_cadence=None,
-        average_interval=10 * au.s,
+        validity_interval=None,
+        solution_interval=10 * au.s,
         num_shards=num_shards,
         seed=56789
     )

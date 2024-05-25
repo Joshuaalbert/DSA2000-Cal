@@ -65,7 +65,7 @@ def mock_calibrator_source_models(tmp_path):
         integration_time=au.Quantity(1.5, 's'),
         coherencies=['XX', 'XY', 'YX', 'YY'],
         pointings=phase_tracking,
-        times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(2) * au.s,
+        times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(8) * au.s,
         freqs=au.Quantity([700, 2000], unit=au.MHz),
         antennas=antennas,
         antenna_names=array.get_antenna_names(),
@@ -120,6 +120,8 @@ def test_calibration(mock_calibrator_source_models):
 
     calibration = Calibration(
         num_iterations=10,
+        solution_interval=ms.meta.integration_time * 2,
+        validity_interval=ms.meta.integration_time * 4,
         sky_model=sky_model,
         preapply_gain_model=None,
         inplace_subtract=True,
