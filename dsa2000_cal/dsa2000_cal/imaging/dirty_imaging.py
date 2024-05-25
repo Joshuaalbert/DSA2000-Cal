@@ -53,10 +53,11 @@ class DirtyImaging:
         print(f"Imaging {ms}")
         # Metrics
         t0 = time_mod.time()
-        gen = ms.create_block_generator(vis=True, weights=False, flags=True)
+        gen = ms.create_block_generator(vis=True, weights=True, flags=True)
         gen_response = None
         uvw = []
         vis = []
+        weights = []
         flags = []
 
         while True:
@@ -66,10 +67,12 @@ class DirtyImaging:
                 break
             uvw.append(visibility_coords.uvw)
             vis.append(data.vis)
+            weights.append(data.weights)
             flags.append(data.flags)
 
         uvw = jnp.concatenate(uvw, axis=0)  # [num_rows, 3]
         vis = jnp.concatenate(vis, axis=0)  # [num_rows, chan, 4]
+        weights = jnp.concatenate(weights, axis=0)  # [num_rows, chan, 4]
         flags = jnp.concatenate(flags, axis=0)  # [num_rows, chan]
         freqs = quantity_to_jnp(ms.meta.freqs)
 
@@ -138,6 +141,7 @@ class DirtyImaging:
         dirty_image = self._image_visibilties_jax(
             uvw=uvw,
             vis=vis,
+            weights=weights,
             flags=flags,
             freqs=freqs,
             num_pixel=num_pixel,
@@ -171,7 +175,8 @@ class DirtyImaging:
         return image_model
 
     @partial(jax.jit, static_argnames=['self', 'num_pixel'])
-    def _image_visibilties_jax(self, uvw: jax.Array, vis: jax.Array, flags: jax.Array, freqs: jax.Array, num_pixel: int,
+    def _image_visibilties_jax(self, uvw: jax.Array, vis: jax.Array, weights: jax.Array,
+                               flags: jax.Array, freqs: jax.Array, num_pixel: int,
                                dl: jax.Array, dm: jax.Array, center_l: jax.Array, center_m: jax.Array):
         """
         Multi-channel synthesis image stokes I using a simple w-gridding algorithm.
@@ -179,6 +184,7 @@ class DirtyImaging:
         Args:
             uvw: [num_rows, 3]
             vis: [num_rows, num_chan, 4] in linear, i.e. [XX, XY, YX, YY]
+            weights: [num_rows, num_chan, 4]
             flags: [num_rows, num_chan]
             freqs: [num_chan]
             num_pixel: int
@@ -203,6 +209,7 @@ class DirtyImaging:
             return lax.reshape(vis_I, (num_rows, num_chan))
 
         vis_I = _transform_to_stokes_I(vis)  # [num_rows, num_chan]
+        weights_I = _transform_to_stokes_I(jnp.reciprocal(weights))  # [num_rows, num_chan]
 
         if self.convention == 'casa':
             uvw = jnp.negative(uvw)  # CASA convention
@@ -224,10 +231,10 @@ class DirtyImaging:
             do_wgridding=True,
             flip_v=False,
             mask=mask,
-            wgt=None,  # TODO: pass weights
-            divide_by_n=False,  # Don't divide by n
+            wgt=weights_I,
+            divide_by_n=False,  # Don't divide by n, the result is already I(l,m)/n.
             verbosity=0,
             nthreads=self.nthreads
         )  # [num_l, num_m]
-        # TODO: Should actually multiply by n.
+        # TODO: Should actually multiply by n? Since this returns I(l,m)/n
         return dirty_image

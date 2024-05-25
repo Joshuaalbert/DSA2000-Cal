@@ -15,6 +15,21 @@ def test_vec():
 
 
 def test_kron_product():
+    g1 = jax.random.normal(jax.random.PRNGKey(0), (2, 2)) + 1j * jax.random.normal(jax.random.PRNGKey(1), (2, 2))
+    g2 = jax.random.normal(jax.random.PRNGKey(2), (2, 2)) + 1j * jax.random.normal(jax.random.PRNGKey(3), (2, 2))
+    coherencies = jax.random.normal(jax.random.PRNGKey(4), (2, 2)) + 1j * jax.random.normal(jax.random.PRNGKey(5),
+                                                                                            (2, 2))
+
+    output = kron_product(g1, coherencies, g2.conj().T)
+    expected = g1 @ coherencies @ g2.conj().T
+    np.testing.assert_allclose(output, expected, atol=1e-6)
+
+    output = kron_product(g1, coherencies, g1.conj().T)
+    expected = g1 @ coherencies @ g1.conj().T
+    np.testing.assert_allclose(output, expected, atol=1e-6)
+
+
+def test_kron_product_cost():
     a = jnp.arange(4).reshape((2, 2)).astype(complex)
     b = jnp.arange(4).reshape((2, 2)).astype(complex)
     c = jnp.arange(4).reshape((2, 2)).astype(complex)

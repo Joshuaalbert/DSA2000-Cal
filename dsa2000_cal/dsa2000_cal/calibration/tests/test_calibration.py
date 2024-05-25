@@ -66,7 +66,7 @@ def mock_calibrator_source_models(tmp_path):
         coherencies=['XX', 'XY', 'YX', 'YY'],
         pointings=phase_tracking,
         times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(2) * au.s,
-        freqs=au.Quantity([50, 70], unit=au.MHz),
+        freqs=au.Quantity([700, 2000], unit=au.MHz),
         antennas=antennas,
         antenna_names=array.get_antenna_names(),
         antenna_diameters=array.get_antenna_diameter(),
@@ -87,9 +87,13 @@ def mock_calibrator_source_models(tmp_path):
     )
     sky_model = sky_model_producer.create_sky_model(include_bright=True)
 
+    amplitude = 1. + 0.1 * np.random.normal(
+        size=(len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.dimensionless_unscaled
+    phase = 10 * np.random.normal(size=(len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.deg
     gain_model = MockGainModel(
-        amplitude=np.ones((len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.dimensionless_unscaled,
-        phase=np.zeros((len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.rad
+        amplitude=amplitude
+        ,
+        phase=phase
     )
 
     simulate_visibilities = SimulateVisibilities(
@@ -97,6 +101,14 @@ def mock_calibrator_source_models(tmp_path):
         plot_folder='plots'
     )
     simulate_visibilities.simulate(ms, gain_model)
+
+    # imagor = DirtyImaging(
+    #     plot_folder='plots',
+    #     field_of_view=2 * au.deg,
+    #     seed=12345,
+    #     nthreads=1
+    # )
+    # imagor.image('dirty', ms)
 
     return sky_model, ms
 
@@ -116,8 +128,9 @@ def test_calibration(mock_calibrator_source_models):
     )
     calibration.calibrate(ms)
 
+
 def test_inspect():
-    solutions = CalibrationSolutions.parse_file('calibration_solutions.json') # [source, time, ant, chan, 2, 2]
-    print(solutions.gains.shape) # (1, 2, 62, 2, 2, 2)
+    solutions = CalibrationSolutions.parse_file('calibration_solutions.json')  # [source, time, ant, chan, 2, 2]
+    print(solutions.gains.shape)  # (1, 2, 62, 2, 2, 2)
     # Only antenna 0 is calibrated
-    print(solutions.gains[0, 0, :, :, 0, 0]) # 0.0
+    print(solutions.gains[0, 0, :, :, 0, 0])  # 0.0

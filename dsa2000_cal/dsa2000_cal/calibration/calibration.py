@@ -13,6 +13,7 @@ from jax import lax
 from jax import numpy as jnp
 from jax._src.typing import SupportsDType
 
+from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.jax_utils import pytree_unravel, promote_pytree
 from dsa2000_cal.common.plot_utils import plot_antenna_gains
@@ -276,8 +277,12 @@ class Calibration:
             plot_folder=self.plot_folder
         )
         # TODO: explore using checkpointing
-        vis = simulator.predict_model_visibilities_jax(freqs=freqs, apply_gains=preapply_gains,
-                                                       vis_coords=vis_coords)  # [num_cal, num_row, num_chan, 2, 2]
+        vis = simulator.predict_model_visibilities_jax(
+            freqs=freqs,
+            apply_gains=preapply_gains,
+            vis_coords=vis_coords,
+            flat_coherencies=False
+        )  # [num_cal, num_row, num_chan, 2, 2]
 
         # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))'
         # TODO: https://jax.readthedocs.io/en/latest/notebooks/shard_map.html#fsdp-tp-with-shard-map-at-the-top-level
@@ -285,6 +290,15 @@ class Calibration:
         # vis now contains the model visibilities for each calibrator
 
         def _apply_gains(gains: jax.Array) -> jax.Array:
+            """
+            Apply the gains to the visibilities.
+
+            Args:
+                gains: [num_source, num_time, num_ant, num_chan, 2, 2]
+
+            Returns:
+
+            """
             if self.average_interval is None:
                 # There is one time index anyways, and it's the same gain for all times.
                 time_selection = 0
@@ -293,8 +307,8 @@ class Calibration:
                 time_selection = vis_coords.time_idx
 
             # V_ij = G_i * V_ij * G_j^H
-            g1 = gains[:, vis_coords.antenna_1, time_selection, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
-            g2 = gains[:, vis_coords.antenna_2, time_selection, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
+            g1 = gains[:, time_selection, vis_coords.antenna_1, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
+            g2 = gains[:, time_selection, vis_coords.antenna_2, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
 
             def body_fn(accumulated_vis, x):
                 g1, g2, vis = x
@@ -313,7 +327,7 @@ class Calibration:
                 accumulated_vis += transform(g1, g2, vis)  # [num_rows, num_chans, 4]
                 return accumulated_vis, ()
 
-            model_vis = jnp.zeros(np.shape(vis)[1:], self.dtype)
+            model_vis = jnp.zeros(np.shape(vis)[1:-2] + (4,), self.dtype)  # [num_rows, num_chans, 4]
 
             accumulated_vis, _ = lax.scan(body_fn, model_vis, (g1, g2, vis))
             return accumulated_vis  # [num_rows, num_chans, 4]
@@ -394,12 +408,17 @@ class Calibration:
             gains = params.gains_real + 1j * params.gains_imag
             return -log_prob_fn(gains=gains)
 
-        solver = jaxopt.LBFGS(
-            fun=objective_fn,
-            maxiter=self.num_iterations,
-            jit=True,
-            unroll=False,
-            use_gamma=True
+        def residual_fn(params_flat: jax.Array):
+            params = unravel_fn(params_flat)
+            gains = params.gains_real + 1j * params.gains_imag
+
+            vis_residuals = subtract_fn(gains=gains)
+            vis_residuals = lax.reshape(vis_residuals, (np.size(vis_residuals),))
+            return jnp.concatenate([jnp.real(vis_residuals), jnp.imag(vis_residuals)])
+
+        solver = LevenbergMarquardt(
+            residual_fun=residual_fn,
+            maxiter=self.num_iterations
         )
 
         # Unroll ourself
