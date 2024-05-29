@@ -1,7 +1,7 @@
 import time as time_mod
 from dataclasses import dataclass
 from functools import partial
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Tuple, Literal
 
 import astropy.units as au
 import jax
@@ -11,27 +11,21 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import lax
 from jax import numpy as jnp
-from jax._src.typing import SupportsDType
 
+from dsa2000_cal.calibration.bfgs import BFGS
 from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
+from dsa2000_cal.calibration.gain_prior_models import AbstractGainPriorModel, \
+    ReplicatedGainProbabilisticModel
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
-from dsa2000_cal.common.jax_utils import pytree_unravel, promote_pytree
 from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.forward_model.sky_model import SkyModel
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, VisibilityData, MeasurementSet
-from dsa2000_cal.predict.vec_utils import kron_product
-from dsa2000_cal.simulation.simulate_visibilties import SimulateVisibilities
-from dsa2000_cal.source_models.corr_translation import flatten_coherencies
+from dsa2000_cal.simulation.rime_model import RIMEModel
 from dsa2000_cal.types import CalibrationSolutions
 
 tfpd = tfp.distributions
-
-
-class CalibrationParams(NamedTuple):
-    gains_real: jnp.ndarray  # [source, time, ant, chan, 2, 2]
-    gains_imag: jnp.ndarray  # [source, time, ant, chan, 2, 2]
 
 
 class CalibrationData(NamedTuple):
@@ -69,6 +63,8 @@ class Calibration:
     """
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
     sky_model: SkyModel
+    rime_model: RIMEModel
+    gain_prior_model: AbstractGainPriorModel
 
     preapply_gain_model: GainModel | None
 
@@ -80,17 +76,20 @@ class Calibration:
     solution_interval: au.Quantity | None = None
     residual_ms_folder: str | None = None
     seed: int = 42
-    convention: str = 'casa'
-    dtype: SupportsDType = jnp.complex64
     verbose: bool = False
     num_shards: int = 1
 
+    solver: Literal['BFGS', 'LM', 'LBFGS'] = 'BFGS'
+
     def __post_init__(self):
-        self.key = jax.random.PRNGKey(self.seed)
         if self.validity_interval is not None and not self.validity_interval.unit.is_equivalent(au.s):
             raise ValueError("solution_cadence must be in seconds.")
         if self.solution_interval is not None and not self.solution_interval.unit.is_equivalent(au.s):
             raise ValueError("average_interval must be in seconds.")
+
+    @property
+    def key(self):
+        return jax.random.PRNGKey(self.seed)
 
     def calibrate(self, ms: MeasurementSet) -> MeasurementSet:
         """
@@ -116,7 +115,7 @@ class Calibration:
             )
 
         devices = mesh_utils.create_device_mesh((self.num_shards,),
-                                                devices=jax.devices()[:self.num_shards])
+                                                devices=jax.local_devices()[:self.num_shards])
         mesh = Mesh(devices, axis_names=('chan',))
 
         def tree_device_put(tree, sharding):
@@ -163,10 +162,6 @@ class Calibration:
             ms = ms.clone(ms_folder=self.residual_ms_folder)
             print("Created a new measurement set for residuals.")
 
-        # TODO: abstract, so that model parametrisation and initialisation is done elsewhere.
-        init_params = self.get_init_params(num_source=self.sky_model.num_sources, num_ant=len(ms.meta.antennas),
-                                           num_chan=len(ms.meta.freqs))  # [num_source, num_ant, num_freqs, 2, 2]
-
         calibrator_lmn = au.Quantity(
             np.stack(
                 [
@@ -195,9 +190,13 @@ class Calibration:
         gen = ms.create_block_generator(vis=True, weights=True, flags=True, relative_time_idx=True,
                                         num_blocks=num_blocks)
         gen_response = None
+        init_params = None
         cadence_idx = 0
         apply_idx = 0
+        key = self.key
+        solve_durations = []
         while True:
+            t0_inner = time_mod.time()
             try:
                 times, visibility_coords, data = gen.send(gen_response)
             except StopIteration:
@@ -223,8 +222,6 @@ class Calibration:
                     reps=(self.sky_model.num_sources, num_blocks, len(ms.meta.antennas), len(ms.meta.freqs), 1, 1)
                 )
 
-            self.key, key = jax.random.split(self.key)
-
             data_dict = dict(
                 freqs=quantity_to_jnp(ms.meta.freqs),
                 preapply_gains=preapply_gains,
@@ -237,7 +234,10 @@ class Calibration:
                 freqs=tree_device_put(data_dict['freqs'], NamedSharding(mesh, P('chan'))),
                 preapply_gains=tree_device_put(data_dict['preapply_gains'],
                                                NamedSharding(mesh, P(None, None, None, 'chan'))),
-                init_params=tree_device_put(data_dict['init_params'], NamedSharding(mesh, P(None, None, 'chan'))),
+                init_params=tree_device_put(
+                    data_dict['init_params'],
+                    NamedSharding(mesh, P())  # Single gain for all
+                ) if init_params is not None else None,
                 vis_data=tree_device_put(data_dict['vis_data'], NamedSharding(mesh, P(None, 'chan'))),
                 vis_coords=tree_device_put(data_dict['vis_coords'], NamedSharding(mesh, P()))
             )
@@ -247,14 +247,15 @@ class Calibration:
             else:
                 num_iterations = 0
 
-            params, (neg_log_likelihood, final_state), residual = self._solve_jax(
+            key, solve_key = jax.random.split(key)
+            solution, params, (neg_log_likelihood, final_state), residual = self._solve_jax(
+                key=solve_key,
                 **data_dict,
                 num_iterations=num_iterations
             )
             gen_response = VisibilityData(
                 vis=np.asarray(residual)
             )
-            solution = np.asarray(params.gains_real + 1j * params.gains_imag)  # [num_cal, num_ant, num_chan, 2, 2]
             # Replicate the solutions along time dimension
             solution = np.tile(solution[:, None, :, :, :, :],
                                (1, num_blocks, 1, 1, 1, 1))  # [num_cal, num_blocks, num_ant, num_chan, 2, 2]
@@ -278,7 +279,8 @@ class Calibration:
             else:
                 pass
             apply_idx += 1
-
+            t1_inner = time_mod.time()
+            solve_durations.append(t1_inner - t0_inner)
 
         gains = np.concatenate(solutions, axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
         calibration_solutions = CalibrationSolutions(
@@ -301,173 +303,65 @@ class Calibration:
             fig = plot_antenna_gains(calibration_solutions, antenna_idx=antenna_idx, direction_idx=0)
             fig.savefig(f"{self.plot_folder}/antenna_{antenna_idx}_calibration_solutions.png")
             plt.close(fig)
+        fig, axs = plt.subplots(1, 1, figsize=(6, 6), squeeze=False)
+        axs[0][0].plot(solve_durations)
+        axs[0][0].set_title("Solver Durations")
+        axs[0][0].set_xlabel("Chunk Index")
+        axs[0][0].set_ylabel("Duration (s)")
+        fig.tight_layout()
+        fig.savefig(f"{self.plot_folder}/solver_durations.png")
+        plt.close(fig)
         print(f"Plots saved to {self.plot_folder}.")
 
         return ms
 
-    def _build_log_likelihood_and_subtract(self, freqs: jax.Array, preapply_gains: jax.Array, vis_data: VisibilityData,
-                                           vis_coords: VisibilityCoords):
-        """
-        Build the log likelihood function.
-
-        Args:
-            freqs: [num_chans] the frequencies in Hz
-            preapply_gains: [num_cal, num_time, num_ant, num_chan, 2, 2]
-            vis_data: [num_row] batched visibility data
-            vis_coords: [num_row] visibility coordinates
-
-        Returns:
-            log_likelihood: Callable[[gains], jax.Array]
-        """
-
-        simulator = SimulateVisibilities(
-            sky_model=self.sky_model,
-            convention=self.convention,
-            dtype=self.dtype,
-            verbose=self.verbose,
-            plot_folder=self.plot_folder
-        )
-        # TODO: explore using checkpointing
-        vis = simulator.predict_model_visibilities_jax(
-            freqs=freqs,
-            apply_gains=preapply_gains,
-            vis_coords=vis_coords,
-            flat_coherencies=False
-        )  # [num_cal, num_row, num_chan, 2, 2]
-
-        # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))'
-        # TODO: https://jax.readthedocs.io/en/latest/notebooks/shard_map.html#fsdp-tp-with-shard-map-at-the-top-level
-
-        # vis now contains the model visibilities for each calibrator
-
-        def _apply_gains(gains: jax.Array) -> jax.Array:
-            """
-            Apply the gains to the visibilities.
-
-            Args:
-                gains: [num_source, num_ant, num_chan, 2, 2]
-
-            Returns:
-
-            """
-
-            # V_ij = G_i * V_ij * G_j^H
-            g1 = gains[:, vis_coords.antenna_1, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
-            g2 = gains[:, vis_coords.antenna_2, ...]  # [cal_dirs, num_rows, num_chans, 2, 2]
-
-            def body_fn(accumulated_vis, x):
-                g1, g2, vis = x
-
-                # g1, g2: [num_rows, num_chans, 2, 2]
-                # vis: [num_rows, num_chans, 2, 2]
-                @partial(jax.vmap, in_axes=(0, 0, 0))  # -> rows
-                # g1, g2: [num_chans, 2, 2]
-                # vis: [num_chans, 2, 2]
-                @partial(jax.vmap, in_axes=(0, 0, 0))  # over chans
-                # g1, g2: [2, 2]
-                # vis: [2, 2]
-                def transform(g1, g2, vis):
-                    return flatten_coherencies(kron_product(g1, vis, g2.T.conj()))  # [4]
-
-                accumulated_vis += transform(g1, g2, vis)  # [num_rows, num_chans, 4]
-                return accumulated_vis, ()
-
-            model_vis = jnp.zeros(np.shape(vis)[1:-2] + (4,), self.dtype)  # [num_rows, num_chans, 4]
-
-            accumulated_vis, _ = lax.scan(body_fn, model_vis, (g1, g2, vis))
-            return accumulated_vis  # [num_rows, num_chans, 4]
-
-        def _subtract_model(gains: jax.Array):
-            model_vis = _apply_gains(gains)
-            residual = vis_data.vis - model_vis
-            return residual
-
-        def _log_likelihood(gains: jax.Array) -> jax.Array:
-            """
-            Compute the log probability of the data given the gains.
-
-            Args:
-                gains: [cal_dirs, num_ant, num_chans, 2, 2]
-
-            Returns:
-                log_prob: scalar
-            """
-            model_vis = _apply_gains(gains)  # [num_rows, num_chan, 4]
-
-            vis_variance = 1. / vis_data.weights  # Should probably use measurement set SIGMA here
-            vis_stddev = jnp.sqrt(vis_variance)
-            obs_dist_real = tfpd.Normal(*promote_pytree('vis_real', (jnp.real(vis_data.vis), vis_stddev)))
-            obs_dist_imag = tfpd.Normal(*promote_pytree('vis_imag', (jnp.imag(vis_data.vis), vis_stddev)))
-            log_prob_real = obs_dist_real.log_prob(jnp.real(model_vis))
-            log_prob_imag = obs_dist_imag.log_prob(jnp.imag(model_vis))  # [num_rows, num_chan, 4]
-            log_prob = log_prob_real + log_prob_imag  # [num_rows, num_chan, 4]
-
-            # Mask out flagged data or zero-weighted data.
-            mask = jnp.logical_or(vis_data.weights == 0, vis_data.flags)
-            log_prob = jnp.where(mask, 0., log_prob)
-            return jnp.sum(log_prob)
-
-        return _log_likelihood, _subtract_model
-
     @property
     def float_dtype(self):
         # Given self.dtype is complex, find float dtype
-        return jnp.real(jnp.zeros((), dtype=self.dtype)).dtype
-
-    def get_init_params(self, num_source: int, num_ant: int, num_chan: int) -> CalibrationParams:
-        """
-        Get initial parameters.
-
-        Args:
-            num_source: number of sources
-            num_ant: number of antennas
-            num_chan: number of channels
-
-        Returns:
-            initial parameters: (gains_real, gains_imag) of shape (num_source, num_ant, num_chan, 2, 2)
-        """
-        return CalibrationParams(
-            gains_real=jnp.tile(jnp.eye(2, dtype=self.float_dtype)[None, None, None, ...],
-                                (num_source, num_ant, num_chan, 1, 1)),
-            gains_imag=jnp.tile(jnp.zeros((2, 2), dtype=self.float_dtype)[None, None, None, ...],
-                                (num_source, num_ant, num_chan, 1, 1))
-        )
+        return jnp.real(jnp.zeros((), dtype=self.rime_model.dtype)).dtype
 
     @partial(jax.jit, static_argnames=['self', 'num_iterations'])
-    def _solve_jax(self, freqs: jax.Array, preapply_gains: jax.Array, init_params: CalibrationParams,
+    def _solve_jax(self, key, freqs: jax.Array, preapply_gains: jax.Array, init_params: jax.Array | None,
                    vis_data: VisibilityData,
                    vis_coords: VisibilityCoords,
-                   num_iterations: int) -> Tuple[
-        CalibrationParams, Tuple[jax.Array, jaxopt.OptStep], jax.Array]:
+                   num_iterations: int) -> Tuple[jax.Array,
+    jax.Array, Tuple[jax.Array, jaxopt.OptStep], jax.Array]:
 
-        log_prob_fn, subtract_fn = self._build_log_likelihood_and_subtract(
-            freqs=freqs,
+        gain_probabilistic_model = ReplicatedGainProbabilisticModel(
+            rime_model=self.rime_model,
+            gain_prior_model=self.gain_prior_model,
             preapply_gains=preapply_gains,
+            freqs=freqs,
             vis_data=vis_data,
             vis_coords=vis_coords
         )
 
-        ravel_fn, unravel_fn = pytree_unravel(init_params)
-        init_params_flat = ravel_fn(init_params)
+        if init_params is None:
+            init_params = gain_probabilistic_model.get_init_params()
+            # init_params = jnp.zeros((model.U_ndims,))  # [ndims_U]
 
-        def objective_fn(params_flat: jax.Array):
-            params = unravel_fn(params_flat)
-            gains = params.gains_real + 1j * params.gains_imag
-            return -log_prob_fn(gains=gains)
+        def objective_fn(params: jax.Array):
+            return -gain_probabilistic_model.log_prob_joint(params)
 
-        def residual_fn(params_flat: jax.Array):
-            params = unravel_fn(params_flat)
-            gains = params.gains_real + 1j * params.gains_imag
-
-            vis_residuals = subtract_fn(gains=gains)
+        def residual_fn(params: jax.Array):
+            vis_model, _ = gain_probabilistic_model.forward(params)
+            vis_residuals = vis_data.vis - vis_model
             vis_residuals *= jnp.sqrt(vis_data.weights)
             vis_residuals = lax.reshape(vis_residuals, (np.size(vis_residuals),))
             return jnp.concatenate([jnp.real(vis_residuals), jnp.imag(vis_residuals)])
 
-        solver = LevenbergMarquardt(
-            residual_fun=residual_fn,
-            maxiter=self.num_iterations
-        )
+        if self.solver == 'LM':
+            solver = LevenbergMarquardt(
+                residual_fun=residual_fn,
+                maxiter=self.num_iterations
+            )
+        elif self.solver == 'BFGS':
+            solver = BFGS(
+                fun=objective_fn,
+                maxiter=self.num_iterations
+            )
+        else:
+            raise ValueError(f"Solver {self.solver} not supported.")
 
         # Unroll ourself
         def body_fn(carry, x):
@@ -475,11 +369,11 @@ class Calibration:
             params_flat, state = solver.update(params=params_flat, state=state)
             return (params_flat, state), state.value
 
-        carry = (init_params_flat, solver.init_state(init_params=init_params_flat))
+        carry = (init_params, solver.init_state(init_params=init_params))
 
-        (params_flat, final_state), results = lax.scan(body_fn, carry, xs=jnp.arange(num_iterations))
+        (params, final_state), results = lax.scan(body_fn, carry, xs=jnp.arange(num_iterations))
 
-        params = unravel_fn(params_flat)
+        vis_model, gains = gain_probabilistic_model.forward(params)
+        vis_residuals = vis_data.vis - vis_model
 
-        residual = subtract_fn(gains=params.gains_real + 1j * params.gains_imag)
-        return params, (results, final_state), residual
+        return gains, params, (results, final_state), vis_residuals

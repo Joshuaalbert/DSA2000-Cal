@@ -5,6 +5,7 @@ from jax import config
 
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
+from dsa2000_cal.calibration.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.forward_model.sky_model import SkyModel
 from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
 from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
@@ -58,7 +59,8 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
         validity_interval=None,
         solution_interval=None,
         num_shards=num_shards,
-        seed=56789
+        seed=56789,
+        gain_probabilistic_model=UnconstrainedGain()
     )
     subtracted_ms = calibration.calibrate(ms=ms)
 

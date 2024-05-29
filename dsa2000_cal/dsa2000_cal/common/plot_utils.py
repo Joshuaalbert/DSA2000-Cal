@@ -40,12 +40,15 @@ def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):
 
 
 def plot_antenna_gains(gain_obj: SystemGains | CalibrationSolutions, antenna_idx: int,
-                       direction_idx: int) -> plt.Figure:
+                       direction_idx: int, ref_ant: int = 0) -> plt.Figure:
     """
     Plots the gains as a function of time to a file.
 
     Args:
         gain_obj: gains along with times, antennas, directions, freqs.
+        antenna_idx: index of the antenna to plot.
+        direction_idx: index of the direction to plot.
+        ref_ant: index of the reference antenna for normalisation.
 
     Returns:
         a matplotlib figure.
@@ -64,10 +67,12 @@ def plot_antenna_gains(gain_obj: SystemGains | CalibrationSolutions, antenna_idx
     fig, axs = plt.subplots(4, 2, figsize=(12, 12), sharex=True, squeeze=False)
 
     # Plot amplitude
-    amplitude = np.abs(gain_obj.gains[direction_idx, :, antenna_idx, :, :, :])  # [time, chan, 2, 2]
+    ref_phase = np.angle(gain_obj.gains[direction_idx, :, ref_ant, :, :, :])  # [time, chan, 2, 2]
+    ref_gain = np.exp(1j * ref_phase)
+    amplitude = np.abs(gain_obj.gains[direction_idx, :, antenna_idx, :, :, :] / ref_gain)  # [time, chan, 2, 2]
     avmin = np.min(amplitude)
     avmax = np.max(amplitude)
-    phase = np.angle(gain_obj.gains[direction_idx, :, antenna_idx, :, :, :])  # [time, chan, 2, 2]
+    phase = np.angle(gain_obj.gains[direction_idx, :, antenna_idx, :, :, :] / ref_gain)  # [time, chan, 2, 2]
     extent = (gain_obj.times[0].mjd, gain_obj.times[-1].mjd, gain_obj.freqs[0].value, gain_obj.freqs[-1].value)
     direction = gain_obj.directions[direction_idx]
     # pretty string

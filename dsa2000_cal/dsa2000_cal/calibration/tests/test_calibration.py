@@ -1,14 +1,21 @@
 import dataclasses
+import os
+
+from dsa2000_cal.simulation.rime_model import RIMEModel
+
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count=8"
 
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import jax
 import numpy as np
 import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.calibration.calibration import Calibration
+from dsa2000_cal.calibration.gain_prior_models import DiagonalUnconstrainedGain
 from dsa2000_cal.forward_model.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
@@ -87,16 +94,29 @@ def mock_calibrator_source_models(tmp_path):
     )
     sky_model = sky_model_producer.create_sky_model(include_bright=True)
 
-    amplitude = 1. + 0.1 * np.random.normal(
-        size=(len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.dimensionless_unscaled
-    phase = 10 * np.random.normal(size=(len(ms.meta.antennas), len(ms.meta.freqs), 2, 2)) * au.deg
+    amplitude = 1. + 0.1 * np.asarray(jax.random.normal(jax.random.PRNGKey(0),
+                                                        shape=(
+                                                            len(ms.meta.antennas), 1, 2,
+                                                            2))) * au.dimensionless_unscaled
+    amplitude = np.tile(amplitude, (1, len(ms.meta.freqs), 1, 1))
+    amplitude[..., 0, 1] = 0.  # Set cross-polarisation to zero
+    amplitude[..., 1, 0] = 0.  # Set cross-polarisation to zero
+    phase = 10 * np.asarray(jax.random.normal(jax.random.PRNGKey(1),
+                                              shape=(len(ms.meta.antennas), 1, 2, 2))) * au.deg
+    phase = np.tile(phase, (1, len(ms.meta.freqs), 1, 1))
+    phase[..., 0, 1] = 0.  # Set cross-polarisation to zero
+    phase[..., 1, 0] = 0.  # Set cross-polarisation to zero
     gain_model = MockGainModel(
         amplitude=amplitude
         ,
         phase=phase
     )
 
+    rime_model = RIMEModel(
+        sky_model=sky_model
+    )
     simulate_visibilities = SimulateVisibilities(
+        rime_model=rime_model,
         sky_model=sky_model,
         plot_folder='plots'
     )
@@ -117,16 +137,24 @@ def test_calibration(mock_calibrator_source_models):
     sky_model, ms = mock_calibrator_source_models
 
     # print(fits_sources, wsclean_sources, ms)
+    rime_model = RIMEModel(
+        sky_model=sky_model
+    )
+
+    gain_prior_model = DiagonalUnconstrainedGain()
 
     calibration = Calibration(
-        num_iterations=10,
-        solution_interval=ms.meta.integration_time * 2,
-        validity_interval=ms.meta.integration_time * 4,
+        num_iterations=40,
+        solution_interval=ms.meta.integration_time * 8,
+        validity_interval=ms.meta.integration_time * 8,
         sky_model=sky_model,
+        rime_model=rime_model,
+        gain_prior_model=gain_prior_model,
         preapply_gain_model=None,
         inplace_subtract=True,
         verbose=True,
-        plot_folder='plots'
+        plot_folder='plots',
+        num_shards=2
     )
     calibration.calibrate(ms)
 

@@ -160,7 +160,7 @@ class LevenbergMarquardt:
     implicit_diff: bool = True
     implicit_diff_solve: Optional[Callable] = None
     has_aux: bool = False
-    jit: bool = True
+    jit: bool = False
     unroll: base.AutoOrBoolean = 'auto'
 
     # We are overriding the _cond_fun of the base solver to enable stopping based
