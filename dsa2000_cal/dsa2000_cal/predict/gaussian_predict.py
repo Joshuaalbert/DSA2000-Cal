@@ -209,7 +209,7 @@ class GaussianPredict:
             theta=theta
         )
 
-        w_term = jnp.exp(-2j * jnp.pi * w * (1. - n0)) / n0
+        w_term = jnp.exp(-2j * jnp.pi * w * (n0 - 1.)) / n0
 
         C = w_term
 

@@ -157,7 +157,7 @@ class PointPredict:
         l, m, n = lmn  # scalar
 
         # -2*pi*freq/c*(l*u + m*v + (n-1)*w)
-        delay = l * u + m * v + (1. - n) * w  # scalar
+        delay = l * u + m * v + (n - 1.) * w  # scalar
 
         phi = jnp.asarray(
             (-2j * np.pi) * delay,

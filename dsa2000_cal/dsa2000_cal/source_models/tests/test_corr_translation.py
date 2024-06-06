@@ -1,3 +1,4 @@
+import jax
 import numpy as np
 from jax import numpy as jnp
 
@@ -41,3 +42,15 @@ def test_circular_to_linear():
     linear = circular_to_linear(circular, flat_output=True)
     circular_output = linear_to_circular(linear, flat_output=True)
     np.testing.assert_allclose(circular, circular_output, atol=1e-6)
+
+
+def test_linear_to_stokes():
+    x = jnp.ones(4) + 0j
+    T = jax.jacobian(lambda x: linear_to_stokes(x, flat_output=True), holomorphic=True)(x)
+    T_correct = jnp.asarray([
+        [1., 0., 0., 1.],
+        [1., 0., 0., -1.],
+        [0., 1., 1., 0.],
+        [0., -1j, 1j, 0.]
+    ])
+    np.testing.assert_allclose(T, T_correct)

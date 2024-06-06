@@ -43,6 +43,8 @@ def test_dft_predict(di_gains: bool):
     assert np.all(np.isfinite(visibilities))
     assert np.shape(visibilities) == (row, chan, 2, 2)
 
+    # Note: correctness is tested against wgridder
+
 
 def test_with_sharding():
     from jax.experimental import mesh_utils

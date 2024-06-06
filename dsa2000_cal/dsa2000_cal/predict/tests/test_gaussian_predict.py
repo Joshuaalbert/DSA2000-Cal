@@ -47,6 +47,8 @@ def test_gaussian_predict(di_gains: bool, order_approx: int):
     assert np.all(np.isfinite(visibilities))
     assert np.shape(visibilities) == (row, chan, 2, 2)
 
+    # Note: correctness is tested against wgridder
+
 
 @pytest.mark.parametrize("di_gains", [True, False])
 @pytest.mark.parametrize("order_approx", [0])
@@ -113,7 +115,7 @@ def test_ensure_gradients_work(di_gains: bool, order_approx: int):
 
         return vis
 
-    grad = jax.grad(lambda *args: jnp.sum(jnp.abs(func(*args))**2), argnums=(0,1,2))(freqs, model_data, uvw)
+    grad = jax.grad(lambda *args: jnp.sum(jnp.abs(func(*args)) ** 2), argnums=(0, 1, 2))(freqs, model_data, uvw)
     # print(func(freqs, model_data, uvw))
     # print(grad)
     (freq_grad, model_data_grad, uvw_grad) = grad
@@ -141,6 +143,7 @@ def test_ensure_gradients_work(di_gains: bool, order_approx: int):
                     print("\tYY", model_data_grad.gains[s, t, a, :, 1, 1])
                     # Ensure gradient is not zero
                     assert np.all(np.abs(model_data_grad.gains[s, t, a, :, :, :]) > 1e-10)
+
 
 def test_with_sharding():
     from jax.experimental import mesh_utils

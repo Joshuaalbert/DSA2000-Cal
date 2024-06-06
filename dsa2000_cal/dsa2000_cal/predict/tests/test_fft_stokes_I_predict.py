@@ -56,6 +56,8 @@ def test_faint_predict(gain_has_chan: bool, image_has_chan: bool):
     assert np.all(np.isfinite(visibilities))
     assert np.shape(visibilities) == (row, chan, 2, 2)
 
+    # Note: correctness is based on wgridder correctness
+
 
 def test_with_sharding():
     from jax.experimental import mesh_utils

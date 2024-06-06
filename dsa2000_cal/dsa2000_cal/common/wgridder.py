@@ -65,6 +65,9 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
         dtype=output_dtype
     )
 
+    # Negate w to handle ducc#34
+    uvw = uvw.at[:, 2].multiply(-1., indices_are_sorted=True, unique_indices=True)
+
     args = (
         uvw, freqs, dirty, wgt, mask, pixsize_m, pixsize_l, center_m, center_l,
         epsilon, do_wgridding, flip_v, divide_by_n, sigma_min, sigma_max,
@@ -108,21 +111,22 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
-
     uvw = np.asarray(uvw, dtype=np.float64)
     freqs = np.asarray(freqs, dtype=np.float64)
+    dirty = np.asarray(dirty)
     num_rows = np.shape(uvw)[0]
     num_freqs = np.shape(freqs)[0]
 
     if wgt is not None:
-        wgt = wgt.astype(dirty.dtype)
+        wgt = np.asarray(wgt).astype(dirty.dtype)
 
     if mask is not None:
-        mask = mask.astype(np.uint8)
+        mask = np.asarray(mask).astype(np.uint8)
 
     output_dtype = (1j * np.ones(1, dtype=dirty.dtype)).dtype
 
     output_vis = np.zeros((num_rows, num_freqs), dtype=output_dtype)
+
     _ = wgridder.dirty2vis(
         uvw=uvw,
         freq=freqs,
@@ -208,6 +212,9 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
         dtype=output_dtype
     )
 
+    # Negate w to handle ducc#34
+    uvw = uvw.at[:, 2].multiply(-1., indices_are_sorted=True, unique_indices=True)
+
     args = (
         uvw, freqs, vis, wgt, mask, npix_m, npix_l, pixsize_m, pixsize_l,
         center_m, center_l, epsilon, do_wgridding, flip_v, divide_by_n,
@@ -259,15 +266,16 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
     """
     uvw = np.asarray(uvw, dtype=np.float64)
     freqs = np.asarray(freqs, dtype=np.float64)
+    vis = np.asarray(vis)
 
     float_dtype = (np.ones(1, dtype=vis.dtype).real).dtype
     dirty = np.zeros((npix_m, npix_l), dtype=float_dtype)
 
     if wgt is not None:
-        wgt = wgt.astype(float_dtype)
+        wgt = np.asarray(wgt).astype(float_dtype)
 
     if mask is not None:
-        mask = mask.astype(np.uint8)
+        mask = np.asarray(mask).astype(np.uint8)
 
     if npix_m % 2 != 0 or npix_l % 2 != 0:
         raise ValueError("npix_m and npix_l must both be even.")
@@ -283,7 +291,7 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
     if wgt is not None:
         adjoint_factor /= np.mean(wgt)
 
-    return adjoint_factor * wgridder.vis2dirty(
+    _ = wgridder.vis2dirty(
         uvw=uvw,
         freq=freqs,
         vis=vis,
@@ -306,3 +314,5 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         dirty=dirty,
         double_precision_accumulation=double_precision_accumulation
     )
+    dirty *= adjoint_factor
+    return dirty
