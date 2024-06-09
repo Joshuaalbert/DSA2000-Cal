@@ -241,8 +241,8 @@ class FitsStokesISourceModel(AbstractSourceModel):
     def get_flux_model(self, lvec=None, mvec=None):
         # Use imshow to plot the sky model evaluated over a LM grid
         Nl, Nm = self.images[0].shape
-        lvec = np.arange(-Nl // 2, Nl // 2) * self.dl[0] + self.l0[0]
-        mvec = np.arange(-Nm // 2, Nm // 2) * self.dm[0] + self.m0[0]
+        lvec = (-0.5 * Nl + np.arange(Nl)) * self.dl[0] + self.l0[0]
+        mvec = (-0.5 * Nm + np.arange(Nm)) * self.dm[0] + self.m0[0]
         flux_model = self.images[0].T  # [Nm, Nl]
         return lvec, mvec, flux_model
 
@@ -250,8 +250,13 @@ class FitsStokesISourceModel(AbstractSourceModel):
         lvec, mvec, flux_model = self.get_flux_model()  # [Nm, Nl]
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
-        im = axs.imshow(flux_model, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
-                        cmap='inferno')
+        im = axs.imshow(
+            flux_model.value,
+            origin='lower',
+            extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
+            cmap='inferno',
+            interpolation='none'
+        )
         # colorbar
         plt.colorbar(im, ax=axs)
         axs.set_xlabel('l')

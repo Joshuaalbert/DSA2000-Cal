@@ -206,13 +206,10 @@ class Calibration:
                 # Since we pass a single `time` we need time_idx to be relative.
                 preapply_gains = []
                 for time in times:
-                    _preapply_gains = self.preapply_gain_model.compute_gain(
-                        freqs=ms.meta.freqs,
-                        time=time,
-                        phase_tracking=ms.meta.phase_tracking,
-                        array_location=ms.meta.array_location,
-                        sources=cal_sources
-                    )  # [num_calibrators, num_ant, num_chan, 2, 2]
+                    _preapply_gains = self.preapply_gain_model.compute_gain(freqs=ms.meta.freqs, sources=cal_sources,
+                                                                            pointing=ms.meta.phase_tracking,
+                                                                            array_location=ms.meta.array_location,
+                                                                            time=time)  # [num_calibrators, num_ant, num_chan, 2, 2]
                     preapply_gains.append(_preapply_gains)
                 preapply_gains = jnp.stack(preapply_gains,
                                            axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]

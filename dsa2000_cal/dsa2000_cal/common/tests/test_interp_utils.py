@@ -36,7 +36,29 @@ def test_uniform_spacing():
     np.testing.assert_allclose(optimized_interp_jax_safe(x, xp, yp), expected, rtol=1e-2)
 
 
-def test_within_bounds_2d():
+def test_multilinear_interp_2d():
+    xp = jnp.asarray([0, 1, 2])
+    yp = jnp.asarray([0, 1, 2])
+    z = jnp.asarray([
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8]
+    ])
+    x, y = jnp.meshgrid(jnp.linspace(0., 1., 4),
+                        jnp.linspace(0., 1., 4),
+                        indexing='ij')
+
+    expected = jnp.asarray(
+        [
+            [0., 0.3333333, 0.6666666, 1.],
+            [1., 1.3333333, 1.6666666, 2.],
+            [2., 2.3333333, 2.6666666, 3.],
+            [3., 3.3333333, 3.6666666, 4.]
+        ]
+    )
+    np.testing.assert_allclose(multilinear_interp_2d(x, y, xp, yp, z), expected)
+
+    # within_bounds_2d
     xp = jnp.linspace(0, 10, 11)
     yp = jnp.linspace(0, 10, 11)
     x, y = jnp.meshgrid(xp, yp, indexing='ij')
@@ -53,8 +75,7 @@ def test_within_bounds_2d():
     z_eval = multilinear_interp_2d(x_eval, y_eval, xp, yp, z)
     np.testing.assert_allclose(z_eval, expected, rtol=1e-5)
 
-
-def test_edge_cases_2d():
+    # edge_cases_2d
     xp = jnp.linspace(0, 10, 11)
     yp = jnp.linspace(0, 10, 11)
     x, y = jnp.meshgrid(xp, yp, indexing='ij')
@@ -71,8 +92,7 @@ def test_edge_cases_2d():
     z_eval = multilinear_interp_2d(x_eval, y_eval, xp, yp, z)
     np.testing.assert_allclose(z_eval, expected, rtol=1e-5)
 
-
-def test_out_of_bounds_2d():
+    # out_of_bounds_2d
     xp = jnp.linspace(0, 10, 11)
     yp = jnp.linspace(0, 10, 11)
     x, y = jnp.meshgrid(xp, yp, indexing='ij')
@@ -185,6 +205,7 @@ def test_get_interp_indices_and_weights():
     # np.testing.assert_array_equal(alpha0, jnp.asarray([0.5, 0.5]))
     # np.testing.assert_array_equal(i1, jnp.asarray([2, 3]))
     # np.testing.assert_array_equal(alpha1, jnp.asarray([0.5, 0.5]))
+
 
 def test_get_interp_indices_and_weights_astropy_time():
     # Test with at.Time objects

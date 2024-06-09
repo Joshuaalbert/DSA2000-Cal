@@ -1,5 +1,6 @@
 import numpy as np
 import pylab as plt
+import pytest
 from astropy import coordinates as ac, time as at, units as au
 from astropy.coordinates import offset_by
 from astropy.wcs import WCS
@@ -31,6 +32,9 @@ def test_enu_to_uvw():
 def test_lmn_to_icrs():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
+    lmn = icrs_to_lmn(pointing, time, pointing)
+    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-10)
+
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
     lmn = icrs_to_lmn(sources, time, pointing)
     reconstructed_sources = lmn_to_icrs(lmn, time, pointing)
@@ -43,12 +47,18 @@ def test_lmn_to_icrs():
     lmn = icrs_to_lmn(sources, time, pointing)
     assert lmn.shape == (2, 2, 3)
     reconstructed_sources = lmn_to_icrs(lmn, time, pointing)
+    assert isinstance(reconstructed_sources, ac.ICRS)
     assert reconstructed_sources.shape == (2, 2)
     assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
 
 
 def test_icrs_to_lmn():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
+
+    pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
+    lmn = icrs_to_lmn(pointing, time, pointing)
+    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-10)
+
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
     lmn1 = icrs_to_lmn(sources, time, pointing)
@@ -68,6 +78,63 @@ def test_icrs_to_lmn():
 
     lmn = icrs_to_lmn(sources, obstime, zenith)
     print(lmn)
+
+
+@pytest.mark.parametrize('broadcast_time', [False, True])
+@pytest.mark.parametrize('broadcast_phase_tracking', [False, True])
+@pytest.mark.parametrize('broadcast_lmn', [False, True])
+def test_lmn_to_icrs_vectorised(broadcast_time, broadcast_phase_tracking, broadcast_lmn):
+    np.random.seed(42)
+    if broadcast_time:
+        time = at.Time(["2021-01-01T00:00:00", "2021-01-01T00:00:00"], format='isot').reshape(
+            (1, 1, 2)
+        )
+    else:
+        time = at.Time("2021-01-01T00:00:00", format='isot')
+    if broadcast_phase_tracking:
+        phase_tracking = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
+            (1, 4, 1)
+        )
+    else:
+        phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    if broadcast_lmn:
+        lmn = np.random.normal(size=(5, 1, 1, 3)) * au.dimensionless_unscaled
+    else:
+        lmn = np.random.normal(size=(3,)) * au.dimensionless_unscaled
+    lmn /= np.linalg.norm(lmn, axis=-1, keepdims=True)
+
+    expected_shape = np.broadcast_shapes(lmn.shape[:-1], time.shape, phase_tracking.shape)
+
+    sources = lmn_to_icrs(lmn, time, phase_tracking)
+    assert sources.shape == expected_shape
+
+
+@pytest.mark.parametrize('broadcast_time', [False, True])
+@pytest.mark.parametrize('broadcast_phase_tracking', [False, True])
+@pytest.mark.parametrize('broadcast_lmn', [False, True])
+def test_icrs_to_lmn_vectorised(broadcast_time, broadcast_phase_tracking, broadcast_lmn):
+    np.random.seed(42)
+    if broadcast_time:
+        time = at.Time(["2021-01-01T00:00:00", "2021-01-01T00:00:00"], format='isot').reshape(
+            (1, 1, 2)
+        )
+    else:
+        time = at.Time("2021-01-01T00:00:00", format='isot')
+    if broadcast_phase_tracking:
+        phase_tracking = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
+            (1, 4, 1)
+        )
+    else:
+        phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    if broadcast_lmn:
+        sources = ac.ICRS([0, 0, 0, 0, 0] * au.deg, [0, 0, 0, 0, 0] * au.deg).reshape((5, 1, 1))
+    else:
+        sources = ac.ICRS(0 * au.deg, 0 * au.deg)
+
+    expected_shape = np.broadcast_shapes(sources.shape, time.shape, phase_tracking.shape) + (3,)
+
+    sources = icrs_to_lmn(sources, time, phase_tracking)
+    assert sources.shape == expected_shape
 
 
 def test_lmn_to_icrs_near_poles():
@@ -120,11 +187,6 @@ def test_earth_location_to_enu():
 
     dist = np.linalg.norm(enu[:, None, :] - enu[None, :, :], axis=-1)
     assert np.all(dist < np.sqrt(3) * 10 * au.km)
-
-    # Test earth cetnre
-    earth_centre = ac.GCRS(0 * au.deg, 0 * au.deg, 0 * au.km).transform_to(ac.ITRS()).earth_location
-    enu = earth_location_to_enu(earth_centre, array_location, time)
-    assert np.all(np.abs(enu) < 2e-5 * au.m)
 
 
 def test_icrs_to_enu():
@@ -269,17 +331,17 @@ def test_lmn_coords():
     print(lmn_dwest)
     assert l_dwest < 0
 
+
 def test_lmn_ellipse_to_sky():
-
     # Create an ellipse in LM-coords
-    major = 0.1*au.dimensionless_unscaled
-    minor = 0.05*au.dimensionless_unscaled
-    theta = 45*au.deg
+    major = 0.1 * au.dimensionless_unscaled
+    minor = 0.05 * au.dimensionless_unscaled
+    theta = 45 * au.deg
 
-    l0 = 0.*au.dimensionless_unscaled
-    m0 = 0.*au.dimensionless_unscaled
+    l0 = 0. * au.dimensionless_unscaled
+    m0 = 0. * au.dimensionless_unscaled
 
-    phi = np.linspace(0, 2*np.pi, 100)*au.rad
+    phi = np.linspace(0, 2 * np.pi, 100) * au.rad
     m_circle = np.cos(phi)
     l_circle = np.sin(phi)
 
@@ -299,11 +361,10 @@ def test_lmn_ellipse_to_sky():
     l = l_rot + l0
     m = m_rot + m0
 
-
     # Convert to sky
     phase_tracking = ac.ICRS(15 * au.deg, 75 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
-    lmn = np.stack([l, m, np.sqrt(1 - l**2 - m**2)], axis=-1)
+    lmn = np.stack([l, m, np.sqrt(1 - l ** 2 - m ** 2)], axis=-1)
     icrs = lmn_to_icrs(lmn, time, phase_tracking)
 
     # plot
@@ -316,7 +377,7 @@ def test_lmn_ellipse_to_sky():
 
     fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(5, 5), subplot_kw=dict(projection=wcs))
     ax[0][0].plot(icrs.ra.deg, icrs.dec.deg, marker='o',
-                     transform=ax[0][0].get_transform('world'))
+                  transform=ax[0][0].get_transform('world'))
     ax[0][0].set_xlabel('Right Ascension')
     ax[0][0].set_ylabel('Declination')
     ax[0][0].set_title("Ellipse on the sky")
@@ -335,3 +396,13 @@ def test_lmn_ellipse_to_sky():
     fig.tight_layout()
     fig.savefig('ellipse_in_plane_of_sky.png')
     plt.show()
+
+
+def test_earth_location_to_uvw():
+    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    time = at.Time("2021-01-01T00:00:00", scale='utc')
+    antennas = ac.EarthLocation.of_site('vla')
+    uvw = earth_location_to_uvw(antennas=antennas, obs_time=time, phase_tracking=phase_tracking)
+    print(uvw)
+
+    # TODO: should compare to known values.

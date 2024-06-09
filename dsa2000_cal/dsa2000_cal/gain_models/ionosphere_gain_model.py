@@ -106,7 +106,6 @@ class IonosphereGainModel(GainModel):
     interp_mode: Literal['nn_conv', 'kriging'] = 'nn_conv'
 
     TEC_CONV: float = -8.4479745  # MHz/mTECU
-    convention: str = 'fourier'
 
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
@@ -434,7 +433,7 @@ class IonosphereGainModel(GainModel):
             enu_geodesics_sources: (source_shape) + [num_ant, 10] The source coordinates in the ENU frame.
 
         Returns:
-
+            gains: (source_shape) + [num_ant, num_freq, 2, 2] ionosphere gains
         """
 
         freqs_MHz = freqs / 1e6
@@ -462,14 +461,7 @@ class IonosphereGainModel(GainModel):
 
         phase = dtec_interp[..., None] * phase_factor  # (source_shape) + [num_ant, num_freq]
 
-        if self.convention == 'casa':
-            constant = jnp.asarray(-1j, self.dtype)
-        elif self.convention == 'fourier':
-            constant = jnp.asarray(1j, self.dtype)
-        else:
-            raise ValueError(f"Unknown convention {self.convention}")
-
-        scalar_gain = jnp.exp(constant * phase)
+        scalar_gain = jnp.exp(1j * phase)
         # set diagonal
         gains = jnp.zeros(phase.shape + (2, 2), self.dtype)
         gains = gains.at[..., 0, 0].set(scalar_gain)
@@ -592,11 +584,11 @@ class IonosphereGainModel(GainModel):
 
         return predictive_mean
 
-    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS,
-                     array_location: ac.EarthLocation, time: at.Time, **kwargs):
+    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, pointing: ac.ICRS, array_location: ac.EarthLocation,
+                     time: at.Time, **kwargs):
 
         print(
-            f"Computing ionosphere gain model for {len(sources)} sources {self.num_antenna} "
+            f"Computing ionosphere gain model for {len(sources)} sources {self.num_antenna} antennas "
             f"and {len(freqs)} frequencies at {time}."
         )
         if freqs.isscalar:
@@ -656,13 +648,13 @@ class IonosphereGainModel(GainModel):
         )  # (source_shape) + [num_ant, 10]
 
         gains = self._compute_gain_jax(
-            freqs=quantity_to_jnp(freqs),
+            freqs=quantity_to_jnp(freqs, 'Hz'),
             time_s=(time - self.ref_time).sec,
             enu_geodesics_sources=enu_geodesics_sources,
             x0=quantity_to_jnp(x0, 'km'),
             earth_center_enu=quantity_to_jnp(earth_center_enu, 'km'),
             northern_hemisphere=northern_hemisphere
-        )  # (source_shape) + [num_ant, num_freq]
+        )  # (source_shape) + [num_ant, num_freq, 2, 2]
 
         return gains
 

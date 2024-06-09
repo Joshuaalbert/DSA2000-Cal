@@ -9,6 +9,7 @@ __all__ = [
 ]
 
 
+# TODO: set JVP for these, which is just the operator itself.
 def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
               pixsize_m: float | jax.Array, pixsize_l: float | jax.Array,
               center_m: float | jax.Array, center_l: float | jax.Array,

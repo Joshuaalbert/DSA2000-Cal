@@ -101,8 +101,6 @@ class DishEffectsGainModelCache(SerialisableBaseModel):
     model_freqs: au.Quantity  # [num_model_freq]
     model_times: at.Time  # [num_time]
 
-    num_antenna: int
-
     dish_effects_params: DishEffectsGainModelParams
 
     elevation_point_error: au.Quantity  # [num_time, num_ant, 1]
@@ -112,19 +110,20 @@ class DishEffectsGainModelCache(SerialisableBaseModel):
     cross_elevation_feed_offset: au.Quantity  # [num_ant, 1]
     horizon_peak_astigmatism: au.Quantity  # [num_ant, 1]
     surface_error: au.Quantity  # [num_ant, 1]
+    antennas: ac.EarthLocation  # [num_ant]
 
     sampling_interval: au.Quantity
     dx: au.Quantity
     dy: au.Quantity
-    X: au.Quantity  # [2n+1, 2n+1]
-    Y: au.Quantity  # [2n+1, 2n+1]
+    X: au.Quantity  # [Nm, Nl]
+    Y: au.Quantity  # [Nm, Nl]
     dl: au.Quantity
     dm: au.Quantity
     lvec: au.Quantity  # [2n+1]
     mvec: au.Quantity  # [2n+1]
-    lmn_data: au.Quantity  # [2n+1, 2n+1, 3]
+    lmn_data: au.Quantity  # [Nm, Nl, 3]
 
-    aperture_gains: au.Quantity  # [2n+1, 2n+1, num_model_freq, 2, 2]
+    aperture_gains: au.Quantity  # [Nm, Nl, num_model_freq, 2, 2]
     convention: str
 
     def __init__(self, **data) -> None:
@@ -221,7 +220,6 @@ class DishEffectsGainModel(GainModel):
         os.makedirs(self.cache_folder, exist_ok=True)
         os.makedirs(self.plot_folder, exist_ok=True)
         self.model_freqs = self.beam_gain_model.model_freqs
-        self.num_antenna = self.beam_gain_model.num_antenna
 
         # make sure all 1D
         if self.model_times.isscalar:
@@ -258,9 +256,8 @@ class DishEffectsGainModel(GainModel):
                     f"Dish effect params in cache {cache.dish_effects_params} does not match "
                     f"dish effect params {self.dish_effect_params}"
                 )
-            if cache.num_antenna != self.num_antenna:
-                raise ValueError(
-                    f"Num antenna in cache {cache.num_antenna} does not match num antenna {self.num_antenna}")
+            if len(cache.antennas) != len(self.antennas):
+                raise ValueError(f"Number of antennas in cache {len(cache.antennas)} does not match number of antennas")
             if cache.seed != self.seed:
                 raise ValueError(f"Seed in cache {cache.seed} does not match seed {self.seed}")
             if cache.convention != self.convention:
@@ -292,43 +289,43 @@ class DishEffectsGainModel(GainModel):
             self.elevation_point_error = self.dish_effect_params.elevation_pointing_error_stddev * np.asarray(
                 jax.random.normal(
                     key=keys[0],
-                    shape=(self.num_model_times, self.num_antenna, 1)
+                    shape=(self.num_model_times, len(self.antennas), 1)
                 )
             )
             self.cross_elevation_point_error = self.dish_effect_params.cross_elevation_pointing_error_stddev * np.asarray(
                 jax.random.normal(
                     key=keys[1],
-                    shape=(self.num_model_times, self.num_antenna, 1)
+                    shape=(self.num_model_times, len(self.antennas), 1)
                 )
             )
             self.axial_focus_error = self.dish_effect_params.axial_focus_error_stddev * np.asarray(
                 jax.random.normal(
                     key=keys[2],
-                    shape=(self.num_model_times, self.num_antenna, 1)
+                    shape=(self.num_model_times, len(self.antennas), 1)
                 )
             )
             self.elevation_feed_offset = self.dish_effect_params.elevation_feed_offset_stddev * np.asarray(
                 jax.random.normal(
                     key=keys[3],
-                    shape=(self.num_antenna, 1)
+                    shape=(len(self.antennas), 1)
                 )
             )
             self.cross_elevation_feed_offset = self.dish_effect_params.cross_elevation_feed_offset_stddev * np.asarray(
                 jax.random.normal(
                     key=keys[4],
-                    shape=(self.num_antenna, 1)
+                    shape=(len(self.antennas), 1)
                 )
             )
             self.horizon_peak_astigmatism = self.dish_effect_params.horizon_peak_astigmatism_stddev * np.asarray(
                 jax.random.normal(
                     key=keys[5],
-                    shape=(self.num_antenna, 1)
+                    shape=(len(self.antennas), 1)
                 )
             )
             self.surface_error = self.dish_effect_params.surface_error_mean + self.dish_effect_params.surface_error_stddev * np.asarray(
                 jax.random.normal(
                     key=keys[6],
-                    shape=(self.num_antenna, 1)
+                    shape=(len(self.antennas), 1)
                 )
             )
             # Compute aperture amplitude
@@ -346,15 +343,15 @@ class DishEffectsGainModel(GainModel):
             self.mvec = np.arange(-n, n + 1) * self.dm
             M, L = np.meshgrid(self.mvec, self.lvec, indexing='ij')
             N = np.sqrt(1. - L ** 2 - M ** 2)
-            self.lmn_data = au.Quantity(jnp.stack([L, M, N], axis=-1))  # [2n+1, 2n+1, 3]
-            self.aperture_gains = self.compute_aperture_amplitude()  # [2n+1, 2n+1, num_model_freq, 2, 2]
+            self.lmn_data = au.Quantity(jnp.stack([L, M, N], axis=-1))  # [Nm, Nl, 3]
+            self.aperture_gains = self.compute_aperture_amplitude()  # [Nm, Nl, num_model_freq, 2, 2]
 
             # Plot abs and phase of aperture field (X=M, Y=-L)
             for elevation in [45, 90] * au.deg:
                 aperature_field = self.compute_aperture_field_model(freqs=self.model_freqs[:1],
                                                                     time=self.ref_time,
-                                                                    elevation=elevation)  # [2n+1, 2n+1, num_ant, 1, 2, 2]
-                aperature_field = aperature_field[..., 0, 0]  # [2n+1, 2n+1, num_ant, 1]
+                                                                    elevation=elevation)  # [Nm, Nl, num_ant, 1, 2, 2]
+                aperature_field = aperature_field[..., 0, 0]  # [Nm, Nl, num_ant, 1]
                 fig, axs = plt.subplots(2, 1, figsize=(8, 8), squeeze=False, sharex=True, sharey=True)
                 im = axs[0, 0].imshow(
                     np.abs(aperature_field[:, :, 0]),  # rows are X, columns are Y
@@ -392,15 +389,11 @@ class DishEffectsGainModel(GainModel):
                                           location=ac.EarthLocation(lat=0, lon=0, height=0),
                                           obstime=self.ref_time).transform_to(ac.ICRS())
                 sources = lmn_to_icrs(self.lmn_data, time=self.ref_time, phase_tracking=phase_tracking)
-                gain = self.compute_gain(
-                    freqs=self.model_freqs[:1],
-                    sources=sources,
-                    phase_tracking=phase_tracking,
-                    array_location=ac.EarthLocation(lat=0, lon=0, height=0),
-                    time=self.ref_time,
-                    mode='fft'
-                )  # [2n+1, 2n+1, num_ant, num_model_freq, 2, 2]
-                gain = gain[:, :, 0, 0, 0, 0]  # [2n+1, 2n+1]
+                gain = self.compute_gain(freqs=self.model_freqs[:1], sources=sources,
+                                         array_location=ac.EarthLocation(lat=0, lon=0, height=0), time=self.ref_time,
+                                         pointing=phase_tracking,
+                                         mode='fft')  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
+                gain = gain[:, :, 0, 0, 0, 0]  # [Nm, Nl]
                 fig, axs = plt.subplots(2, 1, figsize=(8, 8), squeeze=False, sharex=True, sharey=True)
                 im = axs[0, 0].imshow(
                     np.abs(gain),  # rows are M, columns are L
@@ -434,7 +427,7 @@ class DishEffectsGainModel(GainModel):
                 seed=self.seed,
                 model_freqs=self.model_freqs,
                 model_times=self.model_times,
-                num_antenna=self.num_antenna,
+                antennas=self.antennas,
                 dish_effects_params=self.dish_effect_params,
                 elevation_point_error=self.elevation_point_error,
                 cross_elevation_point_error=self.cross_elevation_point_error,
@@ -462,14 +455,14 @@ class DishEffectsGainModel(GainModel):
 
     @partial(jax.jit, static_argnames=['self'])
     def _compute_aperture_gains_jax(self, beam_gains: jax.Array) -> jax.Array:
-        evanescent_mask = jnp.asarray(np.isnan(self.lmn_data[..., 2]))  # [2n+1, 2n+1]
+        evanescent_mask = jnp.asarray(np.isnan(self.lmn_data[..., 2]))  # [Nm, Nl]
         beam_gains = jnp.where(evanescent_mask[:, :, None, None, None], 0.,
-                               beam_gains)  # [2n+1, 2n+1, num_model_freq, 2, 2]
+                               beam_gains)  # [Nm, Nl, num_model_freq, 2, 2]
         am = ApertureTransform(convention=self.convention)
         dnu = quantity_to_jnp(self.dl * self.dm / self.sampling_interval ** 2)
         aperture_gains = am.to_aperture(
             f_image=beam_gains, axes=(0, 1), dnu=dnu
-        )  # [2n+1, 2n+1, num_model_freq, 2, 2]
+        )  # [Nm, Nl, num_model_freq, 2, 2]
         return aperture_gains
 
     def compute_aperture_amplitude(self) -> au.Quantity:
@@ -479,14 +472,10 @@ class DishEffectsGainModel(GainModel):
         phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
         sources = lmn_to_icrs(self.lmn_data, time=time, phase_tracking=phase_tracking)
 
-        beam_gains = self.beam_gain_model.compute_gain(
-            freqs=self.model_freqs,
-            sources=sources,
-            phase_tracking=phase_tracking,
-            array_location=array_location,
-            time=time
-        )  # [2n+1, 2n+1, num_ant, num_model_freq, 2, 2]
-        beam_gains = beam_gains[..., 0, :, :, :]  # [2n+1, 2n+1, num_model_freq, 2, 2]
+        beam_gains = self.beam_gain_model.compute_gain(freqs=self.model_freqs, sources=sources,
+                                                       array_location=array_location, time=time,
+                                                       pointing=phase_tracking)  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
+        beam_gains = beam_gains[..., 0, :, :, :]  # [Nm, Nl, num_model_freq, 2, 2]
         return np.asarray(
             self._compute_aperture_gains_jax(beam_gains=beam_gains)) * au.dimensionless_unscaled
 
@@ -518,13 +507,13 @@ class DishEffectsGainModel(GainModel):
         R = 0.5 * dish_diameter
         model_freqs = quantity_to_jnp(self.model_freqs)
         wavelengths = quantity_to_jnp(constants.c) / freqs
-        aperture_gains = quantity_to_jnp(self.aperture_gains)  # [2n+1, 2n+1, num_freqs, 2, 2]
+        aperture_gains = quantity_to_jnp(self.aperture_gains)  # [Nm, Nl, num_freqs, 2, 2]
 
         # Interp freq
         (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(freqs, model_freqs)
         aperture_gains = aperture_gains[..., i0, :, :] * alpha0 + aperture_gains[
                                                                   ..., i1, :,
-                                                                  :] * alpha1  # [2n+1, 2n+1, num_freqs, 2, 2]
+                                                                  :] * alpha1  # [Nm, Nl, num_freqs, 2, 2]
 
         (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(rel_time,
                                                                     jnp.asarray((self.model_times - self.ref_time).sec))
@@ -533,14 +522,14 @@ class DishEffectsGainModel(GainModel):
             output = x[i0] * alpha0 + x[i1] * alpha1
             return output
 
-        X = X[:, :, None, None]  # [2n+1, 2n+1, 1, 1]
-        Y = Y[:, :, None, None]  # [2n+1, 2n+1, 1, 1]
+        X = X[:, :, None, None]  # [Nm, Nl, 1, 1]
+        Y = Y[:, :, None, None]  # [Nm, Nl, 1, 1]
 
         pointing_error = _interp_time(elevation_point_error) * X - _interp_time(
             cross_elevation_point_error) * Y
 
         r = jnp.sqrt(X ** 2 + Y ** 2)
-        focal_ratio = r / focal_length  # [2n+1, 2n+1, 1, 1]
+        focal_ratio = r / focal_length  # [Nm, Nl, 1, 1]
 
         sin_theta_p = focal_ratio / (1. + 0.25 * focal_ratio ** 2)
         cos_theta_p = (1. - 0.25 * focal_ratio ** 2) / (1. + 0.25 * focal_ratio ** 2)
@@ -558,7 +547,7 @@ class DishEffectsGainModel(GainModel):
         peak_astigmatism = horizon_peak_astigmatism * cos_elevation
         astigmatism_error = peak_astigmatism * (r / R) ** 2 * cos_2phi
 
-        total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [2n+1, 2n+1, num_ant, 1]
+        total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [Nm, Nl, num_ant, 1]
 
         if self.convention == 'casa':
             constant = jnp.asarray(2j * jnp.pi, self.dtype)  # [num_freqs]
@@ -567,9 +556,9 @@ class DishEffectsGainModel(GainModel):
         else:
             raise ValueError(f"Unknown convention {self.convention}")
 
-        aperture_field = jnp.exp(constant * total_path_length_error / wavelengths)  # [2n+1, 2n+1, num_ant, num_freq]
+        aperture_field = jnp.exp(constant * total_path_length_error / wavelengths)  # [Nm, Nl, num_ant, num_freq]
         aperture_field = aperture_field[..., None, None] * aperture_gains[..., None, :, :,
-                                                           :]  # [2n+1, 2n+1, num_ant, num_freq, 2, 2]
+                                                           :]  # [Nm, Nl, num_ant, num_freq, 2, 2]
         return aperture_field
 
     def compute_aperture_field_model(self, freqs: au.Quantity, time: at.Time, elevation: au.Quantity) -> jax.Array:
@@ -582,7 +571,7 @@ class DishEffectsGainModel(GainModel):
             elevation: the elevation
 
         Returns:
-            [2n+1, 2n+1, num_ant, num_freq] aperture field
+            [Nm, Nl, num_ant, num_freq] aperture field
         """
         if freqs.isscalar:
             freqs = freqs.reshape((1,))
@@ -599,7 +588,7 @@ class DishEffectsGainModel(GainModel):
             freqs=quantity_to_jnp(freqs),
             rel_time=jnp.asarray((time - self.ref_time).sec),
             elevation_rad=quantity_to_jnp(elevation)
-        )  # [2n+1, 2n+1, num_ant, num_freq, 2, 2]
+        )  # [Nm, Nl, num_ant, num_freq, 2, 2]
 
     def _compute_beam_fft_jax(self, lmn_sources: jax.Array, aperture_field: jax.Array) -> jax.Array:
         mvec = quantity_to_jnp(self.mvec)
@@ -609,7 +598,7 @@ class DishEffectsGainModel(GainModel):
         dx = quantity_to_jnp(self.dx * self.dy)
         image_field = am.to_image(
             f_aperture=aperture_field, axes=(0, 1), dx=dx
-        )  # [2n+1, 2n+1, num_ant, num_freq, 2, 2]
+        )  # [Nm, Nl, num_ant, num_freq, 2, 2]
 
         image_field = multilinear_interp_2d(
             x=lmn_sources[:, 1], y=lmn_sources[:, 0],
@@ -629,19 +618,19 @@ class DishEffectsGainModel(GainModel):
         else:
             raise ValueError(f"Unknown convention {self.convention}")
 
-        Y_lambda = Y[:, :, None, None, None] / wavelengths  # [2n+1, 2n+1, 1, 1, num_freqs]
-        X_lambda = X[:, :, None, None, None] / wavelengths  # [2n+1, 2n+1, 1, 1, num_freqs]
+        Y_lambda = Y[:, :, None, None, None] / wavelengths  # [Nm, Nl, 1, 1, num_freqs]
+        X_lambda = X[:, :, None, None, None] / wavelengths  # [Nm, Nl, 1, 1, num_freqs]
         l_sources = lmn_sources[:, None, None, 0]  # [num_sources, 1, 1]
         m_sources = lmn_sources[:, None, None, 1]  # [num_sources, 1, 1]
 
-        aperture_field = aperture_field[:, :, None, :, :]  # [2n+1, 2n+1, 1, num_ant, num_freq, 2, 2]
+        aperture_field = aperture_field[:, :, None, :, :]  # [Nm, Nl, 1, num_ant, num_freq, 2, 2]
 
         # L = -Y axis, M = X axis
         unity_root = jnp.exp(
             constant * (-Y_lambda * l_sources + X_lambda * m_sources)
-        )  # [2n+1, 2n+1, num_sources, 1, num_freqs]
+        )  # [Nm, Nl, num_sources, 1, num_freqs]
         image_field = (
-                unity_root[..., None, None] * aperture_field)  # [2n+1, 2n+1, num_sources, num_ant, num_freq, 2, 2]
+                unity_root[..., None, None] * aperture_field)  # [Nm, Nl, num_sources, num_ant, num_freq, 2, 2]
 
         dx = quantity_to_jnp(self.dx * self.dy)
         image_field = jnp.sum(image_field, axis=(0, 1)) * dx  # [num_sources, num_ant, num_freqs, 2, 2]
@@ -656,7 +645,7 @@ class DishEffectsGainModel(GainModel):
         aperture_field = self._compute_aperture_field_model_jax(
             freqs=freqs,
             rel_time=rel_time, elevation_rad=elevation_rad
-        )  # [2n+1, 2n+1, num_antenna, num_freq, 2, 2]
+        )  # [Nm, Nl, num_antenna, num_freq, 2, 2]
         if mode == 'fft':
             image_field = self._compute_beam_fft_jax(
                 lmn_sources=lmn_sources,
@@ -679,12 +668,12 @@ class DishEffectsGainModel(GainModel):
         gains = jnp.asarray(image_field, self.dtype)
         return gains
 
-    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS,
-                     array_location: ac.EarthLocation, time: at.Time,
-                     mode: str = 'fft'):
+    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, pointing: ac.ICRS, array_location: ac.EarthLocation,
+                     time: at.Time, **kwargs: str):
+        mode = kwargs.get('mode', 'fft')
 
         print(
-            f"Computing dish effects gain model for {len(sources)} sources and {self.num_antenna} antennas "
+            f"Computing dish effects gain model for {len(sources)} sources and {len(self.antennas)} antennas "
             f"at {time} at {len(freqs)} freqs using {mode} mode."
         )
 
@@ -696,8 +685,8 @@ class DishEffectsGainModel(GainModel):
             raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}")
 
         altaz_frame = ac.AltAz(location=array_location, obstime=time)
-        elevation = phase_tracking.transform_to(altaz_frame).alt
-        lmn_sources = icrs_to_lmn(sources=sources, time=time, phase_tracking=phase_tracking)  # (source_shape) + [3]
+        elevation = pointing.transform_to(altaz_frame).alt
+        lmn_sources = icrs_to_lmn(sources=sources, time=time, phase_tracking=pointing)  # (source_shape) + [3]
 
         return self._compute_gain_jax(
             freqs=quantity_to_jnp(freqs),

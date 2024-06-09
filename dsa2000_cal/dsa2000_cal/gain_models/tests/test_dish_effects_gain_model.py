@@ -14,6 +14,7 @@ def test_dish_effects_gain_model_real_data(tmp_path, mode):
     beam_gain_model = beam_gain_model_factory(array_name='dsa2000W')
 
     dish_effects_gain_model = DishEffectsGainModel(
+        antennas=beam_gain_model.antennas,
         beam_gain_model=beam_gain_model,
         model_times=at.Time(['2021-01-01T00:00:00', '2021-01-01T00:01:00'], scale='utc'),
         dish_effect_params=DishEffectsGainModelParams(),
@@ -21,7 +22,7 @@ def test_dish_effects_gain_model_real_data(tmp_path, mode):
         plot_folder=f'dish_effects_gain_model_plots_{mode}'
     )
 
-    np.testing.assert_allclose(dish_effects_gain_model.dy / dish_effects_gain_model.dl, 2.5 * au.m, atol=0.1*au.m)
+    np.testing.assert_allclose(dish_effects_gain_model.dy / dish_effects_gain_model.dl, 2.5 * au.m, atol=0.1 * au.m)
     assert jnp.all(jnp.isfinite(dish_effects_gain_model.aperture_gains))
     assert dish_effects_gain_model.dx.unit.is_equivalent(au.m)
     assert dish_effects_gain_model.dy.unit.is_equivalent(au.m)
@@ -52,24 +53,27 @@ def test_dish_effects_gain_model_real_data(tmp_path, mode):
         elevation=90. * au.deg
     )  # [2n+1, 2n+1, num_ant, num_freq]
     assert aperture_field.shape == (dish_effects_gain_model.X.shape[0], dish_effects_gain_model.Y.shape[1],
-                                    dish_effects_gain_model.num_antenna, len(freqs))
-    gains = dish_effects_gain_model.compute_gain(
-        freqs=freqs,
-        sources=sources,
-        phase_tracking=phase_tracking,
-        array_location=array_location,
-        time=time,
-        mode=mode
-    )
+                                    len(dish_effects_gain_model.antennas), len(freqs), 2, 2)
+    gains = dish_effects_gain_model.compute_gain(freqs=freqs, sources=sources, array_location=array_location,
+                                                 time=time, pointing=phase_tracking, mode=mode)
     if mode == 'fft':
-        ...
+        import pylab as plt
+        plt.imshow(np.abs(aperture_field[:, :, 0, 0, 0, 0]),
+                   origin='lower')
+        plt.colorbar()
+        plt.show()
+        plt.imshow(np.angle(gains[..., 0, 0, 0, 0]),
+                   origin='lower')
+        plt.colorbar()
+        plt.show()
     else:
-        print(gains[..., 0:2, :, 0, 0])
+        print(gains[..., 0, 0])
     assert gains.shape == sources.shape + (
-        dish_effects_gain_model.num_antenna, len(freqs), 2, 2)
+        len(dish_effects_gain_model.antennas), len(freqs), 2, 2)
 
     # Test from cache
     dish_effects_gain_model = DishEffectsGainModel(
+        antennas=beam_gain_model.antennas,
         beam_gain_model=beam_gain_model,
         model_times=at.Time(['2021-01-01T00:00:00', '2021-01-01T00:01:00'], scale='utc'),
         dish_effect_params=DishEffectsGainModelParams(),

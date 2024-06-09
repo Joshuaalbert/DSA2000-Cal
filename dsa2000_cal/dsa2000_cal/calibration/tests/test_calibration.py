@@ -40,9 +40,8 @@ class MockGainModel(GainModel):
         if not self.amplitude.unit.is_equivalent(au.dimensionless_unscaled):
             raise ValueError("Amplitude must be dimensionless.")
 
-    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, phase_tracking: ac.ICRS,
-                     array_location: ac.EarthLocation, time: at.Time,
-                     **kwargs):
+    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS, pointing: ac.ICRS, array_location: ac.EarthLocation,
+                     time: at.Time, **kwargs):
         shape = sources.shape
         sources = sources.reshape((-1,))
         gains = self.amplitude.value * np.exp(1j * self.phase.to('rad').value)  # [num_antennas, num_freqs, 2, 2]

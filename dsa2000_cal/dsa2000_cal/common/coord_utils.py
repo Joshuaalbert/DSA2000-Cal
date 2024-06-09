@@ -1,6 +1,7 @@
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import numpy as np
 from astropy.coordinates import EarthLocation
 from astropy.units import Quantity
 from tomographic_kernel.frames import ENU
@@ -21,16 +22,6 @@ def create_uvw_frame(obs_time: at.Time, phase_tracking: ac.ICRS, barycentre: str
     Returns:
         UVW frame
     """
-    if not phase_tracking.isscalar:
-        if phase_tracking.size == 1:
-            phase_tracking = phase_tracking.reshape(())
-        else:
-            raise ValueError("phase_tracking must be a scalar ICRS.")
-    if not obs_time.isscalar:
-        if obs_time.size == 1:
-            obs_time = obs_time.reshape(())
-        else:
-            raise ValueError("time must be a scalar Time.")
 
     if barycentre == 'sun':
         earth_location, earth_velocity = ac.get_body_barycentric_posvel('earth', obs_time, ephemeris='builtin')
@@ -99,13 +90,21 @@ def icrs_to_lmn(sources: ac.ICRS, time: at.Time, phase_tracking: ac.ICRS) -> Qua
     Returns:
         [num_sources, 3] LMN coordinates
     """
+    source_shape = sources.shape
+    time_shape = time.shape
+    phase_tracking_shape = phase_tracking.shape
+    # Assert that they broadcast
+    try:
+        np.broadcast_shapes(source_shape, time_shape, phase_tracking_shape)
+    except ValueError:
+        raise ValueError(
+            f"Shapes of sources {source_shape}, time {time_shape}, "
+            f"and phase_tracking {phase_tracking_shape} do not broadcast."
+        )
     frame = create_uvw_frame(obs_time=time, phase_tracking=phase_tracking)
     # Unsure why, but order is not l,m,n but rather n,l,m (verified)
-    shape = sources.shape
-    sources = sources.reshape((-1,))
     n, l, m = sources.transform_to(frame).cartesian.xyz
-    lmn = ac.CartesianRepresentation(l, m, n).xyz.T
-    lmn = lmn.reshape(shape + (3,))
+    lmn = au.Quantity(np.stack([l, m, n], axis=-1))
     return lmn
 
 
@@ -122,12 +121,10 @@ def lmn_to_icrs(lmn: Quantity, time: at.Time, phase_tracking: ac.ICRS) -> ac.ICR
         [num_sources] ICRS coordinates
     """
     frame = create_uvw_frame(obs_time=time, phase_tracking=phase_tracking)
-    shape = lmn.shape
-    lmn = lmn.reshape((-1, 3))
     # Swap back order to n, l, m
-    cartesian_rep = ac.CartesianRepresentation(lmn[:, 2], lmn[:, 0], lmn[:, 1])
+    cartesian_rep = ac.CartesianRepresentation(lmn[..., 2], lmn[..., 0], lmn[..., 1])
     sources = ac.SkyCoord(cartesian_rep, frame=frame).transform_to(ac.ICRS)
-    sources = sources.reshape(shape[:-1])
+    # Enforce instance type
     sources = ac.ICRS(sources.ra, sources.dec)
     return sources
 

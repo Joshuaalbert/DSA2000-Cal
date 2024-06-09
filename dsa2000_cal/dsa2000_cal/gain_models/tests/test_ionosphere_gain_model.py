@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 import jax
 import numpy as np
 import pylab as plt
@@ -22,8 +20,8 @@ def test_real_ionosphere_gain_model():
     angular_separation = 32 * au.arcmin
     spatial_separation = 1000 * au.m
     observation_start_time = at.Time('2021-01-01T00:00:00', scale='utc')
-    observation_duration = 0*au.s
-    temporal_resolution = 0*au.s
+    observation_duration = 0 * au.s
+    temporal_resolution = 0 * au.s
     freqs = [700e6, 2000e6] * au.Hz
     ionosphere_gain_model = ionosphere_gain_model_factory(
         phase_tracking=phase_tracking,
@@ -34,7 +32,7 @@ def test_real_ionosphere_gain_model():
         observation_duration=observation_duration,
         temporal_resolution=temporal_resolution,
         specification='light_dawn',
-        array_name='dsa2000W',
+        array_name='dsa2000W_small',
         plot_folder='plot_ionosphere',
         cache_folder='cache_ionosphere',
         seed=42
@@ -101,13 +99,8 @@ def test_ionosphere_gain_model():
 
     times = at.Time(np.linspace(model_times[0].jd, model_times[-1].jd, 10), format='jd')
     for time in times:
-        gains = ionosphere_gain_model.compute_gain(
-            freqs=freqs,
-            sources=sources,
-            phase_tracking=phase_tracking,
-            array_location=array_location,
-            time=time
-        )
+        gains = ionosphere_gain_model.compute_gain(freqs=freqs, sources=sources,
+                                                   array_location=array_location, time=time, pointing=phase_tracking)
 
         assert gains.shape == (len(sources), len(antennas), len(freqs), 2, 2)
 

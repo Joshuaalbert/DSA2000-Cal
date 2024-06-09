@@ -118,14 +118,10 @@ class SimulateVisibilities:
             axs[0][0].scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1], s=1)
 
             # Get gains
-            system_gains = system_gain_model.compute_gain(
-                freqs=ms.meta.freqs,
-                sources=source_directions,
-                phase_tracking=ms.meta.phase_tracking,
-                array_location=ms.meta.array_location,
-                time=time,
-                mode='fft'
-            )  # [num_sources, num_ant, num_freq, 2, 2]
+            system_gains = system_gain_model.compute_gain(freqs=ms.meta.freqs, sources=source_directions,
+                                                          pointing=ms.meta.phase_tracking,
+                                                          array_location=ms.meta.array_location, time=time,
+                                                          mode='fft')  # [num_sources, num_ant, num_freq, 2, 2]
             # Add time dim
             system_gains = system_gains[:, None, ...]  # [num_sources, num_time=1, num_ant, num_freq, 2, 2]
             simulated_gains.append(system_gains)
