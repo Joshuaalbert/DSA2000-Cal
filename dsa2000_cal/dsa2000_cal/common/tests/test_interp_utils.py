@@ -5,7 +5,7 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.interp_utils import optimized_interp_jax_safe, multilinear_interp_2d, \
-    get_interp_indices_and_weights, _left_broadcast_multiply, convolved_interp, get_centred_insert_index
+    get_interp_indices_and_weights, left_broadcast_multiply, convolved_interp, get_centred_insert_index, apply_interp
 
 
 def test_linear_interpolation():
@@ -207,6 +207,14 @@ def test_get_interp_indices_and_weights():
     # np.testing.assert_array_equal(alpha1, jnp.asarray([0.5, 0.5]))
 
 
+@pytest.mark.parametrize('regular_grid', [True, False])
+def test_apply_interp(regular_grid):
+    xp = jnp.linspace(0., 1., 10)
+    x = jnp.linspace(-0.1, 1.1, 10)
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
+    np.testing.assert_allclose(apply_interp(xp, i0, alpha0, i1, alpha1), x, atol=1e-6)
+
+
 def test_get_interp_indices_and_weights_astropy_time():
     # Test with at.Time objects
     xp = at.Time.now() + np.arange(10) * au.s
@@ -219,10 +227,13 @@ def test_get_interp_indices_and_weights_astropy_time():
     assert np.all(i1 == np.asarray([1, 2, 3, 4, 5, 6, 7, 8, 9, 9]))
 
 
-def test__left_broadcast_multiply():
-    assert np.all(_left_broadcast_multiply(np.ones((2, 3)), np.ones((2,))) == np.ones((2, 3)))
-    assert np.all(_left_broadcast_multiply(np.ones((2,)), np.ones((2, 3))) == np.ones((2, 3)))
-    assert np.all(_left_broadcast_multiply(np.ones((2, 3)), np.ones((2, 3))) == np.ones((2, 3)))
+def test_left_broadcast_multiply():
+    assert np.all(left_broadcast_multiply(np.ones((2, 3)), np.ones((2,))) == np.ones((2, 3)))
+    assert np.all(left_broadcast_multiply(np.ones((2, 3)), np.ones((2, 3))) == np.ones((2, 3)))
+    assert np.all(
+        left_broadcast_multiply(np.ones((1, 2, 3, 4, 5)), np.ones((3, 4)), axis=2) == np.ones((1, 2, 3, 4, 5)))
+    assert np.all(
+        left_broadcast_multiply(np.ones((1, 2, 3, 4, 5)), np.ones((3, 4)), axis=-3) == np.ones((1, 2, 3, 4, 5)))
 
 
 def test_convolved_interp():

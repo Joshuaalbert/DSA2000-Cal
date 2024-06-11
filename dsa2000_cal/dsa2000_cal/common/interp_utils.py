@@ -99,38 +99,54 @@ def multilinear_interp_2d(x, y, xp, yp, z):
     z11 = z[xi0 + 1, yi0 + 1]
 
     # Bilinear interpolation
-    z0 = _left_broadcast_multiply(z00, (1 - wx)) + _left_broadcast_multiply(z10, wx)
-    z1 = _left_broadcast_multiply(z01, (1 - wx)) + _left_broadcast_multiply(z11, wx)
-    z_interp = _left_broadcast_multiply(z0, (1 - wy)) + _left_broadcast_multiply(z1, wy)
+    z0 = left_broadcast_multiply(z00, (1 - wx)) + left_broadcast_multiply(z10, wx)
+    z1 = left_broadcast_multiply(z01, (1 - wx)) + left_broadcast_multiply(z11, wx)
+    z_interp = left_broadcast_multiply(z0, (1 - wy)) + left_broadcast_multiply(z1, wy)
 
     return z_interp
 
 
-def _left_broadcast_multiply(x, y):
+def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, alpha1: jax, axis: int = 0):
+    """
+    Apply interpolation alpha given axis.
+
+    Args:
+        x: nd-array
+        i0: [N] or scalar
+        alpha0: [N] or scalar
+        i1: [N] or scalar
+        alpha1: [N] or scalar
+        axis: axis to take along
+
+    Returns:
+        [N] or scalar interpolated along axis
+    """
+    return left_broadcast_multiply(jnp.take(x, i0, axis=axis), alpha0, axis=axis) + left_broadcast_multiply(
+        jnp.take(x, i1, axis=axis), alpha1, axis=axis)
+
+
+def left_broadcast_multiply(x, y, axis: int = 0):
     """
     Left broadcast multiply of two arrays.
     Equivalent to right-padding before multiply
 
     Args:
-        x: [a,b,c,...]
+        x: [..., a,b,c,...]
         y: [a, b]
 
     Returns:
-        [a, b, c, ...]
+        [..., a, b, c, ...]
     """
-    len_x = len(np.shape(x))
+    needed_length = len(np.shape(x)[axis:])
     len_y = len(np.shape(y))
-    if len_x == len_y:
-        return x * y
-    if len_x > len_y:
-        y = jnp.reshape(y, np.shape(y) + (1,) * (len_x - len_y))
-        return x * y
-    else:
-        x = jnp.reshape(x, np.shape(x) + (1,) * (len_y - len_x))
-        return x * y
+    extra = needed_length - len_y
+    if extra < 0:
+        raise ValueError(f"Shape mismatch {np.shape(x)} x {np.shape(y)}.")
+    y = lax.reshape(y, np.shape(y) + (1,) * extra)
+    return x * y
 
 
-def get_interp_indices_and_weights(x, xp) -> tuple[
+def get_interp_indices_and_weights(x, xp, regular_grid: bool = False) -> tuple[
     tuple[int | jax.Array, float | jax.Array], tuple[int | jax.Array, float | jax.Array]]:
     """
     One-dimensional linear interpolation. Outside bounds is also linear from nearest two points.
@@ -153,15 +169,20 @@ def get_interp_indices_and_weights(x, xp) -> tuple[
         return (jnp.zeros_like(x, dtype=jnp.int32), jnp.ones_like(x)), (
             jnp.zeros_like(x, dtype=jnp.int32), jnp.zeros_like(x))
 
-    # xp_arr = np.concatenate([xp[:1], xp, xp[-1:]])
-    xp_arr = xp
+    # Find xp[i1-1] < x <= xp[i1]
+    if regular_grid:
+        # Use faster index determination
+        delta_x = xp[1] - xp[0]
+        i1 = jnp.clip((jnp.ceil((xp - xp[0]) / delta_x)).astype(jnp.int64), 1, len(xp) - 1)
+        i0 = i1 - 1
+    else:
+        i1 = jnp.clip(jnp.searchsorted(xp, x, side='right'), 1, len(xp) - 1)
+        i0 = i1 - 1
 
-    i1 = jnp.clip(jnp.searchsorted(xp_arr, x, side='right'), 1, len(xp_arr) - 1)
-    i0 = i1 - 1
-    dx = xp_arr[i1] - xp_arr[i0]
-    delta = x - xp_arr[i0]
+    dx = xp[i1] - xp[i0]
+    delta = x - xp[i0]
 
-    epsilon = np.spacing(np.finfo(xp_arr.dtype).eps)
+    epsilon = np.spacing(np.finfo(xp.dtype).eps)
     dx0 = jnp.abs(dx) <= epsilon  # Prevent NaN gradients when `dx` is small.
     dx = jnp.where(dx0, 1, dx)
     alpha = delta / dx

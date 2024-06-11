@@ -61,7 +61,8 @@ class GainModel(ABC):
             freqs: [num_freqs] the frequency values
             sources: (source_shape) the source coordinates, ENU then assumed to be the location of the sources in near
                 field, and the location of antennas is used to compute gains in direction of sources.
-            pointing: [num_ant] the pointing direction of each antenna, optionally None == zenith pointing
+            pointing: [[num_ant]] scalar or 1D array of the pointing direction of each antenna,
+                optionally None == zenith pointing, calculated per antenna.
             array_location: the location of the array reference location
             time: the time of the observation
             kwargs: additional keyword arguments
