@@ -1,7 +1,7 @@
 import numpy as np
 import pylab as plt
 import pytest
-from astropy import units as au, coordinates as ac, time as at
+from astropy import units as au, coordinates as ac
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
@@ -11,18 +11,10 @@ from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 def test_beam_gain_model_real_data(array_name, freq, zenith):
     freqs = au.Quantity([freq], unit=au.Hz)
     beam_gain_model = beam_gain_model_factory(array_name=array_name)
-    # print(beam_gain_model)
 
     phase_tracking = ac.ICRS(ra=0 * au.deg, dec=45 * au.deg)
-    array_location = ac.EarthLocation(lat=0, lon=0, height=0)
-    time = at.Time('2021-01-01T00:00:00', scale='utc')
-
-    # Simple shape test
-    sources = ac.ICRS(ra=[0, 1] * au.deg, dec=[2, 3] * au.deg)
-    gains = beam_gain_model.compute_gain(freqs=freqs, sources=sources, array_location=array_location,
-                                         time=time,
-                                         pointing=None if zenith else phase_tracking)  # (source_shape) + [num_ant, num_freq, 2, 2]
-    assert gains.shape == (len(sources), len(beam_gain_model.antennas), len(freqs), 2, 2)
+    array_location = beam_gain_model.antennas[0]
+    time = beam_gain_model.model_times[0]
 
     # Test meshgrid
     lvec = np.linspace(-1, 1, 100) * au.dimensionless_unscaled
@@ -30,8 +22,11 @@ def test_beam_gain_model_real_data(array_name, freq, zenith):
     M, L = np.meshgrid(mvec, lvec, indexing='ij')
     lmn = np.stack([L, M, np.sqrt(1. - L ** 2 - M ** 2)], axis=-1)  # [100, 100, 3]
     sources = lmn_to_icrs(lmn=lmn, time=time, phase_tracking=phase_tracking)
-    gains = beam_gain_model.compute_gain(freqs=freqs, sources=sources, array_location=array_location,
-                                         time=time, pointing=None)  # [100, 100, num_ant, num_freq, 2, 2]
+    gains = beam_gain_model.compute_gain(
+        freqs=freqs, sources=sources, array_location=array_location,
+        time=time,
+        pointing=None if zenith else phase_tracking)  # [100, 100, num_ant, num_freq, 2, 2]
+    assert gains.shape == (len(mvec), len(lvec), len(beam_gain_model.antennas), len(freqs), 2, 2)
     gains = gains[..., 0, 0, 0, 0]  # [100, 100]
 
     fig, axs = plt.subplots(2, 1, figsize=(8, 12), sharex=True, sharey=True, squeeze=False)

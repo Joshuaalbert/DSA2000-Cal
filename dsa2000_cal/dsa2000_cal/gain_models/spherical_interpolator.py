@@ -30,6 +30,8 @@ class SphericalInterpolatorGainModel(GainModel):
             If tile_antennas=False then the model gains much include antenna dimension, otherwise they are assume
             identical per antenna and tiled.
         tile_antennas: If True, the model gains are assumed to be identical for each antenna and are tiled.
+        use_scan: If True uses scan to evaluate beam, slower but less memory
+        approx_zenith: Uses array centre to compute zenith direction, else each antenna gets own zenith
         dtype: The dtype of the model gains.
     """
 
@@ -41,6 +43,7 @@ class SphericalInterpolatorGainModel(GainModel):
 
     tile_antennas: bool = False
     use_scan: bool = False
+    approx_zenith: bool = True
 
     dtype: jnp.dtype = jnp.complex64
 
@@ -215,9 +218,12 @@ class SphericalInterpolatorGainModel(GainModel):
         )
 
         if pointing is None:
-            # TODO: Use location=self.antennas but manage memory blowup
-            pointing = zenith = ENU(east=0, north=0, up=1, location=self.antennas, obstime=time).transform_to(
-                ac.ICRS())  # [num_ant]
+            if self.approx_zenith:
+                pointing = zenith = ENU(east=0, north=0, up=1, location=array_location, obstime=time).transform_to(
+                    ac.ICRS())  # []
+            else:
+                pointing = zenith = ENU(east=0, north=0, up=1, location=self.antennas, obstime=time).transform_to(
+                    ac.ICRS())  # [num_ant]
 
         # Ensure pointing broadcasts with antennas
         pointing = pointing.reshape([1] * len(sources.shape) + [-1])  # [1,..., num_ant/1]
