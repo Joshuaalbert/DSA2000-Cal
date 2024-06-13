@@ -84,7 +84,7 @@ def mock_calibrator_source_models(tmp_path):
 
     # Fill MS
     sky_model_producer = SyntheticSkyModelProducer(
-        phase_tracking=ms.meta.phase_tracking,
+        phase_tracking=ms.meta.pointing,
         obs_time=ms.ref_time,
         freqs=ms.meta.freqs,
         num_bright_sources=1,

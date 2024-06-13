@@ -3,9 +3,9 @@ import pickle
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-import jax
 import numpy as np
 import ujson
+from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
@@ -236,6 +236,47 @@ def test_altaz_serialization():
     np.testing.assert_array_equal(deserialised.altaz.location.lon.deg, original.altaz.location.lon.deg)
     np.testing.assert_array_equal(deserialised.altaz.location.height.value, original.altaz.location.height.value)
 
+
+def test_enu_serialization():
+    class ENUModel(SerialisableBaseModel):
+        enu: ENU
+
+    original = ENUModel(
+        enu=ENU(east=0.*au.m, north=0.*au.m, up=0.*au.m,
+                location=ac.EarthLocation.of_site('vla'),
+                obstime=at.Time.now())
+    )
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = ENUModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    assert np.isclose(deserialised.enu.east.value, original.enu.east.value)
+    assert np.isclose(deserialised.enu.north.value, original.enu.north.value)
+    assert np.isclose(deserialised.enu.up.value, original.enu.up.value)
+
+    original = ENUModel(
+        enu=ENU(east=0., north=0., up=0.,
+                location=ac.EarthLocation.of_site('vla'),
+                obstime=at.Time.now())
+    )
+
+    # Serialise the object to JSON
+    serialised = original.json()
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = ENUModel.parse_raw(serialised)
+
+    # Validate the deserialisation
+    assert np.isclose(deserialised.enu.east.value, original.enu.east.value)
+    assert np.isclose(deserialised.enu.north.value, original.enu.north.value)
+    assert np.isclose(deserialised.enu.up.value, original.enu.up.value)
+
 def test_complex_ndarray_serialisation():
     class ComplexNumpyModel(SerialisableBaseModel):
         array: np.ndarray
@@ -252,6 +293,7 @@ def test_complex_ndarray_serialisation():
     # Validate the deserialisation
     np.testing.assert_array_equal(deserialised.array, original.array)
 
+
 def test_complex_quantity_serialisation():
     class ComplexQuantityModel(SerialisableBaseModel):
         quantity: au.Quantity
@@ -267,6 +309,7 @@ def test_complex_quantity_serialisation():
 
     # Validate the deserialisation
     np.testing.assert_array_equal(deserialised.quantity, original.quantity)
+
 
 def test_dimensionless_quantity_serialisation():
     class DimensionlessQuantityModel(SerialisableBaseModel):
@@ -295,6 +338,7 @@ def test_dimensionless_quantity_serialisation():
 
     # Validate the deserialisation
     np.testing.assert_array_equal(deserialised.quantity, original.quantity)
+
 
 def test_nested_models_with_quantities():
     class NestedModel(SerialisableBaseModel):

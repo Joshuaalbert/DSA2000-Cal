@@ -55,7 +55,7 @@ def mock_calibrator_source_models(tmp_path):
     fits_sources = FitsStokesISourceModel.from_wsclean_model(
         wsclean_fits_files=wsclean_fits_files,
         time=ms.ref_time,
-        phase_tracking=ms.meta.phase_tracking,
+        phase_tracking=ms.meta.pointing,
         freqs=ms.meta.freqs
     )
 
@@ -65,7 +65,7 @@ def mock_calibrator_source_models(tmp_path):
     wsclean_sources = WSCleanSourceModel.from_wsclean_model(
         wsclean_clean_component_file=source_file,
         time=ms.ref_time,
-        phase_tracking=ms.meta.phase_tracking,
+        phase_tracking=ms.meta.pointing,
         freqs=ms.meta.freqs
     )
 

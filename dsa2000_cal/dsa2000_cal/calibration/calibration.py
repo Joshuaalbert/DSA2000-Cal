@@ -174,7 +174,7 @@ class Calibration:
 
         cal_sources = lmn_to_icrs(
             lmn=calibrator_lmn,
-            phase_tracking=ms.meta.phase_tracking,
+            phase_tracking=ms.meta.pointing,
             time=ms.ref_time
         )  # [num_calibrators]
 
@@ -207,7 +207,7 @@ class Calibration:
                 preapply_gains = []
                 for time in times:
                     _preapply_gains = self.preapply_gain_model.compute_gain(freqs=ms.meta.freqs, sources=cal_sources,
-                                                                            pointing=ms.meta.phase_tracking,
+                                                                            pointing=ms.meta.pointing,
                                                                             array_location=ms.meta.array_location,
                                                                             time=time)  # [num_calibrators, num_ant, num_chan, 2, 2]
                     preapply_gains.append(_preapply_gains)

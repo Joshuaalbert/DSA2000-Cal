@@ -41,7 +41,7 @@ def test_forward_model():
     ms = MeasurementSet.create_measurement_set(ms_folder='forward_model_ms', meta=meta)
 
     sky_model_producer = SyntheticSkyModelProducer(
-        phase_tracking=ms.meta.phase_tracking,
+        phase_tracking=ms.meta.pointing,
         obs_time=ms.ref_time,
         freqs=ms.meta.freqs,
         num_bright_sources=10,

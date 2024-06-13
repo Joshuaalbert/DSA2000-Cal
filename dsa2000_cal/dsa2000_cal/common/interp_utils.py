@@ -189,7 +189,7 @@ def get_interp_indices_and_weights(x, xp, regular_grid: bool = False) -> tuple[
     return (i0, (1. - alpha)), (i1, alpha)
 
 
-def get_nn_points(x, y, k=3, mode='scaled_euclidean'):
+def get_nn_points(x, y, k=3, mode='euclidean'):
     """
     Perform k-nearest neighbour interpolation on a set of points.
 
@@ -212,17 +212,17 @@ def get_nn_points(x, y, k=3, mode='scaled_euclidean'):
     elif mode == 'euclidean':
         dist = jnp.sqrt(jnp.sum(jnp.square(x[:, None, :] - y[None, :, :]), axis=-1))  # [num_x, num_y]
     elif mode == 'dot':
-        dist = 1. - jnp.sum(x[:, None, :] * y[None, :, :], axis=-1)  # [num_x, num_y]
+        dist = - jnp.sum(x[:, None, :] * y[None, :, :], axis=-1)  # [num_x, num_y]
     else:
         raise ValueError(f"Unknown mode {mode}")
 
     # Get the indices of the k nearest neighbours
-    select_idx = jnp.argsort(dist, axis=-1)[:, :k]  # [num_x, k]
-    dist = jnp.take_along_axis(dist, select_idx, axis=-1)  # [num_x, k]
+    neg_dist, select_idx = jax.lax.top_k(lax.neg(dist), k)  # [num_x, k]
+    dist = lax.neg(neg_dist)  # [num_x, k]
     return select_idx, dist
 
 
-def convolved_interp(x, y, z, k=3, mode='scaled_euclidean'):
+def convolved_interp(x, y, z, k=3, mode='euclidean'):
     """
     Perform k-nearest neighbour interpolation on a set of points.
 
@@ -236,14 +236,14 @@ def convolved_interp(x, y, z, k=3, mode='scaled_euclidean'):
     Returns:
         [num_x] array of interpolated values
     """
-    select_idx, dist = get_nn_points(x=x, y=y, k=k, mode=mode)
+    select_idx, dist = get_nn_points(x=x, y=y, k=k, mode=mode) # [num_x, k]
     weights = 1. / (dist + 1e-6)  # [num_x, k]
     weights /= jnp.sum(weights, axis=-1, keepdims=True)  # [num_x, k]
     z_interp = jnp.sum(jnp.take_along_axis(z[None, :], select_idx, axis=-1) * weights, axis=-1)  # [num_x]
     return z_interp
 
 
-def batched_convolved_interp(x, y, z, k=3, mode='scaled_euclidean', unroll=1):
+def batched_convolved_interp(x, y, z, k=3, mode='euclidean', unroll=1):
     """
     Perform k-nearest neighbour interpolation on a set of points.
 

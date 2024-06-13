@@ -105,27 +105,27 @@ class DirtyImaging:
             int(self.oversample_factor * field_of_view.to('rad').value / diffraction_limit_resolution)
         )
         lon_top, lat_top = offset_by(
-            lon=ms.meta.phase_tracking.ra,
-            lat=ms.meta.phase_tracking.dec,
+            lon=ms.meta.pointing.ra,
+            lat=ms.meta.pointing.dec,
             posang=0 * au.deg,  # North
             distance=field_of_view / 2.
         )
         source_top = ac.ICRS(lon_top, lat_top)
 
         lon_east, lat_east = offset_by(
-            lon=ms.meta.phase_tracking.ra,
-            lat=ms.meta.phase_tracking.dec,
+            lon=ms.meta.pointing.ra,
+            lat=ms.meta.pointing.dec,
             posang=90 * au.deg,  # East -- increasing RA
             distance=field_of_view / 2.
         )
         source_east = ac.ICRS(lon_east, lat_east)
 
-        source_centre = ac.ICRS(ms.meta.phase_tracking.ra, ms.meta.phase_tracking.dec)
+        source_centre = ac.ICRS(ms.meta.pointing.ra, ms.meta.pointing.dec)
 
         lmn_ref_points = icrs_to_lmn(
             sources=ac.concatenate([source_centre, source_top, source_east]).transform_to(ac.ICRS),
             time=ms.meta.times[0],
-            phase_tracking=ms.meta.phase_tracking
+            phase_tracking=ms.meta.pointing
         )
         dl = (lmn_ref_points[2, 0] - lmn_ref_points[0, 0]) / (num_pixel / 2.)
         dm = (lmn_ref_points[1, 1] - lmn_ref_points[0, 1]) / (num_pixel / 2.)
@@ -155,7 +155,7 @@ class DirtyImaging:
         t1 = time_mod.time()
         print(f"Completed imaging in {t1 - t0:.2f} seconds.")
         image_model = ImageModel(
-            phase_tracking=ms.meta.phase_tracking,
+            phase_tracking=ms.meta.pointing,
             obs_time=ms.ref_time,
             dl=dl,
             dm=dm,

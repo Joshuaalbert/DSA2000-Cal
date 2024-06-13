@@ -1,10 +1,16 @@
+import os
+
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count=10"
+
 import jax
 import numpy as np
-import pylab as plt
 from astropy import units as au, coordinates as ac, time as at
+from jax import numpy as jnp
 
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
-from dsa2000_cal.gain_models.ionosphere_gain_model import IonosphereGainModel, msqrt, ionosphere_gain_model_factory
+from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.gain_models.ionosphere_gain_model import msqrt, ionosphere_gain_model_factory, \
+    IonosphereSimulation, interpolate_antennas
 
 
 def test_msqrt():
@@ -17,40 +23,29 @@ def test_msqrt():
 def test_real_ionosphere_gain_model():
     phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     field_of_view = 4 * au.deg
-    angular_separation = 32 * au.arcmin
-    spatial_separation = 1000 * au.m
+    spatial_resolution = 2.0 * au.km
     observation_start_time = at.Time('2021-01-01T00:00:00', scale='utc')
     observation_duration = 0 * au.s
     temporal_resolution = 0 * au.s
-    freqs = [700e6, 2000e6] * au.Hz
+    model_freqs = [700e6, 2000e6] * au.Hz
     ionosphere_gain_model = ionosphere_gain_model_factory(
-        phase_tracking=phase_tracking,
+        pointing=phase_tracking,
         field_of_view=field_of_view,
-        angular_separation=angular_separation,
-        spatial_separation=spatial_separation,
+        spatial_resolution=spatial_resolution,
         observation_start_time=observation_start_time,
         observation_duration=observation_duration,
         temporal_resolution=temporal_resolution,
+        model_freqs=model_freqs,
         specification='light_dawn',
-        array_name='dsa2000W_small',
+        array_name='dsa2000W',
         plot_folder='plot_ionosphere',
         cache_folder='cache_ionosphere',
         seed=42
     )
 
 
-def test_ionosphere_gain_model():
-    freqs = au.Quantity([700e6, 2000e6] * au.Hz)
+def test_ionosphere_simulation():
     array_location = ac.EarthLocation(lat=0 * au.deg, lon=0 * au.deg, height=0 * au.m)
-
-    radius = 10 * au.km
-    spatial_separation = 1 * au.km
-
-    antennas = create_spherical_earth_grid(
-        center=array_location,
-        radius=radius,
-        dr=spatial_separation
-    )
 
     radius = 10 * au.km
     spatial_separation = 3 * au.km
@@ -63,76 +58,41 @@ def test_ionosphere_gain_model():
     phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
     model_directions = create_spherical_grid(
         pointing=phase_tracking,
-        angular_radius=0.5 * 4 * au.deg,
-        dr=50 * au.arcmin
+        angular_radius=2 * au.deg,
+        dr=50. * au.arcmin
     )
     # ac.ICRS(ra=[0, 0.] * au.deg, dec=[0., 1.] * au.deg)
     model_times = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:10:00'], scale='utc')
+    model_lmn = icrs_to_lmn(sources=model_directions, time=model_times[0], phase_tracking=phase_tracking)
+    print(model_antennas.shape, model_directions.shape, model_lmn.shape)
 
-    ionosphere_gain_model = IonosphereGainModel(
-        antennas=antennas,
+    ionosphere_simulation = IonosphereSimulation(
         array_location=array_location,
-        phase_tracking=phase_tracking,
-        model_directions=model_directions,
+        pointing=phase_tracking,
+        model_lmn=model_lmn,
         model_times=model_times,
         model_antennas=model_antennas,
         specification='light_dawn',
-        plot_folder='plot_ionosphere_small_test',
-        cache_folder='cache_ionosphere_small_test',
+        plot_folder='plot_ionosphere_small_test_2',
+        cache_folder='cache_ionosphere_small_test_2',
         # interp_mode='kriging'
     )
 
-    assert ionosphere_gain_model.num_antenna == len(antennas)
-    assert ionosphere_gain_model.ref_ant == array_location
-    assert ionosphere_gain_model.ref_time == model_times[0]
-    assert np.all(np.isfinite(ionosphere_gain_model.dtec))
-    assert np.all(np.isfinite(ionosphere_gain_model.enu_geodesics_data))
+    simulation_results = ionosphere_simulation.simulate_ionosphere()
 
-    # Test calculate gain model
+    assert simulation_results.ref_ant == array_location
+    assert simulation_results.ref_time == model_times[0]
+    assert np.all(np.isfinite(simulation_results.dtec))
 
-    sources = phase_tracking.reshape((-1,))
-    # create_spherical_grid(
-    #     pointing=phase_tracking,
-    #     angular_width=0.5 * 4 * au.deg,
-    #     dr=32 * au.arcmin
-    # )
 
-    times = at.Time(np.linspace(model_times[0].jd, model_times[-1].jd, 10), format='jd')
-    for time in times:
-        gains = ionosphere_gain_model.compute_gain(freqs=freqs, sources=sources,
-                                                   array_location=array_location, time=time, pointing=phase_tracking)
-
-        assert gains.shape == (len(sources), len(antennas), len(freqs), 2, 2)
-
-        dtec = np.angle(gains[0, :, 0, 0, 0]) * freqs[0].to('MHz').value / ionosphere_gain_model.TEC_CONV
-        fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(10, 10))
-        sc = ax[0][0].scatter(antennas.geodetic.lon.deg, antennas.geodetic.lat.deg, c=dtec, marker='o')
-        fig.colorbar(sc, ax=ax[0][0])
-        ax[0][0].scatter(model_antennas.geodetic.lon.deg, model_antennas.geodetic.lat.deg, marker='*',
-                         c='red')
-        ax[0][0].set_xlabel('Longitude')
-        ax[0][0].set_ylabel('Latitude')
-        ax[0][0].set_title(f"Dtec in Antennas at {time}")
-        plt.show()
-
-        # # Plot model directions
-        # wcs = WCS(naxis=2)
-        # wcs.wcs.ctype = ['RA---AIT', 'DEC--AIT']  # AITOFF projection
-        # wcs.wcs.crval = [0, 0]  # Center of the projection
-        # wcs.wcs.crpix = [0, 0]
-        # wcs.wcs.cdelt = [-1, 1]
-        # phase = np.angle(gains[:, i, 0, 0, 0])*180./np.pi
-        # fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(10, 10), subplot_kw=dict(projection=wcs))
-        # sc = ax[0][0].scatter(sources.ra.deg, sources.dec.deg, c=phase, marker='o',
-        #                       transform=ax[0][0].get_transform('world'))
-        # fig.colorbar(sc, ax=ax[0][0])
-        # # plot model directions
-        # ax[0][0].scatter(model_directions.ra.deg, model_directions.dec.deg, marker='*',
-        #                  transform=ax[0][0].get_transform('world'),
-        #                  c='red')
-        # ax[0][0].set_xlabel('Right Ascension')
-        # ax[0][0].set_ylabel('Declination')
-        # ax[0][0].set_title(f"Phase in Directions: {antennas[i]}")
-        # plt.show()
-    # fig.savefig(os.path.join(self.plot_folder, "model_directions.png"))
-    # plt.close(fig)
+def test_interpolate_antennas():
+    N = 4
+    M = 5
+    num_time = 6
+    num_dir = 7
+    dtec_interp = interpolate_antennas(
+        antennas_enu=jnp.ones((N, 3)),
+        model_antennas_enu=jnp.ones((M, 3)),
+        dtec=jnp.ones((num_time, num_dir, M))
+    )
+    assert dtec_interp.shape == (num_time, num_dir, N)

@@ -3,7 +3,8 @@ import pytest
 from astropy import units as au, coordinates as ac, time as at
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel
+from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel, \
+    phi_theta_from_lmn
 
 
 def test_lmn_from_phi_theta():
@@ -43,6 +44,33 @@ def test_lmn_from_phi_theta():
     theta = np.pi / 2.
     lmn = lmn_from_phi_theta(phi, theta)
     np.testing.assert_allclose(lmn, [0, -1, 0], atol=1e-7)
+
+
+def test_phi_theta_from_lmn():
+    # Test bore-sight
+    l, m, n = 0., 0., 1.
+    phi, theta = phi_theta_from_lmn(l, m, n)
+    np.testing.assert_allclose( theta, 0., atol=5e-8)
+
+    # Points to right on sky == -L
+    l, m, n = -1., 0., 0.
+    phi, theta = phi_theta_from_lmn(l, m, n)
+    np.testing.assert_allclose([phi, theta], [np.pi / 2., np.pi / 2.], atol=5e-8)
+
+    # Points to left on sky == L
+    l, m, n = 1., 0., 0.
+    phi, theta = phi_theta_from_lmn(l, m, n)
+    np.testing.assert_allclose([phi, theta], [np.pi * 3 / 2., np.pi / 2.], atol=5e-8)
+
+    # Points up on sky == M
+    l, m, n = 0., 1., 0.
+    phi, theta = phi_theta_from_lmn(l, m, n)
+    np.testing.assert_allclose([phi, theta], [0., np.pi / 2.], atol=5e-8)
+
+    # Points down on sky == -M
+    l, m, n = 0., -1., 0.
+    phi, theta = phi_theta_from_lmn(l, m, n)
+    np.testing.assert_allclose([phi, theta], [np.pi, np.pi / 2.], atol=1e-7)
 
 
 @pytest.fixture(scope='function')
@@ -108,7 +136,6 @@ def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
 
         for use_scan in [True, False]:
             print(f"Use scan {use_scan}")
-            mock_gain_model.use_scan = use_scan
 
             for near_sources in [True, False]:
                 print(f'Near field sources: {near_sources}')
@@ -126,7 +153,8 @@ def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
                     sources=sources,
                     array_location=array_location,
                     time=time,
-                    pointing=pointing
+                    pointing=pointing,
+                    use_scan=use_scan
                 )
                 assert gains.shape == sources.shape + (len(mock_gain_model.antennas),
                                                        len(freqs), 2, 2)
@@ -141,7 +169,8 @@ def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
                     sources=sources,
                     array_location=array_location,
                     time=time,
-                    pointing=pointing
+                    pointing=pointing,
+                    use_scan=use_scan
                 )
                 assert gains.shape == sources.shape + (len(mock_gain_model.antennas),
                                                        len(freqs), 2, 2)
@@ -153,7 +182,8 @@ def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
                     sources=sources,
                     array_location=array_location,
                     time=time,
-                    pointing=None
+                    pointing=None,
+                    use_scan=use_scan
                 )
                 assert gains.shape == sources.shape + (len(mock_gain_model.antennas),
                                                        len(freqs), 2, 2)

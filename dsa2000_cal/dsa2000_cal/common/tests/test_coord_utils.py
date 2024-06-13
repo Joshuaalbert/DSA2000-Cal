@@ -172,7 +172,7 @@ def test_earth_location_to_enu():
     array_location = ac.EarthLocation.of_site('vla')
     time = at.Time('2000-01-01T00:00:00', format='isot')
     enu = earth_location_to_enu(antennas, array_location, time)
-    assert np.linalg.norm(enu) < 6400 * au.km
+    assert np.linalg.norm(enu.cartesian.xyz.T) < 6400 * au.km
 
     enu_frame = ENU(location=ac.EarthLocation.of_site('vla'), obstime=time)
     n = 500
@@ -182,7 +182,7 @@ def test_earth_location_to_enu():
         up=np.random.uniform(size=(n,), low=-5, high=5) * au.km,
         frame=enu_frame
     ).transform_to(ac.ITRS).earth_location
-    enu = earth_location_to_enu(antennas, array_location, time)
+    enu = earth_location_to_enu(antennas, array_location, time).cartesian.xyz.T
     # print(enu)
 
     dist = np.linalg.norm(enu[:, None, :] - enu[None, :, :], axis=-1)
@@ -195,23 +195,24 @@ def test_icrs_to_enu():
     time = at.Time('2000-01-01T00:00:00', format='isot')
     enu = icrs_to_enu(sources, array_location, time)
     print(enu)
-    np.testing.assert_allclose(np.linalg.norm(enu), 1.)
+    np.testing.assert_allclose(np.linalg.norm(enu.cartesian.xyz.T), 1.)
 
-    reconstruct_sources = enu_to_icrs(enu, array_location, time)
+    reconstruct_sources = enu_to_icrs(enu)
     print(reconstruct_sources)
     np.testing.assert_allclose(sources.separation(reconstruct_sources).deg, 0., atol=1e-6)
 
 
 def test_enu_to_icrs():
-    enu = np.array([[0, 1, 0], [0, 0, 1]]) * au.km
+    enu_coords = np.array([[0, 1, 0], [0, 0, 1]]) * au.km
     array_location = ac.EarthLocation.of_site('vla')
     time = at.Time('2000-01-01T00:00:00', format='isot')
-    sources = enu_to_icrs(enu, array_location, time)
+    enu = ENU(east=enu_coords[:, 0], north=enu_coords[:, 1], up=enu_coords[:, 2], location=array_location, obstime=time)
+    sources = enu_to_icrs(enu)
     print(sources)
     # np.testing.assert_allclose(np.linalg.norm(sources.cartesian.xyz, axis=-1), 1.)
     reconstruct_enu = icrs_to_enu(sources, array_location, time)
     print(reconstruct_enu)
-    np.testing.assert_allclose(enu, reconstruct_enu, atol=1e-6)
+    np.testing.assert_allclose(enu.cartesian.xyz, reconstruct_enu.cartesian.xyz, atol=1e-6)
 
 
 # @pytest.mark.parametrize('offset_dt', [1 * au.hour,
@@ -269,7 +270,7 @@ def test_lmn_to_icrs_over_time():
 
     M, L = np.meshgrid(mvec, lvec, indexing='ij')
 
-    lmn = np.stack([L, M, np.sqrt(1 - L ** 2 - M ** 2)], axis=-1)
+    lmn = au.Quantity(np.stack([L, M, np.sqrt(1 - L ** 2 - M ** 2)], axis=-1))
 
     phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
     time0 = at.Time("2021-01-01T00:00:00", scale='utc')
@@ -364,7 +365,7 @@ def test_lmn_ellipse_to_sky():
     # Convert to sky
     phase_tracking = ac.ICRS(15 * au.deg, 75 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
-    lmn = np.stack([l, m, np.sqrt(1 - l ** 2 - m ** 2)], axis=-1)
+    lmn = au.Quantity(np.stack([l, m, np.sqrt(1 - l ** 2 - m ** 2)], axis=-1))
     icrs = lmn_to_icrs(lmn, time, phase_tracking)
 
     # plot

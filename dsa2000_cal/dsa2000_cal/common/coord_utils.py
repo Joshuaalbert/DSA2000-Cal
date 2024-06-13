@@ -50,7 +50,8 @@ def create_uvw_frame(obs_time: at.Time, phase_tracking: ac.ICRS, barycentre: str
     return frame_uvw
 
 
-def earth_location_to_uvw(antennas: EarthLocation, obs_time: at.Time, phase_tracking: ac.ICRS) -> Quantity:
+def earth_location_to_uvw(antennas: EarthLocation, obs_time: at.Time, phase_tracking: ac.ICRS,
+                          barycentre='earth') -> Quantity:
     """
     Convert EarthLocation coordinates to UVW coordinates.
 
@@ -58,6 +59,7 @@ def earth_location_to_uvw(antennas: EarthLocation, obs_time: at.Time, phase_trac
         antennas: (shape) EarthLocation coordinates
         obs_time: observation time
         phase_tracking: the phase tracking direction
+        barycentre: the barycentre of the observation, either 'earth' or 'sun'.
 
     Returns:
         (shape) + [3] UVW coordinates
@@ -67,7 +69,10 @@ def earth_location_to_uvw(antennas: EarthLocation, obs_time: at.Time, phase_trac
     antennas: ac.EarthLocation = antennas.reshape((-1,))
 
     antennas_gcrs = antennas.get_gcrs(obstime=obs_time)
-    frame_uvw = create_uvw_frame(obs_time=obs_time, phase_tracking=phase_tracking)
+    frame_uvw = create_uvw_frame(
+        obs_time=obs_time, phase_tracking=phase_tracking,
+        barycentre=barycentre
+    )
 
     # Rotate antenna positions into UVW frame.
     antennas_uvw = antennas_gcrs.transform_to(frame_uvw)
@@ -120,6 +125,17 @@ def lmn_to_icrs(lmn: Quantity, time: at.Time, phase_tracking: ac.ICRS) -> ac.ICR
     Returns:
         [num_sources] ICRS coordinates
     """
+    lmn_shape = lmn.shape[:-1]
+    time_shape = time.shape
+    phase_tracking_shape = phase_tracking.shape
+    # Assert that they broadcast
+    try:
+        np.broadcast_shapes(lmn_shape, time_shape, phase_tracking_shape)
+    except ValueError:
+        raise ValueError(
+            f"Shapes of lmn {lmn_shape}, time {time_shape}, "
+            f"and phase_tracking {phase_tracking_shape} do not broadcast."
+        )
     frame = create_uvw_frame(obs_time=time, phase_tracking=phase_tracking)
     # Swap back order to n, l, m
     cartesian_rep = ac.CartesianRepresentation(lmn[..., 2], lmn[..., 0], lmn[..., 1])
@@ -129,7 +145,7 @@ def lmn_to_icrs(lmn: Quantity, time: at.Time, phase_tracking: ac.ICRS) -> ac.ICR
     return sources
 
 
-def icrs_to_enu(sources: ac.ICRS, array_location: ac.EarthLocation, time: at.Time) -> Quantity:
+def icrs_to_enu(sources: ac.ICRS, array_location: ac.EarthLocation, time: at.Time) -> ENU:
     """
     Convert ICRS coordinates to ENU coordinates.
 
@@ -141,37 +157,42 @@ def icrs_to_enu(sources: ac.ICRS, array_location: ac.EarthLocation, time: at.Tim
     Returns:
         [num_sources, 3] ENU coordinates
     """
-    shape = sources.shape
-    sources = sources.reshape((-1,))
-
     enu_frame = ENU(location=array_location, obstime=time)
-    enu = sources.transform_to(enu_frame).cartesian.xyz.T
-    enu = enu.reshape(shape + (3,))
+    enu = sources.transform_to(enu_frame)
     return enu
 
 
-def enu_to_icrs(enu: Quantity, array_location: ac.EarthLocation, time: at.Time) -> ac.ICRS:
+def lmn_to_enu(lmn: Quantity, array_location: ac.EarthLocation, time: at.Time, phase_tracking: ac.ICRS) -> ENU:
+    """
+    Convert LMN coordinates to ENU coordinates.
+
+    Args:
+        lmn: [num_sources, 3] LMN coordinates
+        array_location: the location of array reference location
+        time: the time of the observation
+        phase_tracking: the pointing direction
+
+    Returns:
+        [num_sources] ENU coordinates
+    """
+    icrs = lmn_to_icrs(lmn=lmn, time=time, phase_tracking=phase_tracking)
+    return icrs_to_enu(sources=icrs, array_location=array_location, time=time)
+
+
+def enu_to_icrs(enu: ENU) -> ac.ICRS:
     """
     Convert ENU coordinates to ICRS coordinates.
 
     Args:
-        enu: [num_sources, 3] ENU coordinates
-        array_location: the location of array reference location
-        time: the time of the observation
+        enu: [num_sources] ENU coordinates
 
     Returns:
         [num_sources] ICRS coordinates
     """
-    shape = enu.shape
-    enu = enu.reshape((-1, 3))
-
-    enu_frame = ENU(location=array_location, obstime=time)
-    sources = ac.SkyCoord(enu, frame=enu_frame).transform_to(ac.ICRS)
-    sources = sources.reshape(shape[:-1])
-    return sources
+    return enu.transform_to(ac.ICRS())
 
 
-def earth_location_to_enu(antennas: EarthLocation, array_location: EarthLocation, time: at.Time) -> Quantity:
+def earth_location_to_enu(antennas: EarthLocation, array_location: EarthLocation, time: at.Time) -> ENU:
     """
     Convert EarthLocation coordinates to ENU coordinates.
 
@@ -183,12 +204,8 @@ def earth_location_to_enu(antennas: EarthLocation, array_location: EarthLocation
     Returns:
         [num_ant, 3] ENU coordinates
     """
-    shape = antennas.shape
-    antennas = antennas.reshape((-1,))
-
     antennas_itrs = antennas.get_itrs(obstime=time)
 
     enu_frame = ENU(location=array_location, obstime=time)
-    enu = antennas_itrs.transform_to(enu_frame).cartesian.xyz.T
-    enu = enu.reshape(shape + (3,))
+    enu = antennas_itrs.transform_to(enu_frame)
     return enu

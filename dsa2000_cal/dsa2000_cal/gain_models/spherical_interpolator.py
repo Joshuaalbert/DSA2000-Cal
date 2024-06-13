@@ -30,7 +30,6 @@ class SphericalInterpolatorGainModel(GainModel):
             If tile_antennas=False then the model gains much include antenna dimension, otherwise they are assume
             identical per antenna and tiled.
         tile_antennas: If True, the model gains are assumed to be identical for each antenna and are tiled.
-        use_scan: If True uses scan to evaluate beam, slower but less memory
         approx_zenith: Uses array centre to compute zenith direction, else each antenna gets own zenith
         dtype: The dtype of the model gains.
     """
@@ -42,7 +41,6 @@ class SphericalInterpolatorGainModel(GainModel):
     model_gains: au.Quantity  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
 
     tile_antennas: bool = False
-    use_scan: bool = False
     approx_zenith: bool = True
 
     dtype: jnp.dtype = jnp.complex64
@@ -101,8 +99,8 @@ class SphericalInterpolatorGainModel(GainModel):
         )
         self.lmn_data = au.Quantity(np.stack([l, m, n], axis=-1), unit=au.dimensionless_unscaled)  # [num_dir, 3]
 
-    @partial(jax.jit, static_argnums=(0,))
-    def _compute_gain_jax(self, freqs: jax.Array, relative_time: jax.Array, lmn_sources: jax.Array):
+    @partial(jax.jit, static_argnames=['self', 'use_scan'])
+    def _compute_gain_jax(self, freqs: jax.Array, relative_time: jax.Array, lmn_sources: jax.Array, use_scan: bool):
         """
         Compute the beam gain at the given source coordinates.
 
@@ -110,6 +108,7 @@ class SphericalInterpolatorGainModel(GainModel):
             freqs: (num_freqs) The frequencies at which to compute the beam gain.
             relative_time: Relative time in seconds from start.
             lmn_sources: (source_shape) + [num_ant/1, 3] The source coordinates in the L-M-N frame.
+            use_scan: If True uses scan to evaluate beam, slower but less memory
 
         Returns:
             (source_shape) + [num_ant, num_freq, 2, 2] The beam gain at the given source coordinates.
@@ -158,7 +157,7 @@ class SphericalInterpolatorGainModel(GainModel):
                        ) >> 30
 
         # NB: 8GB is an arbitrary cutoff, but seems reasonable.
-        if self.use_scan or mem_usage_GB > 8:
+        if use_scan or mem_usage_GB > 8:
             def compute_closest(lmn_sources):
                 _, closest = lax.scan(
                     body_fn,
@@ -217,6 +216,8 @@ class SphericalInterpolatorGainModel(GainModel):
             **kwargs
         )
 
+        use_scan = kwargs.get('use_scan', False)
+
         if pointing is None:
             if self.approx_zenith:
                 pointing = zenith = ENU(east=0, north=0, up=1, location=array_location, obstime=time).transform_to(
@@ -251,7 +252,8 @@ class SphericalInterpolatorGainModel(GainModel):
         gains = self._compute_gain_jax(
             freqs=quantity_to_jnp(freqs),
             relative_time=quantity_to_jnp((time - self.model_times[0]).sec * au.s),
-            lmn_sources=quantity_to_jnp(lmn_sources)
+            lmn_sources=quantity_to_jnp(lmn_sources),
+            use_scan=use_scan
         )  # (source_shape) + [num_ant, num_freq, 2, 2]
 
         return gains
@@ -278,3 +280,28 @@ def lmn_from_phi_theta(phi, theta):
     m = x
     n = bore_z
     return l, m, n
+
+
+def phi_theta_from_lmn(l, m, n):
+    """
+    Convert cartesian coordinates to phi, theta.
+    Right-handed X-Y-Z(bore), with phi azimuthal measured from X, and theta from Z
+
+    L-M frame is the same as (-Y)-X frame, i.e. Y is -L and X is M.
+
+    Args:
+        l: L component
+        m: M component
+        n: N component
+
+    Returns:
+        phi: azimuthal angle in [0, 2pi]
+        theta: polar angle in [0, pi]
+    """
+    phi = jnp.arctan2(-l, m)
+    theta = jnp.arccos(n)
+
+    def wrap(angle):
+        return (angle + 2 * np.pi) % (2 * np.pi)
+
+    return wrap(phi), theta

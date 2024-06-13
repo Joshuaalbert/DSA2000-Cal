@@ -31,7 +31,7 @@ def create_makems_config(casa_ms: str,
     step_freq = meta.channel_width.to('Hz').value
     start_time = (meta.times[0] - 0.5 * meta.integration_time).datetime
     step_time = meta.integration_time.to('s').value
-    phase_tracking = meta.phase_tracking
+    phase_tracking = meta.pointing
     num_freqs = len(meta.freqs)
     num_times = len(meta.times)
 

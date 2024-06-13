@@ -74,7 +74,7 @@ class SimulateSystematics:
 
         # TODO: Improve performance -- Will take too long for realistic sized datasets
         ionosphere_gain_model = ionosphere_gain_model_factory(
-            phase_tracking=ms.meta.phase_tracking,
+            pointing=ms.meta.pointing,
             field_of_view=field_of_view + 32 * au.arcmin,
             angular_separation=48 * au.arcmin,
             spatial_separation=1 * au.km,

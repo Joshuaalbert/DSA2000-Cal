@@ -97,7 +97,7 @@ class SimulateVisibilities:
 
         source_directions = self.get_source_directions(
             obs_time=ms.ref_time,
-            phase_tracking=ms.meta.phase_tracking
+            phase_tracking=ms.meta.pointing
         )
 
         # Storage system gains
@@ -119,7 +119,7 @@ class SimulateVisibilities:
 
             # Get gains
             system_gains = system_gain_model.compute_gain(freqs=ms.meta.freqs, sources=source_directions,
-                                                          pointing=ms.meta.phase_tracking,
+                                                          pointing=ms.meta.pointing,
                                                           array_location=ms.meta.array_location, time=time,
                                                           mode='fft')  # [num_sources, num_ant, num_freq, 2, 2]
             # Add time dim

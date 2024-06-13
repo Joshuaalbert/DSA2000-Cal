@@ -8,6 +8,7 @@ import astropy.units as au
 import numpy as np
 import ujson
 from pydantic import BaseModel
+from tomographic_kernel.frames import ENU
 
 C = TypeVar('C')
 
@@ -36,6 +37,12 @@ def serialise_array_quantity(obj):
     return obj
 
 
+def deserialise_quantity(obj):
+    if isinstance(obj["value"], dict) and obj["value"].get("type") == 'numpy.ndarray':
+        obj["value"] = deserialise_ndarray(obj["value"])
+    return au.Quantity(obj["value"], unit=obj["unit"])
+
+
 def deserialise_ndarray(obj):
     if 'array_real' in obj and 'array_imag' in obj:
         return np.array(obj["array_real"], dtype=obj["dtype"]) + 1j * np.array(obj["array_imag"], dtype=obj["dtype"])
@@ -43,26 +50,16 @@ def deserialise_ndarray(obj):
 
 
 def deserialise_icrs(obj):
-    if isinstance(obj["ra"], dict) and obj["ra"].get("type") == 'numpy.ndarray':
-        obj["ra"] = deserialise_ndarray(obj["ra"])
-        obj["dec"] = deserialise_ndarray(obj["dec"])
-    return ac.ICRS(ra=ac.Angle(obj['ra']), dec=ac.Angle(obj["dec"]))
+    return ac.ICRS(ra=deserialise_quantity(obj['ra']), dec=deserialise_quantity(obj["dec"]))
 
 
 def deserialise_itrs(obj):
-    if isinstance(obj["x"], dict) and obj["x"].get("type") == 'numpy.ndarray':
-        obj["x"] = deserialise_ndarray(obj["x"])
-        obj["y"] = deserialise_ndarray(obj["y"])
-        obj["z"] = deserialise_ndarray(obj["z"])
-    return ac.ITRS(x=obj["x"] * au.m, y=obj["y"] * au.m, z=obj["z"] * au.m)
+    return ac.ITRS(x=deserialise_quantity(obj["x"]), y=deserialise_quantity(obj["y"]), z=deserialise_quantity(obj["z"]))
 
 
 def deserialise_earth_location(obj):
-    if isinstance(obj["x"], dict) and obj["x"].get("type") == 'numpy.ndarray':
-        obj["x"] = deserialise_ndarray(obj["x"])
-        obj["y"] = deserialise_ndarray(obj["y"])
-        obj["z"] = deserialise_ndarray(obj["z"])
-    return ac.ITRS(x=obj["x"] * au.m, y=obj["y"] * au.m, z=obj["z"] * au.m).earth_location
+    return ac.ITRS(x=deserialise_quantity(obj["x"]), y=deserialise_quantity(obj["y"]),
+                   z=deserialise_quantity(obj["z"])).earth_location
 
 
 def deserialise_time(obj):
@@ -72,17 +69,15 @@ def deserialise_time(obj):
 
 
 def deserialise_altaz(obj):
-    if isinstance(obj["az"], dict) and obj["az"].get("type") == 'numpy.ndarray':
-        obj["az"] = deserialise_ndarray(obj["az"])
-        obj["alt"] = deserialise_ndarray(obj["alt"])
-    return ac.AltAz(az=obj["az"] * au.deg, alt=obj["alt"] * au.deg,
+    return ac.AltAz(az=deserialise_quantity(obj["az"]), alt=deserialise_quantity(obj["alt"]),
                     location=deserialise_earth_location(obj["location"]), obstime=deserialise_time(obj["obstime"]))
 
 
-def deserialise_quantity(obj):
-    if isinstance(obj["value"], dict) and obj["value"].get("type") == 'numpy.ndarray':
-        obj["value"] = deserialise_ndarray(obj["value"])
-    return au.Quantity(obj["value"], unit=obj["unit"])
+def deserialise_enu(obj):
+    return ENU(east=deserialise_quantity(obj["east"]),
+               north=deserialise_quantity(obj["north"]),
+               up=deserialise_quantity(obj["up"]),
+               location=deserialise_earth_location(obj["location"]), obstime=deserialise_time(obj["obstime"]))
 
 
 class SerialisableBaseModel(BaseModel):
@@ -99,14 +94,22 @@ class SerialisableBaseModel(BaseModel):
             np.ndarray: serialise_array_quantity,
             ac.ICRS: lambda x: {
                 "type": 'astropy.coordinates.ICRS',
-                "ra": x.ra.to_string(unit=au.hour, sep='hms', pad=True),
-                "dec": x.dec.to_string(unit=au.deg, sep='dms', pad=True, alwayssign=True)
+                "ra": x.ra,
+                "dec": x.dec
+            },
+            ENU: lambda x: {
+                "type": 'tomographic_kernel.frames.ENU',
+                "east": x.east,
+                "north": x.north,
+                "up": x.up,
+                "location": x.location,
+                "obstime": x.obstime
             },
             ac.ITRS: lambda x: {
                 "type": 'astropy.coordinates.ITRS',
-                "x": x.x.to(au.m).value,
-                "y": x.y.to(au.m).value,
-                "z": x.z.to(au.m).value,
+                "x": x.x,
+                "y": x.y,
+                "z": x.z,
             },
             at.Time: lambda x: {
                 "type": 'astropy.time.Time',
@@ -116,16 +119,16 @@ class SerialisableBaseModel(BaseModel):
             },
             ac.AltAz: lambda x: {
                 "type": 'astropy.coordinates.AltAz',
-                "az": x.az.to(au.deg).value,
-                "alt": x.alt.to(au.deg).value,
+                "az": x.az,
+                "alt": x.alt,
                 "location": x.location,
                 "obstime": x.obstime
             },
             ac.EarthLocation: lambda x: {
                 "type": 'astropy.coordinates.EarthLocation',
-                "x": x.get_itrs().x.to(au.m).value,
-                "y": x.get_itrs().y.to(au.m).value,
-                "z": x.get_itrs().z.to(au.m).value,
+                "x": x.get_itrs().x,
+                "y": x.get_itrs().y,
+                "z": x.get_itrs().z,
                 'ellipsoid': x.ellipsoid
             },
             au.Quantity: lambda x: {
@@ -156,6 +159,12 @@ class SerialisableBaseModel(BaseModel):
             elif field.type_ is ac.ICRS and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'astropy.coordinates.ICRS':
                 obj[name] = deserialise_icrs(obj[name])
+                continue
+
+            # Deserialise ENU
+            elif field.type_ is ENU and isinstance(obj.get(name), dict) and obj[name].get(
+                    "type") == 'tomographic_kernel.frames.ENU':
+                obj[name] = deserialise_enu(obj[name])
                 continue
 
             # Deserialise ITRS
