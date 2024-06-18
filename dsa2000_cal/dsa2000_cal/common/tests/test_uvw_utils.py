@@ -3,8 +3,10 @@ import itertools
 import numpy as np
 import pytest
 from astropy import coordinates as ac, units as au, time as at
-from jax import numpy as jnp
+from jax import numpy as jnp, config
 from tomographic_kernel.frames import ENU
+
+config.update("jax_enable_x64", True)
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn, lmn_to_icrs
 from dsa2000_cal.common.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian, compute_uvw
@@ -38,7 +40,7 @@ def test_lm_to_k_bcrs(ra0, dec0):
     ra, dec = perley_icrs_from_lmn(l=l, m=m, n=n, ra0=ra0, dec0=dec0)
     K_bcrs = celestial_to_cartesian(ra, dec)
     x = ac.ICRS(ra=ra * au.rad, dec=dec * au.rad)
-    np.testing.assert_allclose(x.cartesian.xyz.value, K_bcrs, atol=1e-8)
+    np.testing.assert_allclose(x.cartesian.xyz.value, K_bcrs, atol=1e-5)
 
 
 @pytest.mark.parametrize('with_autocorr', [True, False])

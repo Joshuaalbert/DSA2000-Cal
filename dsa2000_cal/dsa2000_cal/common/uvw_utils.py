@@ -12,8 +12,6 @@ import jax.numpy as jnp
 import numpy as np
 from jax import config
 
-config.update("jax_enable_x64", True)
-
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 
