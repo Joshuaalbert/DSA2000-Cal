@@ -131,7 +131,7 @@ class PointSourceModel(AbstractSourceModel):
                 spectrum.append(parsed_results.spectrum)
 
         source_directions = ac.concatenate(source_directions).transform_to(ac.ICRS)
-        lmn0 = icrs_to_lmn(source_directions, time, phase_tracking)
+        lmn0 = icrs_to_lmn(source_directions, phase_tracking)
         l0 = lmn0[:, 0]
         m0 = lmn0[:, 1]
         A = jnp.stack(spectrum, axis=0) * au.Jy

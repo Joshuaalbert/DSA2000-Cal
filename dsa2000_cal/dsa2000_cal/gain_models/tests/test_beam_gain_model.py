@@ -21,7 +21,7 @@ def test_beam_gain_model_real_data(array_name, freq, zenith):
     mvec = np.linspace(-1, 1, 100) * au.dimensionless_unscaled
     M, L = np.meshgrid(mvec, lvec, indexing='ij')
     lmn = np.stack([L, M, np.sqrt(1. - L ** 2 - M ** 2)], axis=-1)  # [100, 100, 3]
-    sources = lmn_to_icrs(lmn=lmn, time=time, phase_tracking=phase_tracking)
+    sources = lmn_to_icrs(lmn=lmn, phase_tracking=phase_tracking)
     gains = beam_gain_model.compute_gain(
         freqs=freqs, sources=sources, array_location=array_location,
         time=time,

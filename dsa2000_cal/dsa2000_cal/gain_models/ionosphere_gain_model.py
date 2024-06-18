@@ -2,7 +2,6 @@ import dataclasses
 import os
 import time as time_mod
 from functools import partial
-from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -118,13 +117,11 @@ class IonosphereSimulation:
     dtype: SupportsDType = jnp.complex64
     seed: int = 42
 
-    interp_mode: Literal['nn_conv', 'kriging'] = 'nn_conv'
-
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
         os.makedirs(self.cache_folder, exist_ok=True)
 
-        self.cache_file = os.path.join(self.cache_folder, f"cached_{self.specification}.json")
+        self.cache_file = os.path.join(self.cache_folder, f"cached_{self.specification}_{self.seed}.json")
 
         # make sure all 1D
         if self.model_lmn.isscalar:
@@ -527,11 +524,7 @@ def ionosphere_gain_model_factory(pointing: ac.ICRS | ENU,
     )
     print(f"Number of model directions: {len(model_directions)}")
     # Convert to lmn
-    model_lmn = icrs_to_lmn(
-        sources=model_directions,
-        time=observation_start_time,
-        phase_tracking=pointing
-    )  # [num_model_dir, 3]
+    model_lmn = icrs_to_lmn(sources=model_directions, phase_tracking=pointing)  # [num_model_dir, 3]
 
     # Plot model directions
     fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(10, 10))

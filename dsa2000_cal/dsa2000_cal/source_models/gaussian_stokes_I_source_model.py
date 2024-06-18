@@ -142,7 +142,7 @@ def transform_ellipsoidal_params_to_plane_of_sky(
     if not theta.unit.is_equivalent(au.rad):
         raise ValueError(f"Expected theta to be in radians, got {theta.unit}")
 
-    lmn0 = icrs_to_lmn(source_directions, obs_time, phase_tracking)
+    lmn0 = icrs_to_lmn(source_directions, phase_tracking)
     l0 = lmn0[:, 0]
     m0 = lmn0[:, 1]
 
@@ -154,7 +154,7 @@ def transform_ellipsoidal_params_to_plane_of_sky(
                 posang=posang, distance=distance
             )
             s = ac.ICRS(s_ra, s_dec)
-            lmn = icrs_to_lmn(s, obs_time, phase_tracking)
+            lmn = icrs_to_lmn(s, phase_tracking)
             return lmn[:, 0], lmn[:, 1]
 
         # Offset by theta and a distance of half-major axis ==> half-major in tangent

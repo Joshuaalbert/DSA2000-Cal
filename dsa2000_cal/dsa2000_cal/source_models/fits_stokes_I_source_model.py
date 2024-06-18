@@ -187,7 +187,7 @@ class FitsStokesISourceModel(AbstractSourceModel):
                 if stokes_coord != StokesCoord("I"):
                     raise ValueError(f"Expected Stokes I, got {stokes_coord}")
                 center_icrs = pointing_coord.transform_to(ac.ICRS)
-                lmn0 = icrs_to_lmn(center_icrs, time, phase_tracking)
+                lmn0 = icrs_to_lmn(center_icrs, phase_tracking)
                 l0, m0 = lmn0[:2]
                 # I don't trust the wcs cdelt values, so I will compute them.
                 # compute l over for m[centre_y_pix] and take mean diff
@@ -198,7 +198,7 @@ class FitsStokesISourceModel(AbstractSourceModel):
                     [1, Nl], [centre_m_pix, centre_m_pix], 0, 0
                 )
                 pointing_icrs = pointing_coord.transform_to(ac.ICRS)
-                lmn1 = icrs_to_lmn(pointing_icrs, time, phase_tracking)
+                lmn1 = icrs_to_lmn(pointing_icrs, phase_tracking)
                 l1 = lmn1[:, 0]
                 dl = (l1[-1] - l1[0]) / (Nl - 1)
                 # dl = np.mean(np.diff(l1))
@@ -207,7 +207,7 @@ class FitsStokesISourceModel(AbstractSourceModel):
                     [centre_l_pix, centre_l_pix], [1, Nm], 0, 0
                 )
                 pointing_icrs = pointing_coord.transform_to(ac.ICRS)
-                lmn1 = icrs_to_lmn(pointing_icrs, time, phase_tracking)
+                lmn1 = icrs_to_lmn(pointing_icrs, phase_tracking)
                 m1 = lmn1[:, 1]
                 dm = (m1[-1] - m1[0]) / (Nm - 1)
                 # dm = np.mean(np.diff(m1))

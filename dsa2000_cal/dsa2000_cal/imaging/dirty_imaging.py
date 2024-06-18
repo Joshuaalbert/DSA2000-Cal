@@ -124,9 +124,7 @@ class DirtyImaging:
 
         lmn_ref_points = icrs_to_lmn(
             sources=ac.concatenate([source_centre, source_top, source_east]).transform_to(ac.ICRS),
-            time=ms.meta.times[0],
-            phase_tracking=ms.meta.pointing
-        )
+            phase_tracking=ms.meta.pointing)
         dl = (lmn_ref_points[2, 0] - lmn_ref_points[0, 0]) / (num_pixel / 2.)
         dm = (lmn_ref_points[1, 1] - lmn_ref_points[0, 1]) / (num_pixel / 2.)
 

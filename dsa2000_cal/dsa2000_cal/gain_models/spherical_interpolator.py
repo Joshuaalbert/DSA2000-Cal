@@ -246,8 +246,7 @@ class SphericalInterpolatorGainModel(GainModel):
         else:
             raise ValueError(f"Expected sources to be ICRS or ENU but got {sources}")
 
-        lmn_sources = icrs_to_lmn(sources=sources, time=time,
-                                  phase_tracking=pointing)  # (source_shape) + [num_ant/1, 3]
+        lmn_sources = icrs_to_lmn(sources=sources, phase_tracking=pointing)  # (source_shape) + [num_ant/1, 3]
 
         gains = self._compute_gain_jax(
             freqs=quantity_to_jnp(freqs),

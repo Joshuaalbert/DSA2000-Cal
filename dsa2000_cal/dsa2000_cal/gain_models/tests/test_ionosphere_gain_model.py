@@ -63,7 +63,7 @@ def test_ionosphere_simulation():
     )
     # ac.ICRS(ra=[0, 0.] * au.deg, dec=[0., 1.] * au.deg)
     model_times = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:10:00'], scale='utc')
-    model_lmn = icrs_to_lmn(sources=model_directions, time=model_times[0], phase_tracking=phase_tracking)
+    model_lmn = icrs_to_lmn(sources=model_directions, phase_tracking=phase_tracking)
     print(model_antennas.shape, model_directions.shape, model_lmn.shape)
 
     ionosphere_simulation = IonosphereSimulation(

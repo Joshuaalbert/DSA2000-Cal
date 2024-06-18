@@ -76,7 +76,7 @@ class SyntheticSkyModelProducer:
         source_models = []
         for coord in coords:
             coord = coord.reshape((1,))  # [1]
-            lmn0 = icrs_to_lmn(sources=coord, phase_tracking=self.phase_tracking, time=self.obs_time)
+            lmn0 = icrs_to_lmn(sources=coord, phase_tracking=self.phase_tracking)
             A = np.ones((1, len(self.freqs))) * 10 * au.Jy
             source_models.append(
                 WSCleanSourceModel(
@@ -104,7 +104,7 @@ class SyntheticSkyModelProducer:
             sky_rotation=bright_rotation
         )
         for source in bright_sources:
-            lmn0 = icrs_to_lmn(sources=source, phase_tracking=self.phase_tracking, time=self.obs_time)
+            lmn0 = icrs_to_lmn(sources=source, phase_tracking=self.phase_tracking)
             A = np.ones((1, len(self.freqs))) * au.Jy
             source_models.append(
                 WSCleanSourceModel(

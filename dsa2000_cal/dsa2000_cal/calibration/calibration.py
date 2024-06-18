@@ -172,11 +172,7 @@ class Calibration:
                 axis=0)
         )  # [num_calibrators, 3]
 
-        cal_sources = lmn_to_icrs(
-            lmn=calibrator_lmn,
-            phase_tracking=ms.meta.pointing,
-            time=ms.ref_time
-        )  # [num_calibrators]
+        cal_sources = lmn_to_icrs(lmn=calibrator_lmn, phase_tracking=ms.meta.pointing)  # [num_calibrators]
 
         for cal_idx, cal_source in enumerate(cal_sources):
             print(f"Calibrator {cal_idx}: {cal_source}")

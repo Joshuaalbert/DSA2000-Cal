@@ -61,11 +61,7 @@ class SimulateVisibilities:
                 ],
                 axis=0)
         )  # [num_calibrators, 3]
-        return lmn_to_icrs(
-            sources_lmn,
-            time=obs_time,
-            phase_tracking=phase_tracking
-        )
+        return lmn_to_icrs(sources_lmn, phase_tracking=phase_tracking)
 
     def simulate(self, ms: MeasurementSet, system_gain_model: GainModel):
         """
