@@ -154,68 +154,43 @@ class FitsStokesISourceModel(AbstractSourceModel):
                 w0 = WCS(hdul0[0].header)
                 image = au.Quantity(image, 'Jy')
                 # RA--SIN and DEC--SIN
-                cos_dec = np.cos(w0.wcs.crval[1] * np.pi / 180.)
+                if not (w0.wcs.ctype[0].strip().endswith('SIN') and w0.wcs.ctype[1].strip().endswith('SIN')):
+                    raise ValueError(f"Expected SIN projection, got {w0.wcs.ctype}")
+                pixel_size_l = au.Quantity(w0.wcs.cdelt[0], au.deg)
+                pixel_size_m = au.Quantity(w0.wcs.cdelt[1], au.deg)
                 if hdul0[0].header['BUNIT'] == 'JY/PIXEL':
-                    pixel_size_l = au.Quantity(w0.wcs.cdelt[0], au.deg)
-                    pixel_size_m = cos_dec * au.Quantity(w0.wcs.cdelt[1], au.deg)
                     pass
                 elif hdul0[0].header['BUNIT'] == 'JY/BEAM':
                     # Convert to JY/PIXEL
+                    print(f"Converting from JY/BEAM to JY/PIXEL")
                     bmaj = hdul0[0].header['BMAJ'] * au.deg
                     bmin = hdul0[0].header['BMIN'] * au.deg
-                    beam_area = (np.pi / (2. * np.log(2))) * bmaj * bmin
-                    pixel_size_l = au.Quantity(w0.wcs.cdelt[0], au.deg)
-                    pixel_size_m = cos_dec * au.Quantity(w0.wcs.cdelt[1], au.deg)
+                    beam_area = (0.25 * np.pi) * bmaj * bmin
                     pixel_area = np.abs(pixel_size_l * pixel_size_m)
-
                     beam_per_pixel = beam_area / pixel_area
                     image *= beam_per_pixel
                 else:
                     raise ValueError(f"Unknown BUNIT {hdul0[0].header['BUNIT']}")
-                centre_l_pix, centre_m_pix = w0.wcs.crpix[0], w0.wcs.crpix[1]
-                centre_l, centre_m = w0.wcs.crval[0], w0.wcs.crval[1]
+                ra0, dec0 = w0.wcs.crval[0], w0.wcs.crval[1]
                 Nm, Nl = image.shape
+                centre_l_pix, centre_m_pix = Nl/2., Nm/2.
                 print(f"dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
-                      f"centre_ra={centre_l}, centre_dec={centre_m}\n"
+                      f"centre_ra={ra0}, centre_dec={dec0}\n"
                       f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"
                       f"num_l={Nl}, num_m={Nm}")
                 pointing_coord, spectral_coord, stokes_coord = w0.pixel_to_world(
                     centre_l_pix, centre_m_pix, 0, 0
                 )
-                # Increasing y is increasing m
-                # Increasing x is decreasing l
                 if stokes_coord != StokesCoord("I"):
                     raise ValueError(f"Expected Stokes I, got {stokes_coord}")
                 center_icrs = pointing_coord.transform_to(ac.ICRS)
                 lmn0 = icrs_to_lmn(center_icrs, phase_tracking)
                 l0, m0 = lmn0[:2]
-                # I don't trust the wcs cdelt values, so I will compute them.
-                # compute l over for m[centre_y_pix] and take mean diff
-
                 # Order is l, m, freq, stokes
-                # compute l over for m=centre_m and take mean diff
-                pointing_coord, _, _ = w0.pixel_to_world(
-                    [1, Nl], [centre_m_pix, centre_m_pix], 0, 0
-                )
-                pointing_icrs = pointing_coord.transform_to(ac.ICRS)
-                lmn1 = icrs_to_lmn(pointing_icrs, phase_tracking)
-                l1 = lmn1[:, 0]
-                dl = (l1[-1] - l1[0]) / (Nl - 1)
-                # dl = np.mean(np.diff(l1))
-                # compute m over for l[centre_l_pix] and take mean diff
-                pointing_coord, _, _ = w0.pixel_to_world(
-                    [centre_l_pix, centre_l_pix], [1, Nm], 0, 0
-                )
-                pointing_icrs = pointing_coord.transform_to(ac.ICRS)
-                lmn1 = icrs_to_lmn(pointing_icrs, phase_tracking)
-                m1 = lmn1[:, 1]
-                dm = (m1[-1] - m1[0]) / (Nm - 1)
-                # dm = np.mean(np.diff(m1))
-                print(f"My dl={dl}, dm={dm}")
-
-                # Convert to [Nl, Nm], with increasing l
+                dl = -pixel_size_l.to('rad').value * au.dimensionless_unscaled
+                dm = pixel_size_m.to('rad').value * au.dimensionless_unscaled
+                # Convert to [Nl, Nm], and reverse l so that it's increasing
                 image = image[:, ::-1].T  # [Nl, Nm]
-                dl = -dl
 
             images.append(image)
             l0s.append(l0)
