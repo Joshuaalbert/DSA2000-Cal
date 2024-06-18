@@ -4,8 +4,10 @@ from jax import config
 
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
+from dsa2000_cal.calibration.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.forward_model.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
+from dsa2000_cal.simulation.rime_model import RIMEModel
 
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
@@ -25,7 +27,8 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
 
     ms = transfer_from_casa(
         ms_folder=ms_folder,
-        casa_ms=casa_ms
+        casa_ms=casa_ms,
+        convention='casa'
     )
     print(f"Created {ms}")
 
@@ -44,6 +47,13 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
     sky_model = sky_model_producer.create_sky_model(include_a_team=True)
 
     beam_gain_model = beam_gain_model_factory(array_name)
+
+    gain_prior_model = UnconstrainedGain()
+
+    rime_model = RIMEModel(
+        sky_model=sky_model,
+        convention=ms.meta.convention
+    )
     num_shards = len(ms.meta.freqs)
     calibration = Calibration(
         sky_model=sky_model,
@@ -54,7 +64,9 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
         validity_interval=None,
         solution_interval=10 * au.s,
         num_shards=num_shards,
-        seed=56789
+        seed=56789,
+        gain_prior_model=gain_prior_model,
+        rime_model=rime_model
     )
     subtracted_ms = calibration.calibrate(ms=ms)
 
@@ -65,7 +77,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
         seed=12345,
         nthreads=1
     )
-    return imagor.image(image_name='residuals', ms=subtracted_ms)
+    imagor.image(image_name='residuals', ms=subtracted_ms)
 
 
 if __name__ == '__main__':

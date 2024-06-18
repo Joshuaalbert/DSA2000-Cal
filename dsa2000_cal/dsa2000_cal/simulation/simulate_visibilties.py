@@ -111,7 +111,7 @@ class SimulateVisibilities:
             except StopIteration:
                 break
 
-            axs[0][0].scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1], s=1)
+            axs[0][0].scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1], s=1, alpha=0.1)
 
             # Get gains
             system_gains = system_gain_model.compute_gain(freqs=ms.meta.freqs, sources=source_directions,

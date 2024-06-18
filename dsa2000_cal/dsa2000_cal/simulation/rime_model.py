@@ -145,10 +145,10 @@ class RIMEModel:
                     for img in fits_source_model.images
                 ],
                 axis=0
-            )  # [num_chan, Nx, Ny]
+            )  # [num_chan, Nl, Nm]
 
             faint_model_data = FFTStokesIModelData(
-                image=image,  # [num_chan, Nx, Ny]
+                image=image,  # [num_chan, Nl, Nm]
                 gains=preapply_gains_cal,  # [num_time, num_ant, num_chan, 2, 2]
                 l0=l0,  # [num_chan]
                 m0=m0,  # [num_chan]

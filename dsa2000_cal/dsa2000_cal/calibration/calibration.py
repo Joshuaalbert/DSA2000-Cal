@@ -13,6 +13,7 @@ from jax import lax
 from jax import numpy as jnp
 
 from dsa2000_cal.calibration.bfgs import BFGS
+from dsa2000_cal.calibration.lbfgs import LBFGS
 from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
 from dsa2000_cal.calibration.gain_prior_models import AbstractGainPriorModel, \
     ReplicatedGainProbabilisticModel
@@ -350,6 +351,11 @@ class Calibration:
             )
         elif self.solver == 'BFGS':
             solver = BFGS(
+                fun=objective_fn,
+                maxiter=self.num_iterations
+            )
+        elif self.solver == 'LBFGS':
+            solver = LBFGS(
                 fun=objective_fn,
                 maxiter=self.num_iterations
             )
