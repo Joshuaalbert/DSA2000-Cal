@@ -1,4 +1,5 @@
 import os.path
+from typing import Literal
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -13,7 +14,8 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, Measure
 
 
 def create_ms_meta(casa_ms: str, field_idx: int | None = None,
-                   spectral_window_idx: int | None = None) -> MeasurementSetMeta:
+                   spectral_window_idx: int | None = None,
+                   convention: Literal['casa', 'physical'] = 'physical') -> MeasurementSetMeta:
     """
     Create a MeasurementSetMeta object from a CASA Measurement Set file.
 
@@ -129,7 +131,8 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
         antenna_diameters=antenna_diameters,
         mount_types=mount_types,
         with_autocorr=with_autocorr,
-        system_equivalent_flux_density=system_equivalent_flux_density
+        system_equivalent_flux_density=system_equivalent_flux_density,
+        convention=convention
     )
     return meta
 
@@ -137,7 +140,8 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
 def transfer_from_casa(ms_folder: str,
                        casa_ms: str,
                        field_idx: int | None = None,
-                       spectral_window_idx: int | None = None) -> MeasurementSet:
+                       spectral_window_idx: int | None = None,
+                       convention: Literal['casa', 'physical'] = 'physical') -> MeasurementSet:
     """
     Transfer visibilities from the MeasurementSet to the output CASA Measurement Set.
 
@@ -146,12 +150,12 @@ def transfer_from_casa(ms_folder: str,
     """
     # Create new MS file
     print(f"Creating new MeasurementSet {ms_folder} from CASA MS {casa_ms}")
-    meta = create_ms_meta(casa_ms=casa_ms, field_idx=field_idx, spectral_window_idx=spectral_window_idx)
+    meta = create_ms_meta(casa_ms=casa_ms, field_idx=field_idx, spectral_window_idx=spectral_window_idx,
+                          convention=convention)
     ms = MeasurementSet.create_measurement_set(ms_folder=ms_folder, meta=meta)
 
     # Populate the new MS file with visibilities
     print(f"Populating measurement set {ms_folder} with visibilities from {casa_ms}.")
-    uvw_offset = 0.
     with pt.table(casa_ms, readonly=True) as output_ms:
         uvw_casa = output_ms.getcol('UVW')  # [rows, 3]
 

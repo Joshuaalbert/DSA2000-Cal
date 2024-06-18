@@ -5,6 +5,7 @@ import pytest
 import tables as tb
 from astropy import coordinates as ac, units as au, time as at
 
+from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
     _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData, get_non_unqiue, \
     put_non_unique
@@ -292,11 +293,12 @@ def test_put_non_unique():
     put_non_unique(h5_array, indices, values, axis=1, indices_sorted=True)
     np.testing.assert_allclose(h5_array, np.array([[7, 8], [10, 11], [13, 14]]))
 
-def test_extract_lwa_antennas():
-    file = '/home/albert/data/forward_modelling/data_dir/lwa01_ms'
-    ms = MeasurementSet(file)
-    antennas = ms.meta.antennas.get_itrs().cartesian.xyz.to(au.m).value.T
-    with open('../../assets/arrays/lwa/antenna_config.txt', 'w') as f:
-        f.write('#state,X,Y,Z\n')
-        for antenna, label in zip(antennas, ms.meta.antenna_names):
-            f.write(f'{label},{antenna[0]},{antenna[1]},{antenna[2]}\n')
+
+def test_transfer_from_casa():
+    casa_file = '~/data/forward_modelling/data_dir/lwa01.ms'
+    ms_folder = '~/data/forward_modelling/data_dir/lwa01_ms'
+    ms = transfer_from_casa(
+        ms_folder=ms_folder,
+        casa_ms=casa_file,
+        convention='casa'  # Or else UVW coordinates are very wrong.
+    )

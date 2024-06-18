@@ -89,7 +89,8 @@ def celestial_to_cartesian(ra, dec):
 
 
 def compute_uvw(antennas: ac.EarthLocation, times: at.Time, phase_center: ac.ICRS,
-                resolution: au.Quantity | None = None, with_autocorr: bool = True, verbose: bool = False):
+                resolution: au.Quantity | None = None, with_autocorr: bool = True, verbose: bool = False,
+                antenna_1: np.ndarray | None = None, antenna_2: np.ndarray | None = None):
     """
     Compute the UVW coordinates for a given phase center, using VLBI delay model.
 
@@ -224,10 +225,14 @@ def compute_uvw(antennas: ac.EarthLocation, times: at.Time, phase_center: ac.ICR
     interp_times_jax = jnp.asarray((interp_times - ref_time).sec)  # [T]
 
     times_jax = jnp.asarray((times - ref_time).sec)  # [num_time]
-    if with_autocorr:
-        antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations_with_replacement(range(num_ants), 2))).T
+    if antenna_1 is None or antenna_2 is None:
+        if with_autocorr:
+            antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations_with_replacement(range(num_ants), 2))).T
+        else:
+            antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(num_ants), 2))).T
     else:
-        antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(num_ants), 2))).T
+        antenna_1 = jnp.asarray(antenna_1)
+        antenna_2 = jnp.asarray(antenna_2)
 
     # Create interpolation objects
     X_earth_bcrs = InterpolatedArray(

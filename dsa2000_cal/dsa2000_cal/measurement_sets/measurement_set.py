@@ -15,9 +15,9 @@ import numpy as np
 import tables as tb
 from pydantic import Field
 
-from dsa2000_cal.common.coord_utils import earth_location_to_uvw
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.common.uvw_utils import compute_uvw
 
 
 class MeasurementSetMetaV0(SerialisableBaseModel):
@@ -31,7 +31,7 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     We will assume single spectral window for the entire measurement set.
     """
     version: int = Field(
-        default=0,
+        default=1,
         description="Version of the meta file."
     )
 
@@ -93,6 +93,13 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     system_equivalent_flux_density: au.Quantity | None = Field(
         default=None,
         description="System equivalent flux density."
+    )
+
+    convention: Literal['physical', 'casa'] = Field(
+        default='physical',
+        description="Convention of the data, 'physical' means uvw are computed for antennas_2 - antenna_1. "
+                    "The RIME model should use the same convention to model visibilities. "
+                    "Using 'casa' means uvw are computed for antenna_1 - antenna_2."
     )
 
     def __init__(self, **data) -> None:
@@ -361,10 +368,25 @@ class MeasurementSet:
 
             time_idx = np.full(antenna_1.shape, time_idx, dtype=np.int32)
 
-            antennas_uvw = earth_location_to_uvw(antennas=meta.antennas, obs_time=time,
-                                                 phase_tracking=meta.phase_tracking)
+            # Don't use interpolation, so precise.
+            uvw = compute_uvw(
+                antennas=meta.antennas,
+                times=time[None],
+                phase_center=meta.phase_tracking,
+                antenna_1=antenna_1,
+                antenna_2=antenna_2
+            )[0, :, :]  # [num_baselines, 3]
 
-            uvw = antennas_uvw[antenna_2] - antennas_uvw[antenna_1]
+            # antennas_uvw = earth_location_to_uvw(antennas=meta.antennas, obs_time=time,
+            #                                      phase_tracking=meta.phase_tracking)
+            # uvw = antennas_uvw[antenna_2] - antennas_uvw[antenna_1]
+
+            if meta.convention == 'casa':
+                uvw *= -1.
+            elif meta.convention == 'physical':
+                pass
+            else:
+                raise ValueError(f"Unknown convention {meta.convention}.")
 
             end_row = start_row + uvw.shape[0]
 
