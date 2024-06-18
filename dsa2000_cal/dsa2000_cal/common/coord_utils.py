@@ -6,6 +6,9 @@ from astropy.coordinates import EarthLocation
 from astropy.units import Quantity
 from tomographic_kernel.frames import ENU
 
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
+
 
 def create_uvw_frame(obs_time: at.Time, phase_tracking: ac.ICRS, barycentre: str = 'earth') -> ac.SkyOffsetFrame:
     """
@@ -83,7 +86,7 @@ def earth_location_to_uvw(antennas: EarthLocation, obs_time: at.Time, phase_trac
     return uvw
 
 
-def icrs_to_lmn(sources: ac.ICRS, time: at.Time, phase_tracking: ac.ICRS) -> Quantity:
+def icrs_to_lmn_old(sources: ac.ICRS, time: at.Time, phase_tracking: ac.ICRS) -> Quantity:
     """
     Convert ICRS coordinates to LMN coordinates.
 
@@ -113,7 +116,27 @@ def icrs_to_lmn(sources: ac.ICRS, time: at.Time, phase_tracking: ac.ICRS) -> Qua
     return lmn
 
 
-def lmn_to_icrs(lmn: Quantity, time: at.Time, phase_tracking: ac.ICRS) -> ac.ICRS:
+def icrs_to_lmn(sources: ac.ICRS, phase_tracking: ac.ICRS) -> Quantity:
+    """
+    Convert ICRS coordinates to LMN coordinates.
+
+    Args:
+        sources: [num_sources] ICRS coordinates
+        phase_tracking: the pointing direction
+
+    Returns:
+        [num_sources, 3] LMN coordinates
+    """
+    l, m, n = perley_lmn_from_icrs(
+        alpha=quantity_to_jnp(sources.ra),
+        dec=quantity_to_jnp(sources.dec),
+        alpha0=quantity_to_jnp(phase_tracking.ra),
+        dec0=quantity_to_jnp(phase_tracking.dec)
+    )
+    return au.Quantity(np.stack([l, m, n], axis=-1), unit=au.dimensionless_unscaled)
+
+
+def lmn_to_icrs_old(lmn: Quantity, time: at.Time, phase_tracking: ac.ICRS) -> ac.ICRS:
     """
     Convert LMN coordinates to ICRS coordinates.
 
@@ -143,6 +166,27 @@ def lmn_to_icrs(lmn: Quantity, time: at.Time, phase_tracking: ac.ICRS) -> ac.ICR
     # Enforce instance type
     sources = ac.ICRS(sources.ra, sources.dec)
     return sources
+
+
+def lmn_to_icrs(lmn: Quantity, phase_tracking: ac.ICRS) -> ac.ICRS:
+    """
+    Convert LMN coordinates to ICRS coordinates.
+
+    Args:
+        lmn: [..., 3] LMN coordinates
+        phase_tracking: the pointing direction
+
+    Returns:
+        [num_sources] ICRS coordinates
+    """
+    ra, dec = perley_icrs_from_lmn(
+        l=quantity_to_jnp(lmn[..., 0]),
+        m=quantity_to_jnp(lmn[..., 1]),
+        n=quantity_to_jnp(lmn[..., 2]),
+        ra0=quantity_to_jnp(phase_tracking.ra),
+        dec0=quantity_to_jnp(phase_tracking.dec)
+    )
+    return ac.ICRS(np.asarray(ra) * au.rad, np.asarray(dec) * au.rad)
 
 
 def icrs_to_enu(sources: ac.ICRS, array_location: ac.EarthLocation, time: at.Time) -> ENU:
@@ -175,7 +219,7 @@ def lmn_to_enu(lmn: Quantity, array_location: ac.EarthLocation, time: at.Time, p
     Returns:
         [num_sources] ENU coordinates
     """
-    icrs = lmn_to_icrs(lmn=lmn, time=time, phase_tracking=phase_tracking)
+    icrs = lmn_to_icrs(lmn=lmn, phase_tracking=phase_tracking)
     return icrs_to_enu(sources=icrs, array_location=array_location, time=time)
 
 

@@ -7,7 +7,7 @@ from astropy.wcs import WCS
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
-    icrs_to_enu, enu_to_icrs
+    icrs_to_enu, enu_to_icrs, lmn_to_icrs_old
 
 
 def test_enu_to_uvw():
@@ -32,21 +32,21 @@ def test_enu_to_uvw():
 def test_lmn_to_icrs():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
-    lmn = icrs_to_lmn(pointing, time, pointing)
+    lmn = icrs_to_lmn(pointing, pointing)
     np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-10)
 
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
-    lmn = icrs_to_lmn(sources, time, pointing)
-    reconstructed_sources = lmn_to_icrs(lmn, time, pointing)
+    lmn = icrs_to_lmn(sources, pointing)
+    reconstructed_sources = lmn_to_icrs(lmn, pointing)
     print(sources)
     print(lmn)
     print(reconstructed_sources)
     assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
 
     sources = ac.ICRS([1, 2, 3, 4] * au.deg, [1, 2, 3, 4] * au.deg).reshape((2, 2))
-    lmn = icrs_to_lmn(sources, time, pointing)
+    lmn = icrs_to_lmn(sources, pointing)
     assert lmn.shape == (2, 2, 3)
-    reconstructed_sources = lmn_to_icrs(lmn, time, pointing)
+    reconstructed_sources = lmn_to_icrs(lmn, pointing)
     assert isinstance(reconstructed_sources, ac.ICRS)
     assert reconstructed_sources.shape == (2, 2)
     assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
@@ -56,41 +56,34 @@ def test_icrs_to_lmn():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
 
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
-    lmn = icrs_to_lmn(pointing, time, pointing)
+    lmn = icrs_to_lmn(pointing, pointing)
     np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-10)
 
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
-    lmn1 = icrs_to_lmn(sources, time, pointing)
+    lmn1 = icrs_to_lmn(sources, pointing)
 
-    # Different at different times due to Earth's rotation
+    # No impact due to rotation
     time = at.Time("2022-02-01T00:00:00", scale='utc')
-    lmn2 = icrs_to_lmn(sources, time, pointing)
-    assert np.all(lmn1 != lmn2)
+    lmn2 = icrs_to_lmn(sources, pointing)
+    assert np.all(lmn1 == lmn2)
 
     # Test when at zentih
     array_location = ac.EarthLocation.of_site('vla')
     obstime = at.Time('2000-01-01T00:00:00', format='isot')
     frame = ac.AltAz(location=array_location, obstime=obstime)
     zenith = ac.SkyCoord(alt=90 * au.deg, az=0 * au.deg, frame=frame).transform_to(ac.ICRS)
-    lmn = icrs_to_lmn(zenith, obstime, zenith)
+    lmn = icrs_to_lmn(zenith, zenith)
     np.testing.assert_allclose(lmn, np.array([0, 0, 1]), atol=1e-10)
 
-    lmn = icrs_to_lmn(sources, obstime, zenith)
+    lmn = icrs_to_lmn(sources, zenith)
     print(lmn)
 
 
-@pytest.mark.parametrize('broadcast_time', [False, True])
 @pytest.mark.parametrize('broadcast_phase_tracking', [False, True])
 @pytest.mark.parametrize('broadcast_lmn', [False, True])
-def test_lmn_to_icrs_vectorised(broadcast_time, broadcast_phase_tracking, broadcast_lmn):
+def test_lmn_to_icrs_vectorised(broadcast_phase_tracking, broadcast_lmn):
     np.random.seed(42)
-    if broadcast_time:
-        time = at.Time(["2021-01-01T00:00:00", "2021-01-01T00:00:00"], format='isot').reshape(
-            (1, 1, 2)
-        )
-    else:
-        time = at.Time("2021-01-01T00:00:00", format='isot')
     if broadcast_phase_tracking:
         phase_tracking = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
             (1, 4, 1)
@@ -103,23 +96,16 @@ def test_lmn_to_icrs_vectorised(broadcast_time, broadcast_phase_tracking, broadc
         lmn = np.random.normal(size=(3,)) * au.dimensionless_unscaled
     lmn /= np.linalg.norm(lmn, axis=-1, keepdims=True)
 
-    expected_shape = np.broadcast_shapes(lmn.shape[:-1], time.shape, phase_tracking.shape)
+    expected_shape = np.broadcast_shapes(lmn.shape[:-1], phase_tracking.shape)
 
-    sources = lmn_to_icrs(lmn, time, phase_tracking)
+    sources = lmn_to_icrs(lmn, phase_tracking)
     assert sources.shape == expected_shape
 
 
-@pytest.mark.parametrize('broadcast_time', [False, True])
 @pytest.mark.parametrize('broadcast_phase_tracking', [False, True])
 @pytest.mark.parametrize('broadcast_lmn', [False, True])
-def test_icrs_to_lmn_vectorised(broadcast_time, broadcast_phase_tracking, broadcast_lmn):
+def test_icrs_to_lmn_vectorised(broadcast_phase_tracking, broadcast_lmn):
     np.random.seed(42)
-    if broadcast_time:
-        time = at.Time(["2021-01-01T00:00:00", "2021-01-01T00:00:00"], format='isot').reshape(
-            (1, 1, 2)
-        )
-    else:
-        time = at.Time("2021-01-01T00:00:00", format='isot')
     if broadcast_phase_tracking:
         phase_tracking = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
             (1, 4, 1)
@@ -131,9 +117,9 @@ def test_icrs_to_lmn_vectorised(broadcast_time, broadcast_phase_tracking, broadc
     else:
         sources = ac.ICRS(0 * au.deg, 0 * au.deg)
 
-    expected_shape = np.broadcast_shapes(sources.shape, time.shape, phase_tracking.shape) + (3,)
+    expected_shape = np.broadcast_shapes(sources.shape, phase_tracking.shape) + (3,)
 
-    sources = icrs_to_lmn(sources, time, phase_tracking)
+    sources = icrs_to_lmn(sources, phase_tracking)
     assert sources.shape == expected_shape
 
 
@@ -148,20 +134,20 @@ def test_lmn_to_icrs_near_poles():
     )
 
     pointing_north_pole = ac.ICRS(0 * au.deg, 90 * au.deg)
-    sources = lmn_to_icrs(lmn, time, pointing_north_pole)
+    sources = lmn_to_icrs(lmn, pointing_north_pole)
     print(sources)
 
-    lmn_reconstructed = icrs_to_lmn(sources, time, pointing_north_pole)
+    lmn_reconstructed = icrs_to_lmn(sources, pointing_north_pole)
     print(lmn_reconstructed)
 
     np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
 
     # Near south pole
     pointing_south_pole = ac.ICRS(0 * au.deg, -90 * au.deg)
-    sources = lmn_to_icrs(lmn, time, pointing_south_pole)
+    sources = lmn_to_icrs(lmn, pointing_south_pole)
     print(sources)
 
-    lmn_reconstructed = icrs_to_lmn(sources, time, pointing_south_pole)
+    lmn_reconstructed = icrs_to_lmn(sources, pointing_south_pole)
     print(lmn_reconstructed)
 
     np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
@@ -229,10 +215,10 @@ def test_lmn_to_icrs_over_year():
 
     phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
     time0 = at.Time("2021-01-01T00:00:00", scale='utc')
-    icrs0 = lmn_to_icrs(lmn, time0, phase_tracking)
+    icrs0 = lmn_to_icrs(lmn, phase_tracking)
     for offset_dt in np.linspace(0., 1., 10) * au.year:
         time1 = time0 + offset_dt
-        icrs1 = lmn_to_icrs(lmn, time1, phase_tracking)
+        icrs1 = lmn_to_icrs_old(lmn, time1, phase_tracking)
         sep = icrs0.separation(icrs1)
         print(offset_dt.to(au.year).value)
         color = offset_dt.to(au.year).value * np.ones(lvec.size)
@@ -274,13 +260,13 @@ def test_lmn_to_icrs_over_time():
 
     phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
     time0 = at.Time("2021-01-01T00:00:00", scale='utc')
-    icrs0 = lmn_to_icrs(lmn, time0, phase_tracking)
+    icrs0 = lmn_to_icrs(lmn, phase_tracking)
 
     fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(10, 10))
     for i, offset_dt in enumerate([1 * au.hour, 10 * au.day, 180 * au.day, 1 * au.year]):
         ax = axs.flatten()[i]
         time1 = time0 + offset_dt
-        icrs1 = lmn_to_icrs(lmn, time1, phase_tracking)
+        icrs1 = lmn_to_icrs_old(lmn, time1, phase_tracking)
         sep = icrs0.separation(icrs1)
         im = ax.imshow(sep.to(au.arcsec).value,
                        origin='lower',
@@ -302,7 +288,7 @@ def test_lmn_coords():
     # Offset north
     dnorth_icrs = ac.ICRS(
         *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=0 * au.deg, distance=distance))
-    lmn_dnorth = icrs_to_lmn(dnorth_icrs, time, phase_tracking)
+    lmn_dnorth = icrs_to_lmn(dnorth_icrs, phase_tracking)
     m_dnorth = lmn_dnorth[1]
     print('North', dnorth_icrs)
     print(lmn_dnorth)
@@ -310,7 +296,7 @@ def test_lmn_coords():
     # Offset east
     deast_icrs = ac.ICRS(
         *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=90 * au.deg, distance=distance))
-    lmn_deast = icrs_to_lmn(deast_icrs, time, phase_tracking)
+    lmn_deast = icrs_to_lmn(deast_icrs, phase_tracking)
     l_deast = lmn_deast[0]
     print('East', deast_icrs)
     print(lmn_deast)
@@ -318,7 +304,7 @@ def test_lmn_coords():
     # Offset south
     dsouth_icrs = ac.ICRS(
         *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=180 * au.deg, distance=distance))
-    lmn_dsouth = icrs_to_lmn(dsouth_icrs, time, phase_tracking)
+    lmn_dsouth = icrs_to_lmn(dsouth_icrs, phase_tracking)
     m_dsouth = lmn_dsouth[1]
     print('South', dsouth_icrs)
     print(lmn_dsouth)
@@ -326,7 +312,7 @@ def test_lmn_coords():
     # Offset west
     dwest_icrs = ac.ICRS(
         *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=270 * au.deg, distance=distance))
-    lmn_dwest = icrs_to_lmn(dwest_icrs, time, phase_tracking)
+    lmn_dwest = icrs_to_lmn(dwest_icrs, phase_tracking)
     l_dwest = lmn_dwest[0]
     print('West', dwest_icrs)
     print(lmn_dwest)
@@ -366,7 +352,7 @@ def test_lmn_ellipse_to_sky():
     phase_tracking = ac.ICRS(15 * au.deg, 75 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     lmn = au.Quantity(np.stack([l, m, np.sqrt(1 - l ** 2 - m ** 2)], axis=-1))
-    icrs = lmn_to_icrs(lmn, time, phase_tracking)
+    icrs = lmn_to_icrs(lmn, phase_tracking)
 
     # plot
 
