@@ -179,3 +179,24 @@ def get_time_jax(*deps, **kwargs):
     )
 
     return jax.pure_callback(_get_time, result_shape_dtype, *deps, vectorized=False, **kwargs)
+
+def vmap_or_scan(f, in_axes, out_axes):
+    if not isinstance(in_axes, tuple):
+        raise ValueError("in_axes must be a tuple")
+    if not isinstance(out_axes, tuple):
+        raise ValueError("out_axes must be a tuple")
+    if out_axes is None:
+        return jax.vmap(f, in_axes, out_axes)
+    else:
+        def _scan(*xs):
+            def body_fn(carry, xs):
+                return carry, f(*xs)
+
+            # Transpose if necessary
+            xs = [(jnp.swapaxes(x, 0, in_axis) if in_axis is not None else x) for x, in_axis in zip(xs, in_axes)]
+
+
+
+            _, out = lax.scan(body_fn, None, x)
+            return out
+        return _scan

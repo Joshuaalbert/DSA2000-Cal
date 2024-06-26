@@ -1,5 +1,6 @@
 import astropy.time as at
 import astropy.units as au
+import jax.random
 import numpy as np
 import pytest
 from jax import numpy as jnp
@@ -213,6 +214,44 @@ def test_apply_interp(regular_grid):
     x = jnp.linspace(-0.1, 1.1, 10)
     (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
     np.testing.assert_allclose(apply_interp(xp, i0, alpha0, i1, alpha1), x, atol=1e-6)
+
+    x = jnp.linspace(-0.1, 1.1, 10)
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
+    assert apply_interp(jnp.zeros((4, 5, 10, 6)), i0, alpha0, i1, alpha1, axis=2).shape == (4, 5, 10, 6)
+
+    x = 0.
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
+    assert apply_interp(jnp.zeros((4, 5, 10, 6)), i0, alpha0, i1, alpha1, axis=2).shape == (4, 5, 6)
+
+
+def test_regular_grid():
+    # Inside bounds
+    xp = jnp.linspace(0., 1., 10)
+    fp = jax.random.normal(jax.random.PRNGKey(0), (10, 15))
+    x = jnp.linspace(0., 1., 100)
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=False)
+    f_no = apply_interp(fp, i0, alpha0, i1, alpha1)
+
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=True)
+    f_yes = apply_interp(fp, i0, alpha0, i1, alpha1)
+    np.testing.assert_allclose(
+        f_yes, f_no,
+        atol=1e-6
+    )
+
+    # Outside bounds
+    x = jnp.linspace(-0.1, 1.1, 100)
+    xp = jnp.linspace(0., 1., 10)
+    fp = jax.random.normal(jax.random.PRNGKey(0), (10, 15))
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=False)
+    f_no = apply_interp(fp, i0, alpha0, i1, alpha1)
+
+    (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=True)
+    f_yes = apply_interp(fp, i0, alpha0, i1, alpha1)
+    np.testing.assert_allclose(
+        f_yes, f_no,
+        atol=1e-6
+    )
 
 
 def test_get_interp_indices_and_weights_astropy_time():

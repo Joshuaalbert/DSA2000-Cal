@@ -17,7 +17,7 @@ from pydantic import Field
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.uvw_utils import compute_uvw
+from dsa2000_cal.uvw.far_field import FarFieldDelayEngine
 
 
 class MeasurementSetMetaV0(SerialisableBaseModel):
@@ -351,31 +351,41 @@ class MeasurementSet:
             f.create_array("/", "weights", atom=tb.Float16Atom(), shape=(num_rows, num_freqs, 4))
             f.create_array("/", "flags", atom=tb.BoolAtom(), shape=(num_rows, num_freqs, 4))
 
+        engine = FarFieldDelayEngine(
+            antennas=meta.antennas,
+            phase_center=meta.phase_tracking,
+            start_time=meta.times[0],
+            end_time=meta.times[-1],
+            verbose=True
+        )
+
+        if meta.with_autocorr:
+            baseline_pairs = np.asarray(list(itertools.combinations_with_replacement(range(num_antennas), 2)),
+                                        dtype=np.int32)
+        else:
+            baseline_pairs = np.asarray(list(itertools.combinations(range(num_antennas), 2)),
+                                        dtype=np.int32)
+        antenna_1 = baseline_pairs[:, 0]
+        antenna_2 = baseline_pairs[:, 1]
+
         start_row = 0
+
+        compute_uvw_jax = jax.jit(engine.compute_uvw_jax)
         for time_idx in range(num_times):
             # UVW are position(antenna_2) - position(antenna_1)
             # antenna_1, antenna_2 are all possible baselines
             time = meta.times[time_idx]
 
-            if meta.with_autocorr:
-                baseline_pairs = np.asarray(list(itertools.combinations_with_replacement(range(num_antennas), 2)),
-                                            dtype=np.int32)
-            else:
-                baseline_pairs = np.asarray(list(itertools.combinations(range(num_antennas), 2)),
-                                            dtype=np.int32)
-            antenna_1 = baseline_pairs[:, 0]
-            antenna_2 = baseline_pairs[:, 1]
-
             time_idx = np.full(antenna_1.shape, time_idx, dtype=np.int32)
 
             # Don't use interpolation, so precise.
-            uvw = compute_uvw(
-                antennas=meta.antennas,
-                times=time[None],
-                phase_center=meta.phase_tracking,
-                antenna_1=antenna_1,
-                antenna_2=antenna_2
-            )[0, :, :]  # [num_baselines, 3]
+            uvw = compute_uvw_jax(
+                times=jnp.repeat(engine.time_to_jnp(time)[None], len(antenna_1), axis=0),
+                antenna_1=jnp.asarray(antenna_1),
+                antenna_2=jnp.asarray(antenna_2)
+            )  # [num_baselines, 3]
+
+            uvw = np.asarray(uvw)
 
             # antennas_uvw = earth_location_to_uvw(antennas=meta.antennas, obs_time=time,
             #                                      phase_tracking=meta.phase_tracking)

@@ -173,7 +173,7 @@ def get_interp_indices_and_weights(x, xp, regular_grid: bool = False) -> tuple[
     if regular_grid:
         # Use faster index determination
         delta_x = xp[1] - xp[0]
-        i1 = jnp.clip((jnp.ceil((xp - xp[0]) / delta_x)).astype(jnp.int64), 1, len(xp) - 1)
+        i1 = jnp.clip((jnp.ceil((x - xp[0]) / delta_x)).astype(jnp.int64), 1, len(xp) - 1)
         i0 = i1 - 1
     else:
         i1 = jnp.clip(jnp.searchsorted(xp, x, side='right'), 1, len(xp) - 1)

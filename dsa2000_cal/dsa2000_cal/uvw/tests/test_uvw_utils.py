@@ -1,15 +1,10 @@
-import itertools
-
 import numpy as np
 import pytest
 from astropy import coordinates as ac, units as au, time as at
-from jax import numpy as jnp, config
-from tomographic_kernel.frames import ENU
+from jax import numpy as jnp
 
-config.update("jax_enable_x64", True)
-
-from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn, lmn_to_icrs
-from dsa2000_cal.common.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian, compute_uvw
+from dsa2000_cal.common.coord_utils import icrs_to_lmn, lmn_to_icrs
+from dsa2000_cal.uvw.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian
 
 
 @pytest.mark.parametrize('ra0', [0, np.pi / 2, np.pi])
@@ -41,46 +36,6 @@ def test_lm_to_k_bcrs(ra0, dec0):
     K_bcrs = celestial_to_cartesian(ra, dec)
     x = ac.ICRS(ra=ra * au.rad, dec=dec * au.rad)
     np.testing.assert_allclose(x.cartesian.xyz.value, K_bcrs, atol=1e-5)
-
-
-@pytest.mark.parametrize('with_autocorr', [True, False])
-def test_uvw(with_autocorr):
-    times = at.Time.now().reshape((1,))
-    array_location = ac.EarthLocation.of_site('vla')
-    antennas = ENU(
-        east=[0, 10] * au.km,
-        north=[0, 0] * au.km,
-        up=[0, 0] * au.km,
-        location=array_location,
-        obstime=times[0]
-    )
-    antennas = antennas.transform_to(ac.ITRS(obstime=times[0])).earth_location
-
-    phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=times[0]).transform_to(ac.ICRS())
-    uvw = compute_uvw(
-        antennas=antennas,
-        times=times,
-        phase_center=phase_centre,
-        verbose=True,
-        with_autocorr=with_autocorr
-    )
-
-    uvw_other = earth_location_to_uvw(
-        antennas=antennas[None, :],
-        obs_time=times[:, None],
-        phase_tracking=phase_centre
-    )
-    if with_autocorr:
-        antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations_with_replacement(range(len(antennas)), 2))).T
-    else:
-        antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
-    uvw_other = uvw_other[:, antenna_2, :] - uvw_other[:, antenna_1, :]
-
-    if with_autocorr:
-        np.testing.assert_allclose(uvw_other[0, 1, 0], 10 * au.km, atol=1 * au.m)
-    else:
-        np.testing.assert_allclose(uvw_other[0, 0, 0], 10 * au.km, atol=1 * au.m)
-    np.testing.assert_allclose(uvw, uvw_other, atol=0.9 * au.m)
 
 
 def test_icrs_to_lmn_against_perley():
