@@ -21,7 +21,7 @@ def test_near_field():
         obstime=time
     )
 
-    antennas = antennas.transform_to(ac.ITRS(obstime=time)).earth_location
+    antennas = antennas.transform_to(ac.ITRS(obstime=time, location=array_location)).earth_location
     emitter = ENU(
         east=10 * au.km,
         north=0 * au.km,
