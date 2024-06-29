@@ -7,7 +7,7 @@ __all__ = [
 
 from functools import partial
 
-from typing import TypeVar, Callable, Tuple, Set
+from typing import TypeVar, Callable, Tuple, Set, List
 
 import jax
 import jax.numpy as jnp
@@ -279,41 +279,67 @@ def extract_shape_tuples(s):
     return matches
 
 
-def multi_vmap(f: C, in_mapping: str, out_mapping: str, scan_dims: Set[str] | None = None, verbose: bool = False) -> C:
+def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], scan_dims: Set[str] | None = None,
+               verbose: bool = False) -> C:
     """
     A version of vmap which maps over multiple arguments.
 
     Args:
         f: function to map over
         in_mapping: string of input shapes, e.g. "[n1,n2,n3],[n1,n3]", only left most dims need to be represented
-        out_mapping: string of output shapes, e.g. "[n1,n2,n3]", one per output. All input variables must be mentioned
-            once.
+        out_mapping: string of output shapes, e.g. "[n1,n2,n3,...]", one per output. All input variables must be mentioned
+            once. '...' means the shape of core function output. Assumes end if not given.
 
     Returns:
         mapped function
+
+
+    >>> def f(x, y):
+    >>>     return x + y
+
+    >>> n1, n2, n3 = 3, 4, 5
+
+    >>> x = jnp.ones((n1,n2,n3,2,2))
+    >>> y = jnp.ones((n1,n2,n3,2,2))
+
+    >>> f_multi = multi_vmap(f, in_mapping="[n1,n2,n3],[n1,n2,n3,2,2]", out_mapping="[..., n1,n2]", verbose=True)
+    >>> res = f_multi(x, y)
+    >>> assert res.shape == (n3, 2, 2) + (n1, n2) # batch shape (n3, 2, 2) and output shape (n1, n2) with transpose
+
     """
     if scan_dims is None:
         scan_dims = {}
+
+    if isinstance(in_mapping, list):
+        in_mapping = ','.join(in_mapping)
+    if isinstance(out_mapping, list):
+        out_mapping = ','.join(out_mapping)
 
     input_shapes = extract_shape_tuples(in_mapping)
     input_dims = [extract_shape(s) for s in input_shapes]
     all_dims = set()
     for dims in input_dims:
+        if '...' in dims:
+            raise ValueError(f"Input shapes must not contain '...', got {dims}.")
         all_dims.update(set(dims))
 
     output_shapes = extract_shape_tuples(out_mapping)
     output_dims = [extract_shape(s) for s in output_shapes]
     for dims in output_dims:
+        if '...' not in dims:  # Assume it's at the end.
+            dims.append('...')
         if set(dims) != set(output_dims[0]):
             raise ValueError(f"Each output shape must contain same dimensions, got {output_dims}.")
         # Ensure all dims contains
-        if not all_dims.issuperset(set(dims)):
+        if not all_dims.union({'...'}).issuperset(set(dims)):
             raise ValueError(f"Output shape must contain all input dims, got {dims} not all in {all_dims}.")
 
     out_perm = []
     out_sig = [dims.copy() for dims in output_dims]
     applicators = []
     for dim in output_dims[0]:
+        if dim == '...':
+            continue
         out_perm.append(dim)
         in_axes = tuple([in_dims.index(dim) if dim in in_dims else None for in_dims in input_dims])
         if verbose:
@@ -330,7 +356,7 @@ def multi_vmap(f: C, in_mapping: str, out_mapping: str, scan_dims: Set[str] | No
         for dims in out_sig:
             dims.remove(dim)
 
-    out_sig = [dims + ['...'] for dims in out_sig]
+    out_perm.append('...')
 
     if verbose:
         input_sig = [f"({','.join(dims)})" for dims in input_dims]
@@ -354,7 +380,24 @@ def multi_vmap(f: C, in_mapping: str, out_mapping: str, scan_dims: Set[str] | No
                 res.append(out)
                 continue
 
-            perm = [out_perm.index(dim) for dim in dims]
+            # Different arrangements of `dims`
+            # a) [..., n1,n2] -- ellipsis at start
+            # b) [n1, ..., n2] -- ellipsis at middle
+            # c) [n1, n2, ...] -- ellipsis at end
+
+            indices = list(range(len(np.shape(out))))
+            num_mapped_out_dims = len(dims) - 1  # remove ...
+            out_dim_map = dict(zip(out_perm[:-1], indices[:num_mapped_out_dims]))  # dim -> idx
+            ellipsis_map = indices[num_mapped_out_dims:]
+            if dims[0] == '...':  # a
+                perm = ellipsis_map + [out_dim_map[dim] for dim in dims[1:]]
+            elif dims[-1] == '...':  # c
+                perm = [out_dim_map[dim] for dim in dims[:-1]] + ellipsis_map
+            else:  # b
+                num_start_dims = dims.index('...')  # [n1, ..., n2] -> 1
+                num_end_dims = num_mapped_out_dims - num_start_dims  # [n1, ..., n2] -> 1
+                perm = [out_dim_map[dim] for dim in dims[:num_start_dims]] + ellipsis_map + [out_dim_map[dim] for dim in
+                                                                                             dims[-num_end_dims:]]
             res.append(lax.transpose(out, perm))
         if len(res) == 1:
             return res[0]

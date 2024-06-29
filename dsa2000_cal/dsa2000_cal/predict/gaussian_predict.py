@@ -9,6 +9,7 @@ from jax import numpy as jnp, lax
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.ellipse_utils import Gaussian
+from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
@@ -66,10 +67,10 @@ class GaussianPredict:
              ..., visibility_coords.time_idx, visibility_coords.antenna_2, :, :, :
              ]  # [[source,] row, chan, 2, 2]
 
-        # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
-        # We want the outer broadcast to be over chan, so we'll do this order:
-        # chan -> row -> source
-        # vmap(vmap(scan)) is the preferred approach for this, Which avoids setting up vmap overhead.
+        if direction_dependent_gains:
+            g_mapping = "[s,r,c,2,2]"
+        else:
+            g_mapping = "[r,c,2,2]"
 
         # lmn: [source, 3]
         # uvw: [rows, 3]
@@ -77,20 +78,8 @@ class GaussianPredict:
         # freq: [chan]
         # image: [source, chan, 2, 2]
         # ellipse_params: [source, 3]
-        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, -3, None])  # -> chan
-        # lmn: [source, 3]
-        # uvw: [rows, 3]
-        # g1, g2: [[source,] row, 2, 2]
-        # freq: []
-        # image: [source, 2, 2]
-        # ellipse_params: [source, 3]
-        @partial(jax.vmap, in_axes=[None, 0, -3, -3, None, None, None])  # -> row
-        # lmn: [source, 3]
-        # uvw: [3]
-        # g1, g2: [[source,] 2, 2]
-        # freq: []
-        # image: [source, 2, 2]
-        # ellipse_params: [source, 3]
+        @partial(multi_vmap, in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],[s,c,2,2],[s,3]",
+                 out_mapping="[r,c,2,2]")
         def compute_visibility(lmn, uvw, g1, g2, freq, image, ellipse_params):
             # TODO: Can use associative_scan here.
             if direction_dependent_gains:
@@ -122,9 +111,8 @@ class GaussianPredict:
             freqs,
             gaussian_model_data.image,
             gaussian_model_data.ellipse_params
-        )  # [chan, row, 2, 2]
-        # make sure the output is [row, chan, 2, 2]
-        return lax.transpose(visibilities, (1, 0, 2, 3))  # [row, chan, 2, 2]
+        )  # [row, chan, 2, 2]
+        return visibilities
 
     def _single_compute_visibilty(self, lmn, uvw, g1, g2, freq, image, ellipse_params):
         """

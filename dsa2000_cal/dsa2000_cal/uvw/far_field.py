@@ -10,6 +10,7 @@ import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
 from jax import config, numpy as jnp
 
+from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.uvw.uvw_utils import InterpolatedArray, perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
@@ -360,12 +361,12 @@ class FarFieldDelayEngine:
         else:
             antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
 
-        @partial(jax.vmap, in_axes=(0, None, None))
-        @partial(jax.vmap, in_axes=(None, 0, 0))
-        def _single_compute_uvw_batched(t1: jax.Array, i1: jax.Array, i2: jax.Array) -> jax.Array:
+
+        @partial(multi_vmap, in_mapping="[T],[B],[B]", out_mapping="[T,B,3]", verbose=True)
+        def _compute_uvw_batched(t1: jax.Array, i1: jax.Array, i2: jax.Array) -> jax.Array:
             return self._single_compute_uvw(t1, i1, i2)
 
-        return _single_compute_uvw_batched(times, antenna_1, antenna_2), antenna_1, antenna_2
+        return _compute_uvw_batched(times, antenna_1, antenna_2), antenna_1, antenna_2
 
 
 def far_field_delay(

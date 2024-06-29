@@ -10,7 +10,7 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import lax
 from jaxns import Prior, Model, PriorModelType
 
-from dsa2000_cal.common.jax_utils import promote_pytree
+from dsa2000_cal.common.jax_utils import promote_pytree, multi_vmap
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, VisibilityCoords
 from dsa2000_cal.predict.vec_utils import kron_product
 from dsa2000_cal.simulation.rime_model import RIMEModel
@@ -107,12 +107,7 @@ class ReplicatedGainProbabilisticModel(AbstractGainProbabilisticModel):
 
             # g1, g2: [num_rows, num_chans, 2, 2]
             # vis: [num_rows, num_chans, 2, 2]
-            @partial(jax.vmap, in_axes=(0, 0, 0))  # -> rows
-            # g1, g2: [num_chans, 2, 2]
-            # vis: [num_chans, 2, 2]
-            @partial(jax.vmap, in_axes=(0, 0, 0))  # over chans
-            # g1, g2: [2, 2]
-            # vis: [2, 2]
+            @partial(multi_vmap, in_mapping="[r,c,2,2],[r,c,2,2],[r,c,2,2]", out_mapping="[r,c]", verbose=True)
             def transform(g1, g2, vis):
                 return flatten_coherencies(kron_product(g1, vis, g2.T.conj()))  # [4]
 
@@ -260,7 +255,7 @@ class DiagonalUnconstrainedGain(AbstractGainPriorModel):
             ),
             name='gains_imag'
         )
-        diag_gains = gains_real + 1j * gains_imag # [num_source, num_ant, 2]
+        diag_gains = gains_real + 1j * gains_imag  # [num_source, num_ant, 2]
         gains = jax.vmap(jax.vmap(jnp.diag))(diag_gains)  # [num_source, num_ant, 2, 2]
         gains = jax.vmap(lambda _freq: gains, out_axes=2)(freqs)  # [num_source, num_ant, num_chan, 2, 2]
         return gains

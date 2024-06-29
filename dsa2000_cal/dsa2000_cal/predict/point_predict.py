@@ -8,6 +8,7 @@ from astropy import constants
 from jax import numpy as jnp, lax
 from jax._src.typing import SupportsDType
 
+from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
 from dsa2000_cal.predict.check_utils import check_dft_predict_inputs
@@ -61,28 +62,21 @@ class PointPredict:
              ..., visibility_coords.time_idx, visibility_coords.antenna_2, :, :, :
              ]  # [[source,] row, chan, 2, 2]
 
+        if direction_dependent_gains:
+            g_mapping = "[s,r,c,2,2]"
+        else:
+            g_mapping = "[r,c,2,2]"
+
         # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
-        # We want the outer broadcast to be over chan, so we'll do this order:
-        # chan -> row -> source
-        # vmap(vmap(scan)) is the preferred approach for this, Which avoids setting up vmap overhead.
+        # We want the outer broadcast to be over chan, so we'll do this order.
 
         # lmn: [source, 3]
         # uvw: [rows, 3]
         # g1, g2: [[source,] row, chan, 2, 2]
         # freq: [chan]
         # image: [source, chan, 2, 2]
-        @partial(jax.vmap, in_axes=[None, None, -3, -3, 0, -3])  # -> chan
-        # lmn: [source, 3]
-        # uvw: [rows, 3]
-        # g1, g2: [[source,] row, 2, 2]
-        # freq: []
-        # image: [source, 2, 2]
-        @partial(jax.vmap, in_axes=[None, 0, -3, -3, None, None])  # -> row
-        # lmn: [source, 3]
-        # uvw: [3]
-        # g1, g2: [[source,] 2, 2]
-        # freq: []
-        # image: [source, 2, 2]
+        @partial(multi_vmap, in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],[s,c,2,2]",
+                 out_mapping="[r,c]", verbose=True)
         def compute_visibility(lmn, uvw, g1, g2, freq, image):
             """
             Compute visibilities for a single row, channel, accumulating over sources.
@@ -126,9 +120,8 @@ class PointPredict:
             g2,
             freqs,
             dft_model_data.image
-        )  # [chan, row, 2, 2]
-        # make sure the output is [row, chan, 2, 2]
-        return lax.transpose(visibilities, (1, 0, 2, 3))  # [row, chan, 2, 2]
+        )  # [row, chan, 2, 2]
+        return visibilities
 
     def _single_compute_visibilty(self, lmn, uvw, g1, g2, freq, image):
         """

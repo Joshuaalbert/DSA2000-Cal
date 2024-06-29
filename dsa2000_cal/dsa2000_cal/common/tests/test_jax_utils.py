@@ -111,3 +111,42 @@ def test_multi_vmap():
                          scan_dims={'n1'})
     res = f_multi(x, y)
     assert res.shape == (n2, n1, n3, 2, 2)
+
+    # Test putting output in other spots
+
+    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,n1,...]", verbose=True)
+    res = f_multi(x, y)
+    assert res.shape == (n2, n1, n3, 2, 2)
+
+    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[...,n3,n2,n1]", verbose=True)
+    res = f_multi(x, y)
+    assert res.shape == (2, 2, n3, n2, n1)
+
+    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[...,n2,n1]", verbose=True)
+    res = f_multi(x, y)
+    assert res.shape == (n3, 2, 2, n2, n1)
+
+    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,...,n1]", verbose=True)
+    res = f_multi(x, y)
+    assert res.shape == (n2, n3, 2, 2, n1)
+
+    def g(x, y):
+        return x + y, x + y
+
+    f_multi = multi_vmap(g, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,n1,...],[n1,n2,...]",
+                         verbose=True)
+    res = f_multi(x, y)
+    assert res[0].shape == (n2, n1, n3, 2, 2)
+    assert res[1].shape == (n1, n2, n3, 2, 2)
+
+    f_multi = multi_vmap(g, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,...,n1],[n1,...,n2]",
+                         verbose=True)
+    res = f_multi(x, y)
+    assert res[0].shape == (n2, n3, 2, 2, n1)
+    assert res[1].shape == (n1, n3, 2, 2, n2)
+
+    f_multi = multi_vmap(g, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[...,n2,n1],[...,n1,n2]",
+                         verbose=True)
+    res = f_multi(x, y)
+    assert res[0].shape == (n3, 2, 2, n2, n1)
+    assert res[1].shape == (n3, 2, 2, n1, n2)

@@ -21,7 +21,7 @@ from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
 from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_lmn, lmn_to_enu
 from dsa2000_cal.common.interp_utils import convolved_interp
-from dsa2000_cal.common.jax_utils import chunked_pmap, pad_to_chunksize
+from dsa2000_cal.common.jax_utils import chunked_pmap, pad_to_chunksize, multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
@@ -390,8 +390,7 @@ def interpolate_antennas(antennas_enu: jax.Array, model_antennas_enu: jax.Array,
     if np.shape(model_antennas_enu)[0] < k:
         raise ValueError(f"Too few model antennas, need at least {k}.")
 
-    @partial(jax.vmap, in_axes=0)  # -> time
-    @partial(jax.vmap, in_axes=0)  # -> dir
+    @partial(multi_vmap, in_mapping="[T,D,M]", out_mapping="[T,D,...]")
     def interp(dtec):
         return convolved_interp(antennas_enu, model_antennas_enu, dtec, k, mode='euclidean')
 

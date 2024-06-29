@@ -4,10 +4,11 @@ from typing import NamedTuple
 
 import jax
 import numpy as np
-from jax import numpy as jnp, lax
+from jax import numpy as jnp
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common import wgridder
+from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
 from dsa2000_cal.predict.check_utils import check_fft_predict_inputs
 from dsa2000_cal.predict.vec_utils import kron_product
@@ -99,35 +100,13 @@ class FFTStokesIPredict:
             visibility_coords.time_idx, visibility_coords.antenna_2, ...
         ]  # [row, [chan,] 2, 2]
 
-        # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
-        # We want the outer broadcast to be over chan, so we'll do this order:
-        # Over chan
-
-        # g1, g2: [row, [chan,] 2, 2]
-        # freqs: [chan]
-        # image: [[chan',] Nl, Nm]
-        # dl, dm, l0, m0: [[chan']]
-        # uvw: [row, 3]
-        def compute_visibility(g1: jax.Array, g2: jax.Array,
-                               freqs: jax.Array,
-                               image: jax.Array, dl: jax.Array, dm: jax.Array,
-                               l0: jax.Array, m0: jax.Array,
-                               uvw: jax.Array):
-            vis = self._single_predict_jax(g1, g2,
-                                           freqs,
-                                           image,
-                                           dl, dm, l0, m0,
-                                           uvw
-                                           )  # [row, chan, 2, 2]
-            return vis  # [row, chan, 4]
-
-        visibilities = compute_visibility(
+        visibilities = self._single_predict_jax(
             g1, g2,
             freqs, faint_model_data.image,
             faint_model_data.dl, faint_model_data.dm,
             faint_model_data.l0, faint_model_data.m0,
             visibility_coords.uvw
-        )  # [row, chan, 2, 2]
+        )  # [row, chan, 4]
         return visibilities
 
     def _single_predict_jax(self, g1: jax.Array, g2: jax.Array, freqs: jax.Array,
@@ -158,36 +137,46 @@ class FFTStokesIPredict:
         image_has_chans = len(np.shape(image)) == 3
 
         if image_has_chans:
-            @partial(jax.vmap, in_axes=(0,  # freqs
-                                        0,  # image
-                                        0,  # dl
-                                        0,  # dm
-                                        0,  # l0
-                                        0))  # m0
-            def predict(freqs: jax.Array, image: jax.Array, dl: jax.Array, dm: jax.Array, l0: jax.Array,
-                        m0: jax.Array) -> jax.Array:
-                if len(np.shape(image)) != 2:
-                    raise ValueError(f"Expected image to have shape [Nm, Nl], got {np.shape(image)}")
-                if np.shape(dl) != () or np.shape(dm) != () or np.shape(l0) != () or np.shape(m0) != ():
-                    raise ValueError("If image doesn't have a channel then l0, m0, dl, and dm must be scalars.")
-                vis = wgridder.dirty2vis(
-                    uvw=uvw,
-                    freqs=freqs[None],
-                    dirty=image,
-                    pixsize_m=dm,
-                    pixsize_l=dl,
-                    center_m=m0,
-                    center_l=l0,
-                    wgt=None,  # Always None
-                    flip_v=False,
-                    epsilon=self.epsilon
-                )  # [num_rows, 1]
-                return vis[:, 0]  # [num_rows]
-
-            vis_I = predict(freqs, image, dl, dm, l0, m0)  # [num_freqs, num_rows]
-            vis_I = lax.transpose(vis_I, (1, 0))  # [num_rows, num_freqs]
+            # freqs: [num_freqs]
+            # image: [num_freqs, Nm, Nl]
+            # dl, dm, l0, m0: [num_freqs]
+            # uvw: [num_rows, 3]
+            # Each frequency has its own image
+            in_mapping = "[c],[c,Nm,Nl],[c],[c],[c],[c],[r,3]"
+            out_mapping = '[...,c]'
         else:
-            vis_I = wgridder.dirty2vis(
+            # freqs: [num_freqs]
+            # image: [num_freqs, Nm, Nl]
+            # dl, dm, l0, m0: [num_freqs]
+            # uvw: [num_rows, 3]
+            # Each frequency has the same image
+            in_mapping = "[c],[Nm,Nl],[],[],[],[],[r,3]"
+            out_mapping = '[...]'
+
+        @partial(multi_vmap, in_mapping=in_mapping, out_mapping=out_mapping)
+        def predict(freqs: jax.Array, image: jax.Array, dl: jax.Array, dm: jax.Array, l0: jax.Array,
+                    m0: jax.Array, uvw: jax.Array) -> jax.Array:
+            """
+            Predict visibilities for a single frequency.
+
+            Args:
+                freqs: [[num_freqs]]
+                image: [Nm, Nl]
+                dl: []
+                dm: []
+                l0: []
+                m0: []
+                uvw: [rows, 3]
+
+            Returns:
+                vis: [num_rows [, num_freqs]]
+            """
+            squeeze = False
+            if np.shape(freqs) == ():
+                freqs = freqs[None]
+                squeeze = True
+
+            vis = wgridder.dirty2vis(
                 uvw=uvw,
                 freqs=freqs,
                 dirty=image,
@@ -195,10 +184,15 @@ class FFTStokesIPredict:
                 pixsize_l=dl,
                 center_m=m0,
                 center_l=l0,
-                wgt=None,
+                wgt=None,  # Always None
                 flip_v=False,
                 epsilon=self.epsilon
-            )  # [num_rows, num_freqs]
+            )  # [num_rows, 1]
+            if squeeze:
+                vis = vis[:, 0]
+            return vis  # [num_rows [, num_freqs]]
+
+        vis_I = predict(freqs, image, dl, dm, l0, m0, uvw)  # [num_freqs, num_rows]
 
         return self._translate_to_linear(g1, g2, vis_I)  # [num_rows, num_freqs, 2, 2]
 
@@ -221,24 +215,16 @@ class FFTStokesIPredict:
             raise ValueError(f"Expected gains to have shape [{shape[0]}, ...], got {np.shape(g1)} and {np.shape(g2)}")
         gains_have_freqs = len(np.shape(g1)) == 4
 
-        # Over chan->row
-        # g1, g2: [num_rows, [num_freqs,] 2, 2]
-        # vis: [num_rows, num_freqs, 4]
-        @partial(jax.vmap, in_axes=(
-                1 if gains_have_freqs else None,
-                1 if gains_have_freqs else None,
-                1
-        ))
-        # g1, g2: [num_rows, 2, 2]
-        # vis: [num_rows, 4]
-        @partial(jax.vmap, in_axes=(0, 0, 0))
-        # g1, g2: [2, 2]
-        # vis: [4]
+        if gains_have_freqs:
+            g_mapping = "[r,c,2,2]"
+        else:
+            g_mapping = "[r,2,2]"
+
+        @partial(multi_vmap, in_mapping=f"{g_mapping},{g_mapping},[r,c,4]", out_mapping="[r,c,...]", verbose=True)
         def transform(g1, g2, vis_stokes):
             vis_linear = stokes_to_linear(vis_stokes, flat_output=False)  # [2, 2]
             vis_linear = kron_product(g1, vis_linear, g2.T.conj())  # [2, 2]
             return vis_linear  # [2, 2]
 
-        vis_linear = transform(g1, g2, vis_stokes)  # [num_freqs, num_rows, 2, 2]
-        vis_linear = lax.transpose(vis_linear, (1, 0, 2, 3))  # [num_rows, num_freqs, 2, 2]
+        vis_linear = transform(g1, g2, vis_stokes)  # [num_rows, num_freqs, 2, 2]
         return vis_linear  # [num_rows, num_freqs, 2, 2]
