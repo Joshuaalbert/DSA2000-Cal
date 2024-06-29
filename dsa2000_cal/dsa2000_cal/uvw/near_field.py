@@ -2,27 +2,25 @@ import dataclasses
 import itertools
 import time as time_mod
 import warnings
-from functools import partial
-from typing import Tuple
 
 import jax
 import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
 from jax import config, numpy as jnp
+from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.uvw.uvw_utils import InterpolatedArray, perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
+from dsa2000_cal.uvw.uvw_utils import InterpolatedArray, norm
 
 
 @dataclasses.dataclass(eq=False)
 class NearFieldDelayEngine:
     """
-    Compute the UVW coordinates for a given phase center, using VLBI delay model.
+    Compute the delay for baselines for stationary sources on geoid, and observers also on geoid.
     """
     antennas: ac.EarthLocation
     start_time: at.Time
     end_time: at.Time
-    phase_center: ac.ICRS
 
     resolution: au.Quantity | None = None
     verbose: bool = False
@@ -59,25 +57,8 @@ class NearFieldDelayEngine:
         if self.antennas.shape[0] < 2:
             raise ValueError(f"Need at least 2 antennas to form a baseline.")
 
-        bodies_except_earth = (
-            'sun', 'moon', 'mercury', 'venus',
-            'mars', 'jupiter', 'saturn', 'uranus',
-            'neptune'
-        )
-        GM_bodies = {
-            'sun': const.GM_sun,
-            'moon': 0.0123 * const.GM_earth,
-            'mercury': 0.0553 * const.GM_earth,
-            'venus': 0.815 * const.GM_earth,
-            'mars': 0.107 * const.GM_earth,
-            'jupiter': const.GM_jup,
-            'saturn': 95.16 * const.GM_earth,
-            'uranus': 14.54 * const.GM_earth,
-            'neptune': 17.15 * const.GM_earth
-        }
+        bodies_except_earth = ()
 
-        self.ra0 = jnp.asarray(self.phase_center.ra.rad)
-        self.dec0 = jnp.asarray(self.phase_center.dec.rad)
         if not self.start_time.isscalar or not self.end_time.isscalar:
             raise ValueError(f"start_time and end_time must be scalar got {self.start_time} and {self.end_time}")
 
@@ -93,10 +74,10 @@ class NearFieldDelayEngine:
         num_ants = len(self.antennas)
 
         # Define the interpolation grid
-        interp_times = start_grid_time + np.arange(num_grid_times) * self.resolution  # [T]
+        self.interp_times = interp_times = start_grid_time + np.arange(num_grid_times) * self.resolution  # [T]
 
         if self.verbose:
-            print(f"Computing UVW for phase center: {self.phase_center}")
+            print(f"Computing near field delay")
             print(f"Number of antennas: {len(self.antennas)}")
             print(f"Between {start_time} and {end_time} ({(end_time - start_time).sec} s)")
             print(f"Interpolation resolution: {self.resolution}")
@@ -113,33 +94,15 @@ class NearFieldDelayEngine:
             obstime=interp_times.reshape((num_grid_times, 1))
         )  # [T, num_ants]
         antennas_position_gcrs = antennas_gcrs.cartesian.xyz
-        antennas_velocity_gcrs = antennas_gcrs.velocity.d_xyz
 
-        (earth_position_bcrs, earth_velocity_bcrs) = ac.get_body_barycentric_posvel(
-            body='earth',
-            time=interp_times
-        )  # [T]
-        earth_position_bcrs = earth_position_bcrs.xyz
-        earth_velocity_bcrs = earth_velocity_bcrs.xyz
-
-        sun_position_bcrs = ac.get_body_barycentric(
-            body='sun',
-            time=interp_times
-        )  # [T]
-        sun_position_bcrs = sun_position_bcrs.xyz
-        R_earth_bcrs = earth_position_bcrs - sun_position_bcrs  # [T]
-
-        system_positions_bcrs = []
-        for body in bodies_except_earth:
-            body_position_bcrs = ac.get_body_barycentric(
-                body=body,
-                time=interp_times
-            )  # [T, N]
-            body_position_bcrs = np.transpose(body_position_bcrs.xyz, (1, 0))  # [T, 3]
-            system_positions_bcrs.append(body_position_bcrs)
-        system_positions_bcrs = np.stack(system_positions_bcrs, axis=1)  # [T, N, 3]
-
-        GM_system = au.Quantity([GM_bodies[body] for body in bodies_except_earth])
+        enu_gcrs = ENU(
+            east=np.reshape([0, 1, 0, 0] * au.km, (1, 4)),
+            north=np.reshape([0, 0, 1, 0] * au.km, (1, 4)),
+            up=np.reshape([0, 0, 0, 1] * au.km, (1, 4)),
+            location=self.antennas[0],
+            obstime=interp_times.reshape((num_grid_times, 1))  # [T, 4]
+        ).transform_to(ac.GCRS(obstime=interp_times.reshape((num_grid_times, 1))))
+        enu_coords_gcrs = enu_gcrs.cartesian.xyz
 
         ephem_compute_time = time_mod.time() - ephem_compute_t0
 
@@ -152,69 +115,134 @@ class NearFieldDelayEngine:
             np.transpose(antennas_position_gcrs, (1, 2, 0))
         )  # [T, num_ants, 3]
 
-        self.w_antennas_gcrs = quantity_to_jnp(
-            np.transpose(antennas_velocity_gcrs, (1, 2, 0))
-        )  # [T, num_ants, 3]
+        self.enu_coords_gcrs = quantity_to_jnp(
+            np.transpose(enu_coords_gcrs, (1, 2, 0))
+        )  # [T, 4, 3]
 
-        X_earth_bcrs = quantity_to_jnp(
-            np.transpose(earth_position_bcrs, (1, 0))
-        )  # [T, 3]
-        V_earth_bcrs = quantity_to_jnp(
-            np.transpose(earth_velocity_bcrs, (1, 0))
-        )  # [T, 3]
+        self.interp_times_jax = jnp.asarray((interp_times - self.ref_time).sec)  # [T]
 
-        R_earth_bcrs = quantity_to_jnp(
-            np.transpose(R_earth_bcrs, (1, 0))
-        )  # [T, 3]
+    def construct_x_0_gcrs(self, emitter: ac.EarthLocation | ENU) -> InterpolatedArray:
+        """
+        Construct the emitter location as a linear combination of radius vectors from first antenna to antennas 1,2,3.
 
-        system_positions_bcrs = quantity_to_jnp(
-            system_positions_bcrs
-        )  # [T, N_J, 3]
+        Args:
+            emitter: [E] the location of the emitter.
 
-        self.GM_J = quantity_to_jnp(GM_system)  # [N_J]
+        Returns:
+            interpolator for emitter
+        """
+        emitter_gcrs = emitter.reshape((1, -1)).transform_to(
+            ac.GCRS(
+                obstime=self.interp_times.reshape((-1, 1))
+            )
+        )  # [T, E]
+        emitter_position_gcrs = emitter_gcrs.cartesian.xyz
+        x_emitter_gcrs = quantity_to_jnp(
+            np.transpose(emitter_position_gcrs, (1, 2, 0))
+        )  # [T, E, 3]
 
-        ref_time = interp_times[0]
-
-        self.interp_times_jax = interp_times_jax = jnp.asarray((interp_times - ref_time).sec)  # [T]
-
-        # Create interpolation objects
-        self.X_earth_bcrs = InterpolatedArray(
-            times=interp_times_jax,
-            values=X_earth_bcrs,
+        return InterpolatedArray(
+            times=self.interp_times_jax,
+            values=x_emitter_gcrs,
             axis=0,
             regular_grid=True
-        )
-        self.V_earth_bcrs = InterpolatedArray(
-            times=interp_times_jax,
-            values=V_earth_bcrs,
+        )  # [T, E, 3]
+
+    def _construct_x_0_gcrs_from_projection(self, a_east: jax.Array, a_north: jax.Array,
+                                            a_up: jax.Array) -> InterpolatedArray:
+        """
+        Construct the emitter location as a linear combination of radius vectors from first antenna to antennas 1,2,3.
+
+        Args:
+            a_east: [E] coefficient for east direction from antenna[0]
+            a_north: [E] coefficient for (x2 - x0) direction
+            a_up: [E] coefficient for (x3 - x0) direction
+
+        Returns:
+            interpolator for emitter
+        """
+        a_east = jnp.reshape(a_east, (-1,))
+        a_north = jnp.reshape(a_north, (-1,))
+        a_up = jnp.reshape(a_up, (-1,))
+        d_origin = self.enu_coords_gcrs[:, 0:1, :]
+        d_east = self.enu_coords_gcrs[:, 1:2, :] - d_origin
+        d_north = self.enu_coords_gcrs[:, 2:3, :] - d_origin
+        d_up = self.enu_coords_gcrs[:, 3:4, :] - d_origin
+
+        values = a_east[:, None] * d_east + a_north[:, None] * d_north + a_up[:, None] * d_up + d_origin
+
+        return InterpolatedArray(
+            times=self.interp_times_jax,
+            values=values,
             axis=0,
             regular_grid=True
-        )
+        )  # [T, E, 3]
 
-        self.R_earth_bcrs = InterpolatedArray(
-            times=interp_times_jax,
-            values=R_earth_bcrs,
-            axis=0,
-            regular_grid=True
-        )
-
-        self.X_J_bcrs = InterpolatedArray(
-            times=interp_times_jax,
-            values=system_positions_bcrs,
-            axis=0,
-            regular_grid=True
-        )
-
-    def compute_delay_from_lm_jax(self,
-                                  l: jax.Array, m: jax.Array,
-                                  t1: jax.Array, i1: jax.Array,
-                                  i2: jax.Array) -> jax.Array:
+    def compute_delay_from_projection_jax(self,
+                                          a_east: jax.Array,
+                                          a_north: jax.Array,
+                                          a_up: jax.Array,
+                                          t1: jax.Array,
+                                          i1: jax.Array,
+                                          i2: jax.Array
+                                          ) -> jax.Array:
         """
         Compute the delay for a given phase center, using VLBI delay model.
 
         Args:
-            l: the l coordinate.
-            m: the m coordinate.
+            a_east: [E] coefficient for east direction from antenna[0]
+            a_north: [E] coefficient for (x2 - x0) direction
+            a_up: [E] coefficient for (x3 - x0) direction
+            t1: the time of observation, in tt scale in seconds, relative to the first time.
+            i1: the index of the first antenna.
+            i2: the index of the second antenna.
+
+        Returns:
+            delay: [E] the delay in meters, i.e. light travel distance, for each emitter.
+        """
+        if np.shape(a_east) != np.shape(a_north) or np.shape(a_east) != np.shape(a_up):
+            raise ValueError(
+                f"a_east, a_north, a_up must have the same shape "
+                f"got {np.shape(a_east)}, {np.shape(a_north)}, {np.shape(a_up)}"
+            )
+        return self._compute_delay_jax(
+            self._construct_x_0_gcrs_from_projection(a_east, a_north, a_up),
+            t1, i1, i2
+        ).reshape(np.shape(a_east))
+
+    def compute_delay_from_emitter_jax(self,
+                                       emitter: ac.EarthLocation | ENU,
+                                       t1: jax.Array,
+                                       i1: jax.Array,
+                                       i2: jax.Array
+                                       ) -> jax.Array:
+        """
+        Compute the delay for a given phase center, using VLBI delay model.
+
+        Args:
+            emitter: [E] the location of the emitter.
+            t1: the time of observation, in tt scale in seconds, relative to the first time.
+            i1: the index of the first antenna.
+            i2: the index of the second antenna.
+
+        Returns:
+            delay: [E] the delay in meters, i.e. light travel distance, for each emitter.
+        """
+        return self._compute_delay_jax(
+            self.construct_x_0_gcrs(emitter=emitter),
+            t1, i1, i2
+        ).reshape(emitter.shape)
+
+    def _compute_delay_jax(self,
+                           x_0_gcrs: InterpolatedArray,
+                           t1: jax.Array,
+                           i1: jax.Array,
+                           i2: jax.Array
+                           ) -> jax.Array:
+        """
+        Compute the delay for a given phase center, using VLBI delay model.
+
+        Args:
             t1: the time of observation, in tt scale in seconds, relative to the first time.
             i1: the index of the first antenna.
             i2: the index of the second antenna.
@@ -223,15 +251,8 @@ class NearFieldDelayEngine:
             delay: the delay in meters, i.e. light travel distance.
         """
 
-        if np.shape(l) != () or np.shape(m) != ():
-            raise ValueError(f"l, m must be scalars got {np.shape(l)}, {np.shape(m)}")
-
         if np.shape(t1) != () or np.shape(i1) != () or np.shape(i2) != ():
             raise ValueError(f"t1, i1, i2 must be scalars got {np.shape(t1)}, {np.shape(i1)}, {np.shape(i2)}")
-
-        n = jnp.sqrt(1. - jnp.square(l) - jnp.square(m))
-        ra, dec = perley_icrs_from_lmn(l=l, m=m, n=n, ra0=self.ra0, dec0=self.dec0)
-        K_bcrs = celestial_to_cartesian(ra, dec)
 
         x_1_gcrs = InterpolatedArray(
             times=self.interp_times_jax,
@@ -247,69 +268,15 @@ class NearFieldDelayEngine:
             regular_grid=True
         )
 
-        w_1_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
-            values=self.w_antennas_gcrs[:, i1, :],
-            axis=0,
-            regular_grid=True
-        )
-
-        w_2_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
-            values=self.w_antennas_gcrs[:, i2, :],
-            axis=0,
-            regular_grid=True
-        )
-
         delta_t = near_field_delay(
-            K_bcrs=K_bcrs,
             t1=t1,
+            x_0_gcrs=x_0_gcrs,
             x_1_gcrs=x_1_gcrs,
-            x_2_gcrs=x_2_gcrs,
-            w_1_gcrs=w_1_gcrs,
-            w_2_gcrs=w_2_gcrs,
-            X_earth_bcrs=self.X_earth_bcrs,
-            V_earth_bcrs=self.V_earth_bcrs,
-            R_earth_bcrs=self.R_earth_bcrs,
-            X_J_bcrs=self.X_J_bcrs,
-            GM_J=self.GM_J
+            x_2_gcrs=x_2_gcrs
         )  # s
         # Unsure why the negative sign needs to be introduced to match,
         # since delta_t=t2-t1 is time for signal to travel from 1 to 2.
-        return -delta_t * quantity_to_jnp(const.c)
-
-    def _single_compute_uvw(self, t1: jax.Array, i1: jax.Array, i2: jax.Array) -> jax.Array:
-        """
-        Compute the UVW coordinates for a given phase center, using VLBI delay model.
-
-        Args:
-            t1: time of observation, in tt scale in seconds, relative to the first time.
-            i1: index of the first antenna.
-            i2: index of the second antenna.
-
-        Returns:
-            uvw: [3] UVW coordinates in meters.
-        """
-        l = m = jnp.asarray(0.)
-        # tau = (-?) c * delay = u l + v m + w sqrt(1 - l^2 - m^2) ==> w = tau(l=0, m=0)
-        # d/dl tau = u + w l / sqrt(1 - l^2 - m^2) ==> u = d/dl tau(l=0, m=0)
-        # d/dm tau = v + w m / sqrt(1 - l^2 - m^2) ==> v = d/dm tau(l=0, m=0)
-        w, (u, v) = jax.value_and_grad(self.compute_delay_from_lm_jax, argnums=(0, 1))(l, m, t1, i1, i2)
-        return jnp.stack([u, v, w], axis=-1)  # [3]
-
-    def compute_uvw_jax(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array) -> jax.Array:
-        """
-        Compute the UVW coordinates for a given phase center, using VLBI delay model.
-
-        Args:
-            times: [N] Time of observation, in tt scale in seconds, relative to the first time.
-            antenna_1: [N] Index of the first antenna.
-            antenna_2: [N] Index of the second antenna.
-
-        Returns:
-            uvw: [N, 3] UVW coordinates in meters.
-        """
-        return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
+        return -delta_t
 
     def time_to_jnp(self, times: at.Time) -> jax.Array:
         """
@@ -323,66 +290,24 @@ class NearFieldDelayEngine:
         """
         return jnp.asarray((times.tt - self.ref_time.tt).sec)  # [N]
 
-    def batched_compute_uvw_jax(self, times: jax.Array, with_autocorr: bool = True) -> Tuple[
-        jax.Array, jax.Array, jax.Array]:
-        """
-        Compute the UVW coordinates for a given phase center, using VLBI delay model in batched mode.
-
-        Args:
-            times: [T] Time of observation, in tt scale in seconds, relative to the first time.
-            with_autocorr: bool, whether to include autocorrelations.
-
-        Returns:
-            uvw: [T, num_baselines, 3] UVW coordinates in meters.
-            antenna_1: [num_baselines] Index of the first antenna.
-            antenna_2: [num_baselines] Index of the second antenna.
-        """
-        if with_autocorr:
-            antenna_1, antenna_2 = jnp.asarray(
-                list(itertools.combinations_with_replacement(range(len(self.antennas)), 2))).T
-        else:
-            antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
-
-        @partial(jax.vmap, in_axes=(0, None, None))
-        @partial(jax.vmap, in_axes=(None, 0, 0))
-        def _single_compute_uvw_batched(t1: jax.Array, i1: jax.Array, i2: jax.Array) -> jax.Array:
-            return self._single_compute_uvw(t1, i1, i2)
-
-        return _single_compute_uvw_batched(times, antenna_1, antenna_2), antenna_1, antenna_2
-
 
 def near_field_delay(
         t1: jax.Array,
+        x_0_gcrs: InterpolatedArray,
         x_1_gcrs: InterpolatedArray,
-        x_2_gcrs: InterpolatedArray,
-        w_1_gcrs: InterpolatedArray,
-        w_2_gcrs: InterpolatedArray,
-        X_earth_bcrs: InterpolatedArray,
-        V_earth_bcrs: InterpolatedArray,
-        R_earth_bcrs: InterpolatedArray,
-        X_J_bcrs: InterpolatedArray,
-        GM_J: jax.Array,
-        include_atmosphere: bool = False
+        x_2_gcrs: InterpolatedArray
 ):
     """
-    The VLBI delay model of [1] built on [2]. Only for near field sources.
+    The VLBI delay model of [1] built on [2]. Only for stationary Earth-based near field sources and observers.
 
     Args:
-        K_bcrs: Unit vector to source in absence of aberation.
         t1: time at first antenna (which serves as reference).
+        x_0_gcrs: [E] Interpolator for emitter position.
         x_1_gcrs: Interpolator for station 1 position.
         x_2_gcrs: Interpolator for station 2 position.
-        w_1_gcrs: Interpolator for station 1 velocity.
-        w_2_gcrs: Interpolator for station 2 velocity.
-        X_earth_bcrs: Interpolator for geocenter position.
-        V_earth_bcrs: Interpolator for geocenter velocity.
-        R_earth_bcrs: Interpolator for vector from Sun to geocenter.
-        X_J_bcrs: [num_J] Interpolator for position of J-th body.
-        GM_J: [num_J] GM of J-th body.
-        include_atmosphere: if True then add atmosphere delay model.
 
     Returns:
-        The delay in seconds at time t1, for baseline b=x2-x1.
+        [E] The delay in metres at time t1, for baseline b=x2-x1.
 
     References:
         [1] IERS Technical Note No. 36, IERS Conventions (2010)
@@ -390,64 +315,29 @@ def near_field_delay(
         [2] Klioner, S. A. (1991). General relativistic model of VLBI delay observations.
             https://www.researchgate.net/publication/253171626
     """
-    # We'll use BCRS frame for all calculations here
+
+    # When we take GCRS we are able to work nicely in the Schwarzschild metric for the Earth.
+    # If we want to include planetary effects, we would perturb the metric 11.17 of [1].
 
     c = quantity_to_jnp(const.c)  # m / s
-    L_G = jnp.asarray(6.969290134e-10)  # 1 - d(TT) / d(TCG)
+    L_G = jnp.asarray(6.969290134e-10)  # 1 - d(TT) / d(TCG), i.e. the mean rate of proper time on Earth's surface.
     GM_earth = quantity_to_jnp(const.GM_earth)  # m^3 / s^2
 
-    b_gcrs = x_2_gcrs(t1) - x_1_gcrs(t1)
+    def _delay(x_i_gcrs: InterpolatedArray) -> jax.Array:
+        # Eq 3.14 in [2] -- i.e. only Earth's potential
+        b_gcrs = x_i_gcrs(t1) - x_0_gcrs(t1)  # [E, 3]
+        delta_T_grav_earth = 2. * GM_earth / c ** 2 * jnp.log(
+            (
+                    norm(x_i_gcrs(t1)) + norm(x_0_gcrs(t1), axis=-1) + norm(b_gcrs, axis=-1)
+            ) / (
+                    norm(x_i_gcrs(t1)) + norm(x_0_gcrs(t1), axis=-1) - norm(b_gcrs, axis=-1)
+            )
+        )  # [E]
+        coordinate_delay = norm(b_gcrs, axis=-1) + delta_T_grav_earth  # [E]
 
-    # Eq 11.6, accurate for use in 11.3 and 11.5
-    X_1_bcrs = X_earth_bcrs(t1) + x_1_gcrs(t1)  # [3]
-    X_2_bcrs = X_earth_bcrs(t1) + x_2_gcrs(t1)  # [3]
+        # atomic clocks tick at the rate of proper time, thus we need to covert to proper time.
+        # 4.19 in [2] -- for Earth based observers the rate of proper time is the same as TT (by construction).
+        proper_delay = (1 - L_G) * coordinate_delay
+        return proper_delay
 
-    K_bcrs = b_gcrs / norm(b_gcrs)  # [3]
-
-    # Eq 11.3 for [1]
-    t_1J = jnp.minimum(t1, t1 - ((X_J_bcrs(t1) - X_1_bcrs) @ K_bcrs) / c)  # [num_J]
-    # Eq 11.4
-    R_1J = X_1_bcrs - X_J_bcrs(t_1J)  # [num_J, 3]
-    # Eq 11.5
-    R_2J = X_2_bcrs - X_J_bcrs(t_1J) - V_earth_bcrs(t1) * (K_bcrs @ b_gcrs) / c  # [num_J, 3]
-
-    # Eq 11.1
-    delta_T_grav_J = 2. * (GM_J) / c ** 3 * jnp.log(
-        (norm(R_1J) + R_1J @ K_bcrs) / (norm(R_2J) + R_2J @ K_bcrs)
-    )  # [num_J]
-
-    # Eq 11.2
-    delta_T_grav_earth = 2. * GM_earth / c ** 3 * jnp.log(
-        (norm(x_1_gcrs(t1)) + K_bcrs @ x_1_gcrs(t1)) / (norm(x_2_gcrs(t1)) + K_bcrs @ x_2_gcrs(t1))
-    )  # []
-
-    # Eq 11.7
-    delta_T_grav = jnp.sum(delta_T_grav_J) + delta_T_grav_earth  # []
-
-    # Eq 11.9: (delta_T_grav - K.b/c [1 - A / c^2] - V.b/c^2 [1 + B / c]) / (1 + C / c)
-    U = GM_earth / jnp.linalg.norm(R_earth_bcrs(t1))
-    A = 2. * U + 0.5 * norm2(V_earth_bcrs(t1)) + V_earth_bcrs(t1) @ w_2_gcrs(t1)
-    B = 0.5 * (K_bcrs @ V_earth_bcrs(t1))
-    C = K_bcrs @ (V_earth_bcrs(t1) + w_2_gcrs(t1))
-    vacuum_delay = (delta_T_grav - (K_bcrs @ b_gcrs) / c * (1. - A / c ** 2) - (V_earth_bcrs(t1) @ b_gcrs) / c ** 2 * (
-            1 + B / c)) / (1 + C / c)
-
-    if include_atmosphere:
-        # aberated source vectors for geodesics (x_1_gcrs, k_1_gcrs), (x_2_gcrs, k_2_gcrs)
-        # k_1_gcrs = K_bcrs + (V_earth_bcrs(t1) + w_1_gcrs(t1) - K_bcrs * (K_bcrs @ (V_earth_bcrs(t1) + w_1_gcrs(t1)))) / c
-        # delay_atm_1 = ...
-        # k_2_gcrs = K_bcrs + (V_earth_bcrs(t1) + w_2_gcrs(t1) - K_bcrs * (K_bcrs @ (V_earth_bcrs(t1) + w_2_gcrs(t1)))) / c
-        # delay_atm_2 = ...
-        # total_delay = vacuum_delay + (delay_atm_2 - delay_atm_1) + delay_atm_1 * (K_bcrs @ (w_2_gcrs(t1) - w_1_gcrs(t1))) / c
-        raise NotImplementedError(f"Atmosphere model is not implemented yet.")
-    else:
-        total_delay = vacuum_delay
-
-    # delay produced by a correlator may be considered to be, within the uncertainty aimed at, equal
-    # to the TT coordinate time interval. This is because station clocks are synchronised and syntonised,
-    # i.e. have same rate as TT. However, the analysis above give Geocentric Coordinate Time (TCG). The delays must be
-    # made TT-compatible, via dTT = (1 - L_G) dTCG
-
-    total_delay *= (1 - L_G)
-
-    return total_delay
+    return _delay(x_2_gcrs) - _delay(x_1_gcrs)

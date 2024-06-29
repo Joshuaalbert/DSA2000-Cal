@@ -130,14 +130,18 @@ class FarFieldDelayEngine:
         R_earth_bcrs = earth_position_bcrs - sun_position_bcrs  # [T]
 
         system_positions_bcrs = []
+        system_velocity_bcrs = []
         for body in bodies_except_earth:
-            body_position_bcrs = ac.get_body_barycentric(
+            body_position_bcrs, body_velocity_bcrs = ac.get_body_barycentric_posvel(
                 body=body,
                 time=interp_times
             )  # [T, N]
             body_position_bcrs = np.transpose(body_position_bcrs.xyz, (1, 0))  # [T, 3]
+            body_velocity_bcrs = np.transpose(body_velocity_bcrs.xyz, (1, 0))  # [T, 3]
             system_positions_bcrs.append(body_position_bcrs)
+            system_velocity_bcrs.append(body_velocity_bcrs)
         system_positions_bcrs = np.stack(system_positions_bcrs, axis=1)  # [T, N, 3]
+        system_velocity_bcrs = np.stack(system_velocity_bcrs, axis=1)  # [T, N, 3]
 
         GM_system = au.Quantity([GM_bodies[body] for body in bodies_except_earth])
 
@@ -170,12 +174,13 @@ class FarFieldDelayEngine:
         system_positions_bcrs = quantity_to_jnp(
             system_positions_bcrs
         )  # [T, N_J, 3]
+        system_velocities_bcrs = quantity_to_jnp(
+            system_velocity_bcrs
+        )  # [T, N_J, 3]
 
         self.GM_J = quantity_to_jnp(GM_system)  # [N_J]
 
-        ref_time = interp_times[0]
-
-        self.interp_times_jax = interp_times_jax = jnp.asarray((interp_times - ref_time).sec)  # [T]
+        self.interp_times_jax = interp_times_jax = jnp.asarray((interp_times - self.ref_time).sec)  # [T]
 
         # Create interpolation objects
         self.X_earth_bcrs = InterpolatedArray(
@@ -201,6 +206,13 @@ class FarFieldDelayEngine:
         self.X_J_bcrs = InterpolatedArray(
             times=interp_times_jax,
             values=system_positions_bcrs,
+            axis=0,
+            regular_grid=True
+        )
+
+        self.V_J_bcrs = InterpolatedArray(
+            times=interp_times_jax,
+            values=system_velocities_bcrs,
             axis=0,
             regular_grid=True
         )
@@ -272,6 +284,7 @@ class FarFieldDelayEngine:
             V_earth_bcrs=self.V_earth_bcrs,
             R_earth_bcrs=self.R_earth_bcrs,
             X_J_bcrs=self.X_J_bcrs,
+            V_J_bcrs=self.V_J_bcrs,
             GM_J=self.GM_J
         )  # s
         # Unsure why the negative sign needs to be introduced to match,
@@ -280,7 +293,7 @@ class FarFieldDelayEngine:
         # I *think* it is because we've flipped direction of photon by using K_bcrs for photon travel.
         # Then essentially, we're computing the delay for the signal to travel from 2 to 1, but there should be an error
         # from using t1 for reference point.
-        return -delta_t * quantity_to_jnp(const.c)
+        return -delta_t
 
     def _single_compute_uvw(self, t1: jax.Array, i1: jax.Array, i2: jax.Array) -> jax.Array:
         """
@@ -366,6 +379,7 @@ def far_field_delay(
         V_earth_bcrs: InterpolatedArray,
         R_earth_bcrs: InterpolatedArray,
         X_J_bcrs: InterpolatedArray,
+        V_J_bcrs: InterpolatedArray,
         GM_J: jax.Array,
         include_atmosphere: bool = False
 ):
@@ -383,11 +397,12 @@ def far_field_delay(
         V_earth_bcrs: Interpolator for geocenter velocity.
         R_earth_bcrs: Interpolator for vector from Sun to geocenter.
         X_J_bcrs: [num_J] Interpolator for position of J-th body.
+        V_J_bcrs: [num_J] Interpolator for velocity of J-th body.
         GM_J: [num_J] GM of J-th body.
         include_atmosphere: if True then add atmosphere delay model.
 
     Returns:
-        The delay in seconds at time t1, for baseline b=x2-x1.
+        The delay in metres at time t1, for baseline b=x2-x1.
 
     References:
         [1] IERS Technical Note No. 36, IERS Conventions (2010)
@@ -405,20 +420,23 @@ def far_field_delay(
     X_1_bcrs = X_earth_bcrs(t1) + x_1_gcrs(t1)  # [3]
     X_2_bcrs = X_earth_bcrs(t1) + x_2_gcrs(t1)  # [3]
 
-    # Eq 11.3
+    # Eq 11.3 -- Time of closest approach of signal to J-th body
     t_1J = jnp.minimum(t1, t1 - ((X_J_bcrs(t1) - X_1_bcrs) @ K_bcrs) / c)  # [num_J]
     # Eq 11.4
-    R_1J = X_1_bcrs - X_J_bcrs(t_1J)  # [num_J, 3]
+    # X_J_bcrs(t_1J) -- Don't use interpolation, since it would mak interpolation axis too large
+    X_J_bcrs_t1J = X_J_bcrs(t1) + V_J_bcrs(t1) * (t_1J - t1)[:, None]  # [num_J, 3]
+
+    R_1J = X_1_bcrs - X_J_bcrs_t1J  # [num_J, 3]
     # Eq 11.5
-    R_2J = X_2_bcrs - X_J_bcrs(t_1J) - V_earth_bcrs(t1) * (K_bcrs @ b_gcrs) / c  # [num_J, 3]
+    R_2J = X_2_bcrs - X_J_bcrs_t1J - V_earth_bcrs(t1) * (K_bcrs @ b_gcrs) / c  # [num_J, 3]
 
     # Eq 11.1
-    delta_T_grav_J = 2. * (GM_J) / c ** 3 * jnp.log(
+    delta_T_grav_J = 2. * (GM_J) / c ** 2 * jnp.log(
         (norm(R_1J) + R_1J @ K_bcrs) / (norm(R_2J) + R_2J @ K_bcrs)
     )  # [num_J]
 
     # Eq 11.2
-    delta_T_grav_earth = 2. * GM_earth / c ** 3 * jnp.log(
+    delta_T_grav_earth = 2. * GM_earth / c ** 2 * jnp.log(
         (norm(x_1_gcrs(t1)) + K_bcrs @ x_1_gcrs(t1)) / (norm(x_2_gcrs(t1)) + K_bcrs @ x_2_gcrs(t1))
     )  # []
 
@@ -430,8 +448,15 @@ def far_field_delay(
     A = 2. * U + 0.5 * norm2(V_earth_bcrs(t1)) + V_earth_bcrs(t1) @ w_2_gcrs(t1)
     B = 0.5 * (K_bcrs @ V_earth_bcrs(t1))
     C = K_bcrs @ (V_earth_bcrs(t1) + w_2_gcrs(t1))
-    vacuum_delay = (delta_T_grav - (K_bcrs @ b_gcrs) / c * (1. - A / c ** 2) - (V_earth_bcrs(t1) @ b_gcrs) / c ** 2 * (
-            1 + B / c)) / (1 + C / c)
+    coordinate_delay_tcg = (
+            (
+                    delta_T_grav
+                    - (K_bcrs @ b_gcrs) * (1. - A / c ** 2)
+                    - (V_earth_bcrs(t1) @ b_gcrs) / c * (1 + B / c)
+            ) / (
+                    1 + C / c
+            )
+    )
 
     if include_atmosphere:
         # aberated source vectors for geodesics (x_1_gcrs, k_1_gcrs), (x_2_gcrs, k_2_gcrs)
@@ -439,16 +464,12 @@ def far_field_delay(
         # delay_atm_1 = ...
         # k_2_gcrs = K_bcrs + (V_earth_bcrs(t1) + w_2_gcrs(t1) - K_bcrs * (K_bcrs @ (V_earth_bcrs(t1) + w_2_gcrs(t1)))) / c
         # delay_atm_2 = ...
-        # total_delay = vacuum_delay + (delay_atm_2 - delay_atm_1) + delay_atm_1 * (K_bcrs @ (w_2_gcrs(t1) - w_1_gcrs(t1))) / c
+        # coordinate_delay_tcg = coordinate_delay_tcg + (delay_atm_2 - delay_atm_1) + delay_atm_1 * (K_bcrs @ (w_2_gcrs(t1) - w_1_gcrs(t1))) / c
         raise NotImplementedError(f"Atmosphere model is not implemented yet.")
-    else:
-        total_delay = vacuum_delay
 
-    # delay produced by a correlator may be considered to be, within the uncertainty aimed at, equal
-    # to the TT coordinate time interval. This is because station clocks are synchronised and syntonised,
-    # i.e. have same rate as TT. However, the analysis above give Geocentric Coordinate Time (TCG). The delays must be
-    # made TT-compatible, via dTT = (1 - L_G) dTCG
+    # TT is defined with a rate that coincides with mean proper rate on the geoid,
+    # so to first order proper and TT are the linearly related for observers on the geoid.
 
-    total_delay *= (1 - L_G)
+    proper_delay = (1 - L_G) * coordinate_delay_tcg
 
-    return total_delay
+    return proper_delay

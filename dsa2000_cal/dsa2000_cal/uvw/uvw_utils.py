@@ -3,6 +3,7 @@ import dataclasses
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 
@@ -49,6 +50,34 @@ class InterpolatedArray:
         return jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
 
 
+@pytest.mark.parametrize('regular_grid', [True, False])
+def test_interpolated_array(regular_grid: bool):
+    # scalar time
+    times = jnp.linspace(0, 10, 100)
+    values = jnp.sin(times)
+    interp = InterpolatedArray(times, values, regular_grid=regular_grid)
+    assert interp(5.).shape == ()
+    np.testing.assert_allclose(interp(5.), jnp.sin(5), atol=2e-3)
+
+    # vector time
+    assert interp(jnp.array([5., 6.])).shape == (2,)
+    np.testing.assert_allclose(interp(jnp.array([5., 6.])), jnp.sin(jnp.array([5., 6.])), atol=2e-3)
+
+    # Now with axis = 1
+    times = jnp.linspace(0, 10, 100)
+    values = jnp.stack([jnp.sin(times), jnp.cos(times)], axis=0)  # [2, 100]
+    interp = InterpolatedArray(times, values, axis=1, regular_grid=regular_grid)
+    assert interp(5.).shape == (2,)
+    np.testing.assert_allclose(interp(5.), jnp.array([jnp.sin(5), jnp.cos(5)]), atol=2e-3)
+
+    # Vector
+    assert interp(jnp.array([5., 6., 7.])).shape == (2, 3)
+    np.testing.assert_allclose(interp(jnp.array([5., 6., 7.])),
+                               jnp.stack([jnp.sin(jnp.array([5., 6., 7.])), jnp.cos(jnp.array([5., 6., 7.]))],
+                                         axis=0),
+                               atol=2e-3)
+
+
 def norm(x, axis=-1, keepdims: bool = False):
     return jnp.sqrt(norm2(x, axis, keepdims))
 
@@ -77,5 +106,3 @@ def celestial_to_cartesian(ra, dec):
     y = jnp.sin(ra) * jnp.cos(dec)
     z = jnp.sin(dec)
     return jnp.stack([x, y, z], axis=-1)
-
-
