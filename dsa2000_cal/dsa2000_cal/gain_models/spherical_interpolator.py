@@ -3,13 +3,12 @@ from functools import partial
 
 import jax
 import numpy as np
-from astropy import units as au, coordinates as ac, time as at
-from jax import numpy as jnp, lax
-from tomographic_kernel.frames import ENU
+from astropy import units as au, time as at
+from jax import numpy as jnp
 
-from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, is_regular_grid
+from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.gain_models.gain_model import GainModel
 
 
@@ -21,16 +20,20 @@ class SphericalInterpolatorGainModel(GainModel):
     The antennas have attenuation models in frame of antenna, call this the X-Y frame (see below).
     X points up, Y points to the right, Z points towards the source (along bore).
 
+    Same as standing facing South, and looking up at the sky.
+    Theta measures the angle from the bore-sight, and phi measures West from South, so that phi=0 is South=M,
+    phi=90 is West=-L, phi=-90 is East=L.
+
     Args:
         model_freqs: [num_model_freqs] The frequencies at which the model is defined.
         model_theta: [num_model_dir] The theta values in [0, 180] measured from bore-sight.
         model_phi: [num_model_dir] The phi values in [0, 360] measured from x-axis.
+
         model_times: [num_model_times] The times at which the model is defined.
         model_gains: [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2] The gain model.
             If tile_antennas=False then the model gains much include antenna dimension, otherwise they are assume
             identical per antenna and tiled.
         tile_antennas: If True, the model gains are assumed to be identical for each antenna and are tiled.
-        approx_zenith: Uses array centre to compute zenith direction, else each antenna gets own zenith
         dtype: The dtype of the model gains.
     """
 
@@ -41,7 +44,6 @@ class SphericalInterpolatorGainModel(GainModel):
     model_gains: au.Quantity  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
 
     tile_antennas: bool = False
-    approx_zenith: bool = True
 
     dtype: jnp.dtype = jnp.complex64
 
@@ -66,19 +68,18 @@ class SphericalInterpolatorGainModel(GainModel):
         if len(self.model_times.shape) != 1:
             raise ValueError(f"Expected model_times to have 1 dimension but got {len(self.model_times.shape)}")
         if self.tile_antennas:
-            if self.model_gains.shape != (len(self.model_times), len(self.model_theta), len(self.model_freqs), 2, 2):
+            if self.model_gains.shape[:3] != (len(self.model_times), len(self.model_theta), len(self.model_freqs)):
                 raise ValueError(
                     f"gains shape {self.model_gains.shape} does not match shape "
-                    f"(num_times, num_dir, num_freqs, 2, 2)."
+                    f"(num_times, num_dir, num_freqs[, 2, 2])."
                 )
-            self.model_gains = self.model_gains[:, :, None, :, :, :]  # [time, dir, 1, freq, 2, 2]
 
         else:
-            if self.model_gains.shape != (
-                    len(self.model_times), len(self.model_theta), len(self.antennas), len(self.model_freqs), 2, 2):
+            if self.model_gains.shape[:4] != (
+                    len(self.model_times), len(self.model_theta), len(self.antennas), len(self.model_freqs)):
                 raise ValueError(
                     f"gains shape {self.model_gains.shape} does not match shape "
-                    f"(num_times, num_dir, num_ant, num_freqs, 2, 2)."
+                    f"(num_times, num_dir, num_ant, num_freqs[, 2, 2])."
                 )
 
         # Ensure phi,theta,freq units congrutent
@@ -99,162 +100,114 @@ class SphericalInterpolatorGainModel(GainModel):
         )
         self.lmn_data = au.Quantity(np.stack([l, m, n], axis=-1), unit=au.dimensionless_unscaled)  # [num_dir, 3]
 
-    @partial(jax.jit, static_argnames=['self', 'use_scan'])
-    def _compute_gain_jax(self, freqs: jax.Array, relative_time: jax.Array, lmn_sources: jax.Array, use_scan: bool):
-        """
-        Compute the beam gain at the given source coordinates.
-
-        Args:
-            freqs: (num_freqs) The frequencies at which to compute the beam gain.
-            relative_time: Relative time in seconds from start.
-            lmn_sources: (source_shape) + [num_ant/1, 3] The source coordinates in the L-M-N frame.
-            use_scan: If True uses scan to evaluate beam, slower but less memory
-
-        Returns:
-            (source_shape) + [num_ant, num_freq, 2, 2] The beam gain at the given source coordinates.
-        """
-
-        pointing_per_antenna = np.shape(lmn_sources)[-2] > 1
-        if pointing_per_antenna:
-            print("Assuming unique per-antennas pointings.")
-        else:
-            print("Assuming same pointing per antenna.")
         if self.tile_antennas:
             print("Assuming identical antenna beams.")
         else:
             print("Assuming unique per-antenna beams.")
 
-        lmn_data = quantity_to_jnp(self.lmn_data)
+    def is_full_stokes(self) -> bool:
+        return self.model_gains.shape[-2:] == (2, 2)
+
+    def _compute_gain_jax(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array):
+        """
+        Compute the beam gain at the given source coordinates.
+
+        Args:
+            freqs: (num_freqs) The frequencies at which to compute the beam gain.
+            times: [num_times] Relative time in seconds from start, TT scale.
+            lmn_geodesic: [num_sources, num_times, num_ant, 3] lmn coords in antenna frame.
+
+        Returns:
+            [num_sources, num_times, num_ant, num_freq[, 2, 2]] The beam gain at the given source coordinates.
+        """
+
+        if len(np.shape(lmn_geodesic)) == 4:
+            geodesic_mapping = "[s,t,a,3]"
+        elif len(np.shape(lmn_geodesic)) == 3:
+            geodesic_mapping = "[s,t,3]"
+        else:
+            raise ValueError(f"Expected geodesic to have shape (num_sources, num_times, [num_ant,] num_freqs, 3) "
+                             f"but got {np.shape(lmn_geodesic)}")
+
+        lmn_data = quantity_to_jnp(self.lmn_data)  # [num_model_dir, 3]
         gains = jnp.asarray(
             quantity_to_jnp(self.model_gains),
             dtype=self.dtype
-        )  # [num_model_time, num_model_dir,  A, num_model_freqs, 2, 2]
-        model_freqs = quantity_to_jnp(self.model_freqs)
-        relative_model_times = quantity_to_jnp((self.model_times - self.model_times[0]).sec * au.s)
+        )  # [num_model_time, num_model_dir,  [num_ants,] num_model_freqs[, 2, 2]]
 
         # Interpolate in time
-        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(relative_time, relative_model_times)
-        gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [num_model_dir,  A, num_model_freqs, 2, 2]
+        relative_model_times = quantity_to_jnp((self.model_times - self.model_times[0]).sec * au.s)
+        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+            x=times,
+            xp=relative_model_times,
+            regular_grid=is_regular_grid(quantity_to_np((self.model_times - self.model_times[0]).sec * au.s))
+        )
+        gains = apply_interp(gains, i0, alpha0, i1, alpha1,
+                             axis=0)  # [num_times, num_model_dir,  [num_ant,] num_model_freqs[, 2, 2]]
 
         # Interpolate in freq
-        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(freqs, model_freqs)
-        gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=-3)  # [num_model_dir,  A, num_freqs, 2, 2]
+        model_freqs = quantity_to_jnp(self.model_freqs)
+        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+            x=freqs,
+            xp=model_freqs,
+            regular_grid=is_regular_grid(quantity_to_np(self.model_freqs))
+        )
+        if self.tile_antennas:
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
+                                 axis=2)  # [num_times, num_model_dir,  num_freqs[, 2, 2]]
+            if self.is_full_stokes():
+                gains_mapping = "[t,S,f,2,2]"
+            else:
+                gains_mapping = "[t,S,f]"
+        else:
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
+                                 axis=3)  # [num_times, num_model_dir, num_ant, num_freqs[, 2, 2]]
+            if self.is_full_stokes():
+                gains_mapping = "[t,S,a,f,2,2]"
+            else:
+                gains_mapping = "[t,S,a,f]"
 
         # Select closest direction
-        shape = np.shape(lmn_sources)[:-2]
-        lmn_sources = lmn_sources.reshape((-1,) + np.shape(lmn_sources)[-2:])  # [num_sources, num_ant/1, 3]
-
-        def body_fn(carry, lmn_source):
-            cos_dist = jnp.sum(lmn_source[:, None, :] * lmn_data, axis=-1)  # [num_ant/1, num_model_dir]
-            closest = jnp.nanargmax(cos_dist, axis=-1)  # [num_ant/1]
-            # cos_dist = jnp.where(jnp.isnan(cos_dist), -jnp.inf, cos_dist)
-            # top_k_values, top_k_indices = jax.lax.top_k(cos_dist, k)
-            return (), closest
-
         mem_usage_GB = (
-                               lmn_sources.itemsize * np.shape(lmn_sources)[0] * np.shape(lmn_sources)[1] *
+                               lmn_geodesic.itemsize * np.shape(lmn_geodesic)[0] * np.shape(lmn_geodesic)[1] *
                                np.shape(lmn_data)[0]
                        ) >> 30
+        use_scan = mem_usage_GB > 8
 
-        # NB: 8GB is an arbitrary cutoff, but seems reasonable.
-        if use_scan or mem_usage_GB > 8:
-            def compute_closest(lmn_sources):
-                _, closest = lax.scan(
-                    body_fn,
-                    (),
-                    lmn_sources[:, None, :],
-                    unroll=1
-                )  # [num_sources, 1]
-                return closest[:, 0]
+        @partial(
+            multi_vmap,
+            in_mapping=f"[s,t,a,3],{gains_mapping}",
+            out_mapping="[s,t,a,f,...]",
+            scan_dims={"s"} if use_scan else None
+        )
+        def interp_source(lmn_geodesic, gains):
+            """
+            Compute the closest direction to the given lmn coordinates.
 
-            closest = jax.vmap(compute_closest, in_axes=1, out_axes=1)(lmn_sources)
-        else:
-            closest = jax.vmap(lambda lmn_source: body_fn(None, lmn_source)[1])(
-                lmn_sources)  # [num_sources, num_ant/1]
+            Args:
+                lmn_geodesic: [3]
+                gains: [num_model_dir[, 2, 2]]
 
-        if pointing_per_antenna:
-            # closest has shape # [num_sources, num_ant]
-            if self.tile_antennas:
-                # Gains have A=1
-                gains = jax.vmap(lambda _closest: gains[_closest, 0, :, :, :], in_axes=1, out_axes=1)(
-                    closest)  # [num_sources, num_ant, num_freqs, 2, 2]
-            else:
-                # Gains have A=num_ant
-                gains = jax.vmap(lambda _closest, _gains: _gains[_closest], in_axes=1, out_axes=1)(
-                    closest, gains)  # [num_sources, num_ant, num_freqs, 2, 2]
-        else:
-            # closest has shape # [num_sources, 1]
-            if self.tile_antennas:
-                # Gains have A=1
-                gains = gains[closest[:, 0]]  # [num_sources, 1, num_freqs, 2, 2]
-                gains = jnp.tile(gains, (1, len(self.antennas), 1, 1, 1))  # [num_sources, num_ant, num_freqs, 2, 2]
-            else:
-                # Gains have A=num_ant
-                gains = gains[closest[:, 0]]  # [num_sources, num_ant, num_freqs, 2, 2]
+            Returns:
+                [[2, 2]] The gain for the closest direction.
+            """
+            cos_dist = jnp.sum(lmn_geodesic * lmn_data, axis=-1)  # [num_model_dir]
+            closest = jnp.nanargmax(cos_dist, axis=-1)  # []
+            # cos_dist = jnp.where(jnp.isnan(cos_dist), -jnp.inf, cos_dist)
+            # top_k_values, top_k_indices = jax.lax.top_k(cos_dist, k)
+            evanescent_mask = jnp.isnan(lmn_geodesic[2])
+            return jnp.where(evanescent_mask, jnp.nan, gains[closest])  # [[2, 2]]
 
-        # Mask out evanescent sources
-        evanescent_mask = jnp.isnan(lmn_sources[..., 2])  # [num_sources, num_ant/1]
-        gains = jnp.where(
-            evanescent_mask[:, :, None, None, None],
-            jnp.nan,
-            gains
-        )  # [num_sources, num_ant, num_freqs, 2, 2]
+        gains = interp_source(lmn_geodesic, gains)  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
 
-        # Reshape to source shape
-        gains = gains.reshape(shape + gains.shape[1:])  # (source_shape) + [num_ant, num_freq, 2, 2]
         return gains
 
-    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS | ENU, pointing: ac.ICRS | None,
-                     array_location: ac.EarthLocation, time: at.Time, **kwargs):
-
-        self.check_inputs(
-            freqs=freqs,
-            sources=sources,
-            pointing=pointing,
-            array_location=array_location,
-            time=time,
-            **kwargs
-        )
-
-        use_scan = kwargs.get('use_scan', False)
-
-        if pointing is None:
-            if self.approx_zenith:
-                pointing = zenith = ENU(east=0, north=0, up=1, location=array_location, obstime=time).transform_to(
-                    ac.ICRS())  # []
-            else:
-                pointing = zenith = ENU(east=0, north=0, up=1, location=self.antennas, obstime=time).transform_to(
-                    ac.ICRS())  # [num_ant]
-
-        # Ensure pointing broadcasts with antennas
-        pointing = pointing.reshape([1] * len(sources.shape) + [-1])  # [1,..., num_ant/1]
-
-        if isinstance(sources, ENU):
-            # relative to antenna positions
-            enu_frame = ENU(location=array_location, obstime=time)
-            sources = sources.transform_to(enu_frame)  # (source_shape) + [3]
-            antennas = self.antennas.get_itrs(obstime=time, location=array_location).transform_to(
-                enu_frame
-            ).reshape([1] * len(sources.shape) + [-1])  # [1,..., num_ant]
-            source_sep = sources.reshape(
-                sources.shape + (1,)).cartesian.xyz - antennas.cartesian.xyz  # [3]+ (source_shape) + [num_ant]
-            source_sep /= np.linalg.norm(source_sep, axis=0, keepdims=True)
-            sources = ENU(east=source_sep[0], north=source_sep[1], up=source_sep[2],
-                          location=array_location, obstime=time).transform_to(ac.ICRS())  # (source_shape) + [num_ant]
-        elif isinstance(sources, ac.ICRS):
-            sources = sources.reshape(sources.shape + (1,))  # (source_shape) + [1]
-        else:
-            raise ValueError(f"Expected sources to be ICRS or ENU but got {sources}")
-
-        lmn_sources = icrs_to_lmn(sources=sources, phase_tracking=pointing)  # (source_shape) + [num_ant/1, 3]
-
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
         gains = self._compute_gain_jax(
-            freqs=quantity_to_jnp(freqs),
-            relative_time=quantity_to_jnp((time - self.model_times[0]).sec * au.s),
-            lmn_sources=quantity_to_jnp(lmn_sources),
-            use_scan=use_scan
-        )  # (source_shape) + [num_ant, num_freq, 2, 2]
-
+            freqs=freqs,
+            times=times,
+            lmn_geodesic=geodesics
+        )  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
         return gains
 
 
