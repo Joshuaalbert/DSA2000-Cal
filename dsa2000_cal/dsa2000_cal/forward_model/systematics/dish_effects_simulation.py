@@ -1,14 +1,12 @@
 import dataclasses
-import os.path
 import time as time_mod
 from functools import partial
-from typing import Literal, Tuple
+from typing import Tuple, Literal
 
 import jax
-import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as au, coordinates as ac, time as at, constants
+from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
@@ -17,7 +15,6 @@ from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, appl
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
-from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
 
 
 def assert_congruent_unit(x: au.Quantity, unit: au.Unit):
@@ -48,7 +45,7 @@ def assert_scalar(*x: au.Quantity):
             raise ValueError(f"Expected {xi} to be a scalar but got {xi}")
 
 
-class DishEffectsGainModelParams(SerialisableBaseModel):
+class DishEffectsParams(SerialisableBaseModel):
     # dish parameters
     dish_diameter: au.Quantity = 5. * au.m
     focal_length: au.Quantity = 2. * au.m
@@ -65,12 +62,12 @@ class DishEffectsGainModelParams(SerialisableBaseModel):
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
-        super(DishEffectsGainModelParams, self).__init__(**data)
+        super(DishEffectsParams, self).__init__(**data)
         # Use _check_measurement_set_meta_v0 as instance-wise validator
-        _check_dish_effect_gain_model_params(self)
+        _check_dish_effect_params(self)
 
 
-def _check_dish_effect_gain_model_params(dish_effect_params: DishEffectsGainModelParams):
+def _check_dish_effect_params(dish_effect_params: DishEffectsParams):
     # Check units
     assert_congruent_unit(dish_effect_params.dish_diameter, au.m)
     assert_congruent_unit(dish_effect_params.focal_length, au.m)
@@ -97,7 +94,7 @@ def _check_dish_effect_gain_model_params(dish_effect_params: DishEffectsGainMode
     )
 
 
-class DishEffectsGainModelCache(SerialisableBaseModel):
+class DishEffectsSimulationCache(SerialisableBaseModel):
     seed: int
 
     antennas: ac.EarthLocation  # [num_ant]
@@ -105,18 +102,18 @@ class DishEffectsGainModelCache(SerialisableBaseModel):
     model_freqs: au.Quantity  # [num_model_freq]
     model_times: at.Time  # [num_time]
 
-    dish_effects_params: DishEffectsGainModelParams
+    dish_effects_params: DishEffectsParams
 
     model_gains: au.Quantity  # [num_time, Nm*Nl, num_ant, num_model_freq, 2, 2]
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
-        super(DishEffectsGainModelCache, self).__init__(**data)
+        super(DishEffectsSimulationCache, self).__init__(**data)
         # Use _check_measurement_set_meta_v0 as instance-wise validator
         _check_dish_effects_gain_model_cache(self)
 
 
-def _check_dish_effects_gain_model_cache(cache: DishEffectsGainModelCache):
+def _check_dish_effects_gain_model_cache(cache: DishEffectsSimulationCache):
     # Check units are congruent
     assert_congruent_unit(cache.model_freqs, au.Hz)
     assert_congruent_unit(cache.model_lmn, au.dimensionless_unscaled)
@@ -131,14 +128,9 @@ def _check_dish_effects_gain_model_cache(cache: DishEffectsGainModelCache):
 
 
 @dataclasses.dataclass(eq=False)
-class DishEffectsGainModel(SphericalInterpolatorGainModel):
-    ...
-
-
-@dataclasses.dataclass(eq=False)
 class DishEffectsSimulation:
     pointing: ac.ICRS | None
-    dish_effect_params: DishEffectsGainModelParams
+    dish_effect_params: DishEffectsParams
 
     # Beam model
     beam_gain_model: BeamGainModel
@@ -158,7 +150,7 @@ class DishEffectsSimulation:
         self.ref_time = self.model_times[0]
         self.antennas = self.beam_gain_model.antennas
 
-        self.cache_file = os.path.join(self.cache_folder, f"dish_effects_gain_model_cache_{self.seed}.json")
+        self.cache_file = os.path.join(self.cache_folder, f"cache_dish_effects_{self.seed}.json")
 
         # Set up fourier
         wavelengths = (constants.c / self.model_freqs).to('m')
@@ -224,9 +216,9 @@ class DishEffectsSimulation:
             )
         )
 
-    def simulate_dish_effects(self) -> DishEffectsGainModelCache:
+    def simulate_dish_effects(self) -> DishEffectsSimulationCache:
         if os.path.exists(self.cache_file):
-            cache = DishEffectsGainModelCache.parse_file(self.cache_file)
+            cache = DishEffectsSimulationCache.parse_file(self.cache_file)
             if not np.allclose(cache.model_freqs.value, self.model_freqs.value):
                 raise ValueError(
                     f"Model freqs in cache {cache.model_freqs} does not match model freqs {self.model_freqs}")
@@ -251,7 +243,7 @@ class DishEffectsSimulation:
         t1 = time_mod.time()
         print(f"Successfully computed dish effects model gains in {t1 - t0:.2f} seconds.")
 
-        cache = DishEffectsGainModelCache(
+        cache = DishEffectsSimulationCache(
             seed=self.seed,
             model_freqs=self.model_freqs,
             model_times=self.model_times,
@@ -423,94 +415,3 @@ class DishEffectsSimulation:
             f_aperture=model_gains_aperture, axes=(0, 1), dx=dx
         )  # [Nm, Nl, num_ant, num_freq, 2, 2]
         return model_gains_image
-
-
-def dish_effects_gain_model_factory(pointing: ac.ICRS | None,
-                                    beam_gain_model: BeamGainModel,
-                                    dish_effect_params: DishEffectsGainModelParams,
-                                    plot_folder: str, cache_folder: str, seed: int = 42,
-                                    convention: Literal['fourier', 'casa'] = 'fourier',
-                                    dtype: jnp.dtype = jnp.complex64):
-    os.makedirs(plot_folder, exist_ok=True)
-
-    dish_effects_simulation = DishEffectsSimulation(
-        pointing=pointing,
-        beam_gain_model=beam_gain_model,
-        dish_effect_params=dish_effect_params,
-        plot_folder=plot_folder,
-        cache_folder=cache_folder,
-        seed=seed,
-        convention=convention,
-        dtype=dtype
-    )
-
-    simulation_results = dish_effects_simulation.simulate_dish_effects()
-
-    Nm, Nl, _ = np.shape(simulation_results.model_lmn)
-
-    model_gains = au.Quantity(np.reshape(
-        simulation_results.model_gains,
-        (len(simulation_results.model_times), Nm * Nl, len(simulation_results.antennas),
-         len(simulation_results.model_freqs), 2, 2)
-    ))  # [num_time, Nm*Nl, num_ant, num_model_freq, 2, 2]
-
-    model_phi, model_theta = phi_theta_from_lmn(
-        simulation_results.model_lmn[..., 0].flatten(),
-        simulation_results.model_lmn[..., 1].flatten(),
-        simulation_results.model_lmn[..., 2].flatten()
-    )  # [Nm*Nl, 3]
-
-    model_phi = model_phi * au.rad
-    model_theta = model_theta * au.rad
-
-    dish_effects_gain_model = DishEffectsGainModel(
-        antennas=simulation_results.antennas,
-        model_freqs=simulation_results.model_freqs,
-        model_times=simulation_results.model_times,
-        model_phi=model_phi,
-        model_theta=model_theta,
-        model_gains=model_gains
-    )
-
-    # Plot the image plane effects
-    for elevation in [45, 90] * au.deg:
-        phase_tracking = ac.AltAz(alt=elevation, az=0 * au.deg,
-                                  location=simulation_results.antennas[0],
-                                  obstime=dish_effects_simulation.ref_time).transform_to(ac.ICRS())
-        sources = lmn_to_icrs(dish_effects_simulation.model_lmn, phase_tracking=phase_tracking)
-        gain = dish_effects_gain_model.compute_gain(freqs=dish_effects_simulation.model_freqs[:1], sources=sources,
-                                                    array_location=simulation_results.antennas[0],
-                                                    time=dish_effects_simulation.ref_time,
-                                                    pointing=phase_tracking,
-                                                    mode='fft')  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
-        gain = gain[:, :, 0, 0, 0, 0]  # [Nm, Nl]
-        fig, axs = plt.subplots(2, 1, figsize=(8, 8), squeeze=False, sharex=True, sharey=True)
-        im = axs[0, 0].imshow(
-            np.abs(gain),  # rows are M, columns are L
-            origin='lower',
-            extent=(dish_effects_simulation.lvec.min().value, dish_effects_simulation.lvec.max().value,
-                    dish_effects_simulation.mvec.min().value, dish_effects_simulation.mvec.max().value),
-            cmap='PuOr'
-        )
-        fig.colorbar(im, ax=axs[0, 0])
-        axs[0, 0].set_xlabel('l')
-        axs[0, 0].set_ylabel('m')
-        axs[0, 0].set_title(f'Beam gain amplitude {elevation} elevation')
-        im = axs[1, 0].imshow(
-            np.angle(gain) * 180 / np.pi,  # rows are M, columns are L
-            origin='lower',
-            extent=(dish_effects_simulation.lvec.min().value, dish_effects_simulation.lvec.max().value,
-                    dish_effects_simulation.mvec.min().value, dish_effects_simulation.mvec.max().value),
-            cmap='coolwarm',
-            # vmin=-np.pi,
-            # vmax=np.pi
-        )
-        fig.colorbar(im, ax=axs[1, 0], label='degrees')
-        axs[1, 0].set_xlabel('l')
-        axs[1, 0].set_ylabel('m')
-        axs[1, 0].set_title(f'Beam gain phase {elevation} elevation')
-        plt.tight_layout()
-        plt.savefig(os.path.join(plot_folder, f"beam_gain_{elevation.value}.png"))
-        plt.close(fig)
-
-    return dish_effects_gain_model
