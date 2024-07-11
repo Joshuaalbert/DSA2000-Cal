@@ -2,6 +2,7 @@ import dataclasses
 import itertools
 import time as time_mod
 import warnings
+from typing import Tuple
 
 import jax
 import numpy as np
@@ -9,8 +10,9 @@ from astropy import coordinates as ac, time as at, units as au, constants as con
 from jax import config, numpy as jnp
 from tomographic_kernel.frames import ENU
 
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.uvw.uvw_utils import InterpolatedArray, norm
+from dsa2000_cal.uvw.uvw_utils import norm
 
 
 @dataclasses.dataclass(eq=False)
@@ -131,18 +133,30 @@ class NearFieldDelayEngine:
         Returns:
             interpolator for emitter
         """
-        emitter_gcrs = emitter.reshape((1, -1)).transform_to(
-            ac.GCRS(
-                obstime=self.interp_times.reshape((-1, 1))
-            )
-        )  # [T, E]
+        obstime = self.interp_times.reshape((-1, 1))
+        if isinstance(emitter, ac.EarthLocation):
+            emitter_gcrs = emitter.reshape((1, -1)).get_itrs(
+                obstime=obstime
+            ).transform_to(
+                ac.GCRS(
+                    obstime=obstime
+                )
+            )  # [T, E]
+        elif isinstance(emitter, ENU):
+            emitter_gcrs = emitter.reshape((1, -1)).transform_to(
+                ac.GCRS(
+                    obstime=obstime
+                )
+            )  # [T, E]
+        else:
+            raise ValueError(f"emitter must be EarthLocation or ENU got {type(emitter)}")
         emitter_position_gcrs = emitter_gcrs.cartesian.xyz
         x_emitter_gcrs = quantity_to_jnp(
             np.transpose(emitter_position_gcrs, (1, 2, 0))
         )  # [T, E, 3]
 
         return InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=x_emitter_gcrs,
             axis=0,
             regular_grid=True
@@ -172,7 +186,7 @@ class NearFieldDelayEngine:
         values = a_east[:, None] * d_east + a_north[:, None] * d_north + a_up[:, None] * d_up + d_origin
 
         return InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=values,
             axis=0,
             regular_grid=True
@@ -185,7 +199,7 @@ class NearFieldDelayEngine:
                                           t1: jax.Array,
                                           i1: jax.Array,
                                           i2: jax.Array
-                                          ) -> jax.Array:
+                                          ) -> Tuple[jax.Array, jax.Array, jax.Array]:
         """
         Compute the delay for a given phase center, using VLBI delay model.
 
@@ -199,23 +213,26 @@ class NearFieldDelayEngine:
 
         Returns:
             delay: [E] the delay in meters, i.e. light travel distance, for each emitter.
+            dist2: the distance in meters, for baseline b=x2-x0.
+            dist1: the distance in meters, for baseline b=x1-x0.
         """
         if np.shape(a_east) != np.shape(a_north) or np.shape(a_east) != np.shape(a_up):
             raise ValueError(
                 f"a_east, a_north, a_up must have the same shape "
                 f"got {np.shape(a_east)}, {np.shape(a_north)}, {np.shape(a_up)}"
             )
-        return self._compute_delay_jax(
+        delay, dist2, dist1 = self._compute_delay_jax(
             self._construct_x_0_gcrs_from_projection(a_east, a_north, a_up),
             t1, i1, i2
-        ).reshape(np.shape(a_east))
+        )
+        return delay.reshape(np.shape(a_east)), dist2.reshape(np.shape(a_east)), dist1.reshape(np.shape(a_east))
 
     def compute_delay_from_emitter_jax(self,
                                        emitter: ac.EarthLocation | ENU,
                                        t1: jax.Array,
                                        i1: jax.Array,
                                        i2: jax.Array
-                                       ) -> jax.Array:
+                                       ) -> Tuple[jax.Array, jax.Array, jax.Array]:
         """
         Compute the delay for a given phase center, using VLBI delay model.
 
@@ -227,18 +244,21 @@ class NearFieldDelayEngine:
 
         Returns:
             delay: [E] the delay in meters, i.e. light travel distance, for each emitter.
+            dist2: the distance in meters, for baseline b=x2-x0.
+            dist1: the distance in meters, for baseline b=x1-x0.
         """
-        return self._compute_delay_jax(
+        delay, dist2, dist1 = self._compute_delay_jax(
             self.construct_x_0_gcrs(emitter=emitter),
             t1, i1, i2
-        ).reshape(emitter.shape)
+        )
+        return delay.reshape(emitter.shape), dist2.reshape(emitter.shape), dist1.reshape(emitter.shape)
 
     def _compute_delay_jax(self,
                            x_0_gcrs: InterpolatedArray,
                            t1: jax.Array,
                            i1: jax.Array,
                            i2: jax.Array
-                           ) -> jax.Array:
+                           ) -> Tuple[jax.Array, jax.Array, jax.Array]:
         """
         Compute the delay for a given phase center, using VLBI delay model.
 
@@ -249,26 +269,28 @@ class NearFieldDelayEngine:
 
         Returns:
             delay: the delay in meters, i.e. light travel distance.
+            dist2: the distance in meters, for baseline b=x2-x0.
+            dist1: the distance in meters, for baseline b=x1-x0.
         """
 
         if np.shape(t1) != () or np.shape(i1) != () or np.shape(i2) != ():
             raise ValueError(f"t1, i1, i2 must be scalars got {np.shape(t1)}, {np.shape(i1)}, {np.shape(i2)}")
 
         x_1_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=self.x_antennas_gcrs[:, i1, :],
             axis=0,
             regular_grid=True
         )
 
         x_2_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=self.x_antennas_gcrs[:, i2, :],
             axis=0,
             regular_grid=True
         )
 
-        delta_t = near_field_delay(
+        delta_t, dist2, dist1 = near_field_delay(
             t1=t1,
             x_0_gcrs=x_0_gcrs,
             x_1_gcrs=x_1_gcrs,
@@ -276,7 +298,7 @@ class NearFieldDelayEngine:
         )  # s
         # Unsure why the negative sign needs to be introduced to match,
         # since delta_t=t2-t1 is time for signal to travel from 1 to 2.
-        return -delta_t
+        return -delta_t, dist2, dist1
 
     def time_to_jnp(self, times: at.Time) -> jax.Array:
         """
@@ -308,6 +330,9 @@ def near_field_delay(
 
     Returns:
         [E] The delay in metres at time t1, for baseline b=x2-x1.
+        [E] The distance in metres at time t1, for baseline b=x2-x0.
+        [E] The distance in metres at time t1, for baseline b=x1-x0.
+
 
     References:
         [1] IERS Technical Note No. 36, IERS Conventions (2010)
@@ -323,7 +348,7 @@ def near_field_delay(
     L_G = jnp.asarray(6.969290134e-10)  # 1 - d(TT) / d(TCG), i.e. the mean rate of proper time on Earth's surface.
     GM_earth = quantity_to_jnp(const.GM_earth)  # m^3 / s^2
 
-    def _delay(x_i_gcrs: InterpolatedArray) -> jax.Array:
+    def _delay(x_i_gcrs: InterpolatedArray) -> Tuple[jax.Array, jax.Array]:
         # Eq 3.14 in [2] -- i.e. only Earth's potential
         b_gcrs = x_i_gcrs(t1) - x_0_gcrs(t1)  # [E, 3]
         delta_T_grav_earth = 2. * GM_earth / c ** 2 * jnp.log(
@@ -338,6 +363,8 @@ def near_field_delay(
         # atomic clocks tick at the rate of proper time, thus we need to covert to proper time.
         # 4.19 in [2] -- for Earth based observers the rate of proper time is the same as TT (by construction).
         proper_delay = (1 - L_G) * coordinate_delay
-        return proper_delay
+        return proper_delay, norm(b_gcrs, axis=-1)
 
-    return _delay(x_2_gcrs) - _delay(x_1_gcrs)
+    proper_time1, dist1 = _delay(x_1_gcrs)
+    proper_time2, dist2 = _delay(x_2_gcrs)
+    return proper_time2 - proper_time1, dist2, dist1

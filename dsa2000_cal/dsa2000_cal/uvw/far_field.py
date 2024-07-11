@@ -3,16 +3,28 @@ import itertools
 import time as time_mod
 import warnings
 from functools import partial
-from typing import Tuple
+from typing import Tuple, NamedTuple
 
 import jax
 import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
-from jax import config, numpy as jnp
+from jax import config, numpy as jnp, lax
 
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.uvw.uvw_utils import InterpolatedArray, perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
+from dsa2000_cal.uvw.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
+
+
+class VisibilityCoords(NamedTuple):
+    """
+    Coordinates for a single visibility.
+    """
+    uvw: jax.Array | np.ndarray  # [rows, 3] the uvw coordinates
+    time_obs: jax.Array | np.ndarray  # [rows] the time relative to the reference time (observation start)
+    antenna_1: jax.Array | np.ndarray  # [rows] the first antenna
+    antenna_2: jax.Array | np.ndarray  # [rows] the second antenna
+    time_idx: jax.Array | np.ndarray  # [rows] the time index
 
 
 @dataclasses.dataclass(eq=False)
@@ -185,34 +197,34 @@ class FarFieldDelayEngine:
 
         # Create interpolation objects
         self.X_earth_bcrs = InterpolatedArray(
-            times=interp_times_jax,
+            x=interp_times_jax,
             values=X_earth_bcrs,
             axis=0,
             regular_grid=True
         )
         self.V_earth_bcrs = InterpolatedArray(
-            times=interp_times_jax,
+            x=interp_times_jax,
             values=V_earth_bcrs,
             axis=0,
             regular_grid=True
         )
 
         self.R_earth_bcrs = InterpolatedArray(
-            times=interp_times_jax,
+            x=interp_times_jax,
             values=R_earth_bcrs,
             axis=0,
             regular_grid=True
         )
 
         self.X_J_bcrs = InterpolatedArray(
-            times=interp_times_jax,
+            x=interp_times_jax,
             values=system_positions_bcrs,
             axis=0,
             regular_grid=True
         )
 
         self.V_J_bcrs = InterpolatedArray(
-            times=interp_times_jax,
+            x=interp_times_jax,
             values=system_velocities_bcrs,
             axis=0,
             regular_grid=True
@@ -247,28 +259,28 @@ class FarFieldDelayEngine:
         K_bcrs = celestial_to_cartesian(ra, dec)
 
         x_1_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=self.x_antennas_gcrs[:, i1, :],
             axis=0,
             regular_grid=True
         )
 
         x_2_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=self.x_antennas_gcrs[:, i2, :],
             axis=0,
             regular_grid=True
         )
 
         w_1_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=self.w_antennas_gcrs[:, i1, :],
             axis=0,
             regular_grid=True
         )
 
         w_2_gcrs = InterpolatedArray(
-            times=self.interp_times_jax,
+            x=self.interp_times_jax,
             values=self.w_antennas_gcrs[:, i2, :],
             axis=0,
             regular_grid=True
@@ -341,8 +353,7 @@ class FarFieldDelayEngine:
         """
         return jnp.asarray((times.tt - self.ref_time.tt).sec)  # [N]
 
-    def batched_compute_uvw_jax(self, times: jax.Array, with_autocorr: bool = True) -> Tuple[
-        jax.Array, jax.Array, jax.Array]:
+    def batched_compute_uvw_jax(self, times: jax.Array, with_autocorr: bool = True) -> VisibilityCoords:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model in batched mode.
 
@@ -352,8 +363,10 @@ class FarFieldDelayEngine:
 
         Returns:
             uvw: [T, num_baselines, 3] UVW coordinates in meters.
-            antenna_1: [num_baselines] Index of the first antenna.
-            antenna_2: [num_baselines] Index of the second antenna.
+            antenna_1: [T, num_baselines] Index of the first antenna.
+            antenna_2: [T, num_baselines] Index of the second antenna.
+            time_idx: [T, num_baselines] Index of the time.
+            time_obs: [T, num_baselines] Time of observation.
         """
         if with_autocorr:
             antenna_1, antenna_2 = jnp.asarray(
@@ -361,12 +374,24 @@ class FarFieldDelayEngine:
         else:
             antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
 
+        @partial(multi_vmap, in_mapping="[T],[T],[B],[B]", out_mapping="[T,B,...],[T,B],[T,B],[T,B],[T,B]",
+                 verbose=True)
+        def _compute_uvw_batched(time_idx: jax.Array, t1: jax.Array, i1: jax.Array, i2: jax.Array
+                                 ) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+            return self._single_compute_uvw(t1, i1, i2), time_idx, t1, i1, i2
 
-        @partial(multi_vmap, in_mapping="[T],[B],[B]", out_mapping="[T,B,3]", verbose=True)
-        def _compute_uvw_batched(t1: jax.Array, i1: jax.Array, i2: jax.Array) -> jax.Array:
-            return self._single_compute_uvw(t1, i1, i2)
-
-        return _compute_uvw_batched(times, antenna_1, antenna_2), antenna_1, antenna_2
+        num_baselines = len(antenna_2)
+        num_times = len(times)
+        num_rows = num_baselines * num_times
+        uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_uvw_batched(
+            jnp.arange(num_times), times, antenna_1, antenna_2)
+        return VisibilityCoords(
+            uvw=lax.reshape(uvw, (num_rows, 3)),
+            time_idx=lax.reshape(time_idx, (num_rows,)),
+            time_obs=lax.reshape(time_obs, (num_rows,)),
+            antenna_1=lax.reshape(antenna_1, (num_rows,)),
+            antenna_2=lax.reshape(antenna_2, (num_rows,))
+        )
 
 
 def far_field_delay(
