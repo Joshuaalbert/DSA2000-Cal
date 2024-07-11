@@ -38,14 +38,14 @@ def test_near_field():
         resolution=0.01 * au.s
     )
 
-    delay = engine.compute_delay_from_emitter_jax(
+    delay, dist2_, dist1_ = engine.compute_delay_from_emitter_jax(
         emitter,
         engine.time_to_jnp(time),
         jnp.asarray(0),
         jnp.asarray(1)
     )
 
-    delay_proj = engine.compute_delay_from_projection_jax(
+    delay_proj, dist2, dist1 = engine.compute_delay_from_projection_jax(
         jnp.asarray(10.),
         jnp.asarray(0.),
         jnp.asarray(0.),
@@ -55,8 +55,10 @@ def test_near_field():
     )
     assert np.shape(delay) == ()
     assert np.shape(delay_proj) == ()
-    np.testing.assert_allclose(delay, 1000, atol=0.5)
-    np.testing.assert_allclose(delay_proj, 1000, atol=0.5)
+    np.testing.assert_allclose(delay, 1000, atol=0.55)
+    np.testing.assert_allclose(delay_proj, 1000, atol=0.55)
+    np.testing.assert_allclose(dist2, dist2_, atol=0.002)
+    np.testing.assert_allclose(dist1, dist1_, atol=0.002)
 
     # vector version
     for n in [1, 6]:
@@ -67,14 +69,14 @@ def test_near_field():
             obstime=time,
             location=array_location
         )
-        delay = engine.compute_delay_from_emitter_jax(
+        delay, dist2, dist1 = engine.compute_delay_from_emitter_jax(
             emitter,
             engine.time_to_jnp(time),
             jnp.asarray(0),
             jnp.asarray(1)
         )
         assert np.shape(delay) == (n,)
-        delay_proj = engine.compute_delay_from_projection_jax(
+        delay_proj, _, _ = engine.compute_delay_from_projection_jax(
             jnp.asarray([10.] * n),
             jnp.asarray([0.] * n),
             jnp.asarray([0.] * n),

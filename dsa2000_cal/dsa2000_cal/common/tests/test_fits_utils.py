@@ -199,7 +199,8 @@ def test_image_model():
         beam_major=au.Quantity(0.1, au.deg),
         beam_minor=au.Quantity(0.1, au.deg),
         beam_pa=au.Quantity(0, au.deg),
-        unit='JY/PIXEL'
+        unit='JY/PIXEL',
+        bandwidth=au.Quantity(300, au.MHz)
     )
     _ = ImageModel.parse_raw(x.json())
     # dl positive
@@ -215,7 +216,8 @@ def test_image_model():
             beam_major=au.Quantity(0.1, au.deg),
             beam_minor=au.Quantity(0.1, au.deg),
             beam_pa=au.Quantity(0, au.deg),
-            unit='JY/PIXEL'
+            unit='JY/PIXEL',
+            bandwidth=au.Quantity(300, au.MHz)
         )
     # image dim doesn't match coherencies
     with pytest.raises(ValueError):
@@ -230,7 +232,8 @@ def test_image_model():
             beam_major=au.Quantity(0.1, au.deg),
             beam_minor=au.Quantity(0.1, au.deg),
             beam_pa=au.Quantity(0, au.deg),
-            unit='JY/PIXEL'
+            unit='JY/PIXEL',
+            bandwidth=au.Quantity(300, au.MHz)
         )
     # beam_major negative
     with pytest.raises(ValueError):
@@ -245,7 +248,8 @@ def test_image_model():
             beam_major=au.Quantity(-0.1, au.deg),
             beam_minor=au.Quantity(0.1, au.deg),
             beam_pa=au.Quantity(0, au.deg),
-            unit='JY/PIXEL'
+            unit='JY/PIXEL',
+            bandwidth=au.Quantity(300, au.MHz)
         )
 
 
@@ -263,7 +267,8 @@ def test_save_image_to_fits(tmp_path):
         beam_major=au.Quantity(0.1, au.deg),
         beam_minor=au.Quantity(0.1, au.deg),
         beam_pa=au.Quantity(0, au.deg),
-        unit='JY/PIXEL'
+        unit='JY/PIXEL',
+        bandwidth=au.Quantity(300, au.MHz)
     )
     save_image_to_fits(str(tmp_path / "test1.fits"), image_model, overwrite=False)
     image_model.save_image_to_fits(str(tmp_path / "test2.fits"), overwrite=False)

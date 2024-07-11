@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import lax
 
-from dsa2000_cal.source_models.corr_translation import unflatten_coherencies, flatten_coherencies, linear_to_circular
+from dsa2000_cal.visibility_model.source_models import unflatten_coherencies, flatten_coherencies, linear_to_circular
 
 CASA_CORR_TYPES = {
     5: "RR",

@@ -6,12 +6,13 @@ import numpy as np
 import pytest
 from jax import numpy as jnp, config
 
+from dsa2000_cal.common.corr_translation import linear_to_stokes
 from dsa2000_cal.common.wgridder import dirty2vis, vis2dirty
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords
-from dsa2000_cal.predict.gaussian_predict import GaussianPredict, GaussianModelData
-from dsa2000_cal.predict.point_predict import PointPredict, PointModelData
-from dsa2000_cal.source_models.corr_translation import linear_to_stokes
-from dsa2000_cal.source_models.gaussian_stokes_I_source_model import GaussianSourceModel
+from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
+    GaussianModelData, GaussianPredict, GaussianSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import PointModelData, \
+    PointPredict
 
 
 def test_dirty2vis():
@@ -301,21 +302,18 @@ def test_gh55_point():
     gains[..., 1, 1] = 1.
     lmn = np.stack([lmn1, lmn2], axis=0)  # [source, 3]
 
-    vis_point_predict_linear = predict.predict(
+    vis_point_predict_linear = predict.predict(model_data=PointModelData(
         freqs=freqs,
-        dft_model_data=PointModelData(
-            image=image,
-            gains=gains,
-            lmn=lmn
-        ),
-        visibility_coords=VisibilityCoords(
-            uvw=uvw,
-            time_obs=np.zeros(num_rows),
-            antenna_1=antenna_1,
-            antenna_2=antenna_2,
-            time_idx=np.zeros(num_rows, jnp.int64)
-        )
-    )  # [row, chan, 2, 2]
+        image=image,
+        gains=gains,
+        lmn=lmn
+    ), visibility_coords=VisibilityCoords(
+        uvw=uvw,
+        time_obs=np.zeros(num_rows),
+        antenna_1=antenna_1,
+        antenna_2=antenna_2,
+        time_idx=np.zeros(num_rows, jnp.int64)
+    ))  # [row, chan, 2, 2]
     vis_point_predict_stokes = jax.vmap(jax.vmap(linear_to_stokes))(vis_point_predict_linear)[:, :, 0, 0]
     print(vis_point_predict_stokes)
     np.testing.assert_allclose(vis_point_predict_stokes.real, vis.real, atol=1e-3)
@@ -404,23 +402,20 @@ def test_gh55_gaussian():
     gains[..., 1, 1] = 1.
     lmn = np.asarray([[0., 0., 1.]])  # [source, 3]
 
-    vis_point_predict_linear = predict.predict(
-        freqs=freqs,
-        gaussian_model_data=GaussianModelData(
-            image=image,
-            gains=gains,
-            lmn=lmn,
-            ellipse_params=np.asarray([[major_pix * pixsize, minor_pix * pixsize, 0.]])
-        ),
-        visibility_coords=VisibilityCoords(
-            uvw=uvw,
-            time_obs=np.zeros(num_rows),
-            antenna_1=antenna_1,
-            antenna_2=antenna_2,
-            time_idx=np.zeros(num_rows, jnp.int64)
-        ),
+    vis_point_predict_linear = predict.predict(model_data=GaussianModelData(
 
-    )  # [row, chan, 2, 2]
+        freqs=freqs,
+        image=image,
+        gains=gains,
+        lmn=lmn,
+        ellipse_params=np.asarray([[major_pix * pixsize, minor_pix * pixsize, 0.]])
+    ), visibility_coords=VisibilityCoords(
+        uvw=uvw,
+        time_obs=np.zeros(num_rows),
+        antenna_1=antenna_1,
+        antenna_2=antenna_2,
+        time_idx=np.zeros(num_rows, jnp.int64)
+    ))  # [row, chan, 2, 2]
     vis_point_predict_stokes = jax.vmap(jax.vmap(linear_to_stokes))(vis_point_predict_linear)[:, :, 0, 0]
     print(vis_point_predict_stokes)
     sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis_point_predict_stokes)[:, 0], s=1, alpha=0.5)
@@ -603,3 +598,61 @@ def explicit_degridder(uvw, freqs, lmn, pixel_fluxes, negate_w):
                 phase = -2j * np.pi * (u * l + v * m + w * (n - 1)) / wavelength
                 vis[row, col] += flux * np.exp(phase) / n
     return vis
+
+
+def test_adjoint_factor():
+    # config.update("jax_enable_x64", True)
+    # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
+    np.random.seed(42)
+    import pylab as plt
+    # Validate the units of image
+    # To do this we simulate an image with a single point source in the centre, and compute the visibilties from that.
+    N = 512
+    num_ants = 100
+    num_freqs = 1
+
+    pixsize = 0.5 * np.pi / 180 / 3600.  # 5 arcsec
+    x0 = 0.
+    y0 = 0.
+    l0 = y0
+    m0 = x0
+    dl = pixsize
+    dm = pixsize
+
+    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
+
+    num_rows = len(antenna_1)
+    antennas = 10e3 * np.random.normal(size=(num_ants, 3))
+    antennas[:, 2] *= 0.001
+    uvw = jnp.asarray(antennas[antenna_2] - antennas[antenna_1])
+
+    freqs = np.linspace(700e6, 2000e6, num_freqs)
+
+    vis = jnp.ones(
+        (num_rows, num_freqs),
+        dtype=jnp.complex64
+    )
+
+    dirty = vis2dirty(
+        uvw=uvw,
+        freqs=freqs,
+        vis=vis,
+        npix_m=N,
+        npix_l=N,
+        pixsize_m=dm,
+        pixsize_l=dl,
+        wgt=None,
+        center_m=m0,
+        center_l=l0,
+        epsilon=1e-6,
+        do_wgridding=True,
+        flip_v=False,
+        divide_by_n=False,
+        nthreads=1,
+        verbosity=0
+    )
+    plt.imshow(dirty)
+    plt.colorbar()
+    plt.show()
+
+    np.testing.assert_allclose(np.max(dirty), 1., atol=2e-2)

@@ -7,8 +7,8 @@ from jax import config
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_model.forward_model import ForwardModel
-from dsa2000_cal.forward_model.synthetic_sky_model import SyntheticSkyModelProducer
-from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
+from dsa2000_cal.forward_model.synthetic_sky_model.sky_model_producer import SyntheticSkyModelProducer
+from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 
 # Set num jax devices
@@ -53,7 +53,7 @@ def test_forward_model():
     wsclean_source_models = sky_model.to_wsclean_source_models()
 
     forward_model = ForwardModel(
-        dish_effect_params=DishEffectsGainModelParams(),
+        dish_effect_params=DishEffectsParams(),
         ionosphere_specification='light_dawn',
         plot_folder='forward_model_plots',
         cache_folder='forward_model_cache',

@@ -6,9 +6,9 @@ from jax import config
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
 from dsa2000_cal.calibration.gain_prior_models import UnconstrainedGain
-from dsa2000_cal.forward_model.sky_model import SkyModel
+from dsa2000_cal.visibility_model.sky_model import SkyModel
 from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
-from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.wsclean_component_stokes_I_source_model import WSCleanSourceModel
 
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
@@ -42,7 +42,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
         )
         source_models.append(source_model)
 
-    sky_model = SkyModel(component_models=source_models, fits_models=[])
+    sky_model = SkyModel(component_source_models=source_models, fits_source_models=[])
 
     beam_gain_model = beam_gain_model_factory(array_name, zenith_pointing=True)
     num_shards = len(jax.devices())

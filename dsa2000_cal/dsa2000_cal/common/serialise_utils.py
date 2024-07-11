@@ -5,10 +5,13 @@ from typing import TypeVar, Type, Dict, Any, List
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import jax.numpy as jnp
 import numpy as np
 import ujson
 from pydantic import BaseModel
 from tomographic_kernel.frames import ENU
+
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 
 C = TypeVar('C')
 
@@ -80,6 +83,15 @@ def deserialise_enu(obj):
                location=deserialise_earth_location(obj["location"]), obstime=deserialise_time(obj["obstime"]))
 
 
+def deserialise_interpolated_array(obj):
+    return InterpolatedArray(
+        x=jnp.asarray(deserialise_ndarray(obj["x"])),
+        values=jnp.asarray(deserialise_ndarray(obj["values"])),
+        axis=obj["axis"],
+        regular_grid=obj["regular_grid"],
+    )
+
+
 class SerialisableBaseModel(BaseModel):
     """
     A pydantic BaseModel that can be serialised and deserialised using pickle, working well with Ray.
@@ -135,6 +147,13 @@ class SerialisableBaseModel(BaseModel):
                 "type": 'astropy.units.Quantity',
                 "value": x.value,
                 "unit": str(x.unit)
+            },
+            InterpolatedArray: lambda x: {
+                "type": 'dsa2000_cal.uvw.uvw_utils.InterpolatedArray',
+                "x": np.asarray(x.x),
+                "values": np.asarray(x.values),
+                "axis": x.axis,
+                "regular_grid": x.regular_grid
             }
         }
 
@@ -195,6 +214,12 @@ class SerialisableBaseModel(BaseModel):
             elif field.type_ is au.Quantity and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'astropy.units.Quantity':
                 obj[name] = deserialise_quantity(obj[name])
+                continue
+
+            # Deserialise Quantity
+            elif field.type_ is InterpolatedArray and isinstance(obj.get(name), dict) and obj[name].get(
+                    "type") == 'dsa2000_cal.uvw.uvw_utils.InterpolatedArray':
+                obj[name] = deserialise_interpolated_array(obj[name])
                 continue
 
             # Deserialise nested models

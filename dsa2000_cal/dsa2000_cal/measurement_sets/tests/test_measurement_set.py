@@ -112,7 +112,7 @@ def test_measurement_setting(tmp_path, with_autocorr):
         assert data.weights.shape == (ms.block_size, 3, 4)
         assert data.flags.shape == (ms.block_size, 3, 4)
         for time_idx in coords.time_idx:
-            assert ms.meta.times[time_idx] == time
+            assert ms.meta.x[time_idx] == time
 
         gen_response = VisibilityData(
             vis=np.ones((ms.block_size, 3, 4), dtype=np.complex64),
@@ -174,10 +174,10 @@ def test_measurement_setting_put(tmp_path, with_autocorr):
             times=at.Time([time.isot] * ms.block_size, format='isot')
         )
 
-    data = ms.match(antenna_1=0, antenna_2=1, times=ms.meta.times)
+    data = ms.match(antenna_1=0, antenna_2=1, times=ms.meta.x)
     assert data.vis.shape == (len(meta.times), len(meta.freqs), 4)
 
-    data = ms.match(antenna_1=np.asarray([0, 1]), antenna_2=np.asarray([1, 2]), times=ms.meta.times[:2])
+    data = ms.match(antenna_1=np.asarray([0, 1]), antenna_2=np.asarray([1, 2]), times=ms.meta.x[:2])
     assert data.vis.shape == (2, len(meta.freqs), 4)
 
     gen = ms.create_block_generator()
@@ -236,9 +236,9 @@ def test_multi_block_gen(tmp_path, with_autocorr):
         assert data.weights.shape == (ms.block_size * 2, 3, 4)
         assert data.flags.shape == (ms.block_size * 2, 3, 4)
         for time_idx in coords.time_idx:
-            assert ms.meta.times[time_idx] in times
+            assert ms.meta.x[time_idx] in times
         for time in times:
-            assert time in ms.meta.times[coords.time_idx]
+            assert time in ms.meta.x[coords.time_idx]
 
         gen_response = VisibilityData(
             vis=np.ones((ms.block_size * 2, 3, 4), dtype=np.complex64),

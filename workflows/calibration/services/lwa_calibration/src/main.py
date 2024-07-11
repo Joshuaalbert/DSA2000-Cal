@@ -7,7 +7,7 @@ from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
 from dsa2000_cal.calibration.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.forward_model.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
-from dsa2000_cal.simulation.rime_model import RIMEModel
+from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)

@@ -2,7 +2,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from dsa2000_cal.adapter.utils import INV_CASA_CORR_TYPES, from_casa_corrs_to_linear, from_linear_to_casa_corrs
-from dsa2000_cal.source_models.corr_translation import linear_to_circular
+from dsa2000_cal.visibility_model.source_models import linear_to_circular
 
 
 def test_from_casa_corrs_to_linear():

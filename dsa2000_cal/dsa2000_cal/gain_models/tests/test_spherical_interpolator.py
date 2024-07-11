@@ -1,8 +1,10 @@
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from astropy import units as au, coordinates as ac, time as at
-from tomographic_kernel.frames import ENU
 
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.gain_models.geodesic_model import GeodesicModel
 from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel, \
     phi_theta_from_lmn
 
@@ -50,7 +52,7 @@ def test_phi_theta_from_lmn():
     # Test bore-sight
     l, m, n = 0., 0., 1.
     phi, theta = phi_theta_from_lmn(l, m, n)
-    np.testing.assert_allclose( theta, 0., atol=5e-8)
+    np.testing.assert_allclose(theta, 0., atol=5e-8)
 
     # Points to right on sky == -L
     l, m, n = -1., 0., 0.
@@ -104,7 +106,18 @@ def mock_spherical_interpolator_gain_model(mock_setup):
         tile_antennas=False
     )
 
-    return gain_model
+    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+
+    geodesic_model = GeodesicModel(
+        phase_center=phase_tracking,
+        antennas=antennas,
+        array_location=antennas[0],
+        obstimes=times,
+        ref_time=times[0],
+        pointings=None
+    )
+
+    return gain_model, geodesic_model
 
 
 @pytest.fixture(scope='function')
@@ -121,69 +134,51 @@ def mock_spherical_interpolator_gain_model_tile(mock_setup):
         tile_antennas=True
     )
 
-    return gain_model
+    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+
+    geodesic_model = GeodesicModel(
+        phase_center=phase_tracking,
+        antennas=antennas,
+        array_location=antennas[0],
+        obstimes=times,
+        ref_time=times[0],
+        pointings=None
+    )
+
+    return gain_model, geodesic_model
 
 
 def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
                                mock_spherical_interpolator_gain_model_tile):
-    for mock_gain_model in [mock_spherical_interpolator_gain_model,
-                            mock_spherical_interpolator_gain_model_tile]:
+    for (mock_gain_model, geodesic_model) in [mock_spherical_interpolator_gain_model,
+                                              mock_spherical_interpolator_gain_model_tile]:
         print(f"Tiled: {mock_gain_model.tile_antennas}")
         # Near field source
-        array_location = ac.EarthLocation(lat=0, lon=0, height=0)
+        array_location = mock_gain_model.antennas[0]
         time = mock_gain_model.model_times[0]
         freqs = mock_gain_model.model_freqs
+        num_sources = 3
+        obstimes = quantity_to_jnp((mock_gain_model.model_times - mock_gain_model.model_times[0]).sec * au.s)
 
-        for use_scan in [True, False]:
-            print(f"Use scan {use_scan}")
-
-            for near_sources in [True, False]:
-                print(f'Near field sources: {near_sources}')
-                if near_sources:
-                    sources = ENU(east=[0, 1] * au.km, north=[1, 0] * au.km, up=[20, 20] * au.m,
-                                  location=array_location, obstime=time)
-                else:
-                    sources = ac.ICRS(ra=[0, 1] * au.deg, dec=[2, 3] * au.deg).reshape((2, 1))
-
-                # scalar pointing
-                print("Scalar pointing")
-                pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg, )
-                gains = mock_gain_model.compute_gain(
-                    freqs=freqs,
-                    sources=sources,
-                    array_location=array_location,
-                    time=time,
-                    pointing=pointing,
-                    use_scan=use_scan
+        for near_sources in [True, False]:
+            print(f'Near field sources: {near_sources}')
+            if near_sources:
+                geodesics = geodesic_model.compute_near_field_geodesics(
+                    times=obstimes,
+                    source_positions_enu=jnp.zeros((num_sources, 3))
                 )
-                assert gains.shape == sources.shape + (len(mock_gain_model.antennas),
-                                                       len(freqs), 2, 2)
-
-                # 1D pointing
-                print("1D pointing")
-                pointing = ac.ICRS(ra=[0 for _ in mock_gain_model.antennas] * au.deg,
-                                   dec=[0 for _ in mock_gain_model.antennas] * au.deg)
-
-                gains = mock_gain_model.compute_gain(
-                    freqs=freqs,
-                    sources=sources,
-                    array_location=array_location,
-                    time=time,
-                    pointing=pointing,
-                    use_scan=use_scan
+            else:
+                geodesics = geodesic_model.compute_far_field_geodesic(
+                    times=obstimes,
+                    lmn_sources=jnp.zeros((num_sources, 3))
                 )
-                assert gains.shape == sources.shape + (len(mock_gain_model.antennas),
-                                                       len(freqs), 2, 2)
 
-                # Zenith
-                print('Zenith')
-                gains = mock_gain_model.compute_gain(
-                    freqs=freqs,
-                    sources=sources,
-                    array_location=array_location,
-                    time=time,
-                    pointing=None,
-                    use_scan=use_scan
-                )
-                assert gains.shape == sources.shape + (len(mock_gain_model.antennas),
-                                                       len(freqs), 2, 2)
+            gains = mock_gain_model.compute_gain(
+                quantity_to_jnp(mock_gain_model.model_freqs),
+                obstimes,
+                geodesics
+            )
+            if mock_gain_model.is_full_stokes():
+                assert gains.shape == (num_sources, len(obstimes), len(mock_gain_model.antennas), len(freqs), 2, 2)
+            else:
+                assert gains.shape == (num_sources, len(obstimes), len(mock_gain_model.antennas), len(freqs))

@@ -29,11 +29,11 @@ def create_makems_config(casa_ms: str,
     mount_types = meta.mount_types
     start_freq = (meta.freqs[0] - 0.5 * meta.channel_width).to('Hz').value
     step_freq = meta.channel_width.to('Hz').value
-    start_time = (meta.times[0] - 0.5 * meta.integration_time).datetime
+    start_time = (meta.x[0] - 0.5 * meta.integration_time).datetime
     step_time = meta.integration_time.to('s').value
     phase_tracking = meta.pointing
     num_freqs = len(meta.freqs)
-    num_times = len(meta.times)
+    num_times = len(meta.x)
 
     antennas_itrs = antennas.get_itrs()
     array_table = f"{meta.array_name}_ANTENNA"

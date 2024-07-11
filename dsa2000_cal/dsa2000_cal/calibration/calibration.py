@@ -13,18 +13,18 @@ from jax import lax
 from jax import numpy as jnp
 
 from dsa2000_cal.calibration.bfgs import BFGS
-from dsa2000_cal.calibration.lbfgs import LBFGS
-from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
 from dsa2000_cal.calibration.gain_prior_models import AbstractGainPriorModel, \
     ReplicatedGainProbabilisticModel
+from dsa2000_cal.calibration.lbfgs import LBFGS
+from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.forward_model.sky_model import SkyModel
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityCoords, VisibilityData, MeasurementSet
-from dsa2000_cal.simulation.rime_model import RIMEModel
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
+from dsa2000_cal.uvw.far_field import VisibilityCoords
 from dsa2000_cal.types import CalibrationSolutions
+from dsa2000_cal.visibility_model.rime_model import RIMEModel, FacetSourceModel
 
 tfpd = tfp.distributions
 
@@ -63,7 +63,7 @@ class Calibration:
         num_shards: the number of shards to use.
     """
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
-    sky_model: SkyModel
+    sky_model: FacetSourceModel
     rime_model: RIMEModel
     gain_prior_model: AbstractGainPriorModel
 
@@ -151,10 +151,10 @@ class Calibration:
         print(f"Running with validity interval {self.validity_interval} / {cadence_interval} blocks")
 
         # Ensure the freqs are the same in the models
-        for wsclean_source_model in self.sky_model.component_models:
+        for wsclean_source_model in self.sky_model.component_source_models:
             if not np.allclose(ms.meta.freqs.to('Hz'), wsclean_source_model.freqs.to('Hz')):
                 raise ValueError("Frequencies in the measurement set and source models must match.")
-        for fits_source_model in self.sky_model.fits_models:
+        for fits_source_model in self.sky_model.fits_source_models:
             if not np.allclose(ms.meta.freqs.to('Hz'), fits_source_model.freqs.to('Hz')):
                 raise ValueError("Frequencies in the measurement set and source models must match.")
         if not self.inplace_subtract:
@@ -166,9 +166,9 @@ class Calibration:
         calibrator_lmn = au.Quantity(
             np.stack(
                 [
-                    model.flux_weighted_lmn() for model in self.sky_model.component_models
+                    model.flux_weighted_lmn() for model in self.sky_model.component_source_models
                 ] + [
-                    model.flux_weighted_lmn() for model in self.sky_model.fits_models
+                    model.flux_weighted_lmn() for model in self.sky_model.fits_source_models
                 ],
                 axis=0)
         )  # [num_calibrators, 3]
@@ -280,7 +280,7 @@ class Calibration:
         calibration_solutions = CalibrationSolutions(
             gains=gains,
             directions=cal_sources,
-            times=ms.meta.times,
+            times=ms.meta.x,
             antennas=ms.meta.antennas,
             antenna_labels=ms.meta.antenna_names,
             freqs=ms.meta.freqs
@@ -318,8 +318,7 @@ class Calibration:
     def _solve_jax(self, key, freqs: jax.Array, preapply_gains: jax.Array, init_params: jax.Array | None,
                    vis_data: VisibilityData,
                    vis_coords: VisibilityCoords,
-                   num_iterations: int) -> Tuple[jax.Array,
-    jax.Array, Tuple[jax.Array, jaxopt.OptStep], jax.Array]:
+                   num_iterations: int) -> Tuple[jax.Array, jax.Array, Tuple[jax.Array, jaxopt.OptStep], jax.Array]:
 
         gain_probabilistic_model = ReplicatedGainProbabilisticModel(
             rime_model=self.rime_model,

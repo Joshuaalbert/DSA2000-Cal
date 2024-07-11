@@ -8,7 +8,7 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.assets.source_models.cyg_a.source_model import CygASourceModel
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
-from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source import FitsStokesISourceModel
 
 
 def test_model():
@@ -33,12 +33,8 @@ def test_orientations(source: str):
 
     freqs = au.Quantity([65e6, 77e6], 'Hz')
 
-    fits_sources = FitsStokesISourceModel.from_wsclean_model(
-        wsclean_fits_files=wsclean_fits_files,
-        time=time,
-        phase_tracking=phase_tracking,
-        freqs=freqs
-    )
+    fits_sources = FitsStokesISourceModel.from_wsclean_model(wsclean_fits_files=wsclean_fits_files,
+                                                             phase_tracking=phase_tracking, freqs=freqs)
     assert isinstance(fits_sources, FitsStokesISourceModel)
 
     # Visually verified against ds9, that RA increases over column, and DEC increases over rows.

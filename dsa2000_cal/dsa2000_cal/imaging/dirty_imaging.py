@@ -18,17 +18,17 @@ from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common import wgridder
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.common.corr_translation import linear_to_stokes
 from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
-from dsa2000_cal.source_models.corr_translation import linear_to_stokes
 
 
 @dataclasses.dataclass(eq=False)
 class DirtyImaging:
     """
-    Runs forward modelling using a sharded data structure over devices.
+    Performs imaging of visibilties using W-gridder.
     """
 
     # Imaging parameters
@@ -105,34 +105,33 @@ class DirtyImaging:
             int(self.oversample_factor * field_of_view.to('rad').value / diffraction_limit_resolution)
         )
         lon_top, lat_top = offset_by(
-            lon=ms.meta.pointing.ra,
-            lat=ms.meta.pointing.dec,
+            lon=ms.meta.phase_tracking.ra,
+            lat=ms.meta.phase_tracking.dec,
             posang=0 * au.deg,  # North
             distance=field_of_view / 2.
         )
         source_top = ac.ICRS(lon_top, lat_top)
 
         lon_east, lat_east = offset_by(
-            lon=ms.meta.pointing.ra,
-            lat=ms.meta.pointing.dec,
+            lon=ms.meta.phase_tracking.ra,
+            lat=ms.meta.phase_tracking.dec,
             posang=90 * au.deg,  # East -- increasing RA
             distance=field_of_view / 2.
         )
         source_east = ac.ICRS(lon_east, lat_east)
 
-        source_centre = ac.ICRS(ms.meta.pointing.ra, ms.meta.pointing.dec)
+        source_centre = ac.ICRS(ms.meta.phase_tracking.ra, ms.meta.phase_tracking.dec)
 
         lmn_ref_points = icrs_to_lmn(
             sources=ac.concatenate([source_centre, source_top, source_east]).transform_to(ac.ICRS),
-            phase_tracking=ms.meta.pointing)
+            phase_tracking=ms.meta.phase_tracking)
         dl = (lmn_ref_points[2, 0] - lmn_ref_points[0, 0]) / (num_pixel / 2.)
         dm = (lmn_ref_points[1, 1] - lmn_ref_points[0, 1]) / (num_pixel / 2.)
 
-        # TODO: check that x==l axis here, as it is -y in antenna frame
-        center_x = lmn_ref_points[0, 0]
-        center_y = lmn_ref_points[0, 1]
+        center_l = lmn_ref_points[0, 0]
+        center_m = lmn_ref_points[0, 1]
 
-        print(f"Center x: {center_x}, Center y: {center_y}")
+        print(f"Center x: {center_l}, Center y: {center_m}")
         print(f"Image size: {num_pixel} x {num_pixel}")
         print(f"Pixel size: {dl} x {dm}")
 
@@ -145,24 +144,25 @@ class DirtyImaging:
             num_pixel=num_pixel,
             dl=quantity_to_jnp(dl),
             dm=quantity_to_jnp(dm),
-            center_l=quantity_to_jnp(center_x),
-            center_m=quantity_to_jnp(center_y)
-        )  # [num_pixel, num_pixel]
-        dirty_image = dirty_image[:, :, None, None]  # [num_pixel, num_pixel, 1, 1]
+            center_l=quantity_to_jnp(center_l),
+            center_m=quantity_to_jnp(center_m)
+        )  # [Nl, Nm]
         dirty_image.block_until_ready()
+        dirty_image = dirty_image[:, :, None, None]  # [num_pixel, num_pixel, 1, 1]
         t1 = time_mod.time()
         print(f"Completed imaging in {t1 - t0:.2f} seconds.")
         image_model = ImageModel(
-            phase_tracking=ms.meta.pointing,
+            phase_tracking=ms.meta.phase_tracking,
             obs_time=ms.ref_time,
             dl=dl,
             dm=dm,
             freqs=np.mean(ms.meta.freqs, keepdims=True),
+            bandwidth=ms.meta.channel_width * len(ms.meta.freqs),
             coherencies=['I'],
             beam_major=diffraction_limit_resolution * au.rad,
             beam_minor=diffraction_limit_resolution * au.rad,
             beam_pa=0 * au.deg,
-            unit='JY/PIXEL',  # TODO: check this is correct.
+            unit='JY/PIXEL',
             object_name='forward_model',
             image=au.Quantity(np.asarray(dirty_image), 'Jy')
         )
@@ -170,6 +170,9 @@ class DirtyImaging:
             fp.write(image_model.json(indent=2))
         image_model.save_image_to_fits(f"{image_name}.fits", overwrite=False)
         print(f"Saved FITS image to {image_name}.fits")
+
+        # TODO: compute PSF for flux scale and fit beam
+
         return image_model
 
     @partial(jax.jit, static_argnames=['self', 'num_pixel'])

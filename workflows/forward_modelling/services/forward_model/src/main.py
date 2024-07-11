@@ -8,7 +8,7 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_model.forward_model import ForwardModel
 from dsa2000_cal.forward_model.synthetic_sky_model import SyntheticSkyModelProducer
-from dsa2000_cal.gain_models.dish_effects_gain_model import DishEffectsGainModelParams
+from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 
 # Set num jax devices
@@ -68,7 +68,7 @@ def main(ms_folder: str):
     sky_model_calibrators_source_models = sky_model_calibrators.to_wsclean_source_models()
 
     forward_model = ForwardModel(
-        dish_effect_params=DishEffectsGainModelParams(
+        dish_effect_params=DishEffectsParams(
             dish_diameter=array.get_antenna_diameter(),
             focal_length=array.get_focal_length(),
             # elevation_pointing_error_stddev=0. * au.deg,

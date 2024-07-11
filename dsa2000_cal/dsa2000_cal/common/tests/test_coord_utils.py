@@ -8,6 +8,7 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
     icrs_to_enu, enu_to_icrs, lmn_to_icrs_old
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 
 
 def test_enu_to_uvw():
@@ -72,13 +73,45 @@ def test_icrs_to_lmn():
     array_location = ac.EarthLocation.of_site('vla')
     obstime = at.Time('2000-01-01T00:00:00', format='isot')
     frame = ac.AltAz(location=array_location, obstime=obstime)
-    zenith = ac.SkyCoord(alt=90 * au.deg, az=0 * au.deg, frame=frame).transform_to(ac.ICRS)
+    zenith = ac.SkyCoord(alt=90 * au.deg, az=0 * au.deg, frame=frame).transform_to(ac.ICRS())
     lmn = icrs_to_lmn(zenith, zenith)
     np.testing.assert_allclose(lmn, np.array([0, 0, 1]), atol=1e-10)
 
     lmn = icrs_to_lmn(sources, zenith)
     print(lmn)
 
+    # Another test of zenith
+    sources = ENU(
+        east=0,
+        north=0,
+        up=1,
+        obstime=obstime,
+        location=array_location
+    ).transform_to(ac.ICRS())
+    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_tracking=zenith))
+    np.testing.assert_allclose(lmn_sources, [0, 0, 1], atol=1e-10)
+
+    # Another test of L
+    sources = ENU(
+        east=1,
+        north=0,
+        up=0,
+        obstime=obstime,
+        location=array_location
+    ).transform_to(ac.ICRS())
+    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_tracking=zenith))
+    np.testing.assert_allclose(lmn_sources, [1, 0, 0], atol=1e-3)
+
+    # Another test of M
+    sources = ENU(
+        east=0,
+        north=1,
+        up=0,
+        obstime=obstime,
+        location=array_location
+    ).transform_to(ac.ICRS())
+    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_tracking=zenith))
+    np.testing.assert_allclose(lmn_sources, [0, 1, 0], atol=1e-3)
 
 @pytest.mark.parametrize('broadcast_phase_tracking', [False, True])
 @pytest.mark.parametrize('broadcast_lmn', [False, True])

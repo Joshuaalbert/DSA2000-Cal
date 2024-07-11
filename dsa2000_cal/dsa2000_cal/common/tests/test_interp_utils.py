@@ -6,7 +6,8 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.interp_utils import optimized_interp_jax_safe, multilinear_interp_2d, \
-    get_interp_indices_and_weights, left_broadcast_multiply, convolved_interp, get_centred_insert_index, apply_interp
+    get_interp_indices_and_weights, left_broadcast_multiply, convolved_interp, get_centred_insert_index, apply_interp, \
+    InterpolatedArray
 
 
 def test_linear_interpolation():
@@ -223,6 +224,13 @@ def test_apply_interp(regular_grid):
     (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
     assert apply_interp(jnp.zeros((4, 5, 10, 6)), i0, alpha0, i1, alpha1, axis=2).shape == (4, 5, 6)
 
+    print(
+        jax.jit(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=2)).lower(
+            jnp.zeros((4, 5, 10, 6))).compile().cost_analysis()
+    )
+    # [{'bytes accessed': 1440.0, 'utilization1{}': 2.0, 'bytes accessed0{}': 960.0, 'bytes accessedout{}': 480.0, 'bytes accessed1{}': 960.0}]
+    # [{'bytes accessed1{}': 960.0,  'utilization1{}': 2.0, 'bytes accessedout{}': 480.0, 'bytes accessed0{}': 960.0, 'bytes accessed': 1440.0}]
+
 
 def test_regular_grid():
     # Inside bounds
@@ -318,3 +326,31 @@ def test__get_centred_insert_index():
     expected_time_idx = np.asarray([0, 2])
     time_idx = get_centred_insert_index(times_to_insert, time_centres, ignore_out_of_bounds=True)
     np.testing.assert_array_equal(time_idx, expected_time_idx)
+
+
+@pytest.mark.parametrize('regular_grid', [True, False])
+def test_interpolated_array(regular_grid: bool):
+    # scalar time
+    times = jnp.linspace(0, 10, 100)
+    values = jnp.sin(times)
+    interp = InterpolatedArray(times, values, regular_grid=regular_grid)
+    assert interp(5.).shape == ()
+    np.testing.assert_allclose(interp(5.), jnp.sin(5), atol=2e-3)
+
+    # vector time
+    assert interp(jnp.array([5., 6.])).shape == (2,)
+    np.testing.assert_allclose(interp(jnp.array([5., 6.])), jnp.sin(jnp.array([5., 6.])), atol=2e-3)
+
+    # Now with axis = 1
+    times = jnp.linspace(0, 10, 100)
+    values = jnp.stack([jnp.sin(times), jnp.cos(times)], axis=0)  # [2, 100]
+    interp = InterpolatedArray(times, values, axis=1, regular_grid=regular_grid)
+    assert interp(5.).shape == (2,)
+    np.testing.assert_allclose(interp(5.), jnp.array([jnp.sin(5), jnp.cos(5)]), atol=2e-3)
+
+    # Vector
+    assert interp(jnp.array([5., 6., 7.])).shape == (2, 3)
+    np.testing.assert_allclose(interp(jnp.array([5., 6., 7.])),
+                               jnp.stack([jnp.sin(jnp.array([5., 6., 7.])), jnp.cos(jnp.array([5., 6., 7.]))],
+                                         axis=0),
+                               atol=2e-3)

@@ -8,6 +8,7 @@ import ujson
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 
 
 class TestModelInt(SerialisableBaseModel):
@@ -242,7 +243,7 @@ def test_enu_serialization():
         enu: ENU
 
     original = ENUModel(
-        enu=ENU(east=0.*au.m, north=0.*au.m, up=0.*au.m,
+        enu=ENU(east=0. * au.m, north=0. * au.m, up=0. * au.m,
                 location=ac.EarthLocation.of_site('vla'),
                 obstime=at.Time.now())
     )
@@ -276,6 +277,7 @@ def test_enu_serialization():
     assert np.isclose(deserialised.enu.east.value, original.enu.east.value)
     assert np.isclose(deserialised.enu.north.value, original.enu.north.value)
     assert np.isclose(deserialised.enu.up.value, original.enu.up.value)
+
 
 def test_complex_ndarray_serialisation():
     class ComplexNumpyModel(SerialisableBaseModel):
@@ -358,3 +360,28 @@ def test_nested_models_with_quantities():
 
     # Validate the deserialisation
     np.testing.assert_array_equal(deserialised.nested.quantity, original.nested.quantity)
+
+
+def test_interpolated_array():
+    class Model(SerialisableBaseModel):
+        x: InterpolatedArray
+
+    original = Model(
+        x=InterpolatedArray(
+            x=np.arange(5),
+            values=np.ones((5, 3)),
+            axis=0,
+            regular_grid=True
+        )
+    )
+
+    # Serialise the object to JSON
+    serialised = original.json(indent=2)
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = Model.parse_raw(serialised)
+    np.testing.assert_allclose(deserialised.x.x, original.x.x)
+    np.testing.assert_allclose(deserialised.x.values, original.x.values)
+    np.testing.assert_allclose(deserialised.x.axis, original.x.axis)
+    np.testing.assert_allclose(deserialised.x.regular_grid, original.x.regular_grid)

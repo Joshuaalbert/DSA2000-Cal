@@ -260,17 +260,6 @@ class BFGS:
                               num_fun_eval=new_num_fun_eval,
                               num_linesearch_iter=new_num_linesearch_iter)
 
-        if self.verbose:
-            self.log_info(
-                new_state,
-                error_name="Gradient Norm",
-                additional_info={
-                    "Objective Value": new_value,
-                    "Stepsize": new_stepsize,
-                    "Number Linesearch Iterations":
-                        new_state.num_linesearch_iter - state.num_linesearch_iter
-                }
-            )
         return base.OptStep(params=new_params, state=new_state)
 
     def optimality_fun(self, params, *args, **kwargs):

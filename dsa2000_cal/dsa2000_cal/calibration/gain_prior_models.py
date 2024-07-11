@@ -11,10 +11,11 @@ from jax import lax
 from jaxns import Prior, Model, PriorModelType
 
 from dsa2000_cal.common.jax_utils import promote_pytree, multi_vmap
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, VisibilityCoords
-from dsa2000_cal.predict.vec_utils import kron_product
-from dsa2000_cal.simulation.rime_model import RIMEModel
-from dsa2000_cal.source_models.corr_translation import flatten_coherencies
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
+from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.common.vec_utils import kron_product
+from dsa2000_cal.visibility_model.rime_model import RIMEModel
+from dsa2000_cal.visibility_model.source_models import flatten_coherencies
 
 tfpd = tfp.distributions
 
@@ -109,7 +110,7 @@ class ReplicatedGainProbabilisticModel(AbstractGainProbabilisticModel):
             # vis: [num_rows, num_chans, 2, 2]
             @partial(multi_vmap, in_mapping="[r,c,2,2],[r,c,2,2],[r,c,2,2]", out_mapping="[r,c]", verbose=True)
             def transform(g1, g2, vis):
-                return flatten_coherencies(kron_product(g1, vis, g2.T.conj()))  # [4]
+                return flatten_coherencies(kron_product(g1, vis, g2.conj().T))  # [4]
 
             accumulated_vis += transform(g1, g2, vis)  # [num_rows, num_chans, 4]
             return accumulated_vis, ()
@@ -141,10 +142,10 @@ class ReplicatedGainProbabilisticModel(AbstractGainProbabilisticModel):
         num_source, num_time, num_ant, num_chan, _, _ = np.shape(self.preapply_gains)
 
         # TODO: explore using checkpointing
-        vis = self.rime_model.predict_model_visibilities_jax(
+        vis = self.rime_model.predict_facets_model_visibilities(
             freqs=self.freqs,
             apply_gains=self.preapply_gains,
-            vis_coords=self.vis_coords,
+            visibility_coords=self.vis_coords,
             flat_coherencies=False
         )  # [num_cal, num_row, num_chan, 2, 2]
 

@@ -5,8 +5,7 @@ import numpy as np
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
-from dsa2000_cal.source_models.fits_stokes_I_source_model import FitsStokesISourceModel
-from dsa2000_cal.source_models.wsclean_stokes_I_source_model import WSCleanSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source import FitsStokesISourceModel
 
 
 def test_wsclean_component_files():
@@ -25,5 +24,5 @@ def test_wsclean_component_files():
         # )
 
         fits_model = FitsStokesISourceModel.from_wsclean_model(source_model_asset.get_wsclean_fits_files(),
-                                                               time, phase_tracking, freqs, ignore_out_of_bounds=True)
+                                                               phase_tracking, freqs, ignore_out_of_bounds=True)
         fits_model.plot()

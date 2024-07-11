@@ -289,6 +289,8 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
         in_mapping: string of input shapes, e.g. "[n1,n2,n3],[n1,n3]", only left most dims need to be represented
         out_mapping: string of output shapes, e.g. "[n1,n2,n3,...]", one per output. All input variables must be mentioned
             once. '...' means the shape of core function output. Assumes end if not given.
+        scan_dims: set of dimensions to scan over
+        verbose: whether to print the implied function signature
 
     Returns:
         mapped function
@@ -363,7 +365,8 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
         input_sig = ','.join(input_sig)
         out_sig = [f"({','.join(dims)})" for dims in out_sig]
         out_sig = ','.join(out_sig)
-        print(f"Implied function signature: {input_sig} -> {out_sig}")
+
+        print(f"Implied function signature: ({f.__module__}) {f.__name__} :: {input_sig} -> {out_sig}")
 
     multi_f = f
     for applicator in applicators[::-1]:

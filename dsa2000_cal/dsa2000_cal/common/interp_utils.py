@@ -1,7 +1,9 @@
+import dataclasses
+from typing import Tuple
+
 import jax
-import jax.numpy as jnp
 import numpy as np
-from jax import lax
+from jax import lax, numpy as jnp
 
 
 def optimized_interp_jax_safe(x, xp, yp):
@@ -121,8 +123,16 @@ def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, 
     Returns:
         [N] or scalar interpolated along axis
     """
-    return left_broadcast_multiply(jnp.take(x, i0, axis=axis), alpha0, axis=axis) + left_broadcast_multiply(
-        jnp.take(x, i1, axis=axis), alpha1, axis=axis)
+
+    def take(i):
+        num_dims = len(np.shape(x))
+        # [0] [1] [2 3 4], num_dims=5, axis=1
+        slices = [slice(None)] * axis + [i] + [slice(None)] * (num_dims - axis - 1)
+        # return jnp.take(x, i, axis=axis)
+        return x[tuple(slices)]
+
+    return left_broadcast_multiply(take(i0), alpha0, axis=axis) + left_broadcast_multiply(
+        take(i1), alpha1, axis=axis)
 
 
 def left_broadcast_multiply(x, y, axis: int = 0):
@@ -236,7 +246,7 @@ def convolved_interp(x, y, z, k=3, mode='euclidean'):
     Returns:
         [num_x] array of interpolated values
     """
-    select_idx, dist = get_nn_points(x=x, y=y, k=k, mode=mode) # [num_x, k]
+    select_idx, dist = get_nn_points(x=x, y=y, k=k, mode=mode)  # [num_x, k]
     weights = 1. / (dist + 1e-6)  # [num_x, k]
     weights /= jnp.sum(weights, axis=-1, keepdims=True)  # [num_x, k]
     z_interp = jnp.sum(jnp.take_along_axis(z[None, :], select_idx, axis=-1) * weights, axis=-1)  # [num_x]
@@ -299,3 +309,60 @@ def get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray,
     elif ignore_out_of_bounds:
         insert_idx = np.clip(insert_idx, 0, len(grid_centres) - 1)
     return insert_idx
+
+
+@dataclasses.dataclass(eq=False)
+class InterpolatedArray:
+    x: jax.Array  # [N]
+    values: jax.Array  # [..., N, ...] `axis` has N elements
+
+    axis: int = 0
+    regular_grid: bool = False
+
+    def __post_init__(self):
+
+        if len(np.shape(self.x)) != 1:
+            raise ValueError(f"Times must be 1D, got {np.shape(self.x)}.")
+
+        def _assert_shape(x):
+            if np.shape(x)[self.axis] != np.size(self.x):
+                raise ValueError(f"Input values must have time length on `axis` dimension, got {np.shape(x)}.")
+
+        jax.tree.map(_assert_shape, self.values)
+
+        self.x, self.values = jax.tree.map(jnp.asarray, (self.x, self.values))
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        """
+        Shape of returned value.
+        """
+        return jax.tree.map(lambda x: np.shape(x)[:self.axis] + np.shape(x)[self.axis + 1:], self.values)
+
+    def __call__(self, time: jax.Array) -> jax.Array:
+        """
+        Interpolate at time based on input times.
+
+        Args:
+            time: time to evaluate at.
+
+        Returns:
+            value at given time
+        """
+        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(time, self.x, regular_grid=self.regular_grid)
+        return jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
+
+
+def is_regular_grid(q: np.ndarray):
+    """
+    Check if the given quantity is a regular grid.
+
+    Args:
+        q: The quantity to check.
+
+    Returns:
+        bool: True if regular grid, False otherwise.
+    """
+    if len(q) < 2:
+        return True
+    return np.allclose(np.diff(q), q[1] - q[0])

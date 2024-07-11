@@ -17,7 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 def flatten(f):
-    """ Flatten a fits file so that it becomes a 2D image. Return new header and data """
+    """
+    Flatten a FITS file to a 2D image, by dropping all axes except the first two.
+
+    Args:
+        f: the FITS file
+
+    Returns:
+        the flattened image
+    """
 
     naxis = f[0].header['NAXIS']
     if naxis < 2:
@@ -308,6 +316,7 @@ class ImageModel(SerialisableBaseModel):
     dl: au.Quantity
     dm: au.Quantity
     freqs: au.Quantity  # [num_freqs]
+    bandwidth: au.Quantity
     coherencies: List[Literal[
         'XX', 'XY', 'YX', 'YY',
         'I', 'Q', 'U', 'V',
@@ -345,6 +354,8 @@ def _check_image_model(image_model: ImageModel):
         raise ValueError("dm must be in radians")
     if not image_model.freqs.unit.is_equivalent(au.Hz):
         raise ValueError("freqs must be in Hz")
+    if not image_model.bandwidth.unit.is_equivalent(au.Hz):
+        raise ValueError("bandwidth must be in Hz")
     if not image_model.image.unit.is_equivalent(au.Jy):
         raise ValueError("image must be in Jy")
     if not image_model.beam_major.unit.is_equivalent(au.deg):
@@ -466,15 +477,22 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     # Create the WCS
     w = wcs.WCS(naxis=4)  # 4D image [l, m, freq, coherency]
     w.wcs.ctype = ["RA--SIN", "DEC-SIN", "FREQ", "STOKES"]
+    if (np.shape(image_model.image)[0] % 2 == 1) or (np.shape(image_model.image)[1] % 2 == 1):
+        raise ValueError("Image must have an even number of pixels in the direction")
     w.wcs.crpix = [image_model.image.shape[0] / 2 + 1, image_model.image.shape[1] / 2 + 1, 1, 1]
-    if len(image_model.freqs) > 1:
-        dfreq = image_model.freqs[1].to(au.Hz) - image_model.freqs[0].to(au.Hz)
-    else:
-        dfreq = 1 * au.Hz
-    w.wcs.cdelt = [-image_model.dl.value * 180. / np.pi, image_model.dm.value * 180. / np.pi,
-                   dfreq.to('Hz').value, 1]
-    w.wcs.crval = [image_model.phase_tracking.ra.deg, image_model.phase_tracking.dec.deg,
-                   image_model.freqs[0].to('Hz').value, 1]
+    dfreq = image_model.bandwidth / len(image_model.freqs)
+    w.wcs.cdelt = [
+        -image_model.dl.value * 180. / np.pi,
+        image_model.dm.value * 180. / np.pi,
+        dfreq.to('Hz').value,
+        1
+    ]
+    w.wcs.crval = [
+        image_model.phase_tracking.ra.deg,
+        image_model.phase_tracking.dec.deg,
+        image_model.freqs[0].to('Hz').value,
+        1
+    ]
     w.wcs.cunit = ['deg', 'deg', 'Hz', '']
     w.wcs.set()
     # Set beam

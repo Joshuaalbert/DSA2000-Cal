@@ -36,11 +36,11 @@ def test_compute_uvw(with_autocorr):
         end_time=times[0],
         verbose=True
     )
-    uvw, _, _ = engine.batched_compute_uvw_jax(
+    visibilitiy_coords = engine.batched_compute_uvw_jax(
         times=engine.time_to_jnp(times),
         with_autocorr=with_autocorr
     )
-    uvw = uvw * au.m
+    uvw = visibilitiy_coords.uvw[None, :, :] * au.m
 
     uvw_other = earth_location_to_uvw(
         antennas=antennas[None, :],
@@ -215,11 +215,11 @@ def test_resolution_error(baseline: au.Quantity):
         verbose=True,
         resolution=0.1 * au.s
     )
-    uvw0, _, _ = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
+    vis_coords = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
         times=engine.time_to_jnp(times),
         with_autocorr=False
     )
-    uvw0 = uvw0 * au.m
+    uvw0 = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
 
     engine = FarFieldDelayEngine(
         antennas=antennas,
@@ -228,11 +228,11 @@ def test_resolution_error(baseline: au.Quantity):
         end_time=end_time,
         verbose=True
     )
-    uvw, _, _ = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
+    vis_coords = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
         times=engine.time_to_jnp(times),
         with_autocorr=False
     )
-    uvw = uvw * au.m
+    uvw = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
 
     error = jnp.linalg.norm(uvw[:, 0, :] - uvw0[:, 0, :], axis=-1)
 
@@ -251,11 +251,11 @@ def test_resolution_error(baseline: au.Quantity):
             verbose=True,
             resolution=resolution
         )
-        uvw, _, _ = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
+        vis_coords = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
             times=engine.time_to_jnp(times),
             with_autocorr=False
         )
-        uvw = uvw * au.m
+        uvw = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
         axs[0, 0].plot(times.jd, uvw[:, 0, 0], label=f'{resolution}')
         axs[1, 0].plot(times.jd, jnp.linalg.norm(uvw[:, 0, :] - uvw0[:, 0, :], axis=-1), label=f'{resolution}')
     axs[0, 0].set_ylabel('u (m)')

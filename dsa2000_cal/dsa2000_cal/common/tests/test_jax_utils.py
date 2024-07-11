@@ -150,3 +150,16 @@ def test_multi_vmap():
     res = f_multi(x, y)
     assert res[0].shape == (n3, 2, 2, n2, n1)
     assert res[1].shape == (n3, 2, 2, n1, n2)
+
+    # Test None
+    def f(x, y):
+        if y is None:
+            return x
+        return x + y
+
+    x = jnp.ones((n1, n2, n3, 2, 2))
+    y = None
+    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[]", out_mapping="[n2,n1,...]", verbose=True)
+    res = f_multi(x, y)
+    assert res.shape == (n2, n1, n3, 2, 2)
+

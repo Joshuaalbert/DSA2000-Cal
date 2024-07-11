@@ -17,7 +17,7 @@ from pydantic import Field
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.uvw.far_field import FarFieldDelayEngine
+from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
 
 
 class MeasurementSetMetaV0(SerialisableBaseModel):
@@ -31,7 +31,7 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     We will assume single spectral window for the entire measurement set.
     """
     version: int = Field(
-        default=1,
+        default=0,
         description="Version of the meta file."
     )
 
@@ -43,7 +43,7 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
         description="Location of the array, from which UVW frame is defined."
     )
     phase_tracking: ac.ICRS = Field(
-        description="Phase tracking direction, against which LMN coordinates are defined."
+        description="Phase tracking direction, against which UVW coordinates are defined."
     )
     channel_width: au.Quantity = Field(
         description="Channel width."
@@ -130,6 +130,7 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
         )
     if meta.times.isscalar:
         raise ValueError(f"Expected a vector Time, got {meta.times}")
+    meta.times = meta.times.tt # Use TT time scale
     if meta.freqs.isscalar:
         raise ValueError(f"Expected a vector Quantity, got {meta.freqs}")
     if meta.antennas.isscalar:
@@ -211,17 +212,6 @@ def _try_get_slice(indices: slice | np.ndarray) -> slice:
         return indices
 
 
-class VisibilityCoords(NamedTuple):
-    """
-    Coordinates for a single visibility.
-    """
-    uvw: jax.Array | np.ndarray  # [rows, 3] the uvw coordinates
-    time_obs: jax.Array | np.ndarray  # [rows] the time relative to the reference time (observation start)
-    antenna_1: jax.Array | np.ndarray  # [rows] the first antenna
-    antenna_2: jax.Array | np.ndarray  # [rows] the second antenna
-    time_idx: jax.Array | np.ndarray  # [rows] the time index
-
-
 class VisibilityData(NamedTuple):
     """
     Data for a single visibility.
@@ -289,7 +279,7 @@ class MeasurementSet:
         Get the reference time of the measurement set.
         """
         # Casa convention is to use the first time as the reference time, also for FITS
-        return self.meta.times[0]
+        return self.meta.times[0].tt
 
     def clone(self, ms_folder: str, preserve_symbolic_links: bool = False) -> 'MeasurementSet':
         """

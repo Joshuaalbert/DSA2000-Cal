@@ -1,14 +1,10 @@
 import dataclasses
 from abc import ABC, abstractmethod
-from functools import partial
 from typing import List
 
 import jax
 import numpy as np
 from astropy import coordinates as ac
-from astropy import time as at
-from astropy import units as au
-from tomographic_kernel.frames import ENU
 
 
 @dataclasses.dataclass(eq=False)
@@ -25,50 +21,28 @@ class GainModel(ABC):
     """
     antennas: ac.EarthLocation  # [num_ant]
 
-    def check_inputs(self, freqs: au.Quantity, sources: ac.ICRS | ENU, pointing: ac.ICRS | None,
-                     array_location: ac.EarthLocation,
-                     time: at.Time, **kwargs):
-        if not isinstance(freqs, au.Quantity):
-            raise ValueError("freqs must be a Quantity.")
-        if not freqs.unit.is_equivalent(au.Hz):
-            raise ValueError("freqs must be in Hz.")
-        if freqs.isscalar:
-            raise ValueError("freqs must be an array.")
-        if len(freqs.shape) != 1:
-            raise ValueError("freqs must be a 1D array.")
-        if not isinstance(sources, (ac.ICRS, ENU)):
-            raise ValueError("sources must be an ICRS or ENU object.")
-        if pointing is not None:
-            if not isinstance(pointing, ac.ICRS):
-                raise ValueError("pointing must be an ICRS or ENU object.")
-            try:
-                np.broadcast_shapes(pointing.shape, self.antennas.shape)
-            except ValueError:
-                raise ValueError("pointing must have broadcastable shape to the antennas.")
-        if not isinstance(array_location, ac.EarthLocation):
-            raise ValueError("array_location must be an EarthLocation object.")
-        if not isinstance(time, at.Time):
-            raise ValueError("time must be a Time object.")
+    @abstractmethod
+    def is_full_stokes(self) -> bool:
+        """
+        Check if the gain model is full Stokes.
+
+        Returns:
+            bool: True if full Stokes, False otherwise
+        """
+        ...
 
     @abstractmethod
-    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS | ENU, pointing: ac.ICRS | None,
-                     array_location: ac.EarthLocation,
-                     time: at.Time, **kwargs):
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
         """
         Compute the beam gain at the given pointing direction.
 
         Args:
             freqs: [num_freqs] the frequency values
-            sources: (source_shape) the source coordinates, ENU then assumed to be the location of the sources in near
-                field, and the location of antennas is used to compute gains in direction of sources.
-            pointing: [[num_ant]] scalar or 1D array of the pointing direction of each antenna,
-                optionally None == zenith pointing, calculated per antenna.
-            array_location: the location of the array reference location
-            time: the time of the observation
-            kwargs: additional keyword arguments
+            times: [num_times] the time values
+            geodesics: [num_sources, num_time, num_ant, 3] the lmn coordinates of the source in frame of the antennas.
 
         Returns:
-            (source_shape) + [num_ant, num_freq, 2, 2] The beam gain at the given source coordinates.
+            [num_sources, num_time, num_ant, num_freq[, 2, 2]] The beam gain at the given source coordinates.
         """
         ...
 
@@ -95,26 +69,30 @@ class ProductGainModel(GainModel):
                 self.gain_models.extend(gain_model.gain_models)
             else:
                 self.gain_models.append(gain_model)
+        full_stokes = []
+        for gain_model in self.gain_models:
+            full_stokes.append(gain_model.is_full_stokes())
+        if len(set(full_stokes)) == 1:
+            self._is_full_stokes = full_stokes[0]
+        else:
+            raise ValueError("All gain models must be the same type.")
 
-    @partial(jax.jit, static_argnums=(0,))
-    def _compute_gain_jax(self, gains: List[jax.Array]) -> jax.Array:
+    def is_full_stokes(self) -> bool:
+        return self._is_full_stokes
+
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
+        gains = [
+            gain_model.compute_gain(freqs=freqs, times=times, geodesics=geodesics) for gain_model in self.gain_models
+        ]
+
         for gain in gains:
             if np.shape(gain) != np.shape(gains[0]):
                 raise ValueError("All gains must have the same shape.")
 
         # perform A @ B @ ... on last two dims
         # matrix mul
+        # TODO: could use associative scan for parallel computation
         output = gains[0]
         for gain in gains[1:]:
             output = output @ gain
         return output
-
-    def compute_gain(self, freqs: au.Quantity, sources: ac.ICRS | ENU, pointing: ac.ICRS | None,
-                     array_location: ac.EarthLocation,
-                     time: at.Time, **kwargs):
-        gains = [
-            gain_model.compute_gain(freqs=freqs, sources=sources, pointing=pointing, array_location=array_location,
-                                    time=time, **kwargs) for gain_model in self.gain_models
-        ]
-
-        return self._compute_gain_jax(gains)
