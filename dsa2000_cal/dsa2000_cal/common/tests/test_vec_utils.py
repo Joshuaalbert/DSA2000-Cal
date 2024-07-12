@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.vec_utils import vec, unvec, kron_product
+from dsa2000_cal.common.vec_utils import vec, unvec, kron_product, kron_product_2x2
 
 
 def test_vec():
@@ -69,3 +69,55 @@ def test_kron_product_cost():
     for key in ['bytes accessed', 'flops', 'utilization operand 0 {}', 'utilization operand 1 {}',
                 'utilization operand 2 {}', 'bytes accessed output {}']:
         print(key, ":", a1.get(key, None), a2.get(key, None))
+
+
+def test_kron_product_2x2():
+    M0 = jnp.array([[1, 2], [3, 4]])
+    M1 = jnp.array([[5, 6], [7, 8]])
+    M2 = jnp.array([[9, 10], [11, 12]])
+    np.testing.assert_allclose(kron_product_2x2(M0, M1, M2), M0 @ M1 @ M2)
+
+
+def test_derive_best_2x2():
+    import sympy as sp
+    a0, b0, c0, d0 = sp.symbols('a0 b0 c0 d0')
+    a1, b1, c1, d1 = sp.symbols('a1 b1 c1 d1')
+    a2, b2, c2, d2 = sp.symbols('a2 b2 c2 d2')
+
+    M0 = sp.Matrix([[a0, b0], [c0, d0]])
+    M1 = sp.Matrix([[a1, b1], [c1, d1]])
+    M2 = sp.Matrix([[a2, b2], [c2, d2]])
+
+    M = M0 @ M1 @ M2
+    # M = M.simplify()
+
+    print(M)
+
+    # common substring optimal evaluation
+    # Compute (M0 @ M1) @ M2
+    M0M1 = M0 @ M1
+    M = M0M1 @ M2
+    M.simplify()
+    print("Order (M0 @ M1) @ M2:")
+    print(M)
+    print(sp.count_ops(M))
+
+    # Compute M0 @ (M1 @ M2)
+    M1M2 = M1 @ M2
+    M = M0 @ M1M2
+    M.simplify()
+    print("Order M0 @ (M1 @ M2):")
+    print(M)
+
+    # Compare the number of operations for each case
+    print("Operations for (M0 @ M1) @ M2:")
+    print(sp.count_ops(M0M1 @ M2))
+
+    print("Operations for M0 @ (M1 @ M2):")
+    print(sp.count_ops(M0 @ M1M2))
+
+    M = sp.simplify(M, ratio=1.0, inverse=True)
+    print(M)
+    print(sp.count_ops(M))
+
+    print(sp.cse(M))

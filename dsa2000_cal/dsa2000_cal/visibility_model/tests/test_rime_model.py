@@ -1,3 +1,7 @@
+import itertools
+import time
+
+import jax
 import jax.numpy as jnp
 import numpy as np
 from astropy import time as at, coordinates as ac, units as au
@@ -5,7 +9,7 @@ from astropy import time as at, coordinates as ac, units as au
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry
 from dsa2000_cal.gain_models.geodesic_model import GeodesicModel
-from dsa2000_cal.uvw.far_field import FarFieldDelayEngine
+from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
@@ -106,3 +110,41 @@ def test_rime_model():
     gains = jnp.ones((1, len(obstimes), len(antennas), len(freqs), 2, 2), dtype=jnp.complex64)
     summed_vis = rime_model.apply_gains(gains, vis, visibility_coords)
     print(summed_vis)
+
+
+def test_apply_gains_benchmark_performance():
+    num_source = 10
+    num_chan = 2
+    num_ant = 2048
+    num_time = 1
+
+    antennas = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (num_ant, 3))
+    antenna_1, antenna_2 = jnp.asarray(
+        list(itertools.combinations_with_replacement(range(num_ant), 2))).T
+
+    num_rows = len(antenna_1)
+
+    uvw = antennas[antenna_2] - antennas[antenna_1]
+    uvw = uvw.at[:, 2].mul(1e-3)
+
+    times = jnp.arange(num_time) * 1.5
+    time_idx = jnp.zeros((num_rows,), jnp.int64)
+    time_obs = times[time_idx]
+
+    visibility_coords = VisibilityCoords(
+        uvw=uvw,
+        time_obs=time_obs,
+        antenna_1=antenna_1,
+        antenna_2=antenna_2,
+        time_idx=time_idx
+    )
+
+    vis = jnp.zeros((num_source, num_rows, num_chan, 2, 2), dtype=jnp.complex64)
+    gains = jnp.zeros((num_source, num_time, num_ant, num_chan, 2, 2), dtype=jnp.complex64)
+
+    f = jax.jit(RIMEModel.apply_gains).lower(gains=gains, vis=vis, visibility_coords=visibility_coords).compile()
+    t0 = time.time()
+    f(gains=gains, vis=vis, visibility_coords=visibility_coords).block_until_ready()
+    t1 = time.time()
+    print(f"Apply gains for sources {num_source} ant {num_ant} freqs {num_chan} took {t1 - t0:.2f} s")
+    # Apply gains for sources 10 ant 2048 freqs 16 took 7.98 seconds 1.10 s | 1.00 s | 1.28 s | 1.45 s | 1.00 s

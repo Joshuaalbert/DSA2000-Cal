@@ -1,10 +1,11 @@
 from typing import Tuple
 
+import jax
 import numpy as np
 from jax import numpy as jnp, lax
 
 
-def vec(a: jnp.ndarray, transpose: bool=False) -> jnp.ndarray:
+def vec(a: jnp.ndarray, transpose: bool = False) -> jnp.ndarray:
     """
     Vectorize a matrix.
 
@@ -23,7 +24,7 @@ def vec(a: jnp.ndarray, transpose: bool=False) -> jnp.ndarray:
     return lax.reshape(a, (n * m,), (1, 0))
 
 
-def unvec(a: jnp.ndarray, shape: Tuple[int, ...] | None = None, transpose: bool=False) -> jnp.ndarray:
+def unvec(a: jnp.ndarray, shape: Tuple[int, ...] | None = None, transpose: bool = False) -> jnp.ndarray:
     """
     Unvectorize a matrix.
 
@@ -70,7 +71,7 @@ def kron(a, b):
     return lax.reshape(lax.mul(a_reshaped, b_reshaped), out_shape)
 
 
-def kron_product(a, b, c):
+def kron_product(a: jax.Array, b: jax.Array, c: jax.Array) -> jax.Array:
     """
     Compute the matrix product of three matrices using Kronecker product.
 
@@ -84,6 +85,28 @@ def kron_product(a, b, c):
     Returns:
         [n, q]
     """
+    # if np.shape(a) == (2, 2) and np.shape(b) == (2, 2) and np.shape(c) == (2, 2):
+    #     # Still slower than using kron product
+    #     return kron_product_2x2(a, b, c)
+    # return a @ b @ c
     # return unvec(kron(c.T, a) @ vec(b), (a.shape[0], c.shape[1]))
     # Fewer bytes accessed, better utilisation (2x as many flops though -- which is better than memory access)
     return unvec(jnp.sum(kron(c.T, a) * vec(b), axis=-1), (a.shape[0], c.shape[1]))
+
+
+def kron_product_2x2(M0: jax.Array, M1: jax.Array, M2: jax.Array) -> jax.Array:
+    # Matrix([[a0*(a1*a2 + b1*c2) + b0*(a2*c1 + c2*d1), a0*(a1*b2 + b1*d2) + b0*(b2*c1 + d1*d2)], [c0*(a1*a2 + b1*c2) + d0*(a2*c1 + c2*d1), c0*(a1*b2 + b1*d2) + d0*(b2*c1 + d1*d2)]])
+    # 36
+    # ([(x0, a1*a2 + b1*c2), (x1, a2*c1 + c2*d1), (x2, a1*b2 + b1*d2), (x3, b2*c1 + d1*d2)], [Matrix([
+    # [a0*x0 + b0*x1, a0*x2 + b0*x3],
+    # [c0*x0 + d0*x1, c0*x2 + d0*x3]])])
+    a0, b0, c0, d0 = M0[0, 0], M0[0, 1], M0[1, 0], M0[1, 1]
+    a1, b1, c1, d1 = M1[0, 0], M1[0, 1], M1[1, 0], M1[1, 1]
+    a2, b2, c2, d2 = M2[0, 0], M2[0, 1], M2[1, 0], M2[1, 1]
+    x0 = a1 * a2 + b1 * c2
+    x1 = a2 * c1 + c2 * d1
+    x2 = a1 * b2 + b1 * d2
+    x3 = b2 * c1 + d1 * d2
+
+    flat = jnp.stack([a0 * x0 + b0 * x1, c0 * x0 + d0 * x1, a0 * x2 + b0 * x3, c0 * x2 + d0 * x3], axis=-1)
+    return unvec(flat, (2, 2))
