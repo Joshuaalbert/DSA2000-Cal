@@ -7,7 +7,7 @@ from ducc0.wgridder import dirty2vis
 
 @pytest.mark.parametrize("center_offset", [0.0, 0.1, 0.2])
 @pytest.mark.parametrize("negate_w", ['neg_w', 'pos_w'])
-@pytest.mark.parametrize("convention", ['casa', 'fourier'])
+@pytest.mark.parametrize("convention", ['casa', 'physical'])
 @pytest.mark.parametrize("negate_wgridder_center_xy", ['neg_center', 'normal_center'])
 def test_wrong_w(center_offset: float, negate_w: str, convention: str, negate_wgridder_center_xy: str):
     np.random.seed(42)

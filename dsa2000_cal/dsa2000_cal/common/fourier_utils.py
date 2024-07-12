@@ -24,10 +24,10 @@ class ApertureTransform:
             f_aperture = int f_image(nu) e^{2i pi x nu} dnu
 
     """
-    convention: str = 'fourier'
+    convention: str = 'physical'
 
     def to_image(self, f_aperture, axes, dx):
-        if self.convention == 'fourier':
+        if self.convention == 'physical':
             return self._to_image_fourier(f_aperture, axes, dx)
         elif self.convention == 'casa':
             return self._to_image_casa(f_aperture, axes, dx)
@@ -35,7 +35,7 @@ class ApertureTransform:
             raise ValueError(f"Unknown convention {self.convention}")
 
     def to_aperture(self, f_image, axes, dnu):
-        if self.convention == 'fourier':
+        if self.convention == 'physical':
             return self._to_aperture_fourier(f_image, axes, dnu)
         elif self.convention == 'casa':
             return self._to_aperture_casa(f_image, axes, dnu)

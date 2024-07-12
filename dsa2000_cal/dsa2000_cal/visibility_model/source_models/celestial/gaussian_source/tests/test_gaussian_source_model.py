@@ -1,16 +1,23 @@
 import itertools
 import time
 
+import astropy.constants as const
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import jax
 import numpy as np
+import pylab as plt
 import pytest
 from jax import numpy as jnp
 
+jax.config.update("jax_enable_x64", True)
+
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
+from dsa2000_cal.common.ellipse_utils import Gaussian
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.wgridder import dirty2vis
 from dsa2000_cal.uvw.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
     GaussianSourceModel, GaussianPredict, GaussianModelData
@@ -303,3 +310,136 @@ def test_benchmark_performance(di_gains):
                 visibilities = f(model_data=model_data, visibility_coords=visibility_coords).block_until_ready()
                 t1 = time.time()
                 print(f"Time taken for {num_ant} antennas, {num_chan} channels, {num_source} sources: {t1 - t0:.6f} s")
+
+
+def test_correctness_order_1():
+    major_fwhm_arcsec = 4. * 60
+    minor_fwhm_arcsec = 2. * 60
+    pos_angle_deg = 90.
+    total_flux = 1.
+
+    freq = 70e6 * au.Hz
+    wavelength = quantity_to_jnp(const.c / freq)
+    num_ant = 128
+    num_time = 1
+
+    freqs = quantity_to_jnp(freq)[None]
+
+    max_baseline = 20e3
+
+    antennas = max_baseline * jax.random.normal(jax.random.PRNGKey(42), (num_ant, 3))
+    # With autocorr
+    antenna_1, antenna_2 = jnp.asarray(
+        list(itertools.combinations_with_replacement(range(num_ant), 2))).T
+
+    num_rows = len(antenna_1)
+
+    uvw = antennas[antenna_2] - antennas[antenna_1]
+    uvw = uvw.at[:, 2].mul(1e-3)
+
+    times = jnp.arange(num_time) * 1.5
+    time_idx = jnp.zeros((num_rows,), jnp.int64)
+    time_obs = times[time_idx]
+
+    visibility_coords = VisibilityCoords(
+        uvw=uvw,
+        time_obs=time_obs,
+        antenna_1=antenna_1,
+        antenna_2=antenna_2,
+        time_idx=time_idx
+    )
+
+    l0_array = []
+    vis_mae_order_0 = []
+    vis_mae_order_1 = []
+    for l0 in jnp.linspace(-0.99, 0.99, 20):
+        l0_array.append(l0)
+        m0 = 0.
+
+        # Use wgridder as comparison
+        gaussian = Gaussian(
+            x0=jnp.asarray([l0, m0]),
+            major_fwhm=jnp.asarray(major_fwhm_arcsec / 3600. * np.pi / 180.),
+            minor_fwhm=jnp.asarray(minor_fwhm_arcsec / 3600. * np.pi / 180.),
+            pos_angle=jnp.asarray(pos_angle_deg / 180. * np.pi),
+            total_flux=jnp.asarray(total_flux)
+        )
+
+        n = 2096
+        pix_size = (wavelength / max_baseline) / 7.
+        lvec = pix_size * (-n / 2 + jnp.arange(n)) + l0
+        mvec = pix_size * (-n / 2 + jnp.arange(n)) + m0
+        L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
+        X = jnp.stack([L.flatten(), M.flatten()], axis=-1)
+        flux_density = jax.vmap(gaussian.compute_flux_density)(X).reshape(L.shape)
+        flux = flux_density * pix_size ** 2
+
+        # plt.imshow(flux.T, origin='lower',
+        #            extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
+        #            cmap='inferno',
+        #            interpolation='nearest')
+        # plt.colorbar()
+        # plt.show()
+
+        vis_wgridder = dirty2vis(
+            uvw=uvw,
+            freqs=freqs,
+            dirty=flux,
+            pixsize_l=pix_size,
+            pixsize_m=pix_size,
+            center_l=l0,
+            center_m=m0,
+            epsilon=1e-8
+        )
+
+        gaussian_data = GaussianModelData(
+            freqs=freqs,
+            image=gaussian.total_flux[None, None],
+            gains=None,
+            lmn=jnp.asarray([[l0, m0, jnp.sqrt(1. - l0 ** 2 - m0 ** 2)]]),
+            ellipse_params=jnp.asarray([[gaussian.major_fwhm,
+                                         gaussian.minor_fwhm,
+                                         gaussian.pos_angle]])
+        )
+
+        gaussian_predict = GaussianPredict(convention='physical',
+                                           dtype=jnp.complex128,
+                                           order_approx=0)
+        vis_gaussian_order_0 = gaussian_predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
+
+        gaussian_predict = GaussianPredict(convention='physical',
+                                           dtype=jnp.complex128,
+                                           order_approx=1)
+        vis_gaussian_order_1 = gaussian_predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
+
+        vis_mae_order_0.append(jnp.abs(vis_gaussian_order_0 - vis_wgridder).mean())
+        vis_mae_order_1.append(jnp.abs(vis_gaussian_order_1 - vis_wgridder).mean())
+
+        assert (
+            vis_mae_order_1[-1] < vis_mae_order_0[-1],
+            f"MAE order 0: {vis_mae_order_0[-1]}, MAE order 1: {vis_mae_order_1[-1]}, l0: {l0}"
+        )
+
+    plt.plot(l0_array, vis_mae_order_0, label='order 0')
+    plt.plot(l0_array, vis_mae_order_1, label='order 1')
+    plt.xlabel("l")
+    plt.ylabel("MAE [Jy]")
+    plt.title(f"Visibility MAE as gaussian center shifted in l: {freq.to('MHz')}.")
+    plt.legend()
+    plt.show()
+
+    #
+    # sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=vis_gaussian.real, alpha=0.5, marker='.')
+    # plt.colorbar(sc)
+    # plt.title("Real part of Gaussian visibilities")
+    # plt.show()
+    #
+    # sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=vis_wgridder.real, alpha=0.5, marker='.')
+    # plt.colorbar(sc)
+    # plt.title("Real part of wgridder visibilities")
+    # plt.show()
+    #
+    # sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=vis_gaussian.real - vis_wgridder.real, alpha=0.5, marker='.')
+    # plt.colorbar(sc)
+    # plt.title("Real part of difference")
+    # plt.show()

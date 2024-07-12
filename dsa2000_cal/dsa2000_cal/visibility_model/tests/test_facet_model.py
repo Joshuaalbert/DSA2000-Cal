@@ -18,7 +18,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_sou
 from dsa2000_cal.visibility_model.source_models.rfi.lte_source.lte_source_model import LTESourceModel
 
 
-def test_facet_model_points():
+def test_facet_model_fits():
     fill_registries()
 
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
@@ -40,21 +40,12 @@ def test_facet_model_points():
         array_location=array_location
     )
 
-    source_file = source_model_registry.get_instance(
-        source_model_registry.get_match('cas_a')).get_wsclean_clean_component_file()
+    wsclean_fits_files = source_model_registry.get_instance(
+        source_model_registry.get_match('cas_a')).get_wsclean_fits_files()
 
-    point_source_model = PointSourceModel.from_wsclean_model(
-        source_file,
-        phase_center,
-        freqs,
-        full_stokes=False
-    )
-    gaussian_source_model = GaussianSourceModel.from_wsclean_model(
-        source_file,
-        phase_center,
-        freqs,
-        full_stokes=False
-    )
+    fits_source_model = FITSSourceModel.from_wsclean_model(wsclean_fits_files=wsclean_fits_files,
+                                                           phase_tracking=phase_center, freqs=freqs,
+                                                           full_stokes=False)
 
     near_field_delay_engine = NearFieldDelayEngine(
         antennas=antennas,
@@ -72,9 +63,9 @@ def test_facet_model_points():
 
     facet_model = FacetModel(
         geodesic_model=geodesic_model,
-        point_source_model=point_source_model,
-        gaussian_source_model=gaussian_source_model,
-        fits_source_model=None,
+        point_source_model=None,
+        gaussian_source_model=None,
+        fits_source_model=fits_source_model,
         lte_source_model=None,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,

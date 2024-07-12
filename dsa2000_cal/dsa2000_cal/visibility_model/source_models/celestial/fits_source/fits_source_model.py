@@ -82,7 +82,7 @@ class FITSSourceModel(AbstractSourceModel):
         Returns:
             model_data: the model data
         """
-        image = jnp.stack([quantity_to_jnp(image) for image in self.images], axis=0)  # [chan, Nl, Nm[, 2, 2]]
+        image = jnp.stack([quantity_to_jnp(image, 'Jy') for image in self.images], axis=0)  # [chan, Nl, Nm[, 2, 2]]
         return FITSModelData(
             freqs=quantity_to_jnp(self.freqs),
             image=image,

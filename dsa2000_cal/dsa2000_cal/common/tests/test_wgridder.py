@@ -293,7 +293,7 @@ def test_gh55_point():
     plt.colorbar()
     plt.show()
 
-    predict = PointPredict(convention='fourier')
+    predict = PointPredict(convention='physical')
     image = np.zeros((2, num_freqs, 2, 2))  # [source, chan, 2, 2]
     image[:, :, 0, 0] = 0.5
     image[:, :, 1, 1] = 0.5
@@ -393,7 +393,7 @@ def test_gh55_gaussian():
     sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis)[:, 0], s=1, alpha=0.5)
     plt.colorbar(sc)
     plt.show()
-    predict = GaussianPredict(convention='fourier')
+    predict = GaussianPredict(convention='physical')
     image = np.zeros((1, num_freqs, 2, 2))  # [source, chan, 2, 2]
     image[:, :, 0, 0] = 0.5
     image[:, :, 1, 1] = 0.5

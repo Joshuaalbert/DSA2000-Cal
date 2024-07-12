@@ -22,7 +22,7 @@ def dish_effects_gain_model_factory(pointing: ac.ICRS | None,
                                     beam_gain_model: BeamGainModel,
                                     dish_effect_params: DishEffectsParams,
                                     plot_folder: str, cache_folder: str, seed: int = 42,
-                                    convention: Literal['fourier', 'casa'] = 'fourier',
+                                    convention: Literal['physical', 'casa'] = 'physical',
                                     dtype: jnp.dtype = jnp.complex64):
     os.makedirs(plot_folder, exist_ok=True)
 

@@ -553,74 +553,6 @@ class GaussianPredict:
 
         return direction_dependent_gains, full_stokes, is_gains
 
-    # def predict(self, model_data: GaussianModelData, visibility_coords: VisibilityCoords) -> jax.Array:
-    #     """
-    #     Predict visibilities from Gaussian model data.
-    #
-    #     Args:
-    #         model_data: data, see above for shape info.
-    #         visibility_coords: visibility coordinates.
-    #
-    #     Returns:
-    #         visibilities: [row, chan[, 2, 2]] in linear correlation basis.
-    #     """
-    #
-    #     direction_dependent_gains, full_stokes, is_gains = self.check_predict_inputs(
-    #         model_data=model_data
-    #     )
-    #
-    #     if is_gains:
-    #
-    #         _t = visibility_coords.time_idx
-    #         _a1 = visibility_coords.antenna_1
-    #         _a2 = visibility_coords.antenna_2
-    #
-    #         if direction_dependent_gains:
-    #             if full_stokes:
-    #                 g1 = model_data.gains[:, _t, _a1, :, :, :]
-    #                 g2 = model_data.gains[:, _t, _a2, :, :, :]
-    #                 g_mapping = "[s,r,c,2,2]"
-    #             else:
-    #                 g1 = model_data.gains[:, _t, _a1, :]
-    #                 g2 = model_data.gains[:, _t, _a2, :]
-    #                 g_mapping = "[s,r,c]"
-    #         else:
-    #             if full_stokes:
-    #                 g1 = model_data.gains[_t, _a1, :, :, :]
-    #                 g2 = model_data.gains[_t, _a2, :, :, :]
-    #                 g_mapping = "[r,c,2,2]"
-    #             else:
-    #                 g1 = model_data.gains[_t, _a1, :]
-    #                 g2 = model_data.gains[_t, _a2, :]
-    #                 g_mapping = "[r,c]"
-    #     else:
-    #         g1 = None
-    #         g2 = None
-    #         g_mapping = "[]"
-    #
-    #     # lmn: [source, 3]
-    #     # uvw: [rows, 3]
-    #     # g1, g2: [[source,] row, chan, 2, 2]
-    #     # freq: [chan]
-    #     # image: [source, chan, 2, 2]
-    #     # ellipse_params: [source, 3]
-    #     @partial(multi_vmap, in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],[s,c,2,2],[s,3]",
-    #              out_mapping="[r,c,...]", verbose=True)
-    #     def compute_visibility(lmn, uvw, g1, g2, freq, image, ellipse_params):
-    #         return self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image,
-    #                                               ellipse_params)  # [] or [2, 2]
-    #
-    #     visibilities = compute_visibility(
-    #         model_data.lmn,
-    #         visibility_coords.uvw,
-    #         g1,
-    #         g2,
-    #         model_data.freqs,
-    #         model_data.image,
-    #         model_data.ellipse_params
-    #     )  # [source, row, chan[, 2, 2]]
-    #     return jnp.sum(visibilities, axis=0)
-
     def predict(self, model_data: GaussianModelData, visibility_coords: VisibilityCoords) -> jax.Array:
         """
         Predict visibilities from Gaussian model data.
@@ -797,52 +729,46 @@ class GaussianPredict:
     def _single_predict(self, u, v, w,
                         A,
                         l0, m0, n0, major, minor, theta):
-        F = lambda u, v: self._gaussian_fourier(
-            u, v,
-            A=A,
-            l0=l0,
-            m0=m0,
-            major=major,
-            minor=minor,
-            theta=theta
-        )
 
-        w_term = jnp.exp(-2j * jnp.pi * w * (n0 - 1.)) / n0
+        def F_gaussian(u, v):
+            gaussian = Gaussian(
+                x0=jnp.asarray([l0, m0]),
+                major_fwhm=major,
+                minor_fwhm=minor,
+                pos_angle=theta,
+                total_flux=A
+            )
+            return gaussian.fourier(jnp.asarray([u, v]))
 
-        C = w_term
+        def wkernel(l, m):
+            n = jnp.sqrt(1. - l ** 2 - m ** 2)
+            return jnp.exp(-2j * jnp.pi * w * (n - 1.)) / n
 
         if self.order_approx == 0:
-            vis = F(u, v) * C
+            vis = F_gaussian(u, v) * wkernel(l0, m0)
         elif self.order_approx == 1:
-
             warnings.warn("Order 1 approximation is not tested.")
 
-            # F[I(l,m) * (C + (l - l0) * A + (m - m0) * B)]
-            # = F[I(l,m)] * (C - l0 * A - m0 * B) + A * i / (2pi) * d/du F[I(l,m)] + B * i / (2pi) * d/dv F[I(l,m)]
+            # Let I(l,m) * W(l,m) ~= I(l,m) * (W(l0, m0) + W_l * (l - l0) + W_m * (m - m0))
+            # Where W_l = d/dl W(l0,m0), W_m = d/dm W(l0,m0)
+            # F[I(l,m) * W(l,m)] ~= F[I(l,m) * W(l0,m0) + I(l,m) * W_l * (l - l0) + I(l,m) * W_m * (m - m0)]
+            #  = (W0 - l0 * W_l - m0 * W_m) * F[I(l,m)] + (d/du * F[I(l,m)] * (W_l) + d/dv * F[I(l,m)] * (W_m)) / (2 pi i)
 
-            def wkernel(l, m):
-                n = jnp.sqrt(1. - l ** 2 - m ** 2)
-                return jnp.exp(-2j * jnp.pi * w * (1. - n)) / n
+            # maybe divide by 2pi
+            wkernel_grad = jax.value_and_grad(wkernel, (0, 1), holomorphic=True)
 
-            C = wkernel(l0, m0)
+            W0, (Wl, Wm) = wkernel_grad(jnp.asarray(l0, self.dtype), jnp.asarray(m0, self.dtype))
 
-            wkernel_grad = jax.grad(wkernel, (0, 1), holomorphic=True)
-
-            _grad = wkernel_grad(l0 + 0j, m0 + 0j)
-            A = _grad[0]
-            B = _grad[1]
-
-            F_jvp = JVPLinearOp(F, promote_dtypes=True)
+            F_jvp = JVPLinearOp(F_gaussian, promote_dtypes=True)
             vec = (
-                A * (1j / (2 * jnp.pi)),
-                B * (1j / (2 * jnp.pi))
+                jnp.asarray(Wl, self.dtype), jnp.asarray(Wm, self.dtype)
             )
             # promote_dtypes=True so we don't need to cast the primals here. Otherwise:
-            # primals = (u.astype(vec[0].dtype), v.astype(vec[1].dtype))
+            # primals = (u.astype(vec[0].dtypegrad), v.astype(vec[1].dtype))
             primals = (u, v)
             F_jvp = F_jvp(*primals)
 
-            vis = F(u, v) * (C - l0 * A - m0 * B) + F_jvp.matvec(*vec)
+            vis = F_gaussian(u, v) * (W0 - l0 * Wl - m0 * Wm) + F_jvp.matvec(*vec) / (-2j * jnp.pi)
         else:
             raise ValueError("order_approx must be 0 or 1")
         return vis

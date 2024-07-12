@@ -5,7 +5,7 @@ from jax import numpy as jnp
 from dsa2000_cal.common.fourier_utils import ApertureTransform, find_optimal_fft_size
 
 
-@pytest.mark.parametrize('convention', ['fourier', 'casa'])
+@pytest.mark.parametrize('convention', ['physical', 'casa'])
 def test_fourier_conventions(convention):
     dx = 0.1
     n = 100

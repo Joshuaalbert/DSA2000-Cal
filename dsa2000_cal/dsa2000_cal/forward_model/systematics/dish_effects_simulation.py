@@ -138,7 +138,7 @@ class DishEffectsSimulation:
     plot_folder: str
     cache_folder: str
     seed: int = 42
-    convention: Literal['fourier', 'casa'] = 'fourier'
+    convention: Literal['physical', 'casa'] = 'physical'
     dtype: jnp.dtype = jnp.complex64
 
     def __post_init__(self):
@@ -397,7 +397,7 @@ class DishEffectsSimulation:
 
         if self.convention == 'casa':
             constant = jnp.asarray(2j * jnp.pi, self.dtype)  # [num_freqs]
-        elif self.convention == 'fourier':
+        elif self.convention == 'physical':
             constant = jnp.asarray(-2j * jnp.pi, self.dtype)  # [num_freqs]
         else:
             raise ValueError(f"Unknown convention {self.convention}")
