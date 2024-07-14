@@ -752,7 +752,7 @@ class GaussianPredict:
             # Let I(l,m) * W(l,m) ~= I(l,m) * (W(l0, m0) + W_l * (l - l0) + W_m * (m - m0))
             # Where W_l = d/dl W(l0,m0), W_m = d/dm W(l0,m0)
             # F[I(l,m) * W(l,m)] ~= F[I(l,m) * W(l0,m0) + I(l,m) * W_l * (l - l0) + I(l,m) * W_m * (m - m0)]
-            #  = (W0 - l0 * W_l - m0 * W_m) * F[I(l,m)] + (d/du * F[I(l,m)] * (W_l) + d/dv * F[I(l,m)] * (W_m)) / (2 pi i)
+            #  = (W0 - l0 * W_l - m0 * W_m) * F[I(l,m)] + (d/du * F[I(l,m)] * (W_l) + d/dv * F[I(l,m)] * (W_m)) / (-2 pi i)
 
             # maybe divide by 2pi
             wkernel_grad = jax.value_and_grad(wkernel, (0, 1), holomorphic=True)

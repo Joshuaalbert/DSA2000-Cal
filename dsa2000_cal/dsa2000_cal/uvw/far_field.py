@@ -353,7 +353,7 @@ class FarFieldDelayEngine:
         """
         return jnp.asarray((times.tt - self.ref_time.tt).sec)  # [N]
 
-    def batched_compute_uvw_jax(self, times: jax.Array, with_autocorr: bool = True) -> VisibilityCoords:
+    def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True) -> VisibilityCoords:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model in batched mode.
 
@@ -362,11 +362,7 @@ class FarFieldDelayEngine:
             with_autocorr: bool, whether to include autocorrelations.
 
         Returns:
-            uvw: [T, num_baselines, 3] UVW coordinates in meters.
-            antenna_1: [T, num_baselines] Index of the first antenna.
-            antenna_2: [T, num_baselines] Index of the second antenna.
-            time_idx: [T, num_baselines] Index of the time.
-            time_obs: [T, num_baselines] Time of observation.
+            visibility_coords: [T*B] stacked time-wise
         """
         if with_autocorr:
             antenna_1, antenna_2 = jnp.asarray(

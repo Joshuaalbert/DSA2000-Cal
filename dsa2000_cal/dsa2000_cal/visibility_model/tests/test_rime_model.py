@@ -92,7 +92,7 @@ def test_rime_model():
 
     facet_model_data = facet_model.get_model_data(geodesic_model.time_to_jnp(obstimes))
 
-    visibility_coords = far_field_delay_engine.batched_compute_uvw_jax(
+    visibility_coords = far_field_delay_engine.compute_visibility_coords(
         times=geodesic_model.time_to_jnp(obstimes), with_autocorr=False)
 
     rime_model = RIMEModel(

@@ -10,7 +10,7 @@ class CalibrationSolutions(SerialisableBaseModel):
     """
     Calibration solutions, stored in a serialisable format.
     """
-    directions: ac.ICRS  # [source]
+    geodesics: np.ndarray  # [source, time, ant, 3]
     times: at.Time  # [time]
     antennas: ac.EarthLocation  # [ant]
     antenna_labels: List[str]  # [ant]

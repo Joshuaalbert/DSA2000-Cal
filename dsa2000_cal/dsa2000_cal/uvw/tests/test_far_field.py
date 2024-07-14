@@ -36,7 +36,7 @@ def test_compute_uvw(with_autocorr):
         end_time=times[0],
         verbose=True
     )
-    visibilitiy_coords = engine.batched_compute_uvw_jax(
+    visibilitiy_coords = engine.compute_visibility_coords(
         times=engine.time_to_jnp(times),
         with_autocorr=with_autocorr
     )
@@ -215,7 +215,7 @@ def test_resolution_error(baseline: au.Quantity):
         verbose=True,
         resolution=0.1 * au.s
     )
-    vis_coords = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
+    vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
         times=engine.time_to_jnp(times),
         with_autocorr=False
     )
@@ -228,7 +228,7 @@ def test_resolution_error(baseline: au.Quantity):
         end_time=end_time,
         verbose=True
     )
-    vis_coords = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
+    vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
         times=engine.time_to_jnp(times),
         with_autocorr=False
     )
@@ -251,7 +251,7 @@ def test_resolution_error(baseline: au.Quantity):
             verbose=True,
             resolution=resolution
         )
-        vis_coords = jax.jit(engine.batched_compute_uvw_jax, static_argnames=['with_autocorr'])(
+        vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
             times=engine.time_to_jnp(times),
             with_autocorr=False
         )

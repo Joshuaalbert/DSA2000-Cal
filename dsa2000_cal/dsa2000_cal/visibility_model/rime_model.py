@@ -60,7 +60,7 @@ class RIMEModel:
             visibility_coords: [num_row] visibility coordinates
         """
         # Predict the visibilities with pre-applied gains
-        visibility_coords = self.facet_models[0].far_field_delay_engine.batched_compute_uvw_jax(
+        visibility_coords = self.facet_models[0].far_field_delay_engine.compute_visibility_coords(
             times=times, with_autocorr=with_autocorr)
         vis = []
         for facet_model in self.facet_models:

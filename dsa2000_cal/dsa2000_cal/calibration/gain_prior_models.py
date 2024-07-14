@@ -1,21 +1,17 @@
 import dataclasses
 from abc import ABC, abstractmethod
-from functools import partial
 from typing import Tuple, Callable
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
-from jax import lax
 from jaxns import Prior, Model, PriorModelType
 
-from dsa2000_cal.common.jax_utils import promote_pytree, multi_vmap
+from dsa2000_cal.common.jax_utils import promote_pytree
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
 from dsa2000_cal.uvw.far_field import VisibilityCoords
-from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
-from dsa2000_cal.visibility_model.source_models import flatten_coherencies
 
 tfpd = tfp.distributions
 
@@ -82,43 +78,8 @@ class ReplicatedGainProbabilisticModel(AbstractGainProbabilisticModel):
     rime_model: RIMEModel
     gain_prior_model: AbstractGainPriorModel
     freqs: jax.Array  # [num_chan] sharded over chan
-    preapply_gains: jax.Array  # [num_source, num_ant, num_chan, 2, 2] sharded over chan
     vis_data: VisibilityData  # [num_row, num_chan, 2, 2] sharded over chan
     vis_coords: VisibilityCoords  # [num_row, 2]
-
-    def _apply_gains(self, gains: jax.Array, vis: jax.Array, vis_coords: VisibilityCoords):
-        """
-        Apply the gains to the visibilities.
-
-        Args:
-            gains: [num_source, num_ant, num_chan, 2, 2]
-            vis: [num_source, num_row, num_chan, 2, 2]
-            vis_coords: the visibility coordinates
-
-        Returns:
-            vis_model: [num_row, num_chan, 4] the model visibilities
-        """
-
-        # V_ij = G_i * V_ij * G_j^H
-        g1 = gains[:, vis_coords.antenna_1, ...]  # [num_source, num_rows, num_chans, 2, 2]
-        g2 = gains[:, vis_coords.antenna_2, ...]  # [num_source, num_rows, num_chans, 2, 2]
-
-        def body_fn(accumulated_vis, x):
-            g1, g2, vis = x
-
-            # g1, g2: [num_rows, num_chans, 2, 2]
-            # vis: [num_rows, num_chans, 2, 2]
-            @partial(multi_vmap, in_mapping="[r,c,2,2],[r,c,2,2],[r,c,2,2]", out_mapping="[r,c]", verbose=True)
-            def transform(g1, g2, vis):
-                return flatten_coherencies(kron_product(g1, vis, g2.conj().T))  # [4]
-
-            accumulated_vis += transform(g1, g2, vis)  # [num_rows, num_chans, 4]
-            return accumulated_vis, ()
-
-        model_vis = jnp.zeros(np.shape(vis)[1:-2] + (4,), vis.dtype)  # [num_rows, num_chans, 4]
-
-        accumulated_vis, _ = lax.scan(body_fn, model_vis, (g1, g2, vis))
-        return accumulated_vis  # [num_rows, num_chans, 4]
 
     def __post_init__(self):
         self._get_init_params, self._forward, self._log_prob_joint = self._build_model()

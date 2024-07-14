@@ -2,12 +2,13 @@ import dataclasses
 from functools import partial
 from typing import NamedTuple, Tuple
 
+import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
 from astropy import constants as const
 from jax._src.typing import SupportsDType
-import astropy.units as au
+
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.assets.rfi.rfi_emitter_model import LTESourceModelParams, AbstractLTERFIData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
@@ -34,19 +35,21 @@ class LTESourceModel(AbstractSourceModel):
     params: LTESourceModelParams
 
     @staticmethod
-    def from_rfi_model(rfi_model: AbstractLTERFIData, freqs: au.Quantity, full_stokes: bool=True) -> 'LTESourceModel':
+    def from_rfi_model(rfi_model: AbstractLTERFIData, freqs: au.Quantity, central_freq: au.Quantity | None = None,
+                       full_stokes: bool = True) -> 'LTESourceModel':
         """
         Create a source model from an RFI model.
 
         Args:
             rfi_model: the RFI model
             freqs: the frequencies to evaluate the model at
+            central_freq: the central frequency of the model
             full_stokes: whether to create a full stokes model
 
         Returns:
             source_model: the source model
         """
-        return LTESourceModel(rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes))
+        return LTESourceModel(rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes, central_freq=central_freq))
 
     def is_full_stokes(self) -> bool:
         return len(self.params.luminosity.shape) == 4 and self.params.luminosity.shape[-2:] == (2, 2)
@@ -69,8 +72,8 @@ class LTESourceModel(AbstractSourceModel):
             gains=gains
         )
 
-    def flux_weighted_lmn(self) -> au.Quantity:
-        return self.params.position_enu
+    def get_source_positions_enu(self) -> jax.Array:
+        return quantity_to_jnp(self.params.position_enu)
 
 
 @dataclasses.dataclass(eq=False)
