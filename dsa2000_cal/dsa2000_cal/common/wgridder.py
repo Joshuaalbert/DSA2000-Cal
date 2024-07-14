@@ -205,7 +205,7 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
     if not jnp.iscomplexobj(vis):
         raise ValueError("vis must be complex.")
 
-    output_dtype = (jnp.ones(1, dtype=vis.dtype).real).dtype
+    output_dtype = vis.real.dtype
 
     # Define the expected shape & dtype of output.
     result_shape_dtype = jax.ShapeDtypeStruct(
@@ -269,11 +269,11 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
     freqs = np.asarray(freqs, dtype=np.float64)
     vis = np.asarray(vis)
 
-    float_dtype = (np.ones(1, dtype=vis.dtype).real).dtype
-    dirty = np.zeros((npix_m, npix_l), dtype=float_dtype)
+    output_type = vis.real.dtype
+    dirty = np.zeros((npix_m, npix_l), dtype=output_type)
 
     if wgt is not None:
-        wgt = np.asarray(wgt).astype(float_dtype)
+        wgt = np.asarray(wgt).astype(output_type)
 
     if mask is not None:
         mask = np.asarray(mask).astype(np.uint8)
@@ -285,12 +285,21 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         raise ValueError("npix_x and npix_y must be at least 32.")
 
     # Make sure the output is in JY/PIXEL
-    num_rows = np.shape(uvw)[0]
-    num_freqs = np.shape(freqs)[0]
-    # Factor to convert adjoint gridding and degridding into inverses in the limit of total uvw coverage.
-    adjoint_factor = np.reciprocal((4. * num_rows - np.sqrt(8. * num_rows + 1.) - 1)) * 4. / num_freqs
+    # num_rows = np.shape(uvw)[0]
+    # num_freqs = np.shape(freqs)[0]
+    # # Factor to convert adjoint gridding and degridding into inverses in the limit of total uvw coverage.
+    # adjoint_factor = np.reciprocal((4. * num_rows - np.sqrt(8. * num_rows + 1.) - 1)) * 4. / num_freqs
+    # if wgt is not None:
+    #     adjoint_factor /= np.mean(wgt)
+
+    # Adjoint factor is the DFT zero-term I(0,0) = sum_{u,v,nu} S(u,v,nu)
+
+    sampling_function = np.ones(np.shape(vis), output_type)
     if wgt is not None:
-        adjoint_factor /= np.mean(wgt)
+        sampling_function *= wgt
+    if mask is not None:
+        sampling_function[mask == 0] = 0.
+    adjoint_factor = jnp.reciprocal(np.sum(sampling_function))
 
     _ = wgridder.vis2dirty(
         uvw=uvw,
