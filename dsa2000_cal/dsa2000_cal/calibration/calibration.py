@@ -17,14 +17,12 @@ from dsa2000_cal.calibration.gain_prior_models import AbstractGainPriorModel, \
     ReplicatedGainProbabilisticModel
 from dsa2000_cal.calibration.lbfgs import LBFGS
 from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
-from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
-from dsa2000_cal.uvw.far_field import VisibilityCoords
 from dsa2000_cal.types import CalibrationSolutions
-from dsa2000_cal.visibility_model.rime_model import RIMEModel, FacetSourceModel
+from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 tfpd = tfp.distributions
 
@@ -48,8 +46,7 @@ class Calibration:
     that solutions are forward applied until the solutions are older than the validity_interval.
 
     Args:
-        sky_model: the sky model to calibrate based on. Each model gets a gain direction in the flux weighted direction.
-        preapply_gain_model: the gain model to preapply before calibration.
+        rime_model: the RIME model to calibrate based on.
         num_iterations: the number of iterations to run the solver for.
         inplace_subtract: if True, the calibration is performed in place, otherwise a new measurement set is created.
         plot_folder: the folder to save plots to.
@@ -57,17 +54,12 @@ class Calibration:
         solution_interval: the interval over which the solution is computed.
         residual_ms_folder: the folder to save residuals to.
         seed: the random seed.
-        convention: the calibration convention.
-        dtype: the dtype to use.
         verbose: if True, print verbose output.
         num_shards: the number of shards to use.
     """
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
-    sky_model: FacetSourceModel
     rime_model: RIMEModel
     gain_prior_model: AbstractGainPriorModel
-
-    preapply_gain_model: GainModel | None
 
     # Calibration parameters
     num_iterations: int
@@ -151,31 +143,14 @@ class Calibration:
         print(f"Running with validity interval {self.validity_interval} / {cadence_interval} blocks")
 
         # Ensure the freqs are the same in the models
-        for wsclean_source_model in self.sky_model.component_source_models:
-            if not np.allclose(ms.meta.freqs.to('Hz'), wsclean_source_model.freqs.to('Hz')):
-                raise ValueError("Frequencies in the measurement set and source models must match.")
-        for fits_source_model in self.sky_model.fits_source_models:
-            if not np.allclose(ms.meta.freqs.to('Hz'), fits_source_model.freqs.to('Hz')):
-                raise ValueError("Frequencies in the measurement set and source models must match.")
+
         if not self.inplace_subtract:
             if self.residual_ms_folder is None:
                 raise ValueError("If not inplace subtracting, residual_ms_folder must be provided.")
             ms = ms.clone(ms_folder=self.residual_ms_folder)
             print("Created a new measurement set for residuals.")
 
-        calibrator_lmn = au.Quantity(
-            np.stack(
-                [
-                    model.flux_weighted_lmn() for model in self.sky_model.component_source_models
-                ] + [
-                    model.flux_weighted_lmn() for model in self.sky_model.fits_source_models
-                ],
-                axis=0)
-        )  # [num_calibrators, 3]
-
-        cal_sources = lmn_to_icrs(lmn=calibrator_lmn, phase_tracking=ms.meta.pointing)  # [num_calibrators]
-
-        for cal_idx, cal_source in enumerate(cal_sources):
+        for cal_idx, cal_source in enumerate(self.rime_model.facet_models):
             print(f"Calibrator {cal_idx}: {cal_source}")
 
         # Metrics
@@ -183,6 +158,7 @@ class Calibration:
         t0 = time_mod.time()
 
         solutions = []
+        geodesics = []
         # TODO: Apply UV cutoff to ignore galactic plane
         gen = ms.create_block_generator(vis=True, weights=True, flags=True, relative_time_idx=True,
                                         num_blocks=num_blocks)
@@ -199,26 +175,8 @@ class Calibration:
             except StopIteration:
                 break
 
-            if self.preapply_gain_model is not None:
-                # Since we pass a single `time` we need time_idx to be relative.
-                preapply_gains = []
-                for time in times:
-                    _preapply_gains = self.preapply_gain_model.compute_gain(freqs=ms.meta.freqs, sources=cal_sources,
-                                                                            pointing=ms.meta.pointing,
-                                                                            array_location=ms.meta.array_location,
-                                                                            time=time)  # [num_calibrators, num_ant, num_chan, 2, 2]
-                    preapply_gains.append(_preapply_gains)
-                preapply_gains = jnp.stack(preapply_gains,
-                                           axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
-            else:
-                preapply_gains = jnp.tile(
-                    jnp.eye(2, dtype=self.float_dtype)[None, None, None, None, :, :],
-                    reps=(self.sky_model.num_sources, num_blocks, len(ms.meta.antennas), len(ms.meta.freqs), 1, 1)
-                )
-
             data_dict = dict(
                 freqs=quantity_to_jnp(ms.meta.freqs),
-                preapply_gains=preapply_gains,
                 init_params=init_params,
                 vis_data=jax.tree_map(jnp.asarray, data),
                 vis_coords=jax.tree_map(jnp.asarray, visibility_coords)
@@ -226,8 +184,6 @@ class Calibration:
 
             data_dict = dict(
                 freqs=tree_device_put(data_dict['freqs'], NamedSharding(mesh, P('chan'))),
-                preapply_gains=tree_device_put(data_dict['preapply_gains'],
-                                               NamedSharding(mesh, P(None, None, None, 'chan'))),
                 init_params=tree_device_put(
                     data_dict['init_params'],
                     NamedSharding(mesh, P())  # Single gain for all
@@ -242,7 +198,7 @@ class Calibration:
                 num_iterations = 0
 
             key, solve_key = jax.random.split(key)
-            solution, params, (neg_log_likelihood, final_state), residual = self._solve_jax(
+            solution_geodesics, solution, params, (neg_log_likelihood, final_state), residual = self._solve_jax(
                 key=solve_key,
                 **data_dict,
                 num_iterations=num_iterations
@@ -253,7 +209,12 @@ class Calibration:
             # Replicate the solutions along time dimension
             solution = np.tile(solution[:, None, :, :, :, :],
                                (1, num_blocks, 1, 1, 1, 1))  # [num_cal, num_blocks, num_ant, num_chan, 2, 2]
+
             solutions.append(solution)
+            solution_geodesics = np.tile(solution_geodesics[:, None, :, :],
+                                         (1, num_blocks, 1, 1))  # [num_cal, num_blocks, num_ant, 3]
+
+            geodesics.append(solution_geodesics)
             residual_sum += np.sum(residual)
 
             # Pass forward
@@ -277,9 +238,10 @@ class Calibration:
             solve_durations.append(t1_inner - t0_inner)
 
         gains = np.concatenate(solutions, axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
+        geodesics = np.concatenate(geodesics, axis=1)  # [num_calibrators, num_time, num_ant, 3]
         calibration_solutions = CalibrationSolutions(
             gains=gains,
-            directions=cal_sources,
+            geodesics=geodesics,
             times=ms.meta.x,
             antennas=ms.meta.antennas,
             antenna_labels=ms.meta.antenna_names,
@@ -315,7 +277,7 @@ class Calibration:
         return jnp.real(jnp.zeros((), dtype=self.rime_model.dtype)).dtype
 
     @partial(jax.jit, static_argnames=['self', 'num_iterations'])
-    def _solve_jax(self, key, freqs: jax.Array, preapply_gains: jax.Array, init_params: jax.Array | None,
+    def _solve_jax(self, key, freqs: jax.Array, init_params: jax.Array | None,
                    vis_data: VisibilityData,
                    vis_coords: VisibilityCoords,
                    num_iterations: int) -> Tuple[jax.Array, jax.Array, Tuple[jax.Array, jaxopt.OptStep], jax.Array]:
@@ -323,7 +285,6 @@ class Calibration:
         gain_probabilistic_model = ReplicatedGainProbabilisticModel(
             rime_model=self.rime_model,
             gain_prior_model=self.gain_prior_model,
-            preapply_gains=preapply_gains,
             freqs=freqs,
             vis_data=vis_data,
             vis_coords=vis_coords
