@@ -162,7 +162,7 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
               nthreads: int = 1, verbosity: int = 0,
               double_precision_accumulation: bool = False) -> jax.Array:
     """
-    Compute the dirty image from the visibilities.
+    Compute the dirty image from the visibilities, scaled such that the PSF has unit peak flux.
 
     Args:
         uvw: [num_rows, 3] array of uvw coordinates.
@@ -299,7 +299,7 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         sampling_function *= wgt
     if mask is not None:
         sampling_function[mask == 0] = 0.
-    adjoint_factor = jnp.reciprocal(np.sum(sampling_function))
+    adjoint_factor = np.reciprocal(np.sum(sampling_function))
 
     _ = wgridder.vis2dirty(
         uvw=uvw,
