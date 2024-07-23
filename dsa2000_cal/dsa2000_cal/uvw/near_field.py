@@ -298,7 +298,7 @@ class NearFieldDelayEngine:
         )  # s
         # Unsure why the negative sign needs to be introduced to match,
         # since delta_t=t2-t1 is time for signal to travel from 1 to 2.
-        return -delta_t, dist2, dist1
+        return delta_t, dist2, dist1
 
     def time_to_jnp(self, times: at.Time) -> jax.Array:
         """

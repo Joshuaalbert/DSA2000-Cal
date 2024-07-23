@@ -49,7 +49,9 @@ class LTESourceModel(AbstractSourceModel):
         Returns:
             source_model: the source model
         """
-        return LTESourceModel(rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes, central_freq=central_freq))
+        return LTESourceModel(
+            params=rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes, central_freq=central_freq)
+        )
 
     def is_full_stokes(self) -> bool:
         return len(self.params.luminosity.shape) == 4 and self.params.luminosity.shape[-2:] == (2, 2)
@@ -216,22 +218,31 @@ class LTEPredict:
             )  # [], [], []
 
             # ACF delay -- rebuild from sharded data
-            delay_acf = InterpolatedArray(x=model_data.delay_acf.x, values=acf_values,
-                                          axis=0, regular_grid=model_data.delay_acf.regular_grid)
+            delay_acf = InterpolatedArray(
+                x=model_data.delay_acf.x,
+                values=acf_values,
+                axis=0,
+                regular_grid=model_data.delay_acf.regular_grid
+            )
             delay_acf = delay_acf(time=delay)  # []
 
             wavelength = quantity_to_jnp(const.c) / freq  # []
+            # delay ~ l*u + m*v + n*w
+            # -2j pi delay / wavelength + 2j pi w / wavelength = -2j pi (delay - w) / wavelength
+            # = -2j pi (l*u + m*v + n*w - w) / wavelength
+            # = -2j pi (l*u + m*v + (n-1)*w) / wavelength
             phase = -2j * jnp.pi * delay / wavelength  # []
             if self.convention == 'casa':
                 phase = jnp.negative(phase)
                 w = jnp.negative(w)
-            # e^(-2j pi w) so that get w (n-1) term
-            tracking_delay = -2j * jnp.pi * w  # []
+            # e^(-2j pi w) so that get -2j pi w (n-1) term
+            tracking_delay = 2j * jnp.pi * w / wavelength  # []
             phase += tracking_delay
 
             if full_stokes:
                 if is_gains:
                     luminosity = kron_product(g1, luminosity, g2.conj().T)  # [2, 2]
+                # fields decrease with 1/r, and sqrt(luminosity)
                 e_1 = jnp.sqrt(luminosity) * jnp.reciprocal(dist10)  # [2, 2]
                 e_2 = jnp.sqrt(luminosity) * jnp.reciprocal(dist20)  # [2, 2]
                 visibilities = (

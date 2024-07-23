@@ -419,27 +419,28 @@ def test_facet_model():
 
 def test_facet_model_lte():
     fill_registries()
-
-    obstimes = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:00:30'], scale='utc')
-    num_ant = 128
-    max_baseline = 3e3
-    freqs = au.Quantity([50, 60], 'MHz')
-
-    wavelength = quantity_to_jnp(const.c / freqs[0])
-    pixsize = (wavelength / max_baseline) / 5
-    print(pixsize * 180 / np.pi)
-    n = 2000
-    print(n / 2 * pixsize * 180 / np.pi)
-    # return
-
-    fill_registries()
     array = array_registry.get_instance(array_registry.get_match('lwa'))
 
     antennas = array.get_antennas()
+    anteanna_xyz = antennas.itrs.cartesian.xyz.to('m').value.T
 
-    phase_center = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+    obstimes = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:00:30'], scale='utc')
+    max_baseline = np.linalg.norm(anteanna_xyz[:, None, :] - anteanna_xyz[None, :, :], axis=-1).max()
+    freqs = au.Quantity([50, 60], 'MHz')
+
+    wavelength = quantity_to_jnp(const.c / freqs[0])
+    pixsize = (wavelength / max_baseline) / 7
+    print('pixel size (arcmim)', pixsize * 180 / np.pi * 60)
+    n = 2000
+    print('width (deg)', n * pixsize * 180 / np.pi)
+    # return
+
     array_location = antennas[0]
     ref_time = obstimes[0]
+
+    phase_center = ac.AltAz(
+        alt=90 * au.deg, az=0 * au.deg, location=array_location, obstime=ref_time
+    ).transform_to(ac.ICRS())
 
     geodesic_model = GeodesicModel(
         phase_center=phase_center,
@@ -484,18 +485,16 @@ def test_facet_model_lte():
 
     facet_model_data = facet_model.get_model_data(geodesic_model.time_to_jnp(obstimes))
 
-    print(facet_model_data.lte_model_data)
-
     visibility_coords = far_field_delay_engine.compute_visibility_coords(
         times=geodesic_model.time_to_jnp(obstimes), with_autocorr=True)
 
     vis = facet_model.predict(model_data=facet_model_data, visibility_coords=visibility_coords)
 
-    print(visibility_coords.antenna_1[np.where(~np.isfinite(np.abs(vis)))[0]])
-    print(visibility_coords.antenna_2[np.where(~np.isfinite(np.abs(vis)))[0]])
-    print(np.all(np.isfinite(visibility_coords.uvw)))
+    non_finite_mask = ~jnp.isfinite(np.abs(vis))
+    print(visibility_coords.antenna_1[np.where(non_finite_mask)[0]])
+    print(visibility_coords.antenna_2[np.where(non_finite_mask)[0]])
 
-    l0 = 1.
+    l0 = 0.99
     m0 = 0.
     dirty = vis2dirty(
         uvw=visibility_coords.uvw,
@@ -507,7 +506,7 @@ def test_facet_model_lte():
         pixsize_m=pixsize,
         center_l=l0,
         center_m=m0,
-        epsilon=1e-3,
+        epsilon=1e-6,
         nthreads=12
     )
     import pylab as plt
@@ -515,23 +514,39 @@ def test_facet_model_lte():
     lvec = pixsize * (-n / 2 + np.arange(n)) + l0
     mvec = pixsize * (-n / 2 + np.arange(n)) + m0
 
-    print(dirty[990:1010, 990:1010])
+    # Find the non-finite dirty
+    non_finite_mask = ~jnp.isfinite(np.abs(dirty))
+    print(lvec[np.where(non_finite_mask)[0]])
+    print(mvec[np.where(non_finite_mask)[1]])
 
     plt.imshow(np.abs(dirty).T,
                origin='lower',
                extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
                cmap='jet',
-               interpolation='none'
+               interpolation='nearest'
                )
     plt.colorbar()
+    plt.xlabel('l (proj. rad)')
+    plt.ylabel('m (proj. rad)')
+    plt.title('RFI 14km East, 80m up')
+    import glob
+    idx = len(glob.glob('lte_full_*.png'))
+    # plt.savefig(f'lte_full_{idx:03d}.png', dpi=500)
     plt.show()
 
-
-    plt.imshow(np.abs(dirty[990:1010, 990:1010]).T,
+    plt.imshow(np.abs(dirty[900:1100, 900:1100]).T,
                origin='lower',
-               extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
+               extent=(lvec[900], lvec[1100], mvec[900], mvec[1100]),
                cmap='jet',
-               interpolation='none'
+               interpolation='nearest'
                )
     plt.colorbar()
+    plt.xlabel('l (proj. rad)')
+    plt.ylabel('m (proj. rad)')
+    plt.title('RFI 14km East, 80m up')
+    import glob
+    idx = len(glob.glob('lte_zoom_*.png'))
+    # plt.savefig(f'lte_zoom_{idx:03d}.png', dpi=500)
     plt.show()
+
+    assert np.all(np.isfinite(dirty))

@@ -45,7 +45,7 @@ class LTECellTower(AbstractLTERFIData):
                 )
             )
 
-        position_enu = au.Quantity([[14e3, 0., 80]], unit='m')  # [1, 3]
+        position_enu = au.Quantity([[14e3, 0., 80.]], unit='m')  # [1, 3]
 
         delay_acf = InterpolatedArray(
             x=delays, values=auto_correlation_function, axis=0, regular_grid=regular_grid
