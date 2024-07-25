@@ -6,11 +6,12 @@ import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pylab as plt
 from astropy import constants as const
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
-from dsa2000_cal.assets.rfi.rfi_emitter_model import LTESourceModelParams, AbstractLTERFIData
+from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
@@ -19,7 +20,7 @@ from dsa2000_cal.uvw.far_field import VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 
 
-class LTEModelData(NamedTuple):
+class RFIEmitterModelData(NamedTuple):
     freqs: jax.Array  # [num_chans]
     position_enu: jax.Array  # [E, 3]
     luminosity: jax.Array  # [E, num_chans[,2,2]]
@@ -28,15 +29,33 @@ class LTEModelData(NamedTuple):
 
 
 @dataclasses.dataclass(eq=False)
-class LTESourceModel(AbstractSourceModel):
+class RFIEmitterSourceModel(AbstractSourceModel):
     """
     Predict vis for point source.
     """
-    params: LTESourceModelParams
+    params: RFIEmitterSourceModelParams
+
+    def __getitem__(self, item):
+        params = RFIEmitterSourceModelParams(
+            freqs=self.params.freqs,
+            position_enu=self.params.position_enu[item],
+            spectral_flux_density=self.params.spectral_flux_density[item],
+            delay_acf=InterpolatedArray(
+                x=self.params.delay_acf.x,
+                values=self.params.delay_acf.values[item],
+                axis=self.params.delay_acf.axis,
+                regular_grid=self.params.delay_acf.regular_grid
+            )
+        )
+        return RFIEmitterSourceModel(params)
+
+    @property
+    def num_emitters(self):
+        return self.params.spectral_flux_density.shape[0]
 
     @staticmethod
-    def from_rfi_model(rfi_model: AbstractLTERFIData, freqs: au.Quantity, central_freq: au.Quantity | None = None,
-                       full_stokes: bool = True) -> 'LTESourceModel':
+    def from_rfi_model(rfi_model: AbstractRFIEmitterData, freqs: au.Quantity, central_freq: au.Quantity | None = None,
+                       full_stokes: bool = True) -> 'RFIEmitterSourceModel':
         """
         Create a source model from an RFI model.
 
@@ -49,14 +68,15 @@ class LTESourceModel(AbstractSourceModel):
         Returns:
             source_model: the source model
         """
-        return LTESourceModel(
+        return RFIEmitterSourceModel(
             params=rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes, central_freq=central_freq)
         )
 
     def is_full_stokes(self) -> bool:
-        return len(self.params.luminosity.shape) == 4 and self.params.luminosity.shape[-2:] == (2, 2)
+        return len(self.params.spectral_flux_density.shape) == 4 and self.params.spectral_flux_density.shape[-2:] == (
+            2, 2)
 
-    def get_model_data(self, gains: jax.Array | None) -> LTEModelData:
+    def get_model_data(self, gains: jax.Array | None) -> RFIEmitterModelData:
         """
         Get the model data for the source models. Optionally pre-apply gains in model.
 
@@ -66,10 +86,10 @@ class LTESourceModel(AbstractSourceModel):
         Returns:
             model_data: the model data
         """
-        return LTEModelData(
+        return RFIEmitterModelData(
             freqs=quantity_to_jnp(self.params.freqs),
             position_enu=quantity_to_jnp(self.params.position_enu),
-            luminosity=quantity_to_jnp(self.params.luminosity, 'Jy*m^2'),
+            luminosity=quantity_to_jnp(self.params.spectral_flux_density, 'Jy*m^2'),
             delay_acf=self.params.delay_acf,
             gains=gains
         )
@@ -77,14 +97,42 @@ class LTESourceModel(AbstractSourceModel):
     def get_source_positions_enu(self) -> jax.Array:
         return quantity_to_jnp(self.params.position_enu)
 
+    def plot(self, save_file: str = None):
+        """
+        Plot the source model.
+
+        Args:
+            save_file: the file to save the plot to
+        """
+        # Plot each emitter in ENU coordinates
+        freq_idx = len(self.params.freqs) // 2
+        fig, axs = plt.subplots(1, 1, figsize=(8, 8), squeeze=False)
+        # Plot array centre at 0,0 in red
+        axs[0, 0].scatter(0, 0, c='r', label='Array Centre')
+        for emitter in range(self.num_emitters):
+            if self.is_full_stokes():
+                c = self.params.spectral_flux_density[emitter, freq_idx, 0, 0].to('Jy*km^2').value
+            else:
+                c = self.params.spectral_flux_density[emitter, freq_idx].to('Jy*km^2').value
+            sc = axs[0, 0].scatter(self.params.position_enu[emitter, 0], self.params.position_enu[emitter, 1], c=c,
+                                   marker='*')
+        plt.colorbar(sc, ax=axs[0, 0], label='Luminosity [Jy km^2]')
+        axs[0, 0].set_xlabel('East [m]')
+        axs[0, 0].set_ylabel('North [m]')
+        axs[0, 0].set_title('RFI Emitter Source Model')
+        axs[0, 0].legend()
+        if save_file is not None:
+            plt.savefig(save_file)
+        plt.show()
+
 
 @dataclasses.dataclass(eq=False)
-class LTEPredict:
+class RFIEmitterPredict:
     delay_engine: NearFieldDelayEngine
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
 
-    def check_predict_inputs(self, model_data: LTEModelData
+    def check_predict_inputs(self, model_data: RFIEmitterModelData
                              ) -> Tuple[bool, bool, bool]:
         """
         Check the inputs for predict.
@@ -139,7 +187,7 @@ class LTEPredict:
 
         return full_stokes, is_gains, direction_dependent_gains
 
-    def predict(self, model_data: LTEModelData, visibility_coords: VisibilityCoords) -> jax.Array:
+    def predict(self, model_data: RFIEmitterModelData, visibility_coords: VisibilityCoords) -> jax.Array:
         """
         Predict visibilities from DFT model data.
 
@@ -206,6 +254,8 @@ class LTEPredict:
                 g1: [] or [2,2]
                 g2: [] or [2,2]
                 luminosity: [] or [2,2]
+                position_enu: [3]
+                acf_values: [num_x]
             """
             # propagation delay
             delay, dist20, dist10 = self.delay_engine.compute_delay_from_projection_jax(
@@ -232,12 +282,13 @@ class LTEPredict:
             # = -2j pi (l*u + m*v + n*w - w) / wavelength
             # = -2j pi (l*u + m*v + (n-1)*w) / wavelength
             phase = -2j * jnp.pi * delay / wavelength  # []
-            if self.convention == 'casa':
-                phase = jnp.negative(phase)
-                w = jnp.negative(w)
+
             # e^(-2j pi w) so that get -2j pi w (n-1) term
             tracking_delay = 2j * jnp.pi * w / wavelength  # []
             phase += tracking_delay
+
+            if self.convention == 'casa':
+                phase = jnp.negative(phase)
 
             if full_stokes:
                 if is_gains:

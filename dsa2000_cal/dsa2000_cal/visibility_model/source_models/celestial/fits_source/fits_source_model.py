@@ -68,6 +68,9 @@ class FITSSourceModel(AbstractSourceModel):
     l0: au.Quantity  # [num_freqs] image centre l coordinates (usually 0, but need not be)
     m0: au.Quantity  # [num_freqs] image centre m coordinates (usually 0, but need not be)
 
+    def __add__(self, other: 'FITSSourceModel') -> 'FITSSourceModel':
+        raise NotImplementedError("Addition not implemented")
+
     def is_full_stokes(self) -> bool:
         shape = self.images[0].shape
         return len(shape) == 4 and shape[-2:] == (2, 2)
@@ -300,18 +303,31 @@ class FITSSourceModel(AbstractSourceModel):
 
     def get_flux_model(self, lvec=None, mvec=None):
         # Use imshow to plot the sky model evaluated over a LM grid
-        Nl, Nm = self.images[0].shape
+        if len(self.images[0].shape) == 2:
+            Nl, Nm = self.images[0].shape
+            flux_model = self.images[0].T  # [Nm, Nl]
+        elif len(self.images[0].shape) == 3:
+            _, Nl, Nm = self.images[0].shape
+            flux_model = self.images[0][0, :, :].T  # [Nm, Nl]
+        elif len(self.images[0].shape) == 4:
+            Nl, Nm, _, _ = self.images[0].shape
+            flux_model = self.images[0][:, :, 0, 0].T  # [Nm, Nl]
+        elif len(self.images[0].shape) == 5:
+            _, Nl, Nm, _, _ = self.images[0].shape
+            flux_model = self.images[0][0, :, :, 0, 0].T  # [Nm, Nl]
+        else:
+            raise ValueError(f"Expected image shape [[chan,]Nl, Nm[, 2, 2]], got {self.images[0].shape}")
         lvec = (-0.5 * Nl + np.arange(Nl)) * self.dl[0] + self.l0[0]
         mvec = (-0.5 * Nm + np.arange(Nm)) * self.dm[0] + self.m0[0]
-        flux_model = self.images[0].T  # [Nm, Nl]
+
         return lvec, mvec, flux_model
 
-    def plot(self):
+    def plot(self, save_file: str = None):
         lvec, mvec, flux_model = self.get_flux_model()  # [Nm, Nl]
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
         im = axs.imshow(
-            flux_model.value,
+            flux_model.to('Jy').value,
             origin='lower',
             extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
             cmap='inferno',
@@ -321,6 +337,8 @@ class FITSSourceModel(AbstractSourceModel):
         plt.colorbar(im, ax=axs)
         axs.set_xlabel('l')
         axs.set_ylabel('m')
+        if save_file is not None:
+            plt.savefig(save_file)
         plt.show()
 
 

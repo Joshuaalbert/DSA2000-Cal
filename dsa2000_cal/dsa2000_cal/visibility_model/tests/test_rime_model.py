@@ -8,7 +8,7 @@ from astropy import time as at, coordinates as ac, units as au
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry
-from dsa2000_cal.gain_models.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesic_model.geodesic_model import GeodesicModel
 from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.facet_model import FacetModel
@@ -17,7 +17,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_sourc
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
     GaussianSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import PointSourceModel
-from dsa2000_cal.visibility_model.source_models.rfi.lte_source.lte_source_model import LTESourceModel
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import RFIEmitterSourceModel
 
 
 def test_rime_model():
@@ -59,7 +59,7 @@ def test_rime_model():
     fits_source_model = FITSSourceModel.from_wsclean_model(wsclean_fits_files=wsclean_fits_files,
                                                            phase_tracking=phase_center, freqs=freqs)
 
-    lte_source_model = LTESourceModel.from_rfi_model(
+    lte_source_model = RFIEmitterSourceModel.from_rfi_model(
         rfi_model_registry.get_instance(rfi_model_registry.get_match('lte_cell_tower')),
         freqs,
         True
@@ -84,7 +84,7 @@ def test_rime_model():
         point_source_model=point_source_model,
         gaussian_source_model=gaussian_source_model,
         fits_source_model=fits_source_model,
-        lte_source_model=lte_source_model,
+        rfi_emitter_source_model=lte_source_model,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,
         gain_model=None

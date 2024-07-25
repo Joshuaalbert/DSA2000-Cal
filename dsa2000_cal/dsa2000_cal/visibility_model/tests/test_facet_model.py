@@ -11,7 +11,7 @@ from dsa2000_cal.assets.registries import source_model_registry, rfi_model_regis
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.wgridder import vis2dirty
-from dsa2000_cal.gain_models.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesic_model.geodesic_model import GeodesicModel
 from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.facet_model import FacetModel
@@ -20,7 +20,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussi
     GaussianSourceModel, GaussianModelData, GaussianPredict
 from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import PointSourceModel, \
     PointModelData, PointPredict
-from dsa2000_cal.visibility_model.source_models.rfi.lte_source.lte_source_model import LTESourceModel
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import RFIEmitterSourceModel
 
 
 def test_facet_model_gaussian():
@@ -259,7 +259,7 @@ def test_facet_model_fits():
         point_source_model=None,
         gaussian_source_model=None,
         fits_source_model=fits_source_model,
-        lte_source_model=None,
+        rfi_emitter_source_model=None,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,
         gain_model=None
@@ -346,7 +346,7 @@ def test_facet_model():
     fits_source_model = FITSSourceModel.from_wsclean_model(wsclean_fits_files=wsclean_fits_files,
                                                            phase_tracking=phase_center, freqs=freqs)
 
-    lte_source_model = LTESourceModel.from_rfi_model(
+    lte_source_model = RFIEmitterSourceModel.from_rfi_model(
         rfi_model_registry.get_instance(rfi_model_registry.get_match('lte_cell_tower')),
         freqs,
         True
@@ -371,7 +371,7 @@ def test_facet_model():
         point_source_model=point_source_model,
         gaussian_source_model=gaussian_source_model,
         fits_source_model=fits_source_model,
-        lte_source_model=lte_source_model,
+        rfi_emitter_source_model=lte_source_model,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,
         gain_model=None
@@ -451,7 +451,7 @@ def test_facet_model_lte():
         array_location=array_location
     )
 
-    lte_source_model = LTESourceModel.from_rfi_model(
+    lte_source_model = RFIEmitterSourceModel.from_rfi_model(
         rfi_model_registry.get_instance(rfi_model_registry.get_match('lte_cell_tower')),
         freqs,
         central_freq=freqs[0],
@@ -477,7 +477,7 @@ def test_facet_model_lte():
         point_source_model=None,
         gaussian_source_model=None,
         fits_source_model=None,
-        lte_source_model=lte_source_model,
+        rfi_emitter_source_model=lte_source_model,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,
         gain_model=None

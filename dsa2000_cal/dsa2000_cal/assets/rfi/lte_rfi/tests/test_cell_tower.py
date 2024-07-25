@@ -8,7 +8,7 @@ def test_lte_rfi_source_factory():
     model = LTECellTower()
     import pylab as plt
     source_params = model.make_source_params(freqs=np.linspace(700, 800, 50) * au.MHz)
-    plt.plot(source_params.freqs, source_params.luminosity[0])
+    plt.plot(source_params.freqs, source_params.spectral_flux_density[0])
     plt.xlabel('Frequency [MHz]')
     plt.ylabel('Luminosity [W/Hz]')
     plt.show()

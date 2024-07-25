@@ -5,7 +5,7 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 
 
 def test_geodesic_model():
@@ -67,11 +67,10 @@ def test_geodesic_model():
     far_field_geodesics = geodesic_model.compute_far_field_geodesic(times, lmn_sources)
     assert np.shape(far_field_geodesics) == (num_source, num_time, num_ant, 3)
 
-
-
     source_positions_enu = jnp.zeros((num_source, 3))
     near_field_geodesics = geodesic_model.compute_near_field_geodesics(times, source_positions_enu)
     assert np.shape(near_field_geodesics) == (num_source, num_time, num_ant, 3)
+
 
 def test_geodesic_model_results():
     obstimes = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:00:30'], scale='utc')
@@ -101,25 +100,25 @@ def test_geodesic_model_results():
 
     far_field_geodesics = geodesic_model.compute_far_field_geodesic(times[0:1], lmn_sources)
     np.testing.assert_allclose(
-        far_field_geodesics[0,0,0,:],
+        far_field_geodesics[0, 0, 0, :],
         [0, 0, 1],
         atol=1e-6
     )
     np.testing.assert_allclose(
-        far_field_geodesics[1,0,0,:],
+        far_field_geodesics[1, 0, 0, :],
         [1, 0, 0],
         atol=1e-3
     )
     np.testing.assert_allclose(
-        far_field_geodesics[2,0,0,:],
+        far_field_geodesics[2, 0, 0, :],
         [0, 1, 0],
         atol=1e-3
     )
 
     sources = ENU(
-        east=[0, 1, 0]*au.km,
-        north=[0, 0, 1]*au.km,
-        up=[1, 0, 0]*au.km,
+        east=[0, 1, 0] * au.km,
+        north=[0, 0, 1] * au.km,
+        up=[1, 0, 0] * au.km,
         obstime=ref_time,
         location=array_location
     )
@@ -127,18 +126,17 @@ def test_geodesic_model_results():
     near_field_geodesics = geodesic_model.compute_near_field_geodesics(times[0:1], source_positions_enu)
 
     np.testing.assert_allclose(
-        near_field_geodesics[0,0,0,:],
+        near_field_geodesics[0, 0, 0, :],
         [0, 0, 1],
         atol=1e-6
     )
     np.testing.assert_allclose(
-        near_field_geodesics[1,0,0,:],
+        near_field_geodesics[1, 0, 0, :],
         [1, 0, 0],
         atol=1e-6
     )
     np.testing.assert_allclose(
-        near_field_geodesics[2,0,0,:],
+        near_field_geodesics[2, 0, 0, :],
         [0, 1, 0],
         atol=1e-6
     )
-

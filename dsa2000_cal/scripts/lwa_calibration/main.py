@@ -5,7 +5,7 @@ from jax import config
 
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
-from dsa2000_cal.calibration.gain_prior_models import UnconstrainedGain
+from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.visibility_model.sky_model import SkyModel
 from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
 from dsa2000_cal.visibility_model.source_models.celestial.wsclean_component_stokes_I_source_model import WSCleanSourceModel

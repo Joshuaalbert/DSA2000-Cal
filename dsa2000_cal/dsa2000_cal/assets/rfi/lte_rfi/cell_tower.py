@@ -6,18 +6,19 @@ from astropy import units as au
 from scipy.io import loadmat
 
 from dsa2000_cal.assets.registries import rfi_model_registry
-from dsa2000_cal.assets.rfi.rfi_emitter_model import LTESourceModelParams, AbstractLTERFIData
+from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 
 
 @rfi_model_registry(template='lte_cell_tower')
-class LTECellTower(AbstractLTERFIData):
+class LTECellTower(AbstractRFIEmitterData):
 
     def rfi_injection_model(self) -> str:
         return os.path.join(*self.content_path, 'rfi_injection_model.mat')
 
     def make_source_params(self, freqs: au.Quantity, central_freq: au.Quantity | None = None,
-                           full_stokes: bool = False) -> LTESourceModelParams:
+                           bandwidth: au.Quantity | None = None,
+                           full_stokes: bool = False) -> RFIEmitterSourceModelParams:
         # E=1
         mat = loadmat(self.rfi_injection_model())
         delays = jnp.asarray(mat['t_acf'][0])
@@ -29,9 +30,10 @@ class LTECellTower(AbstractLTERFIData):
 
         if central_freq is None:
             central_freq = np.mean(freqs)
-        bandwidth = 5 * au.MHz
+        if bandwidth is None:
+            bandwidth = 5 * au.MHz
 
-        rfi_band_mask = np.logical_and(freqs > central_freq - bandwidth / 2, freqs < central_freq + bandwidth / 2)
+        rfi_band_mask = np.logical_and(freqs >= central_freq - bandwidth / 2, freqs <= central_freq + bandwidth / 2)
 
         luminosity = au.Quantity(np.where(rfi_band_mask[None], 1., 0.), unit='Jy') * (1 * au.km) ** 2  # [1, num_chans]
         if full_stokes:
@@ -51,9 +53,9 @@ class LTECellTower(AbstractLTERFIData):
             x=delays, values=auto_correlation_function, axis=0, regular_grid=regular_grid
         )  # [E]
 
-        return LTESourceModelParams(
+        return RFIEmitterSourceModelParams(
             freqs=freqs,
             position_enu=position_enu,
-            luminosity=luminosity,
+            spectral_flux_density=luminosity,
             delay_acf=delay_acf
         )

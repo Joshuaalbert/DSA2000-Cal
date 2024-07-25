@@ -6,6 +6,7 @@ h5parm
 tables
 jax>=0.4.25
 jaxlib
+jaxns>=2.5.3
 jaxopt
 python-casacore
 scipy

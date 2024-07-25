@@ -103,7 +103,28 @@ class PointSourceModel(AbstractSourceModel):
     m0: au.Quantity  # [num_sources] m coordinate of the source
     A: au.Quantity  # [num_sources, num_freqs[,2,2]] Flex amplitude of the source
 
-    dtype: SupportsDType = jnp.complex64
+    def __getitem__(self, item):
+        return PointSourceModel(
+            freqs=self.freqs,
+            l0=self.l0[item],
+            m0=self.m0[item],
+            A=self.A[item]
+        )
+
+    def __add__(self, other: 'PointSourceModel') -> 'PointSourceModel':
+        # ensure freqs same
+        if not np.all(self.freqs == other.freqs):
+            raise ValueError("Frequencies must match")
+        # Ensure both same is_stokes
+        if self.is_full_stokes() != other.is_full_stokes():
+            raise ValueError("Both must be full stokes or not")
+        # concat
+        return PointSourceModel(
+            freqs=self.freqs,
+            l0=au.Quantity(np.concatenate([self.l0, other.l0])),
+            m0=au.Quantity(np.concatenate([self.m0, other.m0])),
+            A=au.Quantity(np.concatenate([self.A, other.A], axis=0))
+        )
 
     def is_full_stokes(self) -> bool:
         return len(self.A.shape) == 4 and self.A.shape[-2:] == (2, 2)
@@ -252,27 +273,18 @@ class PointSourceModel(AbstractSourceModel):
                 flux_model[m_idx, l_idx] += self.A[i, 0]
         return lvec, mvec, flux_model
 
-    def plot(self):
+    def plot(self, save_file: str = None):
         lvec, mvec, flux_model = self.get_flux_model()
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
-        im = axs.imshow(flux_model, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
+        im = axs.imshow(flux_model.to('Jy').value, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
         # colorbar
         plt.colorbar(im, ax=axs)
         axs.set_xlabel('l')
         axs.set_ylabel('m')
+        if save_file is not None:
+            plt.savefig(save_file)
         plt.show()
-
-    def __add__(self, other: 'PointSourceModel') -> 'PointSourceModel':
-        if not np.all(self.freqs == other.freqs):
-            raise ValueError("Frequencies must match")
-        return PointSourceModel(
-            freqs=self.freqs,
-            l0=au.Quantity(np.concatenate([self.l0, other.l0])),
-            m0=au.Quantity(np.concatenate([self.m0, other.m0])),
-            A=au.Quantity(np.concatenate([self.A, other.A], axis=0)),
-            dtype=self.dtype
-        )
 
 
 @dataclasses.dataclass(eq=False)

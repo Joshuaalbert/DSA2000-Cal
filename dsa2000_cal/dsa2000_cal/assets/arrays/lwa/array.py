@@ -48,7 +48,7 @@ class LWAArray(AbstractArray):
 
     def get_system_equivalent_flux_density(self) -> au.Quantity:
         # At 55 MHz
-        return 5070. * au.Jy  # Jy
+        return 5570. * au.Jy  # Jy
 
     def get_system_efficiency(self) -> au.Quantity:
         return 1. * au.dimensionless_unscaled

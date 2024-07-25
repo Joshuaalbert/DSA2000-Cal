@@ -9,7 +9,9 @@ from jax import lax
 
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.vec_utils import kron_product
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.uvw.far_field import VisibilityCoords, FarFieldDelayEngine
+from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.facet_model import FacetModel, FacetModelData
 
 
@@ -23,11 +25,19 @@ class RIMEModel:
             raise ValueError("At least one source model must be provided.")
 
         # Assumes all source models have the same engines
-        self.near_field_delay_engine = self.facet_models[0].near_field_delay_engine
-        self.far_field_delay_engine = self.facet_models[0].far_field_delay_engine
-        self.geodesic_model = self.facet_models[0].geodesic_model
+        self.near_field_delay_engine: NearFieldDelayEngine = self.facet_models[0].near_field_delay_engine
+        self.far_field_delay_engine: FarFieldDelayEngine = self.facet_models[0].far_field_delay_engine
+        self.geodesic_model: GeodesicModel = self.facet_models[0].geodesic_model
         self.dtype = self.facet_models[0].dtype
         self.convention = self.facet_models[0].convention
+
+    @property
+    def num_facets(self) -> int:
+        return len(self.facet_models)
+
+    @property
+    def num_antennas(self) -> int:
+        return len(self.geodesic_model.antennas)
 
     def predict_visibilities(self, model_data: List[FacetModelData], visibility_coords: VisibilityCoords) -> jax.Array:
         """
@@ -44,6 +54,21 @@ class RIMEModel:
         for model, model_data in zip(self.facet_models, model_data):
             vis.append(model.predict(model_data=model_data, visibility_coords=visibility_coords))
         return jnp.stack(vis, axis=0)
+
+    def get_model_data(self, times: jax.Array) -> List[FacetModelData]:
+        """
+        Get the model data for the source models. Optionally pre-apply gains in model.
+
+        Args:
+            times: [num_time] the times to compute the model data, in TT since start of observation.
+
+        Returns:
+            model_data: the model data
+        """
+        model_data = []
+        for facet_model in self.facet_models:
+            model_data.append(facet_model.get_model_data(times=times))
+        return model_data
 
     def predict_facets_model_visibilities(self, times: jax.Array, with_autocorr: bool = True) -> Tuple[
         jax.Array, VisibilityCoords]:

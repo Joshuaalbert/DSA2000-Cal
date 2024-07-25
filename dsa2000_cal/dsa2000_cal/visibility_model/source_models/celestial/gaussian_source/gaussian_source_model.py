@@ -230,6 +230,36 @@ class GaussianSourceModel(AbstractSourceModel):
     minor: au.Quantity  # [num_sources] Minor axis of the source
     theta: au.Quantity  # [num_sources] Position angle of the source
 
+    def __getitem__(self, item):
+        return GaussianSourceModel(
+            freqs=self.freqs,
+            l0=self.l0[item],
+            m0=self.m0[item],
+            A=self.A[item],
+            major=self.major[item],
+            minor=self.minor[item],
+            theta=self.theta[item]
+        )
+
+    def __add__(self, other: 'GaussianSourceModel') -> 'GaussianSourceModel':
+        # ensure freqs same
+        if not np.all(self.freqs == other.freqs):
+            raise ValueError("Frequencies must match")
+        # Ensure both same is_stokes
+        if self.is_full_stokes() != other.is_full_stokes():
+            raise ValueError("Both must be full stokes or not")
+        # concat
+        return GaussianSourceModel(
+            freqs=self.freqs,
+            l0=au.Quantity(np.concatenate([self.l0, other.l0])),
+            m0=au.Quantity(np.concatenate([self.m0, other.m0])),
+            A=au.Quantity(np.concatenate([self.A, other.A], axis=0)),
+            major=au.Quantity(np.concatenate([self.major, other.major])),
+            minor=au.Quantity(np.concatenate([self.minor, other.minor])),
+            theta=au.Quantity(np.concatenate([self.theta, other.theta])),
+
+        )
+
     def is_full_stokes(self) -> bool:
         return len(self.A.shape) == 4 and self.A.shape[-2:] == (2, 2)
 
@@ -420,29 +450,18 @@ class GaussianSourceModel(AbstractSourceModel):
             flux_density += np.asarray(_gaussian_flux(*args)) * au.Jy
         return lvec, mvec, flux_density * pixel_area
 
-    def plot(self):
+    def plot(self, save_file: str = None):
         lvec, mvec, flux_model = self.get_flux_model()
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
-        im = axs.imshow(flux_model, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
+        im = axs.imshow(flux_model.to('Jy').value, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
         # colorbar
         plt.colorbar(im, ax=axs)
         axs.set_xlabel('l')
         axs.set_ylabel('m')
+        if save_file is not None:
+            plt.savefig(save_file)
         plt.show()
-
-    def __add__(self, other: 'GaussianSourceModel') -> 'GaussianSourceModel':
-        if not np.all(self.freqs == other.freqs):
-            raise ValueError("Frequency mismatch")
-        return GaussianSourceModel(
-            freqs=self.freqs,
-            l0=au.Quantity(np.concatenate([self.l0, other.l0])),
-            m0=au.Quantity(np.concatenate([self.m0, other.m0])),
-            A=au.Quantity(np.concatenate([self.A, other.A], axis=0)),
-            major=au.Quantity(np.concatenate([self.major, other.major])),
-            minor=au.Quantity(np.concatenate([self.minor, other.minor])),
-            theta=au.Quantity(np.concatenate([self.theta, other.theta])),
-        )
 
 
 def derive_transform():

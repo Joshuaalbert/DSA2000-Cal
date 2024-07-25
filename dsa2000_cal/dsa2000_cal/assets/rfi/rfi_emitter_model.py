@@ -8,26 +8,26 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 
-class LTESourceModelParams(SerialisableBaseModel):
+class RFIEmitterSourceModelParams(SerialisableBaseModel):
     freqs: au.Quantity  # [num_chans]
     delay_acf: InterpolatedArray  # [E]
     position_enu: au.Quantity = Field(
         description=" [E, 3] Location in ENU [m] from antenna[0]."
     )
-    luminosity: au.Quantity = Field(
-        description="[E, num_chans[, 2, 2]] Power of RFI transmitter at the source [W/Hz] or [Jy m^2] per channel (integrated over chan)."
+    spectral_flux_density: au.Quantity = Field(
+        description="[E, num_chans[, 2, 2]] Spectral flux density of RFI transmitter at the source [W/Hz] or [Jy m^2] per channel."
     )
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
-        super(LTESourceModelParams, self).__init__(**data)
+        super(RFIEmitterSourceModelParams, self).__init__(**data)
         _check_lte_model_params(self)
 
 
-def _check_lte_model_params(params: LTESourceModelParams):
+def _check_lte_model_params(params: RFIEmitterSourceModelParams):
     if not params.freqs.unit.is_equivalent(au.Hz):
         raise ValueError("Frequency must be in Hz.")
-    if not params.luminosity.unit.is_equivalent(au.Jy * au.m**2):
+    if not params.spectral_flux_density.unit.is_equivalent(au.Jy * au.m ** 2):
         raise ValueError("Luminosity must be in Jy m^2.")
     if not params.position_enu.unit.is_equivalent(au.m):
         raise ValueError("Location must be in meters.")
@@ -36,11 +36,12 @@ def _check_lte_model_params(params: LTESourceModelParams):
         raise ValueError(f"Location must be a [E, 3], got {params.position_enu.shape}.")
     E, _ = params.position_enu.shape
     num_chan = len(params.freqs)
-    if not ((params.luminosity.shape == (E, num_chan)) or (params.luminosity.shape == (E, num_chan, 2, 2))):
-        raise ValueError(f"Luminosity must be [E, num_chans[,2 ,2]], got {params.luminosity.shape}.")
+    if not ((params.spectral_flux_density.shape == (E, num_chan)) or (
+            params.spectral_flux_density.shape == (E, num_chan, 2, 2))):
+        raise ValueError(f"Luminosity must be [E, num_chans[,2 ,2]], got {params.spectral_flux_density.shape}.")
 
 
-class AbstractLTERFIData(ABC, BaseContent):
+class AbstractRFIEmitterData(ABC, BaseContent):
     def __init__(self, *args, **kwargs):
         BaseContent.__init__(self, *args, **kwargs)
 
@@ -50,7 +51,7 @@ class AbstractLTERFIData(ABC, BaseContent):
 
     @abstractmethod
     def make_source_params(self, freqs: au.Quantity, central_freq: au.Quantity | None = None,
-                           full_stokes: bool = False) -> LTESourceModelParams:
+                           full_stokes: bool = False) -> RFIEmitterSourceModelParams:
         """
         Make the source parameters for the LTE RFI model.
 

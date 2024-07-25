@@ -10,12 +10,12 @@ class CalibrationSolutions(SerialisableBaseModel):
     """
     Calibration solutions, stored in a serialisable format.
     """
-    geodesics: np.ndarray  # [source, time, ant, 3]
+    pointings: ac.ICRS | None  # [[ant]]
     times: at.Time  # [time]
     antennas: ac.EarthLocation  # [ant]
     antenna_labels: List[str]  # [ant]
     freqs: au.Quantity  # [chan]
-    gains: np.ndarray  # [source, time, ant, chan, 2, 2]
+    gains: np.ndarray  # [facet, time, ant, chan[, 2, 2]]
 
 
 class SystemGains(SerialisableBaseModel):

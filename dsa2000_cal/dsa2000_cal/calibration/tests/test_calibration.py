@@ -15,8 +15,7 @@ import pytest
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.calibration.calibration import Calibration
-from dsa2000_cal.calibration.gain_prior_models import DiagonalUnconstrainedGain
-from dsa2000_cal.forward_model.synthetic_sky_model import SyntheticSkyModelProducer
+from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 from dsa2000_cal.forward_model.simulation.simulate_visibilties import SimulateVisibilities
@@ -148,7 +147,7 @@ def test_calibration(mock_calibrator_source_models):
         validity_interval=ms.meta.integration_time * 8,
         sky_model=sky_model,
         rime_model=rime_model,
-        gain_prior_model=gain_prior_model,
+        probabilistic_model=gain_prior_model,
         preapply_gain_model=None,
         inplace_subtract=True,
         verbose=True,

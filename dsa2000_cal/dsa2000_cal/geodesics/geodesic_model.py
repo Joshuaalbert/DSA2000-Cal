@@ -21,7 +21,7 @@ class GeodesicModel:
     antennas: ac.EarthLocation
     array_location: ac.EarthLocation
     phase_center: ac.ICRS
-    obstimes: at.Time
+    obstimes: at.Time # [num_model_times] over which to compute the zenith
     ref_time: at.Time
     pointings: ac.ICRS | None  # [[num_ant]] or None which means Zenith
 
@@ -111,6 +111,7 @@ class GeodesicModel:
             verbose=True
         )
         def create_geodesics(antennas_enu, lmn_pointing, lmn_source):
+            # Note: antennas_enu arg is necessary for multi_vmap to work correctly, even though it's not used.
             # Get RA/DEC of pointings wrt phase centre
             ra0, dec0 = self.ra0, self.dec0
             ra_pointing, dec_pointing = perley_icrs_from_lmn(

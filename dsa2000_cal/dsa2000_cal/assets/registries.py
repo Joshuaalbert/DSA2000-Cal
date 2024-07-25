@@ -3,7 +3,7 @@ from typing import List
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.assets.content_registry import ContentRegistry, ContentMap, AbstractContentFactory, SetKwargsFactory
-from dsa2000_cal.assets.rfi.rfi_emitter_model import AbstractLTERFIData
+from dsa2000_cal.assets.rfi.rfi_emitter_model import AbstractRFIEmitterData
 from dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel
 
 
@@ -58,9 +58,9 @@ source_model_registry = ContentRegistry[AbstractWSCleanSourceModel](
 )
 source_model_map = ContentMap[AbstractWSCleanSourceModel](content_registry=source_model_registry)
 
-rfi_model_registry = ContentRegistry[AbstractLTERFIData](
+rfi_model_registry = ContentRegistry[AbstractRFIEmitterData](
     match_func=match_func,
     sort_key_func=sort_key_func,
     content_factory=create_factory_from_templates
 )
-rfi_model_map = ContentMap[AbstractLTERFIData](content_registry=rfi_model_registry)
+rfi_model_map = ContentMap[AbstractRFIEmitterData](content_registry=rfi_model_registry)

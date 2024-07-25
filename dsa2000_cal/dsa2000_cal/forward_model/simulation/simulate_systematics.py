@@ -1,5 +1,6 @@
 import dataclasses
 import os
+from typing import Tuple
 
 import astropy.units as au
 import matplotlib.pyplot as plt
@@ -9,11 +10,11 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.forward_model.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
 from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams
-from dsa2000_cal.gain_models.gain_model import ProductGainModel
 from dsa2000_cal.forward_model.systematics.ionosphere_gain_model import ionosphere_gain_model_factory
+from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
+from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 
@@ -25,6 +26,8 @@ class SimulateSystematics:
     # Ionosphere model parameters
     ionosphere_specification: SPECIFICATION
 
+    full_stokes: bool
+
     plot_folder: str
     cache_folder: str
     ionosphere_seed: int
@@ -35,16 +38,29 @@ class SimulateSystematics:
         os.makedirs(self.plot_folder, exist_ok=True)
         os.makedirs(self.cache_folder, exist_ok=True)
 
-    def simulate(self, ms: MeasurementSet) -> ProductGainModel:
+    def simulate(self, ms: MeasurementSet) -> Tuple[GainModel, GainModel]:
+        """
+        Assume no ionosphere or dish defects for now.
+
+        Returns:
+            system_gain_model: the system gain model
+            dish_effect_gain_model: the dish effect gain model
+        """
+
+        beam_gain_model = beam_gain_model_factory(ms.meta.array_name, full_stokes=self.full_stokes)
+
+        return beam_gain_model, beam_gain_model
+
+    def simulate_complete(self, ms: MeasurementSet) -> Tuple[GainModel, GainModel]:
         """
         Simulate systematics such as ionosphere and dish effects.
 
         Returns:
             system_gain_model: the system gain model
+            dish_effect_gain_model: the dish effect gain model
         """
 
         beam_gain_model = beam_gain_model_factory(ms.meta.array_name)
-
         fill_registries()
         array = array_registry.get_instance(array_registry.get_match(ms.meta.array_name))
         dish_model = array.get_antenna_model()
@@ -101,4 +117,4 @@ class SimulateSystematics:
         # Order is by right multiplication of systematics encountered by radiation from source to observer
         system_gain_model = dish_effect_gain_model @ ionosphere_gain_model
 
-        return system_gain_model
+        return system_gain_model, dish_effect_gain_model

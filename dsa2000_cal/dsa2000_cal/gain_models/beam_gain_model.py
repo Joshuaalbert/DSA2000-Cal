@@ -13,7 +13,7 @@ class BeamGainModel(SphericalInterpolatorGainModel):
     ...
 
 
-def beam_gain_model_factory(array_name: str, **kwargs) -> BeamGainModel:
+def beam_gain_model_factory(array_name: str, full_stokes: bool = True, **kwargs) -> BeamGainModel:
     fill_registries()
     try:
         array = array_registry.get_instance(array_registry.get_match(array_name))
@@ -43,6 +43,9 @@ def beam_gain_model_factory(array_name: str, **kwargs) -> BeamGainModel:
     gains = gains.reshape(
         (len(model_times), len(model_phi), len(model_freqs), 2, 2)
     ) * au.dimensionless_unscaled  # [num_times, num_dir, num_freqs, 2, 2]
+
+    if not full_stokes:
+        gains = gains[..., 0, 0]
 
     beam_gain_model = BeamGainModel(
         antennas=antennas,

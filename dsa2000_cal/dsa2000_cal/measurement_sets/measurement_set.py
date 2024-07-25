@@ -17,7 +17,9 @@ from pydantic import Field
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
+from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 
 
 class MeasurementSetMetaV0(SerialisableBaseModel):
@@ -130,7 +132,7 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
         )
     if meta.times.isscalar:
         raise ValueError(f"Expected a vector Time, got {meta.times}")
-    meta.times = meta.times.tt # Use TT time scale
+    meta.times = meta.times.tt  # Use TT time scale
     if meta.freqs.isscalar:
         raise ValueError(f"Expected a vector Quantity, got {meta.freqs}")
     if meta.antennas.isscalar:
@@ -281,6 +283,9 @@ class MeasurementSet:
         # Casa convention is to use the first time as the reference time, also for FITS
         return self.meta.times[0].tt
 
+    def is_full_stokes(self) -> bool:
+        return len(self.meta.coherencies) == 4
+
     def clone(self, ms_folder: str, preserve_symbolic_links: bool = False) -> 'MeasurementSet':
         """
         Clone the measurement set to the given folder.
@@ -298,6 +303,36 @@ class MeasurementSet:
             copy_function=copy_fn
         )
         return MeasurementSet(ms_folder=ms_folder)
+
+    @cached_property
+    def far_field_delay_engine(self) -> FarFieldDelayEngine:
+        return FarFieldDelayEngine(
+            antennas=self.meta.antennas,
+            phase_center=self.meta.phase_tracking,
+            start_time=self.meta.times[0],
+            end_time=self.meta.times[-1],
+            verbose=True
+        )
+
+    @cached_property
+    def near_field_delay_engine(self) -> NearFieldDelayEngine:
+        return NearFieldDelayEngine(
+            antennas=self.meta.antennas,
+            start_time=self.meta.times[0],
+            end_time=self.meta.times[-1],
+            verbose=True
+        )
+
+    @cached_property
+    def geodesic_model(self) -> GeodesicModel:
+        return GeodesicModel(
+            antennas=self.meta.antennas,
+            array_location=self.meta.array_location,
+            phase_center=self.meta.phase_tracking,
+            obstimes=self.meta.times,
+            ref_time=self.ref_time,
+            pointings=self.meta.pointings
+        )
 
     @staticmethod
     def create_measurement_set(ms_folder: str, meta: MeasurementSetMeta) -> 'MeasurementSet':
@@ -336,10 +371,10 @@ class MeasurementSet:
             f.create_array("/", "antenna_1", atom=tb.Int16Atom(), shape=(num_rows,))
             f.create_array("/", "antenna_2", atom=tb.Int16Atom(), shape=(num_rows,))
             f.create_array("/", "time_idx", atom=tb.Int16Atom(), shape=(num_rows,))
-            f.create_array("/", "vis", atom=tb.ComplexAtom(itemsize=8),
-                           shape=(num_rows, num_freqs, 4))  # single precision complex
-            f.create_array("/", "weights", atom=tb.Float16Atom(), shape=(num_rows, num_freqs, 4))
-            f.create_array("/", "flags", atom=tb.BoolAtom(), shape=(num_rows, num_freqs, 4))
+            f.create_array("/", "vis", atom=tb.ComplexAtom(itemsize=16),
+                           shape=(num_rows, num_freqs, len(meta.coherencies)))
+            f.create_array("/", "weights", atom=tb.Float16Atom(), shape=(num_rows, num_freqs, len(meta.coherencies)))
+            f.create_array("/", "flags", atom=tb.BoolAtom(), shape=(num_rows, num_freqs, len(meta.coherencies)))
 
         engine = FarFieldDelayEngine(
             antennas=meta.antennas,
@@ -555,7 +590,7 @@ class MeasurementSet:
 
         Returns:
             a generator that yields:
-                time: [num_blocks] the times
+                times: [num_blocks] the times
                 coords: [num_rows] batched coordinates
                 data: [num_rows] batched data
 
@@ -596,7 +631,7 @@ class MeasurementSet:
                 to_time_idx = from_time_idx + num_blocks
                 if to_time_idx > len(self.meta.times):
                     raise RuntimeError(f"Time index {to_time_idx} out of bounds.")
-                time = self.meta.times[from_time_idx:to_time_idx]
+                times = self.meta.times[from_time_idx:to_time_idx]
                 from_time_idx += num_blocks
                 to_row = from_row + self.block_size * num_blocks
                 if to_row > end_row:
@@ -618,7 +653,7 @@ class MeasurementSet:
                     weights=f.root.weights[from_row:to_row] if weights else None,
                     flags=f.root.flags[from_row:to_row] if flags else None
                 )
-                response = yield (time, coords, data)
+                response = yield (times, coords, data)
                 if response is not None and isinstance(response, VisibilityData):
                     if response.vis is not None:
                         f.root.vis[from_row:to_row] = response.vis

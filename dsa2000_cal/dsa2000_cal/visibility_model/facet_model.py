@@ -7,7 +7,7 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.gain_models.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel, \
@@ -16,20 +16,21 @@ from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussi
     GaussianSourceModel, GaussianModelData, GaussianPredict
 from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import \
     PointSourceModel, PointModelData, PointPredict
-from dsa2000_cal.visibility_model.source_models.rfi.lte_source.lte_source_model import LTESourceModel, LTEModelData, \
-    LTEPredict
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import \
+    RFIEmitterSourceModel, RFIEmitterModelData, \
+    RFIEmitterPredict
 
 
 class FacetModelData(NamedTuple):
     point_model_data: PointModelData | None
     gaussian_model_data: GaussianModelData | None
     fits_model_data: FITSModelData | None
-    lte_model_data: LTEModelData | None
+    rfi_emitter_model_data: RFIEmitterModelData | None
 
 
 @dataclasses.dataclass(eq=False)
 class FacetModel:
-    """"
+    """
     Represents a flux from a subset of the celestial sphere.
     In the case that the flux is highly localised it can be used to construct calibrators for calibration.
     Otherwise, the notion of a flux-weighted direction is not of much value.
@@ -37,7 +38,7 @@ class FacetModel:
     point_source_model: PointSourceModel | None
     gaussian_source_model: GaussianSourceModel | None
     fits_source_model: FITSSourceModel | None
-    lte_source_model: LTESourceModel | None
+    rfi_emitter_source_model: RFIEmitterSourceModel | None
     gain_model: GainModel | None
     near_field_delay_engine: NearFieldDelayEngine
     far_field_delay_engine: FarFieldDelayEngine
@@ -52,7 +53,7 @@ class FacetModel:
                 self.point_source_model is None
                 and self.gaussian_source_model is None
                 and self.fits_source_model is None
-                and self.lte_source_model is None
+                and self.rfi_emitter_source_model is None
         ):
             raise ValueError(
                 "At least one of point_source_model, gaussian_source_model, "
@@ -66,8 +67,8 @@ class FacetModel:
             is_full_stokes.append(self.gaussian_source_model.is_full_stokes())
         if self.fits_source_model is not None:
             is_full_stokes.append(self.fits_source_model.is_full_stokes())
-        if self.lte_source_model is not None:
-            is_full_stokes.append(self.lte_source_model.is_full_stokes())
+        if self.rfi_emitter_source_model is not None:
+            is_full_stokes.append(self.rfi_emitter_source_model.is_full_stokes())
         if self.gain_model is not None:
             is_full_stokes.append(self.gain_model.is_full_stokes())
         if len(set(is_full_stokes)) > 1:
@@ -93,7 +94,7 @@ class FacetModel:
         point_model_data = None
         gaussian_model_data = None
         fits_model_data = None
-        lte_model_data = None
+        rfi_emitter_model_data = None
 
         if self.point_source_model is not None:
             gains = None
@@ -137,26 +138,26 @@ class FacetModel:
                                                      freqs=freqs)  # [num_sources=1, time, ant, chan[, 2, 2]]
                 gains = gains[0]  # [time, ant, chan[, 2, 2]]
             fits_model_data = self.fits_source_model.get_model_data(gains)
-        if self.lte_source_model is not None:
+        if self.rfi_emitter_source_model is not None:
             gains = None
             if self.gain_model is not None:
-                source_positions_enu = self.lte_source_model.get_source_positions_enu()
+                source_positions_enu = self.rfi_emitter_source_model.get_source_positions_enu()
                 geodesics = self.geodesic_model.compute_near_field_geodesics(
                     times=times,
                     source_positions_enu=source_positions_enu
                 )  # [num_sources, num_times, num_ant, 3]
-                freqs = quantity_to_jnp(self.lte_source_model.params.freqs)
+                freqs = quantity_to_jnp(self.rfi_emitter_source_model.params.freqs)
                 gains = self.gain_model.compute_gain(
                     times=times,
                     geodesics=geodesics,
                     freqs=freqs
                 )
-            lte_model_data = self.lte_source_model.get_model_data(gains)
+            rfi_emitter_model_data = self.rfi_emitter_source_model.get_model_data(gains)
         return FacetModelData(
             point_model_data=point_model_data,
             gaussian_model_data=gaussian_model_data,
             fits_model_data=fits_model_data,
-            lte_model_data=lte_model_data
+            rfi_emitter_model_data=rfi_emitter_model_data
         )
 
     def predict(self, model_data: FacetModelData, visibility_coords: VisibilityCoords) -> jax.Array:
@@ -185,7 +186,7 @@ class FacetModel:
             convention=self.convention,
             dtype=self.dtype
         )
-        lte_predict = LTEPredict(
+        lte_predict = RFIEmitterPredict(
             delay_engine=self.near_field_delay_engine,
             convention=self.convention,
             dtype=self.dtype
@@ -210,8 +211,8 @@ class FacetModel:
                 vis = fits_vis
             else:
                 vis += fits_vis
-        if model_data.lte_model_data is not None:
-            lte_vis = lte_predict.predict(model_data.lte_model_data, visibility_coords)
+        if model_data.rfi_emitter_model_data is not None:
+            lte_vis = lte_predict.predict(model_data.rfi_emitter_model_data, visibility_coords)
             if vis is None:
                 vis = lte_vis
             else:

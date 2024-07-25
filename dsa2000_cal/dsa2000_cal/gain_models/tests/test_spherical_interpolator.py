@@ -4,7 +4,7 @@ import pytest
 from astropy import units as au, coordinates as ac, time as at
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesic_model.geodesic_model import GeodesicModel
 from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel, \
     phi_theta_from_lmn
 

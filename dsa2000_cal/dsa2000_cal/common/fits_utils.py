@@ -349,9 +349,9 @@ class ImageModel(SerialisableBaseModel):
 def _check_image_model(image_model: ImageModel):
     # Check units
     if not image_model.dl.unit.is_equivalent(au.dimensionless_unscaled):
-        raise ValueError("dl must be in radians")
+        raise ValueError("dl must be in dimensionless_unscaled")
     if not image_model.dm.unit.is_equivalent(au.dimensionless_unscaled):
-        raise ValueError("dm must be in radians")
+        raise ValueError("dm must be in dimensionless_unscaled")
     if not image_model.freqs.unit.is_equivalent(au.Hz):
         raise ValueError("freqs must be in Hz")
     if not image_model.bandwidth.unit.is_equivalent(au.Hz):

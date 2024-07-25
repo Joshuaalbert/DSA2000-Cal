@@ -3,29 +3,22 @@ import os
 import time as time_mod
 from functools import partial
 
-import astropy.coordinates as ac
-import astropy.time as at
-import astropy.units as au
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dsa2000_cal.common.coord_utils import lmn_to_icrs
+from dsa2000_cal.common.corr_translation import flatten_coherencies
 from dsa2000_cal.common.noise import calc_baseline_noise
-from dsa2000_cal.common.plot_utils import plot_antenna_gains
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, VisibilityData
 from dsa2000_cal.uvw.far_field import VisibilityCoords
-from dsa2000_cal.types import SystemGains
-from dsa2000_cal.visibility_model.rime_model import RIMEModel, FacetSourceModel
+from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 
 @dataclasses.dataclass(eq=False)
 class SimulateVisibilities:
     # source models to simulate. Each source gets a gain direction in the flux weighted direction.
-    sky_model: FacetSourceModel
     rime_model: RIMEModel
 
     plot_folder: str
@@ -41,35 +34,12 @@ class SimulateVisibilities:
     def key(self):
         return jax.random.PRNGKey(self.seed)
 
-    def get_source_directions(self, obs_time: at.Time, phase_tracking: ac.ICRS) -> ac.ICRS:
-        """
-        Get the source directions in ICRS coordinates.
-
-        Args:
-            obs_time: the observation time
-            phase_tracking: the phase tracking center
-
-        Returns:
-            source_directions: [num_calibrators]
-        """
-        sources_lmn = au.Quantity(
-            np.stack(
-                [
-                    model.flux_weighted_lmn() for model in self.sky_model.component_source_models
-                ] + [
-                    model.flux_weighted_lmn() for model in self.sky_model.fits_source_models
-                ],
-                axis=0)
-        )  # [num_calibrators, 3]
-        return lmn_to_icrs(sources_lmn, phase_tracking=phase_tracking)
-
-    def simulate(self, ms: MeasurementSet, system_gain_model: GainModel):
+    def simulate(self, ms: MeasurementSet):
         """
         Simulate visibilities using the system gain model, and store the results in the MS.
 
         Args:
             ms: the measurement set to store the results
-            system_gain_model: the system gain model
         """
 
         from jax.experimental import mesh_utils
@@ -91,13 +61,6 @@ class SimulateVisibilities:
         def tree_device_put(tree, sharding):
             return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
 
-        source_directions = self.get_source_directions(
-            obs_time=ms.ref_time,
-            phase_tracking=ms.meta.pointing
-        )
-
-        # Storage system gains
-        simulated_gains = []
         # Metrics
         vis_sum = 0.
         t0 = time_mod.time()
@@ -107,46 +70,30 @@ class SimulateVisibilities:
         key = self.key
         while True:
             try:
-                time, visibility_coords, _ = gen.send(gen_response)
+                times, visibility_coords, _ = gen.send(gen_response)
             except StopIteration:
                 break
 
             axs[0][0].scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1], s=1, alpha=0.1)
 
-            # Get gains
-            system_gains = system_gain_model.compute_gain(freqs=ms.meta.freqs, sources=source_directions,
-                                                          pointing=ms.meta.pointing,
-                                                          array_location=ms.meta.array_location, time=time,
-                                                          mode='fft')  # [num_sources, num_ant, num_freq, 2, 2]
             # Add time dim
-            system_gains = system_gains[:, None, ...]  # [num_sources, num_time=1, num_ant, num_freq, 2, 2]
-            simulated_gains.append(system_gains)
+
+            times_jax = jnp.asarray((times.tt - ms.ref_time).sec)
 
             visibility_coords = jax.tree_map(jnp.asarray, visibility_coords)
 
             key, sim_key = jax.random.split(key, 2)
 
             data_dict = dict(
-                key=sim_key,
-                freqs=quantity_to_jnp(ms.meta.freqs),
-                channel_width_Hz=quantity_to_jnp(ms.meta.channel_width),
-                integration_time_s=quantity_to_jnp(ms.meta.integration_time),
-                system_equivalent_flux_density_Jy=quantity_to_jnp(
-                    ms.meta.system_equivalent_flux_density, 'Jy'),
-                apply_gains=system_gains,
-                vis_coords=visibility_coords
-            )
-
-            data_dict = dict(
-                key=tree_device_put(data_dict['key'], NamedSharding(mesh, P())),
-                freqs=tree_device_put(data_dict['freqs'], NamedSharding(mesh, P('chan'))),
-                channel_width_Hz=tree_device_put(data_dict['channel_width_Hz'], NamedSharding(mesh, P())),
-                integration_time_s=tree_device_put(data_dict['integration_time_s'], NamedSharding(mesh, P())),
-                system_equivalent_flux_density_Jy=tree_device_put(data_dict['system_equivalent_flux_density_Jy'],
-                                                                  NamedSharding(mesh, P())),
-                apply_gains=tree_device_put(data_dict['apply_gains'],
-                                            NamedSharding(mesh, P(None, None, None, 'chan'))),
-                vis_coords=tree_device_put(data_dict['vis_coords'], NamedSharding(mesh, P()))
+                key=tree_device_put(sim_key, NamedSharding(mesh, P())),
+                times=tree_device_put(times_jax, NamedSharding(mesh, P())),
+                channel_width_Hz=tree_device_put(quantity_to_jnp(ms.meta.channel_width), NamedSharding(mesh, P())),
+                integration_time_s=tree_device_put(quantity_to_jnp(ms.meta.integration_time), NamedSharding(mesh, P())),
+                system_equivalent_flux_density_Jy=tree_device_put(
+                    quantity_to_jnp(ms.meta.system_equivalent_flux_density, 'Jy'),
+                    NamedSharding(mesh, P())
+                ),
+                vis_coords=tree_device_put(visibility_coords, NamedSharding(mesh, P()))
             )
 
             sim_vis_data = self._simulate_jax(
@@ -165,48 +112,46 @@ class SimulateVisibilities:
         fig.savefig(os.path.join(self.plot_folder, 'uv_coverage.png'))
         plt.close(fig)
 
-        # Store simulated gains
-        simulated_gains = np.concatenate(simulated_gains,
-                                         axis=1)  # [num_calibrators, num_time, num_ant, num_chan, 2, 2]
-        system_gains = SystemGains(
-            gains=simulated_gains,
-            directions=source_directions,
-            times=ms.meta.x,
-            antennas=ms.meta.antennas,
-            antenna_labels=ms.meta.antenna_names,
-            freqs=ms.meta.freqs
-        )
-        solution_file = "system_gains.json"
-        with open(solution_file, "w") as fp:
-            fp.write(system_gains.json(indent=2))
-        print(f"Saved system gains to {solution_file}")
-        for antenna_idx in range(0, len(ms.meta.antennas), len(ms.meta.antennas) // 20):
-            fig = plot_antenna_gains(system_gains, antenna_idx=antenna_idx, direction_idx=0)
-            fig.savefig(f"{self.plot_folder}/antenna_{antenna_idx}_system_gains.png")
-            plt.close(fig)
-        print(f"Plots saved to {self.plot_folder}.")
+        # print(f"Plots saved to {self.plot_folder}.")
 
     @partial(jax.jit, static_argnums=(0,))
-    def _simulate_jax(self, key, freqs: jax.Array,
-                      channel_width_Hz: jax.Array, integration_time_s: jax.Array,
+    def _simulate_jax(self, key, times: jax.Array,
+                      channel_width_Hz: jax.Array,
+                      integration_time_s: jax.Array,
                       system_equivalent_flux_density_Jy: jax.Array,
-                      apply_gains: jax.Array,
                       vis_coords: VisibilityCoords) -> VisibilityData:
-        vis = self.rime_model.predict_facets_model_visibilities(
-            freqs=freqs,
-            apply_gains=apply_gains,
-            visibility_coords=vis_coords,
-            flat_coherencies=True
-        )  # [num_cal, num_row, num_chan, 4]
-        vis = jnp.sum(vis, axis=0)  # [num_row, num_chan, 4]
+        """
+        Simulate visibilities for a set of source models, creating one row of visibilities per data model.
+
+        Args:
+            key: the random key
+            times: the times to simulate visibilities for, in TT since start of obs.
+            channel_width_Hz: the channel width in Hz
+            integration_time_s: the integration time in seconds
+            system_equivalent_flux_density_Jy: the system equivalent flux density in Jy
+            vis_coords: the visibility coordinates
+
+        Returns:
+            vis: [num_row, num_chan, 4/1] the simulated visibilities
+        """
+        model_data = self.rime_model.get_model_data(times=times)
+        vis = self.rime_model.predict_visibilities(
+            model_data=model_data,
+            visibility_coords=vis_coords
+        )  # [num_cal, num_row, num_chan[,2,2]]
+        vis = jnp.sum(vis, axis=0)  # [num_row, num_chan[2,2]]
+
+        # if full_stokes flatten coherencies
+        if len(np.shape(vis)) == 4 and np.shape(vis)[-2:] == (2, 2):
+            vis = jax.vmap(jax.vmap(flatten_coherencies))(vis)  # [num_row, num_chan, 4]
+        else:
+            vis = vis[:, :, None]  # [num_row, num_chan, 1]
 
         noise_scale = calc_baseline_noise(
             system_equivalent_flux_density=system_equivalent_flux_density_Jy,
             chan_width_hz=channel_width_Hz,
             t_int_s=integration_time_s,
         )
-
-        # TODO: Simulation RFI
 
         # Simulate measurement noise
         key1, key2 = jax.random.split(key)

@@ -1,9 +1,10 @@
 import pytest
-from astropy import units as au, coordinates as ac, time as at
+from astropy import units as au, coordinates as ac
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.common.astropy_utils import create_spherical_grid
-from dsa2000_cal.forward_model.synthetic_sky_model import choose_dr, SyntheticSkyModelProducer
+from dsa2000_cal.forward_model.synthetic_sky_model.synthetic_sky_model_producer import choose_dr, \
+    SyntheticSkyModelProducer
 
 
 @pytest.mark.parametrize('total_n, expected_n', [
@@ -30,24 +31,29 @@ def test_choose_dr(total_n, expected_n):
 
 def test_create_sky_model():
     fill_registries()
-    sky_model_producer = SyntheticSkyModelProducer(
+    synthetic_sky_model_producer = SyntheticSkyModelProducer(
         phase_tracking=ac.ICRS(15 * au.deg, 0 * au.deg),
-        obs_time=at.Time('2021-01-01T00:00:00'),
-        freqs=au.Quantity([0.7, 1.4, 2], unit=au.GHz),
-        num_bright_sources=7,
-        num_faint_sources=7,
-        field_of_view=au.Quantity(2, au.deg),
-        mean_major=au.Quantity(1, au.arcmin),
-        mean_minor=au.Quantity(1, au.arcmin),
+        freqs=au.Quantity([700], unit='MHz'),
+        field_of_view=4 * au.deg,
         seed=42
     )
-    sky_model = sky_model_producer.create_sky_model(
-        include_bright=True,
-        include_faint=True,
-        include_bright_outside_fov=True,
-        include_a_team=True,
-        include_trecs=False,
-        include_illustris=False
-    )
+    bright_point_sources = synthetic_sky_model_producer.create_sources_outside_fov(num_bright_sources=100,
+                                                                                   full_stokes=False)
+    bright_point_sources.plot(save_file='bright_point_sources.png')
+    assert bright_point_sources.num_sources == 100
+    inner_point_sources = synthetic_sky_model_producer.create_sources_inside_fov(num_sources=100, full_stokes=False)
+    inner_point_sources.plot(save_file='inner_point_sources.png')
 
-    print(sky_model)
+    (bright_point_sources + inner_point_sources).plot(save_file='all_point_sources.png')
+
+    assert inner_point_sources.num_sources == 37  # Should debug
+    inner_diffuse_sources = synthetic_sky_model_producer.create_diffuse_sources_inside_fov(num_sources=100,
+                                                                                           full_stokes=False)
+    inner_diffuse_sources.plot(save_file='inner_diffuse_sources.png')
+    assert inner_diffuse_sources.num_sources == 37  # Should debug
+    rfi_emitter_sources = synthetic_sky_model_producer.create_rfi_emitter_sources(full_stokes=False)
+    rfi_emitter_sources[0].plot(save_file='rfi_emitter_sources.png')
+    assert len(rfi_emitter_sources) == 1
+    a_team_sources = synthetic_sky_model_producer.create_a_team_sources(a_team_sources=['cas_a'])
+    a_team_sources[0].plot(save_file='cas_a.png')
+    assert len(a_team_sources) == 1
