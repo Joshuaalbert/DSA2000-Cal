@@ -283,6 +283,18 @@ class MeasurementSet:
         # Casa convention is to use the first time as the reference time, also for FITS
         return self.meta.times[0].tt
 
+    def time_to_jnp(self, times: at.Time) -> jax.Array:
+        """
+        Convert the given times to TT seconds since ref time.
+
+        Args:
+            times: the times
+
+        Returns:
+            the times in TT seconds since ref time
+        """
+        return jnp.asarray((times.tt - self.ref_time).sec)
+
     def is_full_stokes(self) -> bool:
         return len(self.meta.coherencies) == 4
 
