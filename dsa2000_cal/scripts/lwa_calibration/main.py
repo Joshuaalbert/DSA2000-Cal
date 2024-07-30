@@ -15,7 +15,7 @@ config.update('jax_threefry_partitionable', True)
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 import numpy as np
 from dsa2000_cal.calibration.calibration import Calibration
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry, source_model_registry
 
@@ -44,7 +44,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
 
     sky_model = SkyModel(component_source_models=source_models, fits_source_models=[])
 
-    beam_gain_model = beam_gain_model_factory(array_name, zenith_pointing=True)
+    beam_gain_model = build_beam_gain_model(array_name, zenith_pointing=True)
     num_shards = len(jax.devices())
     while len(ms.meta.freqs) % num_shards != 0:
         num_shards -= 1

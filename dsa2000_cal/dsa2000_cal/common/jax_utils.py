@@ -1,3 +1,4 @@
+import itertools
 import re
 import time
 
@@ -5,9 +6,11 @@ __all__ = [
     'chunked_pmap'
 ]
 
+import warnings
+
 from functools import partial
 
-from typing import TypeVar, Callable, Tuple, Set, List
+from typing import TypeVar, Callable, Tuple, Set, List, Dict
 
 import jax
 import jax.numpy as jnp
@@ -279,18 +282,126 @@ def extract_shape_tuples(s):
     return matches
 
 
+def auto_multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str],
+                    scan_dims: Set[str] | None = None, compute_bound: bool = False, max_scan_dims: int | None = None,
+                    verbose: bool = False):
+    """
+    Finds best dims to scan over based on input and output shapes.
+
+    Args:
+        f: function to map over (see multi_vmap)
+        in_mapping: the input shapes
+        out_mapping: the output shapes
+        scan_dims: set of dimensions to search over
+        compute_bound: whether to use compute bound instead of memory bound
+        max_scan_dims: maximum combination size of scan dims to search over
+        verbose: whether to print the implied function signature
+
+    Returns:
+        the mapped function with best scan dim
+    """
+
+    warnings.warn("auto_multi_vmap is still experimental.")
+
+    if scan_dims is None:
+        if isinstance(out_mapping, list):
+            out_mapping = ','.join(out_mapping)
+        output_shapes = extract_shape_tuples(out_mapping)
+        output_dims = [extract_shape(s) for s in output_shapes]
+        scan_dims = set()
+        for dims in output_dims:
+            scan_dims.update(set(dims))
+        # remove "..."
+        scan_dims = scan_dims.difference({'...'})
+
+    if max_scan_dims is None:
+        max_scan_dims = 1
+
+    def _f(*args):
+        best_s = {}
+        best_memory = np.inf
+        best_compute = np.inf
+        if verbose:
+            print(f"Auto optimising multi_vmap({f.__name__})...")
+
+        for c in range(0, max_scan_dims + 1):
+            for _scan_dims in itertools.combinations(scan_dims, c):
+                _scan_dims = set(_scan_dims)
+                f_multi_candiate = multi_vmap(
+                    f,
+                    in_mapping=in_mapping,
+                    out_mapping=out_mapping,
+                    scan_dims=_scan_dims,
+                    verbose=False
+                )
+                g = jax.jit(f_multi_candiate).lower(*args).compile()
+                [analysis] = g.cost_analysis()
+                # print(analysis)
+                compute_cost = 0
+                if 'flops' in analysis:
+                    compute_cost += analysis["flops"]
+                if 'transcendentals' in analysis:
+                    compute_cost += 20 * analysis["transcendentals"]  # avg. worth ~20 flops
+                memory_cost = 0
+                if 'bytes accessed' in analysis:
+                    memory_cost += analysis["bytes accessed"]
+
+                if verbose:
+                    print(
+                        f"Considering: scan_dims={_scan_dims}, memory_cost={memory_cost}, compute_cost={compute_cost}")
+
+                if compute_bound:
+                    if compute_cost < best_compute:
+                        best_s = _scan_dims
+                        best_memory = memory_cost
+                        best_compute = compute_cost
+                        if verbose:
+                            print(f"> Accepted as better!")
+                    elif compute_cost <= 1.2 * best_compute and memory_cost < best_memory:
+                        best_s = _scan_dims
+                        best_memory = memory_cost
+                        best_compute = compute_cost
+                        if verbose:
+                            print(f"> Accepted as better!")
+                else:
+                    if memory_cost < best_memory:
+                        best_s = _scan_dims
+                        best_memory = memory_cost
+                        best_compute = compute_cost
+                        if verbose:
+                            print(f"> Accepted as better!")
+                    elif memory_cost <= 1.2 * best_memory and compute_cost < best_compute:
+                        best_s = _scan_dims
+                        best_memory = memory_cost
+                        best_compute = compute_cost
+                        if verbose:
+                            print(f"> Accepted as better!")
+        f_multi = multi_vmap(
+            f,
+            in_mapping=in_mapping,
+            out_mapping=out_mapping,
+            scan_dims=best_s,
+            verbose=verbose
+        )
+        return f_multi(*args)
+
+    return _f
+
+
 def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], scan_dims: Set[str] | None = None,
-               verbose: bool = False) -> C:
+               verbose: bool = False, auto: bool = False, auto_kwargs: Dict | None = None) -> C:
     """
     A version of vmap which maps over multiple arguments.
 
     Args:
         f: function to map over
         in_mapping: string of input shapes, e.g. "[n1,n2,n3],[n1,n3]", only left most dims need to be represented
-        out_mapping: string of output shapes, e.g. "[n1,n2,n3,...]", one per output. All input variables must be mentioned
-            once. '...' means the shape of core function output. Assumes end if not given.
+        out_mapping: string of output shapes, e.g. "[n1,n2,n3,...]", one per output. All input variables must be
+        mentioned once. '...' means the shape of core function output. Assumes at end if not given.
         scan_dims: set of dimensions to scan over
         verbose: whether to print the implied function signature
+        auto: whether to automatically find best scan dims
+        auto_kwargs: kwargs for auto_multi_vmap
 
     Returns:
         mapped function
@@ -309,6 +420,18 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
     >>> assert res.shape == (n3, 2, 2) + (n1, n2) # batch shape (n3, 2, 2) and output shape (n1, n2) with transpose
 
     """
+
+    if auto:
+        if auto_kwargs is None:
+            auto_kwargs = dict()
+        return auto_multi_vmap(
+            f=f,
+            in_mapping=in_mapping,
+            out_mapping=out_mapping,
+            verbose=verbose,
+            **auto_kwargs
+        )
+
     if scan_dims is None:
         scan_dims = {}
 

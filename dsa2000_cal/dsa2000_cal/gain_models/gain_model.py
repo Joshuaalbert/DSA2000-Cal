@@ -20,6 +20,7 @@ class GainModel(ABC):
         antennas: [num_ant] antenna positions
     """
     antennas: ac.EarthLocation  # [num_ant]
+    tile_antennas: bool = False
 
     @abstractmethod
     def is_full_stokes(self) -> bool:

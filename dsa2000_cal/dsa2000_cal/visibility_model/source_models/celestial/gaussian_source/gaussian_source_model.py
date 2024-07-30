@@ -1,5 +1,4 @@
 import dataclasses
-import warnings
 from functools import partial
 from typing import Tuple, NamedTuple
 
@@ -25,6 +24,7 @@ from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 
 def linear_term_derivation():
@@ -175,6 +175,9 @@ def transform_ellipsoidal_params_to_plane_of_sky(major: au.Quantity, minor: au.Q
     lmn0 = icrs_to_lmn(source_directions, phase_tracking)
     l0 = lmn0[:, 0]
     m0 = lmn0[:, 1]
+    n0 = lmn0[:, 2]
+    if np.any(n0 < 0):
+        raise BelowHorizonSource()
 
     # If you truely treat as ellipsoids on the sphere you get something like this:
     if lmn_transform_params:
@@ -623,8 +626,13 @@ class GaussianPredict:
         # freq: [chan]
         # image: [source, chan, 2, 2]
         # ellipse_params: [source, 3]
-        @partial(multi_vmap, in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],[s,c,2,2],[s,3]",
-                 out_mapping="[r,c,...]", verbose=True)
+        @partial(
+            multi_vmap,
+            in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],[s,c,2,2],[s,3]",
+            out_mapping="[r,c,...]",
+            scan_dims={'s'},
+            verbose=True
+        )
         def compute_visibility(lmn, uvw, g1, g2, freq, image, ellipse_params):
 
             if direction_dependent_gains:
@@ -766,7 +774,6 @@ class GaussianPredict:
         if self.order_approx == 0:
             vis = F_gaussian(u, v) * wkernel(l0, m0)
         elif self.order_approx == 1:
-            warnings.warn("Order 1 approximation is not tested.")
 
             # Let I(l,m) * W(l,m) ~= I(l,m) * (W(l0, m0) + W_l * (l - l0) + W_m * (m - m0))
             # Where W_l = d/dl W(l0,m0), W_m = d/dm W(l0,m0)

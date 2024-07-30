@@ -8,9 +8,9 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.forward_model.forward_model import ForwardModel
-from dsa2000_cal.forward_model.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
-from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams
+from dsa2000_cal.forward_models.dsa2000_forward_model import DSA2000ForwardModel
+from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 
 # Set num jax devices
@@ -55,7 +55,7 @@ def main(ms_folder: str):
         field_of_view=2 * au.deg
     )
 
-    forward_model = ForwardModel(
+    forward_model = DSA2000ForwardModel(
         synthetic_sky_model_producer=sky_model_producer,
         dish_effect_params=DishEffectsParams(
             dish_diameter=array.get_antenna_diameter(),
@@ -82,4 +82,4 @@ def main(ms_folder: str):
 
 
 if __name__ == '__main__':
-    main(ms_folder='forward_model_ms')
+    main(ms_folder='forward_model_dsa2000W_ms')

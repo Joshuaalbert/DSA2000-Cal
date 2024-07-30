@@ -146,12 +146,14 @@ class FacetModel:
                     times=times,
                     source_positions_enu=source_positions_enu
                 )  # [num_sources, num_times, num_ant, 3]
+                # jax.debug.print("geodesics={geodesics}", geodesics=geodesics)
                 freqs = quantity_to_jnp(self.rfi_emitter_source_model.params.freqs)
                 gains = self.gain_model.compute_gain(
                     times=times,
                     geodesics=geodesics,
                     freqs=freqs
                 )
+                # jax.debug.print("gains={gains}", gains=gains)
             rfi_emitter_model_data = self.rfi_emitter_source_model.get_model_data(gains)
         return FacetModelData(
             point_model_data=point_model_data,
@@ -179,10 +181,12 @@ class FacetModel:
             dtype=self.dtype
         )
         gaussian_predict = GaussianPredict(
+            order_approx=1,
             convention=self.convention,
             dtype=self.dtype
         )
         faint_predict = FITSPredict(
+            epsilon=1e-6,
             convention=self.convention,
             dtype=self.dtype
         )

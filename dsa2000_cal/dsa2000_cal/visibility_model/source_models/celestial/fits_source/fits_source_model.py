@@ -22,6 +22,7 @@ from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 
 class FITSModelData(NamedTuple):
@@ -255,10 +256,6 @@ class FITSSourceModel(AbstractSourceModel):
                 ra0, dec0 = w0.wcs.crval[0], w0.wcs.crval[1]
                 num_stokes, Nm, Nl = image.shape
                 centre_l_pix, centre_m_pix = Nl / 2., Nm / 2.  # 0 1 2 3 -> 1.5
-                print(f"dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
-                      f"centre_ra={ra0}, centre_dec={dec0}\n"
-                      f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"
-                      f"num_l={Nl}, num_m={Nm}, num_stokes={num_stokes}")
                 # Assume pointing is same for all stokes
                 pointing_coord, spectral_coord, stokes_coord = w0.pixel_to_world(
                     centre_l_pix, centre_m_pix, 0, 0
@@ -267,10 +264,19 @@ class FITSSourceModel(AbstractSourceModel):
                     raise ValueError(f"Expected Stokes I, got {stokes_coord}")
                 center_icrs = pointing_coord.transform_to(ac.ICRS)
                 lmn0 = icrs_to_lmn(center_icrs, phase_tracking)
-                l0, m0 = lmn0[:2]
+                l0, m0, n0 = lmn0
                 # Order is l, m, freq, stokes
                 dl = -pixel_size_l.to('rad').value * au.dimensionless_unscaled  # negative pixel size
                 dm = pixel_size_m.to('rad').value * au.dimensionless_unscaled
+
+                print(f"dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
+                      f"centre_ra={ra0}, centre_dec={dec0}\n"
+                      f"l0={l0}, m0={m0}\n"
+                      f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"
+                      f"num_l={Nl}, num_m={Nm}, num_stokes={num_stokes}")
+                if n0 < 0:
+                    raise BelowHorizonSource(f"Source below horizon at {center_icrs} (l0={l0}, m0={m0}, n0={n0})")
+
                 # Convert to [Nl, Nm], and reverse l so that it's increasing
                 image = image[:, :, ::-1].T  # [Nl, Nm, num_stokes] with l flipped
                 # Image is in stokes I, so we can just take the first element
@@ -298,7 +304,7 @@ class FITSSourceModel(AbstractSourceModel):
             dl=au.Quantity(dls),
             dm=au.Quantity(dms),
             l0=au.Quantity(l0s),
-            m0=au.Quantity(m0s)
+            m0=au.Quantity(m0s),
         )
 
     def get_flux_model(self, lvec=None, mvec=None):
@@ -345,7 +351,7 @@ class FITSSourceModel(AbstractSourceModel):
 @dataclasses.dataclass(eq=False)
 class FITSPredict:
     num_threads: int = 1
-    epsilon: float = 1e-4
+    epsilon: float = 1e-6
     convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
 

@@ -21,7 +21,7 @@ class GeodesicModel:
     antennas: ac.EarthLocation
     array_location: ac.EarthLocation
     phase_center: ac.ICRS
-    obstimes: at.Time # [num_model_times] over which to compute the zenith
+    obstimes: at.Time  # [num_model_times] over which to compute the zenith
     ref_time: at.Time
     pointings: ac.ICRS | None  # [[num_ant]] or None which means Zenith
 
@@ -80,7 +80,8 @@ class GeodesicModel:
         """
         return quantity_to_jnp((times.tt - self.ref_time.tt).sec * au.s)
 
-    def compute_far_field_geodesic(self, times: jax.Array, lmn_sources: jax.Array) -> jax.Array:
+    def compute_far_field_geodesic(self, times: jax.Array, lmn_sources: jax.Array,
+                                   antenna_indices: jax.Array | None = None) -> jax.Array:
         """
         Compute the far field geodesic for the given time, as LMN coords relative to pointing center, potentially
         shifting from phase center if different.
@@ -88,6 +89,7 @@ class GeodesicModel:
         Args:
             times: [num_time] the time in TT, since start of observation.
             lmn_sources: [num_sources, 3], the LMN of sources
+            antenna_indices: [num_ant] the indices of antennas to compute for, or None for all.
 
         Returns:
             geodesic: [num_sources, num_time, num_ant, 3]
@@ -96,13 +98,23 @@ class GeodesicModel:
             raise ValueError(f"times must have shape [num_time], got {np.shape(times)}")
         if len(np.shape(lmn_sources)) != 2:
             raise ValueError(f"lmn_sources must have shape [num_sources, 3], got {np.shape(lmn_sources)}")
+        if antenna_indices is not None:
+            if len(np.shape(antenna_indices)) != 1:
+                raise ValueError(f"antenna_indices must have shape [num_ant], got {np.shape(antenna_indices)}")
 
-        lmn_pointing = self.lmn_pointings(times)  # [num_tims, [num_ant,] 3]
-        lmn_pointing /= jnp.linalg.norm(lmn_pointing, axis=-1, keepdims=True)  # normalise for correctness
+        lmn_pointing = self.lmn_pointings(times)  # [num_time, [num_ant',] 3]
         if self.tile_antennas:
             pointing_mapping = "[t,3]"
         else:
             pointing_mapping = "[t,a,3]"
+            if antenna_indices is not None:
+                lmn_pointing = lmn_pointing[:, antenna_indices, :]  # [num_time, num_ant, 3]
+
+        lmn_pointing /= jnp.linalg.norm(lmn_pointing, axis=-1, keepdims=True)  # normalise for correctness
+
+        antennas_enu = self.antennas_enu  # [num_ant', 3]
+        if antenna_indices is not None:
+            antennas_enu = antennas_enu[antenna_indices]  # [num_ant, 3]
 
         @partial(
             multi_vmap,
@@ -131,9 +143,10 @@ class GeodesicModel:
             l, m, n = perley_lmn_from_icrs(ra, dec, ra_pointing, dec_pointing)  # []
             return jnp.stack([l, m, n], axis=-1)  # [3]
 
-        return create_geodesics(self.antennas_enu, lmn_pointing, lmn_sources)  # [num_sources, num_time, num_ant, 3]
+        return create_geodesics(antennas_enu, lmn_pointing, lmn_sources)  # [num_sources, num_time, num_ant, 3]
 
-    def compute_near_field_geodesics(self, times: jax.Array, source_positions_enu: jax.Array) -> jax.Array:
+    def compute_near_field_geodesics(self, times: jax.Array, source_positions_enu: jax.Array,
+                                     antenna_indices: jax.Array | None = None) -> jax.Array:
         """
         Compute the near field geodesic for the given time, as LMN coords relative to pointing center, potentially
         shifting from phase center if different.
@@ -141,6 +154,7 @@ class GeodesicModel:
         Args:
             times: [num_time] the time in TT, since start of observation.
             source_positions_enu: [num_sources, 3], the ENU positions of the sources.
+            antenna_indices: [num_ant] the indices of antennas to compute for, or None for all.
 
         Returns:
             geodesic: [num_sources, num_time, num_ant, 3]
@@ -151,13 +165,23 @@ class GeodesicModel:
             raise ValueError(
                 f"source_positions_enu must have shape [num_sources, 3], got {np.shape(source_positions_enu)}"
             )
+        if antenna_indices is not None:
+            if len(np.shape(antenna_indices)) != 1:
+                raise ValueError(f"antenna_indices must have shape [num_ant], got {np.shape(antenna_indices)}")
 
-        lmn_pointing = self.lmn_pointings(times)  # [num_tims, [num_ant,] 3]
-        lmn_pointing /= jnp.linalg.norm(lmn_pointing, axis=-1, keepdims=True)  # normalise for correctness
+        lmn_pointing = self.lmn_pointings(times)  # [num_tims, [num_ant',] 3]
         if self.tile_antennas:
             pointing_mapping = "[t,3]"
         else:
             pointing_mapping = "[t,a,3]"
+            if antenna_indices is not None:
+                lmn_pointing = lmn_pointing[:, antenna_indices, :]  # [num_time, num_ant, 3]
+
+        lmn_pointing /= jnp.linalg.norm(lmn_pointing, axis=-1, keepdims=True)  # normalise for correctness
+
+        antennas_enu = self.antennas_enu  # [num_ant', 3]
+        if antenna_indices is not None:
+            antennas_enu = antennas_enu[antenna_indices]  # [num_ant, 3]
 
         @partial(
             multi_vmap,
@@ -202,5 +226,5 @@ class GeodesicModel:
 
             return jnp.stack([l, m, n], axis=-1)
 
-        return create_geodesics(times, lmn_pointing, self.antennas_enu,
+        return create_geodesics(times, lmn_pointing, antennas_enu,
                                 source_positions_enu)  # [num_sources, num_time, num_ant, 3]
