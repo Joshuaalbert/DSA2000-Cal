@@ -63,6 +63,21 @@ def create_spherical_grid(pointing: ac.ICRS, angular_radius: au.Quantity, dr: au
     return ac.ICRS(ra=coords.ra, dec=coords.dec)
 
 
+def create_mosaic_tiling(theta_row: au.Quantity = 1.8 * au.deg, theta_hex: au.Quantity = 2.0 * au.deg) -> ac.ICRS:
+    dec = np.arange(-90, 90, theta_row.to(au.deg).value) * au.deg
+    ra = np.arange(0, 360, theta_hex.to(au.deg).value) * au.deg
+    ra, dec = np.meshgrid(ra, dec, indexing='ij')
+    return ac.ICRS(ra.flatten(), dec.flatten())
+
+
+def test_create_mosaic_tiling():
+    tiling_coords = create_mosaic_tiling()
+    print(tiling_coords.size)
+    import pylab as plt
+    plt.scatter(tiling_coords.ra, tiling_coords.dec, s=1)
+    plt.show()
+
+
 def create_spherical_earth_grid(center: ac.EarthLocation, radius: au.Quantity, dr: au.Quantity) -> ac.EarthLocation:
     if not radius.unit.is_equivalent(au.m) or not dr.unit.is_equivalent(au.m):
         raise ValueError("Radius and dr must be in meters.")
