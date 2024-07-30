@@ -10,6 +10,7 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_random_spherical_layout
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
     GaussianSourceModel
@@ -49,21 +50,25 @@ class SyntheticSkyModelProducer:
         """
         if key is None:
             key = self.keys[0]
+
         # Based on 100 10Jy sources per 400 sq deg
         coords = create_random_spherical_layout(
             num_sources=num_bright_sources,
             key=key
         )
-        num_sources = len(coords)
-        source_flux = 10 * au.Jy
+        lmn = icrs_to_lmn(sources=coords, phase_tracking=self.phase_tracking)
+
+        # Filter out those with negative n (below horizon)
+        mask = lmn[:, 2] > 0
+        lmn = lmn[mask, :]
+        num_sources = len(lmn)
+        source_flux = 10 * au.Jy * ((700 * au.MHz) / np.mean(self.freqs))
         if full_stokes:
             A = np.zeros((num_sources, len(self.freqs), 2, 2)) * au.Jy
             A[..., 0, 0] = 0.5 * source_flux
             A[..., 1, 1] = 0.5 * source_flux
         else:
             A = np.ones((num_sources, len(self.freqs))) * source_flux
-
-        lmn = icrs_to_lmn(sources=coords, phase_tracking=self.phase_tracking)
 
         return PointSourceModel(
             freqs=self.freqs,
@@ -96,7 +101,7 @@ class SyntheticSkyModelProducer:
         )
         num_sources = len(bright_sources)
         lmn = icrs_to_lmn(sources=bright_sources, phase_tracking=self.phase_tracking)
-        source_flux = 1 * au.Jy
+        source_flux = 1 * au.Jy * ((700 * au.MHz) / np.mean(self.freqs))
         if full_stokes:
             A = np.zeros((num_sources, len(self.freqs), 2, 2)) * au.Jy
             A[..., 0, 0] = 0.5 * source_flux
@@ -145,7 +150,7 @@ class SyntheticSkyModelProducer:
         num_sources = len(faint_sources)
 
         lmn = icrs_to_lmn(sources=faint_sources, phase_tracking=self.phase_tracking)
-        source_flux = 0.1 * au.Jy
+        source_flux = 0.1 * au.Jy * ((700 * au.MHz) / np.mean(self.freqs))
         major = mean_major.to('rad').value * np.ones((num_sources,)) * au.dimensionless_unscaled
         minor = mean_minor.to('rad').value * np.ones((num_sources,)) * au.dimensionless_unscaled
         theta = np.asarray(jax.random.uniform(key2, (num_sources,), minval=0, maxval=180)) * au.deg
@@ -185,18 +190,21 @@ class SyntheticSkyModelProducer:
         source_models = []
         for source in a_team_sources:
             source_model_asset = source_model_registry.get_instance(source_model_registry.get_match(source))
-            source_model = FITSSourceModel.from_wsclean_model(
-                wsclean_fits_files=source_model_asset.get_wsclean_fits_files(),
-                phase_tracking=self.phase_tracking, freqs=self.freqs, ignore_out_of_bounds=True,
-                full_stokes=full_stokes
-            )
+            try:
+                source_model = FITSSourceModel.from_wsclean_model(
+                    wsclean_fits_files=source_model_asset.get_wsclean_fits_files(),
+                    phase_tracking=self.phase_tracking, freqs=self.freqs, ignore_out_of_bounds=True,
+                    full_stokes=full_stokes
+                )
+            except BelowHorizonSource:
+                continue
             source_models.append(source_model)
         return source_models
 
     def create_rfi_emitter_sources(self, key=None, rfi_sources: List[str] | None = None, full_stokes: bool = True) -> [
         RFIEmitterSourceModel]:
         """
-        Create LTE sources inside the field.
+        Create RFI emitter sources inside the field.
 
         Args:
             key: the random key

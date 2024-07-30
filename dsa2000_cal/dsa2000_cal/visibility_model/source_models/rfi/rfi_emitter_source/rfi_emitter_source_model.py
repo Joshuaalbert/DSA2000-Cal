@@ -238,7 +238,6 @@ class RFIEmitterPredict:
         @partial(multi_vmap,
                  in_mapping=f"[c],[r],[r],[r],[r],{g_mapping},{g_mapping},{luminosity_mapping},[e,3],[x,e]",
                  out_mapping=out_mapping,
-                 scan_dims={'c'},
                  verbose=True
                  )
         def compute_phase_from_projection_jax(freq, t1, i1, i2, w, g1, g2, luminosity, position_enu,

@@ -3,7 +3,7 @@ from astropy import units as au, coordinates as ac
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.common.astropy_utils import create_spherical_grid
-from dsa2000_cal.forward_model.synthetic_sky_model.synthetic_sky_model_producer import choose_dr, \
+from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import choose_dr, \
     SyntheticSkyModelProducer
 
 

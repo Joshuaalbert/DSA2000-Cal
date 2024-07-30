@@ -1,16 +1,22 @@
+import time as time_mod
+
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 import pytest
 from astropy import units as au, coordinates as ac
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_cal.gain_models.spherical_interpolator import phi_theta_from_lmn, lmn_from_phi_theta
 
 
 @pytest.mark.parametrize('array_name, freq, zenith', [['lwa', 50e6, True], ['dsa2000W', 700e6, False]])
 def test_beam_gain_model_real_data(array_name, freq, zenith):
     freqs = au.Quantity([freq], unit=au.Hz)
-    beam_gain_model = beam_gain_model_factory(array_name=array_name)
+    beam_gain_model = build_beam_gain_model(array_name=array_name)
 
     phase_tracking = ac.ICRS(ra=0 * au.deg, dec=45 * au.deg)
     array_location = beam_gain_model.antennas[0]
@@ -61,21 +67,54 @@ def test_beam_gain_model_real_data(array_name, freq, zenith):
 
 @pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W'])
 def test_beam_gain_model_factory(array_name: str):
-    beam_gain_model = beam_gain_model_factory(array_name=array_name)
-    select = beam_gain_model.lmn_data[:, 2] >= 0.  # Select only positive N
-    sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,
-                     c=np.log10(np.abs(beam_gain_model.model_gains[select, 0, 0, 0])))
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('log10(Amplitude)')
+    beam_gain_model = build_beam_gain_model(array_name=array_name)
+    assert not np.any(np.isnan(beam_gain_model.model_gains))
+
+    phi, theta = phi_theta_from_lmn(
+        beam_gain_model.lmn_data[..., 0], beam_gain_model.lmn_data[..., 1], beam_gain_model.lmn_data[..., 2]
+    )
+
+    lmn_data_rec = np.stack(lmn_from_phi_theta(phi, theta), axis=-1)
+
+    np.testing.assert_allclose(np.asarray(beam_gain_model.lmn_data), np.asarray(lmn_data_rec), atol=2e-5)
+
+    beam_gain_model.plot_beam()
+
+    select = (0 < beam_gain_model.lmn_data[..., 2]) & (~jnp.isnan(beam_gain_model.lmn_data[..., 2]))
+    geodesics = beam_gain_model.lmn_data[select, None, None, :]
+    args = dict(
+        freqs=quantity_to_jnp(beam_gain_model.model_freqs[0:1]),
+        times=jnp.asarray([0.]),
+        geodesics=geodesics
+    )
+    t0 = time_mod.time()
+    compute_gains = jax.jit(beam_gain_model.compute_gain).lower(**args).compile()
+    print(f"Compiled in {time_mod.time() - t0} seconds.")
+
+    t0 = time_mod.time()
+    gain_screen = compute_gains(
+        **args
+    )  # [s, t, a, f, ...]
+    gain_screen.block_until_ready()
+    print(f"Computed in {time_mod.time() - t0} seconds.")
+
+    plt.scatter(geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1], c=np.log10(np.abs(gain_screen[:, 0, 0, 0, 0, 0])),
+                cmap='PuOr', s=1)
+    plt.colorbar()
+    plt.show()
+    plt.scatter(geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1], c=np.angle(gain_screen[:, 0, 0, 0, 0, 0]), cmap='hsv',
+                vmin=-np.pi, vmax=np.pi, s=1)
+    plt.colorbar()
     plt.show()
 
-    sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,
-                     c=np.angle(beam_gain_model.model_gains[select, 0, 0, 0]),
-                     cmap='hsv', vmin=-np.pi, vmax=np.pi)
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('Phase')
-    plt.show()
+    np.testing.assert_allclose(
+        np.abs(gain_screen[:, 0, 0, 0, ...]),
+        np.abs(quantity_to_jnp(beam_gain_model.model_gains[0, select, 0, ...])),
+        atol=0.02
+    )
+
+    np.testing.assert_allclose(
+        np.angle(gain_screen[:, 0, 0, 0, ...]),
+        np.angle(quantity_to_jnp(beam_gain_model.model_gains[0, select, 0, ...])),
+        atol=0.02
+    )

@@ -8,7 +8,8 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import rfi_model_registry, array_registry
 from dsa2000_cal.uvw.far_field import VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
-from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import RFIEmitterSourceModel, RFIEmitterPredict
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import \
+    RFIEmitterSourceModel, RFIEmitterPredict
 
 
 @pytest.mark.parametrize("is_gains", [True, False])
@@ -17,8 +18,8 @@ from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitt
 def test_lte_predict(is_gains: bool, direction_dependent_gains: bool, full_stokes: bool):
     # Create a simple model
     fill_registries()
-    rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('lte_cell_tower'))
-    freqs = np.linspace(701, 705, 10) * au.MHz
+    rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('lwa_cell_tower'))
+    freqs = np.linspace(55, 59, 10) * au.MHz
     rfi_model_params = rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes)
     source_model = RFIEmitterSourceModel(rfi_model_params)
     if full_stokes:

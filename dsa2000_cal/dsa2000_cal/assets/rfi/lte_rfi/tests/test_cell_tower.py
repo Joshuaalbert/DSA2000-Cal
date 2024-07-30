@@ -1,7 +1,7 @@
 import numpy as np
 from astropy import units as au
 
-from dsa2000_cal.assets.rfi.lte_rfi.cell_tower import LTECellTower
+from dsa2000_cal.assets.rfi.lte_rfi.dsa_cell_tower import LTECellTower
 
 
 def test_lte_rfi_source_factory():

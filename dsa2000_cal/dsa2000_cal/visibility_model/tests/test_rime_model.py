@@ -8,7 +8,7 @@ from astropy import time as at, coordinates as ac, units as au
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry
-from dsa2000_cal.geodesic_model.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.facet_model import FacetModel

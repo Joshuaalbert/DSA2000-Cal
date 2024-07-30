@@ -11,7 +11,7 @@ from dsa2000_cal.assets.registries import source_model_registry, rfi_model_regis
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.wgridder import vis2dirty
-from dsa2000_cal.geodesic_model.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.facet_model import FacetModel
@@ -426,7 +426,7 @@ def test_facet_model_lte():
 
     obstimes = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:00:30'], scale='utc')
     max_baseline = np.linalg.norm(anteanna_xyz[:, None, :] - anteanna_xyz[None, :, :], axis=-1).max()
-    freqs = au.Quantity([50, 60], 'MHz')
+    freqs = au.Quantity([55, 59], 'MHz')
 
     wavelength = quantity_to_jnp(const.c / freqs[0])
     pixsize = (wavelength / max_baseline) / 7
@@ -452,7 +452,7 @@ def test_facet_model_lte():
     )
 
     lte_source_model = RFIEmitterSourceModel.from_rfi_model(
-        rfi_model_registry.get_instance(rfi_model_registry.get_match('lte_cell_tower')),
+        rfi_model_registry.get_instance(rfi_model_registry.get_match('lwa_cell_tower')),
         freqs,
         central_freq=freqs[0],
         full_stokes=False

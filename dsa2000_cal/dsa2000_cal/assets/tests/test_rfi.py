@@ -1,6 +1,5 @@
 from scipy.io import loadmat
 
-from dsa2000_cal.assets.rfi.lte_rfi.cell_tower import RFIData
 
 
 def test_antenna_pattern():

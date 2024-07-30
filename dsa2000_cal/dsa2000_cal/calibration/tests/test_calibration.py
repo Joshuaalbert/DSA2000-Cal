@@ -1,6 +1,7 @@
 import dataclasses
 import os
 
+from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count=8"
@@ -18,7 +19,7 @@ from dsa2000_cal.calibration.calibration import Calibration
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
-from dsa2000_cal.forward_model.simulation.simulate_visibilties import SimulateVisibilities
+from dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.types import CalibrationSolutions
 
 

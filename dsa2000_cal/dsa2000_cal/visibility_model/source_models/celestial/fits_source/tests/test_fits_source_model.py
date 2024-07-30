@@ -79,7 +79,8 @@ def test_faint_predict(is_gains: bool, image_has_chan: bool, full_stokes: bool):
     model_data = FITSModelData(
         image=image,
         gains=gains,
-        l0=l0, m0=m0, dl=dl, dm=dm,
+        l0=l0, m0=m0,
+        dl=dl, dm=dm,
         freqs=freqs
     )
     visibility_coords = VisibilityCoords(
@@ -211,7 +212,8 @@ def test_grads_work(image_has_chan: bool, full_stokes: bool):
         model_data = FITSModelData(
             image=image,
             gains=gains,
-            l0=l0, m0=m0, dl=dl, dm=dm,
+            l0=l0, m0=m0,
+            dl=dl, dm=dm,
             freqs=freqs
         )
 

@@ -2,14 +2,14 @@ import numpy as np
 from astropy import units as au, time as at, coordinates as ac
 from jax import numpy as jnp
 
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
-from dsa2000_cal.forward_model.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
-from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
+from dsa2000_cal.forward_models.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
 
 def test_dish_effects_simulation():
     pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
-    beam_gain_model = beam_gain_model_factory(array_name='lwa')
+    beam_gain_model = build_beam_gain_model(array_name='lwa')
     dish_effects_simulation = DishEffectsSimulation(
         pointing=pointing,
         dish_effect_params=DishEffectsParams(),
@@ -39,7 +39,7 @@ def test_dish_effects_simulation():
 
 def test_dish_effects_gain_model_real_data(tmp_path):
     freqs = au.Quantity([700e6], unit=au.Hz)
-    beam_gain_model = beam_gain_model_factory(array_name='dsa2000W')
+    beam_gain_model = build_beam_gain_model(array_name='dsa2000W')
     pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
 
     dish_effects_gain_model = dish_effects_gain_model_factory(

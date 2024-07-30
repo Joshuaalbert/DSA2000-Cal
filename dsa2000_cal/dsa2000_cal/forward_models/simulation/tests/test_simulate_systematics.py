@@ -6,9 +6,9 @@ import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
-from dsa2000_cal.forward_model.simulation.simulate_systematics import SimulateSystematics
+from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
 
 
 @pytest.fixture(scope='function')

@@ -1,12 +1,15 @@
-import jax.numpy as jnp
 import numpy as np
+import numpy as np
+import pylab as plt
 import pytest
 from astropy import units as au, coordinates as ac, time as at
+from jax import numpy as jnp
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.geodesic_model.geodesic_model import GeodesicModel
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel, \
-    phi_theta_from_lmn
+    phi_theta_from_lmn, regrid_to_regular_grid
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 
 
 def test_lmn_from_phi_theta():
@@ -182,3 +185,99 @@ def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
                 assert gains.shape == (num_sources, len(obstimes), len(mock_gain_model.antennas), len(freqs), 2, 2)
             else:
                 assert gains.shape == (num_sources, len(obstimes), len(mock_gain_model.antennas), len(freqs))
+
+
+def test_regrid_to_regular_grid():
+    num_model_times = 2
+    num_model_dir = 3
+    num_ant = 4
+    num_model_freqs = 5
+    resolution = 10
+
+    model_theta = jnp.linspace(0, 180, num_model_dir)
+    model_phi = jnp.linspace(0, 360, num_model_dir)
+    model_lmn = jnp.stack(lmn_from_phi_theta(model_phi, model_theta), axis=-1)
+    # Full shape: A, full stokes
+    model_gains = jnp.ones((num_model_times, num_model_dir, num_ant, num_model_freqs, 2, 2))
+    theta, phi, gains = regrid_to_regular_grid(model_lmn, model_gains, resolution)
+    assert np.shape(gains) == (num_model_times, resolution, resolution, num_ant, num_model_freqs, 2, 2)
+
+    # Partial: no A full stokes
+    model_gains = jnp.ones((num_model_times, num_model_dir, num_model_freqs, 2, 2))
+    theta, phi, gains = regrid_to_regular_grid(model_lmn, model_gains, resolution)
+    assert np.shape(gains) == (num_model_times, resolution, resolution, num_model_freqs, 2, 2)
+
+    # Partial: no A, no full stokes
+    model_gains = jnp.ones((num_model_times, num_model_dir, num_model_freqs))
+    theta, phi, gains = regrid_to_regular_grid(model_lmn, model_gains, resolution)
+    assert np.shape(gains) == (num_model_times, resolution, resolution, num_model_freqs)
+
+    # Partial: A, no full stokes
+    model_gains = jnp.ones((num_model_times, num_model_dir, num_ant, num_model_freqs))
+    theta, phi, gains = regrid_to_regular_grid(model_lmn, model_gains, resolution)
+    assert np.shape(gains) == (num_model_times, resolution, resolution, num_ant, num_model_freqs)
+
+
+@pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W'])
+def test_spherical_beam_lwa(array_name):
+    beam_gain_model = build_beam_gain_model(array_name=array_name, full_stokes=False)
+    select = beam_gain_model.lmn_data[:, 2] >= 0.  # Select only positive N
+    sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,
+                     c=np.log10(np.abs(beam_gain_model.model_gains[0, select, 0])))
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('log10(Amplitude)')
+    plt.show()
+
+    sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,
+                     c=np.angle(beam_gain_model.model_gains[0, select, 0]),
+                     cmap='hsv', vmin=-np.pi, vmax=np.pi)
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('Phase')
+    plt.show()
+
+    # screens
+    l_screen, m_screen = np.meshgrid(beam_gain_model.lvec_jax, beam_gain_model.mvec_jax, indexing='ij')
+    sc = plt.scatter(l_screen.flatten(), m_screen.flatten(), s=1,
+                     c=np.log10(np.abs(beam_gain_model.model_gains_jax[0, :, :, 0].flatten())))
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('log10(Amplitude)')
+    plt.show()
+
+    sc = plt.scatter(l_screen.flatten(), m_screen.flatten(), s=1,
+                     c=np.angle(beam_gain_model.model_gains_jax[0, :, :, 0].flatten()), cmap='hsv', vmin=-np.pi,
+                     vmax=np.pi)
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('Phase')
+    plt.show()
+
+    # at data
+
+    gains_data = beam_gain_model.compute_gain(
+        freqs=quantity_to_jnp(beam_gain_model.model_freqs[0:1]),
+        times=quantity_to_jnp((beam_gain_model.model_times[0:1] - beam_gain_model.model_times[0]).sec * au.s),
+        geodesics=beam_gain_model.lmn_data[:, None, None, :]
+    )
+
+    sc = plt.scatter(beam_gain_model.lmn_data[:, 0], beam_gain_model.lmn_data[:, 1], s=1, alpha=0.5,
+                     c=np.log10(np.abs(gains_data[:, 0, 0, 0])))
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('log10(Amplitude)')
+    plt.show()
+
+    sc = plt.scatter(beam_gain_model.lmn_data[:, 0], beam_gain_model.lmn_data[:, 1], s=1, alpha=0.5,
+                     c=np.angle(gains_data[:, 0, 0, 0]), cmap='hsv', vmin=-np.pi, vmax=np.pi)
+    plt.colorbar(sc)
+    plt.xlabel('l')
+    plt.ylabel('m')
+    plt.title('Phase')
+    plt.show()

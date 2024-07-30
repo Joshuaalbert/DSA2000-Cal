@@ -326,3 +326,110 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
     )
     dirty *= adjoint_factor
     return dirty
+
+
+def vis_to_image(uvw: jax.Array, freqs: jax.Array,
+                 vis: jax.Array, wgt: jax.Array | None,
+                 mask: jax.Array | None,
+                 pixsize_m: jax.Array, pixsize_l: jax.Array,
+                 center_m: jax.Array, center_l: jax.Array,
+                 npix_m: int, npix_l: int,
+                 epsilon: float = 1e-6,
+                 nthreads: int = 1, verbosity: int = 0,
+                 double_precision_accumulation: bool = False):
+    """
+    Compute the image from the visibilities.
+
+    Args:
+        uvw: [num_rows, 3] array of uvw coordinates.
+        freqs: [num_freqs] array of frequencies.
+        vis: [num_rows, num_freqs] array of visibilities.
+        wgt: [num_rows, num_freqs] array of weights, multiplied with input visibilities.
+        mask: [num_rows, num_freqs] array of mask, only image vis[mask!=0]
+        npix_m: number of pixels in m direction.
+        npix_l: number of pixels in l direction.
+        pixsize_m: scalar, pixel size in m direction.
+        pixsize_l: scalar, pixel size in l direction.
+        center_m: scalar, m at center of image.
+        center_l: scalar, l at center of image.
+        epsilon: scalar, gridding accuracy
+        nthreads: number of threads to use.
+        verbosity: verbosity level, 0, 1.
+        double_precision_accumulation: whether to use double precision for accumulation, which reduces numerical errors.
+
+    Returns:
+        [npix_l, npix_m] array of image.
+    """
+    # Make scaled image, I'(l,m)=I(l,m)/n(l,m) such that PSF(l=0,m=0)=1
+    scaled_image = vis2dirty(
+        uvw=uvw,
+        freqs=freqs,
+        vis=vis,
+        wgt=wgt,
+        mask=mask,
+        npix_m=npix_m,
+        npix_l=npix_l,
+        pixsize_m=pixsize_m,
+        pixsize_l=pixsize_l,
+        center_m=center_m,
+        center_l=center_l,
+        epsilon=epsilon,
+        do_wgridding=True,
+        flip_v=False,
+        divide_by_n=False,
+        nthreads=nthreads,
+        double_precision_accumulation=double_precision_accumulation,
+        verbosity=verbosity
+    )
+    l = (0.5 * npix_l + jnp.arange(npix_l)) * pixsize_l + center_l
+    m = (0.5 * npix_m + jnp.arange(npix_m)) * pixsize_m + center_m
+    l, m = jnp.meshgrid(l, m, indexing='ij')
+    n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))
+    n = jnp.where(jnp.isnan(n), 0., n)
+    return scaled_image * n
+
+
+def image_to_vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
+                 pixsize_m: float | jax.Array, pixsize_l: float | jax.Array,
+                 center_m: float | jax.Array, center_l: float | jax.Array,
+                 mask: jax.Array | None = None,
+                 epsilon: float = 1e-6,
+                 nthreads: int = 1, verbosity: int = 0):
+    """
+    Compute the visibilities from the dirty image.
+
+    Args:
+        uvw: [num_rows, 3] array of uvw coordinates.
+        freqs: [num_freqs] array of frequencies.
+        dirty: [num_l, num_m] array of dirty image, in units of JY/PIXEL.
+        pixsize_m: scalar, pixel size in m direction.
+        pixsize_l: scalar, pixel size in l direction.
+        center_m: scalar, m at center of image.
+        center_l: scalar, l at center of image.
+        mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
+        epsilon: scalar, gridding accuracy
+        nthreads: number of threads to use.
+        verbosity: verbosity level, 0, 1.
+
+    Returns:
+        [num_rows, num_freqs] array of visibilities.
+    """
+    # Divides I(l,m) by n(l,m) then applies gridding with w-term taken into account.
+    # Pixels should be in Jy/pixel.
+    return dirty2vis(
+        uvw=uvw,
+        freqs=freqs,
+        dirty=dirty,
+        pixsize_m=pixsize_m,
+        pixsize_l=pixsize_l,
+        center_m=center_m,
+        center_l=center_l,
+        epsilon=epsilon,
+        do_wgridding=True,
+        wgt=None,
+        mask=mask,
+        flip_v=False,
+        divide_by_n=True,
+        nthreads=nthreads,
+        verbosity=verbosity
+    )

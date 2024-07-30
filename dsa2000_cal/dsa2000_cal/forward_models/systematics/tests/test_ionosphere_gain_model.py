@@ -9,9 +9,9 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.forward_model.systematics.ionosphere_gain_model import ionosphere_gain_model_factory, \
+from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import ionosphere_gain_model_factory, \
     interpolate_antennas
-from dsa2000_cal.forward_model.systematics.ionosphere_simulation import IonosphereSimulation, msqrt
+from dsa2000_cal.forward_models.systematics.ionosphere_simulation import IonosphereSimulation, msqrt
 
 
 def test_msqrt():

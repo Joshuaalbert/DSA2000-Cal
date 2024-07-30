@@ -23,6 +23,7 @@ class SimulateVisibilities:
 
     plot_folder: str
 
+    add_noise: bool = True
     num_shards: int = 1  # must divide channels
     verbose: bool = False
     seed: int = 42
@@ -163,8 +164,8 @@ class SimulateVisibilities:
         # jax.debug.print("noise_scale={noise_scale}", noise_scale=noise_scale)
         #
         # jax.debug.print("vis={vis}", vis=vis)
-
-        vis += noise
+        if self.add_noise:
+            vis += noise
 
         weights = jnp.full(vis.shape, 1. / noise_scale ** 2)
         return VisibilityData(vis=vis, weights=weights)

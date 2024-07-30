@@ -20,6 +20,7 @@ from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 
 @partial(jax.jit, static_argnames=['flat_output'])
@@ -236,6 +237,9 @@ class PointSourceModel(AbstractSourceModel):
         lmn0 = icrs_to_lmn(source_directions, phase_tracking)
         l0 = lmn0[:, 0]
         m0 = lmn0[:, 1]
+        n0 = lmn0[:, 2]
+        if np.any(n0 < 0):
+            raise BelowHorizonSource()
         A = jnp.stack(spectrum, axis=0) * au.Jy  # [num_sources, num_freqs]
 
         if full_stokes:
@@ -434,6 +438,7 @@ class PointPredict:
             multi_vmap,
             in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],[s,c,2,2]",
             out_mapping="[r,c,...]",
+            scan_dims={'s'},
             verbose=True
         )
         def compute_visibility(lmn, uvw, g1, g2, freq, image):

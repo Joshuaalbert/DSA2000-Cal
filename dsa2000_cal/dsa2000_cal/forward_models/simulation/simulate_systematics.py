@@ -10,10 +10,10 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.forward_model.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
-from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams
-from dsa2000_cal.forward_model.systematics.ionosphere_gain_model import ionosphere_gain_model_factory
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
+from dsa2000_cal.forward_models.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
+from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import ionosphere_gain_model_factory
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model, beam_gain_model_factory
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
@@ -47,7 +47,7 @@ class SimulateSystematics:
             dish_effect_gain_model: the dish effect gain model
         """
 
-        beam_gain_model = beam_gain_model_factory(ms.meta.array_name, full_stokes=self.full_stokes)
+        beam_gain_model = beam_gain_model_factory(ms)
 
         return beam_gain_model, beam_gain_model
 
@@ -60,7 +60,7 @@ class SimulateSystematics:
             dish_effect_gain_model: the dish effect gain model
         """
 
-        beam_gain_model = beam_gain_model_factory(ms.meta.array_name)
+        beam_gain_model = beam_gain_model_factory(ms)
         fill_registries()
         array = array_registry.get_instance(array_registry.get_match(ms.meta.array_name))
         dish_model = array.get_antenna_model()

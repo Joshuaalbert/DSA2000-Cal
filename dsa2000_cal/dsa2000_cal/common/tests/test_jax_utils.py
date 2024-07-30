@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap
+from dsa2000_cal.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, auto_multi_vmap
 
 
 @pytest.mark.parametrize('use_scan', [True, False])
@@ -163,3 +163,35 @@ def test_multi_vmap():
     res = f_multi(x, y)
     assert res.shape == (n2, n1, n3, 2, 2)
 
+
+def test_multi_vmap_scan_performance():
+    n1, n2, n3, n4 = 3, 3, 3, 3
+
+    def f(x, y):
+        return jnp.sin(x + y) / x
+
+    x = jnp.ones((n1, n2, n3, n4))
+    y = jnp.ones((n1, n2, n3, n4))
+
+    f_multi = auto_multi_vmap(f, in_mapping="[n1,n2,n3,n4],[n1,n2,n3,n4]", out_mapping="[n1,n2,n3,n4]",
+
+                              verbose=True)
+    res = f_multi(x, y)
+
+
+def test_multi_vmap_vs_vectorize():
+    def f(x, y):
+        return x + y, x - y
+
+    x = jnp.ones((3, 4))
+    y = jnp.ones((3, 4))
+
+    f_multi = multi_vmap(f, in_mapping="[n1,n2],[n1,n2]", out_mapping="[n1,n2],[n1,n2]", verbose=True)
+    res = f_multi(x, y)
+    f_vec = jnp.vectorize(f, signature="(),()->(),()")
+    res2 = f_vec(x, y)
+    assert jnp.all(res[0] == res2[0])
+    assert jnp.all(res[1] == res2[1])
+
+    print(jax.jit(f_multi).lower(x, y).compile().cost_analysis())
+    print(jax.jit(f_vec).lower(x, y).compile().cost_analysis())

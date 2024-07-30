@@ -4,7 +4,7 @@ import astropy.units as au
 from astropy.coordinates import SkyCoord
 from h5parm.utils import parse_coordinates_bbs
 
-from dsa2000_cal.common.bbs_utils import BBSSkyModel, create_sky_model
+from dsa2000_cal.common.bbs_utils import BBSSkyModel
 
 
 def test_bbs_sky_model_I_only():

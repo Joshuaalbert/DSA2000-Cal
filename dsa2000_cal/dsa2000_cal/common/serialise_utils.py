@@ -149,7 +149,7 @@ class SerialisableBaseModel(BaseModel):
                 "unit": str(x.unit)
             },
             InterpolatedArray: lambda x: {
-                "type": 'dsa2000_cal.uvw.uvw_utils.InterpolatedArray',
+                "type": 'dsa2000_cal.common.interp_utils.InterpolatedArray',
                 "x": np.asarray(x.x),
                 "values": np.asarray(x.values),
                 "axis": x.axis,
@@ -216,7 +216,7 @@ class SerialisableBaseModel(BaseModel):
                 obj[name] = deserialise_quantity(obj[name])
                 continue
 
-            # Deserialise Quantity
+            # Deserialise InterpolatedArray
             elif field.type_ is InterpolatedArray and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'dsa2000_cal.uvw.uvw_utils.InterpolatedArray':
                 obj[name] = deserialise_interpolated_array(obj[name])
