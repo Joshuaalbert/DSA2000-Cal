@@ -35,7 +35,7 @@ class LTECellTower(AbstractRFIEmitterData):
 
         rfi_band_mask = np.logical_and(freqs >= central_freq - bandwidth / 2, freqs <= central_freq + bandwidth / 2)
 
-        luminosity = au.Quantity(np.where(rfi_band_mask[None], 1., 0.), unit='Jy') * (1 * au.km) ** 2  # [1, num_chans]
+        luminosity = au.Quantity(np.where(rfi_band_mask[None], 1., 0.), unit='Jy') * (10 * au.km) ** 2  # [1, num_chans]
         if full_stokes:
             luminosity = 0.5 * au.Quantity(
                 np.stack(
