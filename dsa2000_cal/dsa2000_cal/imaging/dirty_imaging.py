@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from astropy import constants
+from jax import lax
 
 from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
@@ -17,6 +18,9 @@ from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.vec_utils import kron_inv
+from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 
@@ -36,6 +40,7 @@ class DirtyImaging:
     epsilon: float = 1e-4
     convention: str = 'casa'
     verbose: bool = False
+    weighting: str = 'natural'
     seed: int = 42
 
     def __post_init__(self):
@@ -160,8 +165,8 @@ class DirtyImaging:
         Args:
             uvw: [num_rows, 3]
             vis: [num_rows, num_chan, 4/1] in linear, i.e. [XX, XY, YX, YY] or [I]
-            weights: [num_rows, num_chan, 4]
-            flags: [num_rows, num_chan]
+            weights: [num_rows, num_chan, 4/1]
+            flags: [num_rows, num_chan, 4/1]
             freqs: [num_chan]
             num_pixel: int
             dl: dl pixel size
@@ -176,12 +181,38 @@ class DirtyImaging:
         if self.convention == 'casa':
             uvw = jnp.negative(uvw)  # CASA convention
 
+        if self.weighting == 'uniform':
+            @partial(multi_vmap,
+                     in_mapping="[r,c,p]",
+                     out_mapping="[...,c,p]",
+                     verbose=True)
+            def update_weights(weights):
+                u_bins = jnp.linspace(jnp.min(uvw[:, 0]) - 1, jnp.max(uvw[:, 0]) + 1, 256)
+                v_bins = jnp.linspace(jnp.min(uvw[:, 1]) - 1, jnp.max(uvw[:, 1]) + 1, 256)
+                hist, _, _ = jnp.histogram2d(uvw[:, 0], uvw[:, 1], weights=weights,
+                                             bins=[u_bins, v_bins])
+                # Convolve with 3x3 avg kernel to smooth the weights
+                kernel = jnp.ones((3, 3)) / 9.
+                hist = jax.scipy.signal.convolve2d(hist, kernel, mode='same')
+                # determine which bins each point in uvw falls into
+                u_bin = jnp.digitize(uvw[:, 0], u_bins) - 1
+                v_bin = jnp.digitize(uvw[:, 1], v_bins) - 1
+                weights = jnp.reciprocal(hist[u_bin, v_bin])
+                return weights
+
+            weights = update_weights(weights)  # [num_rows, num_chan, 4/1]
+        elif self.weighting == 'natural':
+            pass
+
+        else:
+            raise ValueError(f"Unknown weighting scheme {self.weighting}")
+
         @partial(multi_vmap,
                  in_mapping="[r,c,p],[r,c,p],[r,c,p]",
                  out_mapping="[...,p]",
                  verbose=True)
-        def _image(vis, weights, mask):
-            dirty_image = wgridder.vis2dirty(
+        def image_single_coh(vis, weights, mask):
+            dirty_image = wgridder.vis_to_image(
                 uvw=uvw,
                 freqs=freqs,
                 vis=vis,
@@ -192,15 +223,76 @@ class DirtyImaging:
                 center_m=center_m,
                 center_l=center_l,
                 epsilon=self.epsilon,
-                do_wgridding=True,
-                flip_v=False,
                 mask=mask,
                 wgt=weights,
-                divide_by_n=False,  # Don't divide by n, the result is already I(l,m)/n.
                 verbosity=0,
                 nthreads=self.nthreads
             )  # [num_l, num_m]
-            # TODO: Should actually multiply by n? Since this returns I(l,m)/n
             return dirty_image
 
-        return _image(vis, weights, jnp.logical_not(flags))
+        return image_single_coh(vis, weights, jnp.logical_not(flags))
+
+    def evaluate_beam(self, freqs: jax.Array, times: jax.Array,
+                      beam_gain_model: GainModel, geodesic_model: GeodesicModel,
+                      num_l: int, num_m: int,
+                      dl: jax.Array, dm: jax.Array, center_l: jax.Array, center_m: jax.Array) -> jax.Array:
+        """
+        Evaluate the beam at a grid of lmn points.
+
+        Args:
+            freqs: [num_freqs] the frequency values
+            times: [num_time] the time values
+            beam_gain_model: the beam gain model
+            geodesic_model: the geodesic model
+            num_l: the number of l points
+            num_m: the number of m points
+            dl: the l spacing
+            dm: the m spacing
+            center_l: the center l
+            center_m: the center m
+
+        Returns:
+            beam: [num_l, num_m, num_time, num_freqs[, 2, 2]]
+        """
+        lvec = (0.5 * num_l + jnp.arange(num_l)) * dl + center_l
+        mvec = (0.5 * num_m + jnp.arange(num_m)) * dm + center_m
+        l, m = jnp.meshgrid(lvec, mvec, indexing='ij')
+        n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))
+        lmn_sources = jnp.reshape(jnp.stack([l, m, n], axis=-1), (-1, 3))
+        if not beam_gain_model.tile_antennas:
+            raise ValueError("Beam gain model must be identical for all antennas.")
+        geodesics = geodesic_model.compute_far_field_geodesic(
+            times=times, lmn_sources=lmn_sources, antenna_indices=jnp.asarray([0])
+        )  # [num_sources, num_time, 1, 3]
+        beam = beam_gain_model.compute_gain(freqs=freqs, times=times,
+                                            geodesics=geodesics)  # [num_sources, num_time, 1, num_freqs[, 2, 2]]
+        beam = beam[:, :, 0, ...]  # [num_sources, num_time, num_freqs[, 2, 2]]
+        res_shape = (num_l, num_m) + beam.shape[1:]
+        return lax.reshape(beam, res_shape)  # [num_l, num_m, num_time, num_freqs[, 2, 2]]
+
+    # def divide_out_beam(self, image: jax.Array, beam: jax.Array
+    #                     ) -> jax.Array:
+    #     """
+    #     Divide out the beam from the image.
+    #
+    #     Args:
+    #         image: [num_pixel, num_pixel, 4/1]
+    #         beam: [num_pixel, num_pixel[,2,2]]
+    #
+    #     Returns:
+    #         image: [num_pixel, num_pixel, 4/1]
+    #     """
+    #     def _remove(image, beam):
+    #         if np.shape(image) == (1,):
+    #             if np.shape(beam) != ():
+    #                 raise ValueError(f"Expected beam to be scalar, got {np.shape(beam)}")
+    #             return image / beam
+    #         elif np.shape(image) == (4,):
+    #             if np.shape(beam) != (2, 2):
+    #                 raise ValueError(f"Expected beam to be [4], got {np.shape(beam)}")
+    #             return image / beam
+    #         return kron_inv(beam, image, beam.conj().T)
+    #
+    #         return jax.vmap(jax.vmap(_remove))(image, beam)
+    #     else:
+    #         raise ValueError(f"Unknown beam shape {np.shape(beam)}")

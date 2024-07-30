@@ -8,7 +8,7 @@ import numpy as np
 from astropy import units as au, coordinates as ac
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
-from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
 

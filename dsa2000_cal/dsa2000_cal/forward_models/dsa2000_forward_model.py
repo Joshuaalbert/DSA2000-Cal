@@ -2,9 +2,9 @@ import dataclasses
 import os
 from typing import Tuple
 
-import astropy.units as au
 import jax
-import jax.numpy as jnp
+from astropy import units as au
+from jax import numpy as jnp
 from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
@@ -14,11 +14,12 @@ from dsa2000_cal.calibration.probabilistic_models.gains_per_facet import GainsPe
 from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.fits_utils import ImageModel
-from dsa2000_cal.forward_model.simulation.simulate_systematics import SimulateSystematics
-from dsa2000_cal.forward_model.simulation.simulate_visibilties import SimulateVisibilities
-from dsa2000_cal.forward_model.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
-from dsa2000_cal.forward_model.systematics.dish_effects_simulation import DishEffectsParams
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
+from dsa2000_cal.forward_models.forward_model import AbstractForwardModel
+from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
+from dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateVisibilities
+from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model, beam_gain_model_factory
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
@@ -27,7 +28,7 @@ from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 
 @dataclasses.dataclass(eq=False)
-class ForwardModel:
+class DSA2000ForwardModel(AbstractForwardModel):
     """
     Runs forward modelling using a sharded data structure over devices.
 
@@ -45,8 +46,6 @@ class ForwardModel:
         field_of_view: the field of view for imaging, default computes from dish model
         oversample_factor: the oversample factor for imaging, default 2.5
         epsilon: the epsilon for wgridder, default 1e-4
-        convention: the convention for imaging, default 'casa' which negates uvw coordinates,
-            i.e. FT with e^{2\pi i} unity root
         dtype: the dtype for imaging, default jnp.complex64
         verbose: the verbosity for imaging, default False
     """
@@ -61,9 +60,7 @@ class ForwardModel:
     ionosphere_specification: SPECIFICATION
 
     # Plot and cache folders
-    plot_folder: str
-    solution_folder: str
-    cache_folder: str
+    run_folder: str
 
     # Seeds
     ionosphere_seed: int = 42
@@ -80,15 +77,23 @@ class ForwardModel:
     epsilon: float = 1e-4
 
     # Common parameters
-    convention: str = 'casa'
     dtype: SupportsDType = jnp.complex64
     verbose: bool = False
     num_shards: int = 1
+
+    def __post_init__(self):
+        self.plot_folder = os.path.join(self.run_folder, 'plots')
+        self.solution_folder = os.path.join(self.run_folder, 'solution')
+        self.cache_folder = os.path.join(self.run_folder, 'cache')
+        os.makedirs(self.plot_folder, exist_ok=True)
+        os.makedirs(self.cache_folder, exist_ok=True)
+        os.makedirs(self.solution_folder, exist_ok=True)
 
     def forward(self, ms: MeasurementSet):
         start_time = current_utc()
 
         # Simulate systematics
+
         system_gain_model, dish_effects_gain_model = self._simulate_systematics(
             ms=ms
         )
@@ -168,20 +173,27 @@ class ForwardModel:
             full_stokes=ms.is_full_stokes()
         )
         rfi_emitter_sources[0].plot(save_file=os.path.join(self.plot_folder, 'rfi_emitter_sources.png'))
+        a_team_sources = self.synthetic_sky_model_producer.create_a_team_sources(
+            full_stokes=ms.is_full_stokes()
+        )
+        for i, a_team_source in enumerate(a_team_sources):
+            a_team_source.plot(save_file=os.path.join(self.plot_folder, f'ateam{i}.png'))
 
         # Note: if a-team added then make sure to create separate facet for each to give each its own gain evaluation.
-        celestial_facet_model = FacetModel(
-            point_source_model=inner_point_sources,
-            gaussian_source_model=inner_diffuse_sources,
-            rfi_emitter_source_model=None,
-            fits_source_model=None,
-            gain_model=None,  # system_gain_model,
-            near_field_delay_engine=ms.near_field_delay_engine,
-            far_field_delay_engine=ms.far_field_delay_engine,
-            geodesic_model=ms.geodesic_model,
-            convention=self.convention,
-            dtype=self.dtype
-        )
+        celestial_facet_models = [
+            FacetModel(
+                point_source_model=None,
+                gaussian_source_model=None,
+                rfi_emitter_source_model=None,
+                fits_source_model=a_team_source,
+                gain_model=system_gain_model,
+                near_field_delay_engine=ms.near_field_delay_engine,
+                far_field_delay_engine=ms.far_field_delay_engine,
+                geodesic_model=ms.geodesic_model,
+                convention=ms.meta.convention,
+                dtype=self.dtype
+            ) for a_team_source in a_team_sources
+        ]
         # Give RFI just dish effects, not ionosphere
         rfi_facet_models = [
             FacetModel(
@@ -189,17 +201,17 @@ class ForwardModel:
                 gaussian_source_model=None,
                 rfi_emitter_source_model=rfi_emitter_source,
                 fits_source_model=None,
-                gain_model=None,  # dish_effects_gain_model,
+                gain_model=dish_effects_gain_model,
                 near_field_delay_engine=ms.near_field_delay_engine,
                 far_field_delay_engine=ms.far_field_delay_engine,
                 geodesic_model=ms.geodesic_model,
-                convention=self.convention,
+                convention=ms.meta.convention,
                 dtype=self.dtype
             )
             for rfi_emitter_source in rfi_emitter_sources
         ]
         rime_model = RIMEModel(
-            facet_models=[celestial_facet_model] + rfi_facet_models
+            facet_models=celestial_facet_models  # + rfi_facet_models
         )
 
         simulator = SimulateVisibilities(
@@ -223,7 +235,7 @@ class ForwardModel:
         Returns:
             subtracted_ms: the calibrated visibilities
         """
-        beam_gain_model = beam_gain_model_factory(ms.meta.array_name)
+        beam_gain_model = beam_gain_model_factory(ms)
 
         gain_prior_model = DiagonalUnconstrainedGain()
         # These are the same
@@ -238,7 +250,7 @@ class ForwardModel:
                 near_field_delay_engine=ms.near_field_delay_engine,
                 far_field_delay_engine=ms.far_field_delay_engine,
                 geodesic_model=ms.geodesic_model,
-                convention=self.convention,
+                convention=ms.meta.convention,
                 dtype=self.dtype
             )
             for i in range(inner_point_sources.num_sources)
@@ -277,6 +289,6 @@ class ForwardModel:
             seed=self.imaging_seed,
             oversample_factor=self.oversample_factor,
             nthreads=len(jax.devices()),
-            convention=self.convention
+            convention=ms.meta.convention
         )
         return imagor.image(image_name=image_name, ms=ms)

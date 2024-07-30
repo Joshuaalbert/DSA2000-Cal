@@ -1,0 +1,2 @@
+class BelowHorizonSource(Exception):
+    pass
