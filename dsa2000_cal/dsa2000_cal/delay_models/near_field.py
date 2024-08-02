@@ -12,7 +12,7 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.uvw.uvw_utils import norm
+from dsa2000_cal.delay_models.uvw_utils import norm
 
 
 @dataclasses.dataclass(eq=False)
@@ -25,11 +25,15 @@ class NearFieldDelayEngine:
     end_time: at.Time
 
     resolution: au.Quantity | None = None
+    ref_location: ac.EarthLocation | None = None
     verbose: bool = False
 
     def __post_init__(self):
         if not config.jax_enable_x64:
             warnings.warn("jax_enable_x64 is not set, UVW computations may be inaccurate.")
+
+        if self.ref_location is None:
+            self.ref_location = self.antennas[0]
 
         if self.resolution is None:
             # compute max baseline
@@ -49,6 +53,8 @@ class NearFieldDelayEngine:
                     f"may lead to slow ephemeris calculations."
                 )
                 self.resolution = 0.1 * au.s
+            if self.verbose:
+                print(f"Setting resolution to {self.resolution} suitable for max baseline of {max_baseline}.")
 
         if not self.resolution.unit.is_equivalent(au.s):
             raise ValueError(f"resolution must be in seconds got {self.resolution.unit}")
@@ -95,16 +101,19 @@ class NearFieldDelayEngine:
         antennas_gcrs = self.antennas.reshape((1, num_ants)).get_gcrs(
             obstime=interp_times.reshape((num_grid_times, 1))
         )  # [T, num_ants]
-        antennas_position_gcrs = antennas_gcrs.cartesian.xyz
+        antennas_position_gcrs = antennas_gcrs.cartesian.xyz  # [3, T, num_ants]
+
+        enu_origin = self.ref_location.get_gcrs(obstime=interp_times)
+        enu_origin_gcrs = enu_origin.cartesian.xyz  # [3, T]
 
         enu_gcrs = ENU(
-            east=np.reshape([0, 1, 0, 0] * au.km, (1, 4)),
-            north=np.reshape([0, 0, 1, 0] * au.km, (1, 4)),
-            up=np.reshape([0, 0, 0, 1] * au.km, (1, 4)),
-            location=self.antennas[0],
-            obstime=interp_times.reshape((num_grid_times, 1))  # [T, 4]
+            east=np.reshape([1, 0, 0], (1, 3)),
+            north=np.reshape([0, 1, 0], (1, 3)),
+            up=np.reshape([0, 0, 1], (1, 3)),
+            location=self.ref_location,
+            obstime=interp_times.reshape((num_grid_times, 1))  # [T, 3]
         ).transform_to(ac.GCRS(obstime=interp_times.reshape((num_grid_times, 1))))
-        enu_coords_gcrs = enu_gcrs.cartesian.xyz
+        enu_coords_gcrs = enu_gcrs.cartesian.xyz  # [3, T, 3]
 
         ephem_compute_time = time_mod.time() - ephem_compute_t0
 
@@ -117,13 +126,17 @@ class NearFieldDelayEngine:
             np.transpose(antennas_position_gcrs, (1, 2, 0))
         )  # [T, num_ants, 3]
 
+        self.enu_origin_gcrs = quantity_to_jnp(
+            np.transpose(enu_origin_gcrs, (1, 0))
+        )  # [T, 3]
+
         self.enu_coords_gcrs = quantity_to_jnp(
             np.transpose(enu_coords_gcrs, (1, 2, 0))
-        )  # [T, 4, 3]
+        )  # [T, 3, 3]
 
-        self.interp_times_jax = jnp.asarray((interp_times - self.ref_time).sec)  # [T]
+        self.interp_times_jax = jnp.asarray((interp_times.tt - self.ref_time.tt).sec)  # [T]
 
-    def construct_x_0_gcrs(self, emitter: ac.EarthLocation | ENU) -> InterpolatedArray:
+    def construct_x_0_gcrs(self, emitter: ac.EarthLocation) -> InterpolatedArray:
         """
         Construct the emitter location as a linear combination of radius vectors from first antenna to antennas 1,2,3.
 
@@ -133,23 +146,14 @@ class NearFieldDelayEngine:
         Returns:
             interpolator for emitter
         """
-        obstime = self.interp_times.reshape((-1, 1))
-        if isinstance(emitter, ac.EarthLocation):
-            emitter_gcrs = emitter.reshape((1, -1)).get_itrs(
-                obstime=obstime
-            ).transform_to(
-                ac.GCRS(
-                    obstime=obstime
-                )
-            )  # [T, E]
-        elif isinstance(emitter, ENU):
-            emitter_gcrs = emitter.reshape((1, -1)).transform_to(
-                ac.GCRS(
-                    obstime=obstime
-                )
-            )  # [T, E]
-        else:
-            raise ValueError(f"emitter must be EarthLocation or ENU got {type(emitter)}")
+        obstimes = self.interp_times.reshape((-1, 1))
+        emitter_gcrs = emitter.reshape((1, -1)).get_itrs(
+            obstime=obstimes
+        ).transform_to(
+            ac.GCRS(
+                obstime=obstimes
+            )
+        )  # [T, E]
         emitter_position_gcrs = emitter_gcrs.cartesian.xyz
         x_emitter_gcrs = quantity_to_jnp(
             np.transpose(emitter_position_gcrs, (1, 2, 0))
@@ -169,8 +173,8 @@ class NearFieldDelayEngine:
 
         Args:
             a_east: [E] coefficient for east direction from antenna[0]
-            a_north: [E] coefficient for (x2 - x0) direction
-            a_up: [E] coefficient for (x3 - x0) direction
+            a_north: [E] coefficient for north direction
+            a_up: [E] coefficient for up direction
 
         Returns:
             interpolator for emitter
@@ -178,12 +182,12 @@ class NearFieldDelayEngine:
         a_east = jnp.reshape(a_east, (-1,))
         a_north = jnp.reshape(a_north, (-1,))
         a_up = jnp.reshape(a_up, (-1,))
-        d_origin = self.enu_coords_gcrs[:, 0:1, :]
-        d_east = self.enu_coords_gcrs[:, 1:2, :] - d_origin
-        d_north = self.enu_coords_gcrs[:, 2:3, :] - d_origin
-        d_up = self.enu_coords_gcrs[:, 3:4, :] - d_origin
+        d_origin = self.enu_origin_gcrs[:, None, :]  # [T, 1, 3]
+        d_east = self.enu_coords_gcrs[:, 0:1, :]
+        d_north = self.enu_coords_gcrs[:, 1:2, :]
+        d_up = self.enu_coords_gcrs[:, 2:3, :]
 
-        values = a_east[:, None] * d_east + a_north[:, None] * d_north + a_up[:, None] * d_up + d_origin
+        values = a_east[:, None] * d_east + a_north[:, None] * d_north + a_up[:, None] * d_up + d_origin  # [T, E, 3]
 
         return InterpolatedArray(
             x=self.interp_times_jax,
@@ -228,7 +232,7 @@ class NearFieldDelayEngine:
         return delay.reshape(np.shape(a_east)), dist2.reshape(np.shape(a_east)), dist1.reshape(np.shape(a_east))
 
     def compute_delay_from_emitter_jax(self,
-                                       emitter: ac.EarthLocation | ENU,
+                                       emitter: ac.EarthLocation,
                                        t1: jax.Array,
                                        i1: jax.Array,
                                        i2: jax.Array
@@ -351,6 +355,9 @@ def near_field_delay(
     def _delay(x_i_gcrs: InterpolatedArray) -> Tuple[jax.Array, jax.Array]:
         # Eq 3.14 in [2] -- i.e. only Earth's potential
         b_gcrs = x_i_gcrs(t1) - x_0_gcrs(t1)  # [E, 3]
+        # jax.debug.print("b_gcrs={b_gcrs}",b_gcrs=b_gcrs)
+        # jax.debug.print("norm(x_i_gcrs(t1))={x}",x=norm(x_i_gcrs(t1)))
+        # jax.debug.print("norm(x_0_gcrs(t1), axis=-1)={x}",x=norm(x_0_gcrs(t1), axis=-1))
         delta_T_grav_earth = 2. * GM_earth / c ** 2 * jnp.log(
             (
                     norm(x_i_gcrs(t1)) + norm(x_0_gcrs(t1), axis=-1) + norm(b_gcrs, axis=-1)
@@ -358,13 +365,15 @@ def near_field_delay(
                     norm(x_i_gcrs(t1)) + norm(x_0_gcrs(t1), axis=-1) - norm(b_gcrs, axis=-1)
             )
         )  # [E]
+        # jax.debug.print("delta_T_grav_earth={delta_T_grav_earth}",delta_T_grav_earth=delta_T_grav_earth)
+        # Effect of Earth's potential on the delay ~ 1e-5 m
         coordinate_delay = norm(b_gcrs, axis=-1) + delta_T_grav_earth  # [E]
 
         # atomic clocks tick at the rate of proper time, thus we need to covert to proper time.
         # 4.19 in [2] -- for Earth based observers the rate of proper time is the same as TT (by construction).
-        proper_delay = (1 - L_G) * coordinate_delay
+        proper_delay = (1. - L_G) * coordinate_delay
         return proper_delay, norm(b_gcrs, axis=-1)
 
     proper_time1, dist1 = _delay(x_1_gcrs)
     proper_time2, dist2 = _delay(x_2_gcrs)
-    return proper_time2 - proper_time1, dist2, dist1
+    return proper_time1 - proper_time2, dist2, dist1

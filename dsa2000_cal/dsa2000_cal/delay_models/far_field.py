@@ -13,7 +13,7 @@ from jax import config, numpy as jnp, lax
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.uvw.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
+from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 
 class VisibilityCoords(NamedTuple):
@@ -30,7 +30,30 @@ class VisibilityCoords(NamedTuple):
 @dataclasses.dataclass(eq=False)
 class FarFieldDelayEngine:
     """
-    Compute the UVW coordinates for a given phase center, using VLBI delay model.
+    Engine to compute the delay for far field sources, outside the solar system. This includes the effects of
+    gravitational bodies in the solar system. Which contributes to delay on the order of 0.2 mm * (|baseline|/1km).
+
+    UVW coordinates are computed using the delay model, via the standard approximation:
+
+    delay(l,m) ~ u l + v m + w sqrt(1 - l^2 - m^2)
+
+    from which it follows:
+
+    w = delay(l=0, m=0)
+    u = d/dl delay(l=0, m=0)
+    v = d/dm delay(l=0, m=0)
+
+    The delay error based on this approximation is then:
+
+    error(l,m) = delay(l,m) - (u l + v m + w sqrt(1 - l^2 - m^2))
+
+    The delay model is based on the IERS conventions [1] and the general relativistic model of VLBI delay observations [2].
+
+    References:
+        [1] IERS Technical Note No. 36, IERS Conventions (2010)
+            https://www.iers.org/SharedDocs/Publikationen/EN/IERS/Publications/tn/TechnNote36/tn36.pdf
+        [2] Klioner, S. A. (1991). General relativistic model of VLBI delay observations.
+            https://www.researchgate.net/publication/253171626
     """
     antennas: ac.EarthLocation
     start_time: at.Time
@@ -438,6 +461,7 @@ def far_field_delay(
 
     b_gcrs = x_2_gcrs(t1) - x_1_gcrs(t1)
 
+
     # Eq 11.6, accurate for use in 11.3 and 11.5
     X_1_bcrs = X_earth_bcrs(t1) + x_1_gcrs(t1)  # [3]
     X_2_bcrs = X_earth_bcrs(t1) + x_2_gcrs(t1)  # [3]
@@ -453,18 +477,21 @@ def far_field_delay(
     R_2J = X_2_bcrs - X_J_bcrs_t1J - V_earth_bcrs(t1) * (K_bcrs @ b_gcrs) / c  # [num_J, 3]
 
     # Eq 11.1
-    delta_T_grav_J = 2. * (GM_J) / c ** 2 * jnp.log(
+    delta_T_grav_J = 2. * (GM_J) / c ** 2 * (1. + (V_J_bcrs(t_1J) @ K_bcrs)/c) * jnp.log(
         (norm(R_1J) + R_1J @ K_bcrs) / (norm(R_2J) + R_2J @ K_bcrs)
     )  # [num_J]
 
-    # Eq 11.2
-    delta_T_grav_earth = 2. * GM_earth / c ** 2 * jnp.log(
+    # Eq 11.2 =7.383900660090742e-11 - 7.383279239381223e-11 =
+    delta_T_grav_earth = 2. * GM_earth / c ** 2 * (1. + (K_bcrs @ V_earth_bcrs(t1))/c) * jnp.log(
         (norm(x_1_gcrs(t1)) + K_bcrs @ x_1_gcrs(t1)) / (norm(x_2_gcrs(t1)) + K_bcrs @ x_2_gcrs(t1))
     )  # []
+    # (K @ V)/c term is around 1e-4 for Earth term (around 1e-15m delay)
 
     # Eq 11.7
     delta_T_grav = jnp.sum(delta_T_grav_J) + delta_T_grav_earth  # []
+    # Around delta_T_grav=-0.00016 m * (|baseline|/1km)
 
+    # Since we perform analysis in BCRS kinematically non-rotating dynamic frame we need to convert to GCRS TT-compatible
     # Eq 11.9: (delta_T_grav - K.b/c [1 - A / c^2] - V.b/c^2 [1 + B / c]) / (1 + C / c)
     U = GM_earth / jnp.linalg.norm(R_earth_bcrs(t1))
     A = 2. * U + 0.5 * norm2(V_earth_bcrs(t1)) + V_earth_bcrs(t1) @ w_2_gcrs(t1)
@@ -487,7 +514,7 @@ def far_field_delay(
         # k_2_gcrs = K_bcrs + (V_earth_bcrs(t1) + w_2_gcrs(t1) - K_bcrs * (K_bcrs @ (V_earth_bcrs(t1) + w_2_gcrs(t1)))) / c
         # delay_atm_2 = ...
         # coordinate_delay_tcg = coordinate_delay_tcg + (delay_atm_2 - delay_atm_1) + delay_atm_1 * (K_bcrs @ (w_2_gcrs(t1) - w_1_gcrs(t1))) / c
-        raise NotImplementedError(f"Atmosphere model is not implemented yet.")
+        raise NotImplementedError(f"Atmosphere model is not implemented.")
 
     # TT is defined with a rate that coincides with mean proper rate on the geoid,
     # so to first order proper and TT are the linearly related for observers on the geoid.

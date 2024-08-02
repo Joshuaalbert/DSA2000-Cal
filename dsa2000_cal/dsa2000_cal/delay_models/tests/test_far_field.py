@@ -11,7 +11,51 @@ config.update("jax_enable_x64", True)
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw
-from dsa2000_cal.uvw.far_field import FarFieldDelayEngine
+from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
+
+
+def test_far_field_delay_engine():
+    time = at.Time("2021-01-01T00:00:00", scale='utc')
+    array_location = ac.EarthLocation.of_site('vla')
+    antennas = ENU(
+        east=[0, 1] * au.km,
+        north=[0, 0] * au.km,
+        up=[0, 0] * au.km,
+        location=array_location,
+        obstime=time
+    )
+
+    np.testing.assert_allclose(np.linalg.norm(np.diff(antennas.cartesian.xyz, axis=-1), axis=0), 1 * au.km,
+                               atol=1e-3 * au.m)
+
+    antennas = antennas.transform_to(ac.ITRS(obstime=time, location=array_location)).earth_location
+
+    np.testing.assert_allclose(np.linalg.norm(np.diff(antennas.get_itrs().cartesian.xyz, axis=-1), axis=0), 1 * au.km,
+                               atol=1e-3 * au.m)
+
+    phase_center = ENU(east=1, north=0, up=0, location=array_location, obstime=time).transform_to(ac.ICRS())
+
+    engine = FarFieldDelayEngine(
+        phase_center=phase_center,
+        antennas=antennas,
+        start_time=time,
+        end_time=time,
+        verbose=True,
+        # resolution=0.01 * au.s
+    )
+
+    delay = engine.compute_delay_from_lm_jax(
+        l=jnp.asarray(0.),
+        m=jnp.asarray(0.),
+        t1=engine.time_to_jnp(time),
+        i1=jnp.asarray(0),
+        i2=jnp.asarray(1),
+    )
+
+    assert np.shape(delay) == ()
+
+    print(delay)
+    np.testing.assert_allclose(delay, 1000., atol=0.55)
 
 
 @pytest.mark.parametrize('with_autocorr', [True, False])
