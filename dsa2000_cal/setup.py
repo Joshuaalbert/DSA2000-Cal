@@ -28,12 +28,16 @@ def get_all_subdirs(top: str, *dirs) -> List[str]:
 
 
 install_requires = [
-    'pydantic',
+    'pydantic<2',
     'numpy',
     'ujson',
     'astropy',
     'jax',
-    'jaxlib'
+    'jaxlib',
+    'tables',
+    'ducc0',
+    'tomographic_kernel',
+    'jaxns'
 ]
 
 with open("README.md", "r") as fh:
@@ -41,7 +45,7 @@ with open("README.md", "r") as fh:
 
 setup(name='dsa2000_cal',
       version='1.0.0',
-      description='Utils for DSA2000 calibration',
+      description='DSA2000 calibration and forward modelling code',
       long_description=long_description,
       long_description_content_type="text/markdown",
       url="https://github.com/joshuaalbert/dsa2000-cal",
@@ -61,5 +65,5 @@ setup(name='dsa2000_cal',
           "License :: OSI Approved :: Apache Software License",
           "Operating System :: OS Independent",
       ],
-      python_requires='>=3.8',
+      python_requires='>=3.11',
       )
