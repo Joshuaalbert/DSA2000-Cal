@@ -7,6 +7,7 @@ import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pylab as plt
 from astropy import constants
 from jax import lax
 
@@ -18,7 +19,6 @@ from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.vec_utils import kron_inv
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
@@ -131,6 +131,18 @@ class DirtyImaging:
         dirty_image = dirty_image[:, :, None, :]  # [nl, nm, 1, coh]
         t1 = time_mod.time()
         print(f"Completed imaging in {t1 - t0:.2f} seconds.")
+        for coh in range(dirty_image.shape[-1]):
+            # plot to png
+            plt.imshow(
+                np.log10(np.abs(dirty_image[..., 0, coh].T)),
+                origin='lower',
+                extent=(-num_pixel / 2 * dl, num_pixel / 2 * dl, -num_pixel / 2 * dm, num_pixel / 2 * dm)
+            )
+            plt.xlabel('l [rad]')
+            plt.ylabel('m [rad]')
+            plt.colorbar()
+            plt.savefig(f"{self.plot_folder}/{image_name}_coh{coh}.png")
+            plt.show()
         image_model = ImageModel(
             phase_tracking=ms.meta.phase_tracking,
             obs_time=ms.ref_time,
@@ -212,7 +224,7 @@ class DirtyImaging:
                  out_mapping="[...,p]",
                  verbose=True)
         def image_single_coh(vis, weights, mask):
-            dirty_image = wgridder.vis_to_image(
+            dirty_image = wgridder.vis2dirty(
                 uvw=uvw,
                 freqs=freqs,
                 vis=vis,
