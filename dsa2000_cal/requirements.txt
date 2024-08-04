@@ -14,5 +14,5 @@ tomographic_kernel>=1.0.3
 jupyter
 tqdm
 sympy
-ducc0
+ducc0==0.34.0
 imageio
