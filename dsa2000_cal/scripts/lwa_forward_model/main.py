@@ -11,7 +11,6 @@ config.update('jax_threefry_partitionable', True)
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from tomographic_kernel.frames import ENU
-
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_models.lwa_forward_model import LWAForwardModel
@@ -28,7 +27,7 @@ def main(ms_folder: str):
     else:
         array_location = array.get_array_location()
         antennas = array.get_antennas()
-        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 60 * np.arange(60) * au.s
+        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 60 * np.arange(1) * au.s
         phase_tracking = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
         meta = MeasurementSetMetaV0(
             array_name='lwa',
@@ -49,6 +48,28 @@ def main(ms_folder: str):
         )
         ms = MeasurementSet.create_measurement_set(ms_folder=ms_folder, meta=meta)
 
+    # # propagation delay
+    # rfi_model = LWACellTower(seed='abc')
+    # rfi_source = rfi_model.make_source_params(freqs=ms.meta.freqs, full_stokes=False)
+    # print(ms.near_field_delay_engine.x_antennas_gcrs)
+    # print(ms.near_field_delay_engine.enu_coords_gcrs)
+    # # return
+    # for i2 in range(len(ms.meta.antennas)):
+    #     delay, dist20, dist10 = ms.near_field_delay_engine.compute_delay_from_projection_jax(
+    #         a_east=0.,
+    #         a_north=0.,
+    #         a_up=20e3,
+    #         t1=ms.time_to_jnp(ms.meta.times[0]),
+    #         i1=0,
+    #         i2=i2
+    #     )  # [], [], []
+    #     delay_s = delay / 299792458.
+    #     print(f"Delay 0 to {i2}: {delay} m ({delay_s} s), dist20: {dist20}, dist10: {dist10}")
+    #     acf_val = rfi_source.delay_acf(delay_s)
+    #     print(f"ACF value: {acf_val}, angle: {np.angle(acf_val)}")
+    #
+    # return
+
     sky_model_producer = SyntheticSkyModelProducer(
         phase_tracking=ms.meta.phase_tracking,
         freqs=ms.meta.freqs,
@@ -64,7 +85,7 @@ def main(ms_folder: str):
         dtype=jnp.complex128,
         weighting='natural',
         epsilon=1e-6,
-        add_noise=True
+        add_noise=False
     )
     forward_model.forward(ms=ms)
 
