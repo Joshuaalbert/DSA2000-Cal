@@ -18,8 +18,8 @@ from pydantic import Field
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
-from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
-from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
+from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 
 
 class MeasurementSetMetaV0(SerialisableBaseModel):
@@ -247,6 +247,14 @@ class MeasurementSet:
                  time_idx: np.ndarray | int) -> np.ndarray:
         """
         Get the row index for the given antenna pair and time index.
+
+        Args:
+            antenna_1: [num_rows] the first antenna
+            antenna_2: [num_rows] the second antenna
+            time_idx: [num_rows] the time index
+
+        Returns:
+            rows: [num_rows] the row indices
         """
         if self.meta.with_autocorr:
             get_antenna_index = partial(_combination_with_replacement_index, n=len(self.meta.antennas))
@@ -453,6 +461,13 @@ class MeasurementSet:
             freqs: au.Quantity | None = None):
         """
         Put the visibility data for the given antenna pair and time index.
+
+        Args:
+            data: the visibility data being put
+            antenna_1: [num_rows] the first antenna
+            antenna_2: num_rows] the second antenna
+            times: the times
+            freqs: the frequencies, if None, all frequencies are returned
         """
         time_idx = get_centred_insert_index((times - self.ref_time).sec, (self.meta.times - self.ref_time).sec)
         if freqs is not None:
@@ -506,7 +521,7 @@ class MeasurementSet:
             row_slice: the row slice
 
         Returns:
-            the UVW coordinates
+            uvw: [num_rows, 3] the UVW coordinates
         """
         row_slice = _try_get_slice(row_slice)
         with tb.open_file(self.data_file, 'r') as f:
@@ -519,13 +534,14 @@ class MeasurementSet:
         I.e. scalars will broadcast.
 
         Args:
-            antenna_1: the first antenna
-            antenna_2: the second antenna
-            times: the times
-            freqs: the frequencies, if None, all frequencies are returned
+            antenna_1: [num_ant] the first antenna
+            antenna_2: [num_ant] the second antenna
+            times: [num_times] the times
+            freqs: [num_freqs] the frequencies, if None, all frequencies are returned
 
         Returns:
-            the visibility data matching the given antenna pair, times and frequencies.
+            visibility_data: [num_rows, num_freqs, num_coherencies] the visibility data matching the given
+            antenna pairs, times and frequencies.
         """
 
         (i0_time, alpha0_time), (i1_time, alpha1_time) = get_interp_indices_and_weights(

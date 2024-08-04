@@ -11,7 +11,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import PointSourceModel, \
     PointPredict, PointModelData
 

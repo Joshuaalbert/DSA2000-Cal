@@ -2,11 +2,13 @@ import os
 
 import jax.numpy as jnp
 import numpy as np
+import pylab as plt
 from astropy import units as au
 from scipy.io import loadmat
 
 from dsa2000_cal.assets.registries import rfi_model_registry
 from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
+from dsa2000_cal.common.astropy_utils import fraunhofer_far_field_limit
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 
 
@@ -15,6 +17,13 @@ class LWACellTower(AbstractRFIEmitterData):
 
     def rfi_injection_model(self) -> str:
         return os.path.join(*self.content_path, 'rfi_injection_model.mat')
+
+    def plot_acf(self):
+        mat = loadmat(self.rfi_injection_model())
+        delays = jnp.asarray(mat['t_acf'][0])
+        auto_correlation_function = jnp.asarray(mat['acf']).T
+        plt.plot(delays, auto_correlation_function)
+        plt.show()
 
     def make_source_params(self, freqs: au.Quantity, central_freq: au.Quantity | None = None,
                            bandwidth: au.Quantity | None = None,
@@ -35,7 +44,7 @@ class LWACellTower(AbstractRFIEmitterData):
 
         rfi_band_mask = np.logical_and(freqs >= central_freq - bandwidth / 2, freqs <= central_freq + bandwidth / 2)
 
-        luminosity = au.Quantity(np.where(rfi_band_mask[None], 2e-7, 0.), unit='W/MHz')  # [1, num_chans]
+        luminosity = au.Quantity(np.where(rfi_band_mask[None], 2e-11, 0.), unit='W/MHz')  # [1, num_chans]
         if full_stokes:
             luminosity = 0.5 * au.Quantity(
                 np.stack(
@@ -47,7 +56,11 @@ class LWACellTower(AbstractRFIEmitterData):
                 )
             )
 
-        position_enu = au.Quantity([[14e3, 14e3, 120.]], unit='m')  # [1, 3]
+        # ENU coords
+        # Far field limit would be around
+        far_field_limit = fraunhofer_far_field_limit(diameter=2.7 * au.km, freq=central_freq)
+        print(f"Far field limit: {far_field_limit} at {central_freq}")
+        position_enu = au.Quantity([[100e3, 100e3, 100e3]], unit='m')  # [1, 3]
 
         delay_acf = InterpolatedArray(
             x=delays, values=auto_correlation_function, axis=0, regular_grid=regular_grid
@@ -59,3 +72,8 @@ class LWACellTower(AbstractRFIEmitterData):
             spectral_flux_density=luminosity,
             delay_acf=delay_acf
         )
+
+
+def test_lwa_cell_tower():
+    lwa_cell_tower = LWACellTower(seed='abc')
+    lwa_cell_tower.plot_acf()

@@ -8,8 +8,8 @@ from jax._src.typing import SupportsDType
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
-from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
-from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
+from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel, \
     FITSModelData, FITSPredict
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \

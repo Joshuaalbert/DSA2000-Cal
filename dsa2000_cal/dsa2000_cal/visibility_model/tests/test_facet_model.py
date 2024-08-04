@@ -1,10 +1,13 @@
 import itertools
 
 import jax
+jax.config.update("jax_enable_x64", True)
+
 import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 from astropy import time as at, coordinates as ac, units as au, constants as const
+from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry, array_registry
@@ -12,8 +15,8 @@ from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.wgridder import vis2dirty
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
-from dsa2000_cal.uvw.far_field import FarFieldDelayEngine, VisibilityCoords
-from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
+from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
@@ -429,7 +432,7 @@ def test_facet_model_lte():
     freqs = au.Quantity([55, 59], 'MHz')
 
     wavelength = quantity_to_jnp(const.c / freqs[0])
-    pixsize = (wavelength / max_baseline) / 7
+    pixsize = (wavelength / max_baseline) / 10
     print('pixel size (arcmim)', pixsize * 180 / np.pi * 60)
     n = 2000
     print('width (deg)', n * pixsize * 180 / np.pi)
@@ -438,9 +441,7 @@ def test_facet_model_lte():
     array_location = antennas[0]
     ref_time = obstimes[0]
 
-    phase_center = ac.AltAz(
-        alt=90 * au.deg, az=0 * au.deg, location=array_location, obstime=ref_time
-    ).transform_to(ac.ICRS())
+    phase_center = ENU(0,0,1,obstime=obstimes[0],location=array_location).transform_to(ac.ICRS())
 
     geodesic_model = GeodesicModel(
         phase_center=phase_center,
@@ -494,7 +495,7 @@ def test_facet_model_lte():
     print(visibility_coords.antenna_1[np.where(non_finite_mask)[0]])
     print(visibility_coords.antenna_2[np.where(non_finite_mask)[0]])
 
-    l0 = 0.99
+    l0 = 0.
     m0 = 0.
     dirty = vis2dirty(
         uvw=visibility_coords.uvw,
@@ -519,7 +520,7 @@ def test_facet_model_lte():
     print(lvec[np.where(non_finite_mask)[0]])
     print(mvec[np.where(non_finite_mask)[1]])
 
-    plt.imshow(np.abs(dirty).T,
+    plt.imshow((dirty).T,
                origin='lower',
                extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
                cmap='jet',
@@ -528,13 +529,13 @@ def test_facet_model_lte():
     plt.colorbar()
     plt.xlabel('l (proj. rad)')
     plt.ylabel('m (proj. rad)')
-    plt.title('RFI 14km East, 80m up')
+    plt.title('RFI')
     import glob
     idx = len(glob.glob('lte_full_*.png'))
     # plt.savefig(f'lte_full_{idx:03d}.png', dpi=500)
     plt.show()
 
-    plt.imshow(np.abs(dirty[900:1100, 900:1100]).T,
+    plt.imshow((dirty[900:1100, 900:1100]).T,
                origin='lower',
                extent=(lvec[900], lvec[1100], mvec[900], mvec[1100]),
                cmap='jet',

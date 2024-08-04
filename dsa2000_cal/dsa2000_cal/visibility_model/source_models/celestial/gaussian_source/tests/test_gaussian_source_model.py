@@ -19,7 +19,7 @@ from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.wgridder import dirty2vis
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
     GaussianSourceModel, GaussianPredict, GaussianModelData
 

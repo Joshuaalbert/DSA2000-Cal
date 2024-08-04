@@ -8,7 +8,7 @@ from jax import numpy as jnp, config
 
 from dsa2000_cal.common.corr_translation import linear_to_stokes
 from dsa2000_cal.common.wgridder import dirty2vis, vis2dirty
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
     GaussianModelData, GaussianPredict, GaussianSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import PointModelData, \

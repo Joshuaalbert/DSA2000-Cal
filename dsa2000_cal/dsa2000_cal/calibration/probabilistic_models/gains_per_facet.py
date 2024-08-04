@@ -10,7 +10,7 @@ from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import Abs
     ProbabilisticModelInstance
 from dsa2000_cal.common.jax_utils import promote_pytree
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 tfpd = tfp.distributions

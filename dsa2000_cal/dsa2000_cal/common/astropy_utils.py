@@ -1,5 +1,6 @@
 import jax.random
 import numpy as np
+from astropy import constants as const
 from astropy import coordinates as ac
 from astropy import units as au
 from astropy.coordinates import Angle
@@ -205,3 +206,22 @@ def get_angular_diameter(coords_icrs: ac.ICRS) -> au.Quantity:
 
     # Get maximal separation
     return max(coord.separation(coords_icrs).max() for coord in coords_icrs).to('deg')
+
+
+def fraunhofer_far_field_limit(diameter: au.Quantity, freq: au.Quantity) -> au.Quantity:
+    """
+    Calculate the Fraunhofer far field limit for a given diameter and wavelength.
+
+    Args:
+        diameter: The diameter of the aperture.
+        freq: The wavelength of the light.
+
+    Returns:
+        The Fraunhofer far field limit.
+    """
+    if not diameter.unit.is_equivalent(au.m):
+        raise ValueError("Diameter must be in meters.")
+    if not freq.unit.is_equivalent(au.Hz):
+        raise ValueError("Frequency must be in Hz.")
+    wavelength = const.c / freq
+    return (diameter ** 2 / wavelength).to('m')

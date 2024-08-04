@@ -20,7 +20,7 @@ from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import Abs
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
 from dsa2000_cal.types import CalibrationSolutions
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 
 tfpd = tfp.distributions
 
@@ -173,7 +173,6 @@ class Calibration:
         # Inputs
         freqs_jax = quantity_to_jnp(ms.meta.freqs)
 
-        solutions = []
         # TODO: Apply UV cutoff to ignore galactic plane
         gen = ms.create_block_generator(
             vis=True, weights=True, flags=True, relative_time_idx=True,

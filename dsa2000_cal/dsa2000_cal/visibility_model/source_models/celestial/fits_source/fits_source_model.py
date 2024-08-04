@@ -21,7 +21,7 @@ from dsa2000_cal.common.interp_utils import get_centred_insert_index
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_product
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 
@@ -234,7 +234,11 @@ class FITSSourceModel(AbstractSourceModel):
                     raise ValueError(f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}")
                 image = hdul0[0].data[:, 0, :, :]  # [stokes, Nm, Nl]
                 w0 = WCS(hdul0[0].header)
-                image = au.Quantity(image, 'Jy')
+                image = au.Quantity(image, 'Jy') # [stokes, Nm, Nl]
+                # Reverse l axis
+                image = image[:, :, ::-1]  # [stokes, Nm, Nl]
+                # Transpose
+                image = image.T  # [Nl, Nm, stokes]
                 # RA--SIN and DEC--SIN
                 if not (w0.wcs.ctype[0].strip().endswith('SIN') and w0.wcs.ctype[1].strip().endswith('SIN')):
                     raise ValueError(f"Expected SIN projection, got {w0.wcs.ctype}")
@@ -277,10 +281,9 @@ class FITSSourceModel(AbstractSourceModel):
                 if n0 < 0:
                     raise BelowHorizonSource(f"Source below horizon at {center_icrs} (l0={l0}, m0={m0}, n0={n0})")
 
-                # Convert to [Nl, Nm], and reverse l so that it's increasing
-                image = image[:, :, ::-1].T  # [Nl, Nm, num_stokes] with l flipped
+
                 # Image is in stokes I, so we can just take the first element
-                image = image[:, :, 0]
+                image = image[:, :, 0] # [Nl, Nm]
                 if full_stokes:
                     # Convert to linear
                     image = np.asarray(

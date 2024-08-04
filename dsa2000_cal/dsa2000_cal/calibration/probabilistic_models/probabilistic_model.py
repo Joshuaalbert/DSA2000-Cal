@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 
 tfpd = tfp.distributions
 

@@ -184,7 +184,7 @@ class LWAForwardModel(AbstractForwardModel):
             )
 
         rime_model = RIMEModel(
-            facet_models=rfi_facet_models + celestial_facet_models
+            facet_models=rfi_facet_models# + celestial_facet_models
         )
 
         simulator = SimulateVisibilities(
@@ -257,7 +257,7 @@ class LWAForwardModel(AbstractForwardModel):
             )
 
         rime_model = RIMEModel(
-            facet_models=celestial_facet_models + rfi_facet_models
+            facet_models=rfi_facet_models  # + celestial_facet_models
         )
 
         gains_per_facet = GainsPerFacet(

@@ -16,8 +16,8 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_product
-from dsa2000_cal.uvw.far_field import VisibilityCoords
-from dsa2000_cal.uvw.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 
 
 class RFIEmitterModelData(NamedTuple):
@@ -266,6 +266,10 @@ class RFIEmitterPredict:
                 i2=i2
             )  # [], [], []
 
+            # jax.debug.print("delay={delay}", delay=delay)
+            # jax.debug.print("dist20={dist20}", dist20=dist20)
+            # jax.debug.print("dist10={dist10}", dist10)
+
             # ACF delay -- rebuild from sharded data
             delay_acf = InterpolatedArray(
                 x=model_data.delay_acf.x,
@@ -273,7 +277,8 @@ class RFIEmitterPredict:
                 axis=0,
                 regular_grid=model_data.delay_acf.regular_grid
             )
-            delay_acf = delay_acf(time=delay)  # []
+            delay_s = delay / quantity_to_jnp(const.c)
+            delay_acf_val = delay_acf(time=delay_s)  # []
 
             wavelength = quantity_to_jnp(const.c) / freq  # []
             # delay ~ l*u + m*v + n*w
@@ -304,7 +309,7 @@ class RFIEmitterPredict:
                 e_1 = jnp.sqrt(luminosity) * jnp.reciprocal(dist10)  # []
                 e_2 = jnp.sqrt(luminosity) * jnp.reciprocal(dist20)  # []
                 visibilities = (e_1 * e_2) * jnp.exp(phase)  # []
-            visibilities *= delay_acf  # []
+            visibilities *= delay_acf_val  # []
             return jnp.asarray(visibilities, self.dtype)  # [num_chan[,2,2]]
 
         vis = compute_phase_from_projection_jax(

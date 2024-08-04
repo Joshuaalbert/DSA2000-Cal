@@ -23,7 +23,7 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
-from dsa2000_cal.uvw.far_field import VisibilityCoords
+from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 

@@ -13,7 +13,7 @@ from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.interp_utils import InterpolatedArray, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.uvw.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
+from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
 @dataclasses.dataclass(eq=False)
