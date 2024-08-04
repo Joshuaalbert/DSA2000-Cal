@@ -512,5 +512,10 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     header["MJD-OBS"] = image_model.obs_time.mjd
 
     # Save the image
-    hdu = fits.PrimaryHDU(data=quantity_to_np(image_model.image, 'Jy').T, header=header)
+    data = quantity_to_np(image_model.image, 'Jy')  # [num_l, num_m, num_freqs, num_coherencies]
+    # Reverse l axis
+    data = data[::-1, :, :, :]
+    # Transpose data
+    data = data.T  # [num_coherencies, num_freqs, num_m, num_l]
+    hdu = fits.PrimaryHDU(data=data, header=header)
     hdu.writeto(file_path, overwrite=overwrite)
