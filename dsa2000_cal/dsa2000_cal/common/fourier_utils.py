@@ -9,7 +9,7 @@ class ApertureTransform:
     """
     A class to transform between aperture and image planes.
 
-    For fourier convention, the transform is defined as:
+    For physical convention, the transform is defined as:
 
     .. math::
 
