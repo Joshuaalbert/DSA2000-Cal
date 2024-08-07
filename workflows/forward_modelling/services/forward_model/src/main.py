@@ -46,7 +46,7 @@ def main(ms_folder: str):
         ms = MeasurementSet.create_measurement_set(ms_folder=ms_folder, meta=meta)
 
     sky_model_producer = SyntheticSkyModelProducer(
-        phase_tracking=ms.meta.pointing,
+        phase_tracking=ms.meta.pointings,
         obs_time=ms.ref_time,
         freqs=ms.meta.freqs,
         num_bright_sources=7,

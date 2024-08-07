@@ -11,7 +11,7 @@ def test_dish_effects_simulation():
     pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     beam_gain_model = build_beam_gain_model(array_name='lwa')
     dish_effects_simulation = DishEffectsSimulation(
-        pointing=pointing,
+        pointings=pointing,
         dish_effect_params=DishEffectsParams(),
         beam_gain_model=beam_gain_model,
         plot_folder='dish_effects_simulation_plots',
@@ -43,7 +43,7 @@ def test_dish_effects_gain_model_real_data(tmp_path):
     pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
 
     dish_effects_gain_model = dish_effects_gain_model_factory(
-        pointing=pointing,
+        pointings=pointing,
         beam_gain_model=beam_gain_model,
         dish_effect_params=DishEffectsParams(),
         plot_folder='dish_effects_gain_model_plots',
