@@ -11,6 +11,7 @@ from astropy import units as au, coordinates as ac, time as at
 from tomographic_kernel.frames import ENU
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
+from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
@@ -20,6 +21,7 @@ from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.forward_models.systematics.ionosphere_simulation import TEC_CONV, IonosphereSimulation
 from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 tfpd = tfp.distributions
 
@@ -87,20 +89,19 @@ def create_model_gains(antennas_enu: jax.Array, model_antennas_enu: jax.Array, d
     model_gains = model_gains.at[..., 1, 1].set(scalar_gain)
     return model_gains
 
-
-def ionosphere_gain_model_factory(pointing: ac.ICRS | ENU,
-                                  model_freqs: au.Quantity,
-                                  field_of_view: au.Quantity,
-                                  spatial_resolution: au.Quantity,
-                                  observation_start_time: at.Time,
-                                  observation_duration: au.Quantity,
-                                  temporal_resolution: au.Quantity,
-                                  specification: SPECIFICATION,
-                                  array_name: str,
-                                  plot_folder: str,
-                                  cache_folder: str,
-                                  seed: int
-                                  ) -> IonosphereGainModel:
+def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
+                                model_freqs: au.Quantity,
+                                field_of_view: au.Quantity,
+                                spatial_resolution: au.Quantity,
+                                observation_start_time: at.Time,
+                                observation_duration: au.Quantity,
+                                temporal_resolution: au.Quantity,
+                                specification: SPECIFICATION,
+                                array_name: str,
+                                plot_folder: str,
+                                cache_folder: str,
+                                seed: int
+                                ) -> IonosphereGainModel:
     """
     Simulates ionosphere then crates gain model from it.
 

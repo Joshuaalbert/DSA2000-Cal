@@ -1,7 +1,6 @@
 import dataclasses
 import os
 import time as time_mod
-from typing import NamedTuple
 
 import jax
 import numpy as np
@@ -14,6 +13,7 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION, build_ion
 from tomographic_kernel.tomographic_kernel import GeodesicTuple, TomographicKernel
 from tomographic_kernel.utils import make_coord_array
 
+from dsa2000_cal.common.cache_utils import check_cache
 from dsa2000_cal.common.coord_utils import earth_location_to_enu, lmn_to_enu
 from dsa2000_cal.common.jax_utils import pad_to_chunksize, chunked_pmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
@@ -46,28 +46,7 @@ class IonosphereSimulationCache(SerialisableBaseModel):
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
-        print(data)
         super(IonosphereSimulationCache, self).__init__(**data)
-        _check_ionosphere_cache(self)
-
-
-def _check_ionosphere_cache(params: IonosphereSimulationCache):
-    if np.shape(params.dtec) != (len(params.model_times), len(params.model_lmn), len(params.model_antennas)):
-        raise ValueError(f"Invalid shape for dtec {np.shape(params.dtec)}, should be (time, dir, ant).")
-
-
-def compare_earth_locations(earth_location1: ac.EarthLocation, earth_location2: ac.EarthLocation, atol=1e-3 * au.m):
-    if earth_location1.shape != earth_location2.shape:
-        return False
-    itrs1 = earth_location1.get_itrs()
-    itrs2 = earth_location2.get_itrs()
-    return np.all(itrs1.separation_3d(itrs2) <= atol)
-
-
-def compare_times(time1: at.Time, time2: at.Time, atol=1e-3 * au.s):
-    if time1.shape != time2.shape:
-        return False
-    return np.all(np.abs((time1 - time2).sec) * au.s <= atol)
 
 
 @dataclasses.dataclass(eq=False)
@@ -190,29 +169,20 @@ class IonosphereSimulation:
         if os.path.exists(self.cache_file):
             cache = IonosphereSimulationCache.parse_file(self.cache_file)
 
-            if cache.pointing != self.pointing:
-                raise ValueError(f"Model pointing does not match {cache.pointing} != {self.pointing}")
-            if not compare_earth_locations(cache.model_antennas, self.model_antennas):
-                raise ValueError(f"Model antennas do not match {cache.model_antennas} != {self.model_antennas}")
-            if not compare_earth_locations(cache.array_location, self.array_location):
-                raise ValueError(f"Array location does not match {cache.array_location} != {self.array_location}")
-            if not compare_times(cache.model_times, self.model_times):
-                raise ValueError(f"Model times do not match {cache.model_times} != {self.model_times}")
-            if cache.ref_ant != self.ref_ant:
-                raise ValueError(f"Reference antenna does not match {cache.ref_ant} != {self.ref_ant}")
-            if cache.ref_time != self.ref_time:
-                raise ValueError(f"Reference time does not match {cache.ref_time} != {self.ref_time}")
-            if cache.specification != self.specification:
-                raise ValueError(f"Specification does not match {cache.specification} != {self.specification}")
-            if cache.compute_tec != self.compute_tec:
-                raise ValueError(f"Compute TEC does not match {cache.compute_tec} != {self.compute_tec}")
-            if cache.S_marg != self.S_marg:
-                raise ValueError(f"S_marg does not match {cache.S_marg} != {self.S_marg}")
-            if cache.jitter != self.jitter:
-                raise ValueError(f"Jitter does not match {cache.jitter} != {self.jitter}")
-            if cache.seed != self.seed:
-                raise ValueError(f"Seed does not match {cache.seed} != {self.seed}")
-
+            check_cache(
+                cache_model=cache,
+                pointing=self.pointing,
+                model_antennas=self.model_antennas,
+                array_location=self.array_location,
+                model_times=self.model_times,
+                ref_ant=self.ref_ant,
+                ref_time=self.ref_time,
+                specification=self.specification,
+                compute_tec=self.compute_tec,
+                S_marg=self.S_marg,
+                jitter=self.jitter,
+                seed=self.seed
+            )
             print(f"Successfully loaded cache {self.cache_file}.")
             return cache
 

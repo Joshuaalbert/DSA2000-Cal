@@ -2,7 +2,7 @@ import dataclasses
 import os
 import time as time_mod
 from functools import partial
-from typing import Tuple, Literal
+from typing import Tuple, Literal, NamedTuple
 
 import jax
 import numpy as np
@@ -10,7 +10,7 @@ from astropy import units as au, coordinates as ac, time as at, constants
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.coord_utils import lmn_to_icrs
+from dsa2000_cal.common.cache_utils import check_cache
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
@@ -95,6 +95,16 @@ def _check_dish_effect_params(dish_effect_params: DishEffectsParams):
     )
 
 
+class SystemParams(NamedTuple):
+    elevation_point_error: jax.Array  # [num_time, num_ant, 1]
+    cross_elevation_point_error: jax.Array  # [num_time, num_ant, 1]
+    axial_focus_error: jax.Array
+    elevation_feed_offset: jax.Array
+    cross_elevation_feed_offset: jax.Array
+    horizon_peak_astigmatism: jax.Array
+    surface_error: jax.Array
+
+
 class DishEffectsSimulationCache(SerialisableBaseModel):
     seed: int
 
@@ -130,7 +140,7 @@ def _check_dish_effects_gain_model_cache(cache: DishEffectsSimulationCache):
 
 @dataclasses.dataclass(eq=False)
 class DishEffectsSimulation:
-    pointing: ac.ICRS | None
+    pointings: ac.ICRS | None
     dish_effect_params: DishEffectsParams
 
     # Beam model
@@ -172,69 +182,17 @@ class DishEffectsSimulation:
         N = np.sqrt(1. - L ** 2 - M ** 2)
         self.model_lmn = au.Quantity(jnp.stack([L, M, N], axis=-1))  # [Nm, Nl, 3]
 
-        # Generate the dish effects, broadcasts with [num_antenna, num_freq] ater time interpolation
-        keys = jax.random.split(jax.random.PRNGKey(self.seed), 7)
-        self.elevation_point_error = self.dish_effect_params.elevation_pointing_error_stddev * np.asarray(
-            jax.random.normal(
-                key=keys[0],
-                shape=(len(self.model_times), len(self.antennas), 1)
-            )
-        )
-        self.cross_elevation_point_error = self.dish_effect_params.cross_elevation_pointing_error_stddev * np.asarray(
-            jax.random.normal(
-                key=keys[1],
-                shape=(len(self.model_times), len(self.antennas), 1)
-            )
-        )
-        self.axial_focus_error = self.dish_effect_params.axial_focus_error_stddev * np.asarray(
-            jax.random.normal(
-                key=keys[2],
-                shape=(len(self.model_times), len(self.antennas), 1)
-            )
-        )
-        self.elevation_feed_offset = self.dish_effect_params.elevation_feed_offset_stddev * np.asarray(
-            jax.random.normal(
-                key=keys[3],
-                shape=(len(self.antennas), 1)
-            )
-        )
-        self.cross_elevation_feed_offset = self.dish_effect_params.cross_elevation_feed_offset_stddev * np.asarray(
-            jax.random.normal(
-                key=keys[4],
-                shape=(len(self.antennas), 1)
-            )
-        )
-        self.horizon_peak_astigmatism = self.dish_effect_params.horizon_peak_astigmatism_stddev * np.asarray(
-            jax.random.normal(
-                key=keys[5],
-                shape=(len(self.antennas), 1)
-            )
-        )
-        self.surface_error = self.dish_effect_params.surface_error_mean + self.dish_effect_params.surface_error_stddev * np.asarray(
-            jax.random.normal(
-                key=keys[6],
-                shape=(len(self.antennas), 1)
-            )
-        )
-
     def simulate_dish_effects(self) -> DishEffectsSimulationCache:
         if os.path.exists(self.cache_file):
             cache = DishEffectsSimulationCache.parse_file(self.cache_file)
-            if not np.allclose(cache.model_freqs.value, self.model_freqs.value):
-                raise ValueError(
-                    f"Model freqs in cache {cache.model_freqs} does not match model freqs {self.model_freqs}")
-            if not np.all((cache.model_times - self.model_times).sec < 1e-3):
-                raise ValueError(
-                    f"Model times in cache {cache.model_times} does not match model times {self.model_times}")
-            if cache.dish_effects_params != self.dish_effect_params:
-                raise ValueError(
-                    f"Dish effect params in cache {cache.dish_effects_params} does not match "
-                    f"dish effect params {self.dish_effect_params}"
-                )
-            if len(cache.antennas) != len(self.antennas):
-                raise ValueError(f"Number of antennas in cache {len(cache.antennas)} does not match number of antennas")
-            if cache.seed != self.seed:
-                raise ValueError(f"Seed in cache {cache.seed} does not match seed {self.seed}")
+            check_cache(
+                cache_model=cache,
+                model_freqs=self.model_freqs,
+                model_times=self.model_times,
+                dish_effects_params=self.dish_effect_params,
+                antennas=self.antennas,
+                seed=self.seed
+            )
             print(f"Successfully loaded cache {self.cache_file}.")
             return cache
 
@@ -265,45 +223,61 @@ class DishEffectsSimulation:
         Returns:
             [num_time, Nm, Nl, num_ant, num_model_freq, 2, 2]
         """
+        freqs_jax = quantity_to_jnp(self.model_freqs)
+        model_lmn_jax = jnp.reshape(quantity_to_jnp(self.model_lmn), (-1, 3))
+        geodesics = jnp.tile(
+            model_lmn_jax[:, None, None, :], (1, 1, len(self.antennas), 1)
+        )  # #[num_sources, num_time, num_ant, 3]
+
         array_location = self.antennas[0]
         model_gains = []
-        for time in self.model_times:
-            if self.pointing is None:
+
+        for i, time in enumerate(self.model_times):
+            if self.pointings is None:
                 pointing = zenith = ENU(
                     east=0, north=0, up=1, location=array_location, obstime=time).transform_to(ac.ICRS())
             else:
-                pointing = self.pointing
-            sources = lmn_to_icrs(self.model_lmn, phase_tracking=pointing)
+                pointing = self.pointings  # [[num_ant]]
 
             # Get beam model gains in image space
+            rel_time = jnp.asarray((time.tt - self.ref_time.tt).sec)
+
             beam_model_gains_image = self.beam_gain_model.compute_gain(
-                freqs=self.model_freqs,
-                sources=sources,
-                array_location=array_location,
-                time=time,
-                pointing=pointing
-            )  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
+                freqs=freqs_jax,
+                times=rel_time,
+                geodesics=geodesics
+            )  # [num_sources, num_time=1, num_ant, num_model_freqs[, 2, 2]]
 
             altaz_frame = ac.AltAz(location=array_location, obstime=time)
-            elevation = pointing.transform_to(altaz_frame).alt
-            rel_time = (time - self.ref_time).sec
+            elevation = quantity_to_jnp(pointing.transform_to(altaz_frame).alt)
 
             _model_gains = np.asarray(
                 self._compute_model_gains(
                     beam_model_gains_image=beam_model_gains_image,
                     rel_time=rel_time,
-                    elevation_rad=elevation.to('rad').value
+                    elevation_rad=elevation
                 )
-            ) * au.dimensionless_unscaled  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
+            )  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
             model_gains.append(_model_gains)
 
-        model_gains = au.Quantity(np.stack(model_gains, axis=0))  # [num_time, Nm, Nl, num_ant, num_model_freq, 2, 2]
+        model_gains = np.stack(model_gains, axis=0) * au.dimensionless_unscaled # [num_time, Nm, Nl, num_ant, num_model_freq, 2, 2]
         return model_gains
 
     @partial(jax.jit, static_argnames=['self'])
     def _compute_model_gains(self, beam_model_gains_image: jax.Array,
                              rel_time: jax.Array,
                              elevation_rad: jax.Array) -> jax.Array:
+        """
+        Compute the model gains for the dish effects.
+
+        Args:
+            beam_model_gains_image: [num_model_times, resolution, resolution, [num_ant,] num_model_freqs, [2, 2]]
+            rel_time: the relative time in seconds
+            elevation_rad: the elevation in radians
+
+        Returns:
+            [Nm, Nl, num_ant, num_model_freq, 2, 2]
+        """
         # Compute the beam model aperture field
         beam_model_gains_aperture = self._compute_beam_model_aperature_jax(
             beam_model_gains_image)  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
@@ -319,8 +293,17 @@ class DishEffectsSimulation:
         return model_gains_image
 
     def _compute_beam_model_aperature_jax(self, beam_model_gains_image: jax.Array) -> jax.Array:
+        """
+        Compute the beam model gains at the aperture of the dish.
+
+        Args:
+            beam_model_gains_image: [Nm, Nl, [num_ant,] num_model_freqs, [2, 2]]
+
+        Returns:
+            [Nm, Nl, num_ant, num_model_freq, 2, 2]
+        """
         lmn_data = quantity_to_jnp(self.model_lmn)
-        evanescent_mask = jnp.asarray(jnp.isnan(lmn_data[..., 2]))  # [Nm, Nl]
+        evanescent_mask = jnp.isnan(lmn_data[..., 2])  # [Nm, Nl]
         beam_model_gains_image = jnp.where(
             evanescent_mask[:, :, None, None, None, None],
             0., beam_model_gains_image
@@ -331,6 +314,76 @@ class DishEffectsSimulation:
             f_image=beam_model_gains_image, axes=(0, 1), dnu=dnu
         )  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
         return beam_model_gains_aperture
+
+    def _compute_model_field_image_jax(self, model_gains_aperture: jax.Array) -> jax.Array:
+        """
+        Compute the model field in the image plane.
+
+        Args:
+            model_gains_aperture: [Nm, Nl, num_ant, num_freq[, 2, 2]]
+
+        Returns:
+            [Nm, Nl, num_ant, num_freq[, 2, 2]]
+        """
+        am = ApertureTransform(convention=self.convention)
+        dx = quantity_to_jnp(self.dx * self.dy)
+        model_gains_image = am.to_image(
+            f_aperture=model_gains_aperture, axes=(0, 1), dx=dx
+        )  # [Nm, Nl, num_ant, num_freq[, 2, 2]]
+        return model_gains_image
+
+    def _get_system_params(self, key) -> SystemParams:
+        keys = jax.random.split(key, 7)
+        elevation_point_error = quantity_to_jnp(
+            self.dish_effect_params.elevation_pointing_error_stddev) * jax.random.normal(
+            key=keys[0],
+            shape=(len(self.model_times), len(self.antennas), 1)
+        )
+
+        cross_elevation_point_error = quantity_to_jnp(
+            self.dish_effect_params.cross_elevation_pointing_error_stddev) * jax.random.normal(
+            key=keys[1],
+            shape=(len(self.model_times), len(self.antennas), 1)
+        )
+
+        axial_focus_error = quantity_to_jnp(self.dish_effect_params.axial_focus_error_stddev) * jax.random.normal(
+            key=keys[2],
+            shape=(len(self.model_times), len(self.antennas), 1)
+        )
+
+        elevation_feed_offset = quantity_to_jnp(
+            self.dish_effect_params.elevation_feed_offset_stddev) * jax.random.normal(
+            key=keys[3],
+            shape=(len(self.antennas), 1)
+        )
+
+        cross_elevation_feed_offset = quantity_to_jnp(
+            self.dish_effect_params.cross_elevation_feed_offset_stddev) * jax.random.normal(
+            key=keys[4],
+            shape=(len(self.antennas), 1)
+        )
+
+        horizon_peak_astigmatism = quantity_to_jnp(
+            self.dish_effect_params.horizon_peak_astigmatism_stddev) * jax.random.normal(
+            key=keys[5],
+            shape=(len(self.antennas), 1)
+        )
+
+        surface_error = quantity_to_jnp(self.dish_effect_params.surface_error_mean) + quantity_to_jnp(
+            self.dish_effect_params.surface_error_stddev) * jax.random.normal(
+            key=keys[6],
+            shape=(len(self.antennas), 1)
+        )
+
+        return SystemParams(
+            elevation_point_error=elevation_point_error,
+            cross_elevation_point_error=cross_elevation_point_error,
+            axial_focus_error=axial_focus_error,
+            elevation_feed_offset=elevation_feed_offset,
+            cross_elevation_feed_offset=cross_elevation_feed_offset,
+            horizon_peak_astigmatism=horizon_peak_astigmatism,
+            surface_error=surface_error
+        )
 
     def _compute_model_gains_aperture_jax(self, beam_model_gains_aperture: jax.Array,
                                           rel_time: jax.Array,
@@ -347,19 +400,22 @@ class DishEffectsSimulation:
             [Nm, Nl, num_ant, num_freq, 2, 2]
         """
 
+        system_params = self._get_system_params(jax.random.PRNGKey(self.seed))
+
         X = quantity_to_jnp(self.X)
         Y = quantity_to_jnp(self.Y)
         focal_length = quantity_to_jnp(self.dish_effect_params.focal_length)
-        cross_elevation_point_error = quantity_to_jnp(self.cross_elevation_point_error)  # [num_time, num_ant, 1]
-        elevation_point_error = quantity_to_jnp(self.elevation_point_error)  # [num_time, num_ant, 1]
-        axial_focus_error = quantity_to_jnp(self.axial_focus_error)  # [num_time, num_ant, 1]
-        elevation_feed_offset = quantity_to_jnp(self.elevation_feed_offset)  # [num_ant, 1]
-        cross_elevation_feed_offset = quantity_to_jnp(self.cross_elevation_feed_offset)  # [num_ant, 1]
-        horizon_peak_astigmatism = quantity_to_jnp(self.horizon_peak_astigmatism)  # [num_ant, 1]
-        surface_error = quantity_to_jnp(self.surface_error)  # [num_ant, 1]
         dish_diameter = quantity_to_jnp(self.dish_effect_params.dish_diameter)  # [1]
         R = 0.5 * dish_diameter
         wavelengths = quantity_to_jnp(constants.c) / quantity_to_jnp(self.model_freqs)
+
+        cross_elevation_point_error = system_params.cross_elevation_point_error  # [num_time, num_ant, 1]
+        elevation_point_error = system_params.elevation_point_error  # [num_time, num_ant, 1]
+        axial_focus_error = system_params.axial_focus_error  # [num_time, num_ant, 1]
+        elevation_feed_offset = system_params.elevation_feed_offset  # [num_ant, 1]
+        cross_elevation_feed_offset = system_params.cross_elevation_feed_offset  # [num_ant, 1]
+        horizon_peak_astigmatism = system_params.horizon_peak_astigmatism  # [num_ant, 1]
+        surface_error = system_params.surface_error  # [num_ant, 1]
 
         (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
             rel_time,
@@ -408,11 +464,3 @@ class DishEffectsSimulation:
         model_gains_aperture = aperture_field[
                                    ..., None, None] * beam_model_gains_aperture  # [Nm, Nl, num_ant, num_freq, 2, 2]
         return model_gains_aperture
-
-    def _compute_model_field_image_jax(self, model_gains_aperture: jax.Array) -> jax.Array:
-        am = ApertureTransform(convention=self.convention)
-        dx = quantity_to_jnp(self.dx * self.dy)
-        model_gains_image = am.to_image(
-            f_aperture=model_gains_aperture, axes=(0, 1), dx=dx
-        )  # [Nm, Nl, num_ant, num_freq, 2, 2]
-        return model_gains_image

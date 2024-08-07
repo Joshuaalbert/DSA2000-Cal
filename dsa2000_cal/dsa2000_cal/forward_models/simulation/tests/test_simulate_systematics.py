@@ -6,9 +6,9 @@ import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
-from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
 
 
 @pytest.fixture(scope='function')
@@ -54,7 +54,10 @@ def test_simulate_systematics(mock_calibrator_source_models):
         plot_folder='plots',
         cache_folder='cache',
         ionosphere_seed=0,
-        dish_effects_seed=1
+        dish_effects_seed=1,
+        full_stokes=False
     )
-    system_gain_model = simulator.simulate(ms=ms)
+    ionosphere_gain_model = simulator.simulate_ionosphere(ms=ms)
+    dish_effects_gain_model = simulator.simulate_dish_effects(ms=ms)
+    system_gain_model = dish_effects_gain_model @ ionosphere_gain_model
     print(system_gain_model)

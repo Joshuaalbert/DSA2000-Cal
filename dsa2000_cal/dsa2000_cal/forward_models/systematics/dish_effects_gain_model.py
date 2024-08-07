@@ -11,6 +11,7 @@ from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 
 
 @dataclasses.dataclass(eq=False)
@@ -18,7 +19,7 @@ class DishEffectsGainModel(SphericalInterpolatorGainModel):
     ...
 
 
-def dish_effects_gain_model_factory(pointing: ac.ICRS | None,
+def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
                                     beam_gain_model: BeamGainModel,
                                     dish_effect_params: DishEffectsParams,
                                     plot_folder: str, cache_folder: str, seed: int = 42,
@@ -27,7 +28,7 @@ def dish_effects_gain_model_factory(pointing: ac.ICRS | None,
     os.makedirs(plot_folder, exist_ok=True)
 
     dish_effects_simulation = DishEffectsSimulation(
-        pointing=pointing,
+        pointings=pointings,
         beam_gain_model=beam_gain_model,
         dish_effect_params=dish_effect_params,
         plot_folder=plot_folder,
@@ -62,8 +63,11 @@ def dish_effects_gain_model_factory(pointing: ac.ICRS | None,
         model_times=simulation_results.model_times,
         model_phi=model_phi,
         model_theta=model_theta,
-        model_gains=model_gains
+        model_gains=model_gains,
+        tile_antennas=False
     )
+
+    geodesic_model = GeodesicModel()
 
     # Plot the image plane effects
     for elevation in [45, 90] * au.deg:
@@ -71,6 +75,8 @@ def dish_effects_gain_model_factory(pointing: ac.ICRS | None,
                                   location=simulation_results.antennas[0],
                                   obstime=dish_effects_simulation.ref_time).transform_to(ac.ICRS())
         sources = lmn_to_icrs(dish_effects_simulation.model_lmn, phase_tracking=phase_tracking)
+
+
         gain = dish_effects_gain_model.compute_gain(freqs=dish_effects_simulation.model_freqs[:1], sources=sources,
                                                     array_location=simulation_results.antennas[0],
                                                     time=dish_effects_simulation.ref_time,
