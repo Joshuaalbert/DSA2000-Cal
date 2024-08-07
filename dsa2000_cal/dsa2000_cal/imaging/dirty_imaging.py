@@ -76,6 +76,7 @@ class DirtyImaging:
         freqs = quantity_to_jnp(ms.meta.freqs)
 
         wavelengths = quantity_to_np(constants.c / ms.meta.freqs)
+        diameter = np.min(quantity_to_np(ms.meta.antenna_diameters))
         if self.field_of_view is not None:
             field_of_view = self.field_of_view
         else:
@@ -87,12 +88,16 @@ class DirtyImaging:
                 _freqs, _beam_widths = get_dish_model_beam_widths(antenna_model)
                 field_of_view = np.max(np.interp(ms.meta.freqs, _freqs, _beam_widths))
             except NoMatchFound as e:
-                print(str(e))
-                print(f"Using fallback")
+                print(f"Failed to get beam width from antenna model: {e}")
                 field_of_view = au.Quantity(
-                    1.22 * np.max(wavelengths) / np.min(quantity_to_np(ms.meta.antenna_diameters)),
+                    1.22 * np.max(wavelengths) / diameter,
                     au.rad
                 )
+                print(f"Using diffraction limit: {field_of_view}")
+        # D/ 4F = 1.22 wavelength / D ==> F = D^2 / (4 * 1.22 * wavelength)
+        effective_focal_length = diameter ** 2 / (4 * 1.22 * np.max(wavelengths))
+
+        print(f"Effective focal length: {effective_focal_length}")
 
         # Get the maximum baseline length
         min_wavelength = np.min(wavelengths)
@@ -162,8 +167,6 @@ class DirtyImaging:
         #     fp.write(image_model.json(indent=2))
         image_model.save_image_to_fits(f"{image_name}.fits", overwrite=False)
         print(f"Saved FITS image to {image_name}.fits")
-
-        # TODO: compute PSF for flux scale and fit beam
 
         return image_model
 
