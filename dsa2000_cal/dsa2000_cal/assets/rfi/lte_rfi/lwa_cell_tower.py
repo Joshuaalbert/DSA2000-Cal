@@ -44,13 +44,15 @@ class LWACellTower(AbstractRFIEmitterData):
 
         rfi_band_mask = np.logical_and(freqs >= central_freq - bandwidth / 2, freqs <= central_freq + bandwidth / 2)
 
-        luminosity = au.Quantity(np.where(rfi_band_mask[None], 2e-11, 0.), unit='W/MHz')  # [1, num_chans]
+        nominal_spectral_flux_density = (100 * au.Jy) * (1 * au.km) ** 2 * ((55 * au.MHz) / central_freq)
+        spectral_flux_density = rfi_band_mask[None].astype(np.float32) * nominal_spectral_flux_density.to(
+            'W/MHz')  # [1, num_chans]
         if full_stokes:
-            luminosity = 0.5 * au.Quantity(
+            spectral_flux_density = 0.5 * au.Quantity(
                 np.stack(
                     [
-                        np.stack([luminosity, 0 * luminosity], axis=-1),
-                        np.stack([0 * luminosity, luminosity], axis=-1)
+                        np.stack([spectral_flux_density, 0 * spectral_flux_density], axis=-1),
+                        np.stack([0 * spectral_flux_density, spectral_flux_density], axis=-1)
                     ],
                     axis=-1
                 )
@@ -60,7 +62,7 @@ class LWACellTower(AbstractRFIEmitterData):
         # Far field limit would be around
         far_field_limit = fraunhofer_far_field_limit(diameter=2.7 * au.km, freq=central_freq)
         print(f"Far field limit: {far_field_limit} at {central_freq}")
-        position_enu = au.Quantity([[100e3, 100e3, 100e3]], unit='m')  # [1, 3]
+        position_enu = au.Quantity([[1e3, 1e3, 1e3]], unit='m')  # [1, 3]
 
         delay_acf = InterpolatedArray(
             x=delays, values=auto_correlation_function, axis=0, regular_grid=regular_grid
@@ -69,7 +71,7 @@ class LWACellTower(AbstractRFIEmitterData):
         return RFIEmitterSourceModelParams(
             freqs=freqs,
             position_enu=position_enu,
-            spectral_flux_density=luminosity,
+            spectral_flux_density=spectral_flux_density,
             delay_acf=delay_acf
         )
 
