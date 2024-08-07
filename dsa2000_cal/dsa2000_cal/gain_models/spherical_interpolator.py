@@ -20,11 +20,11 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
 
     Args:
         model_lmn: [num_model_dir, 3] The lmn coordinates.
-        model_gains: [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2] The gain model.
+        model_gains: [num_model_times, num_model_dir, [num_ant,] num_model_freqs[, 2, 2]] The gain model.
         resolution: The resolution of the regridded model.
 
     Returns:
-        [num_model_times, resolution, resolution, [num_ant,] num_model_freqs, 2, 2] The regridded gains.
+        [num_model_times, resolution, resolution, [num_ant,] num_model_freqs[, 2, 2]] The regridded gains.
     """
     lvec = jnp.linspace(-1., 1., resolution)
     mvec = jnp.linspace(-1., 1., resolution)
@@ -163,7 +163,7 @@ class SphericalInterpolatorGainModel(GainModel):
             model_lmn=self.lmn_data,
             model_gains=quantity_to_jnp(self.model_gains),
             resolution=128
-        )
+        )  # [num_model_times, lres, mres, [num_ant,] num_model_freqs, [2,2]]
 
         if self.tile_antennas:
             print("Assuming identical antenna beams.")

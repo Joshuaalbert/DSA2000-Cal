@@ -200,7 +200,6 @@ class PointSourceModel(AbstractSourceModel):
 
         Args:
             wsclean_clean_component_file: the wsclean model file
-            time: the time of the observation
             phase_tracking: the phase tracking center
             freqs: the frequencies to use
             full_stokes: whether the model is full stokes

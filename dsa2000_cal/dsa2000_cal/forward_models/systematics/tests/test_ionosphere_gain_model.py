@@ -9,16 +9,9 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import ionosphere_gain_model_factory, \
+from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import build_ionosphere_gain_model, \
     interpolate_antennas
 from dsa2000_cal.forward_models.systematics.ionosphere_simulation import IonosphereSimulation, msqrt
-
-
-def test_msqrt():
-    M = jax.random.normal(jax.random.PRNGKey(42), (100, 100))
-    A = M @ M.T
-    max_eig, min_eig, L = msqrt(A)
-    np.testing.assert_allclose(A, L @ L.T, atol=2e-4)
 
 
 def test_real_ionosphere_gain_model():
@@ -29,7 +22,7 @@ def test_real_ionosphere_gain_model():
     observation_duration = 0 * au.s
     temporal_resolution = 0 * au.s
     model_freqs = [700e6, 2000e6] * au.Hz
-    ionosphere_gain_model = ionosphere_gain_model_factory(
+    ionosphere_gain_model = build_ionosphere_gain_model(
         pointing=phase_tracking,
         field_of_view=field_of_view,
         spatial_resolution=spatial_resolution,
@@ -43,6 +36,13 @@ def test_real_ionosphere_gain_model():
         cache_folder='cache_ionosphere',
         seed=42
     )
+
+
+def test_msqrt():
+    M = jax.random.normal(jax.random.PRNGKey(42), (100, 100))
+    A = M @ M.T
+    max_eig, min_eig, L = msqrt(A)
+    np.testing.assert_allclose(A, L @ L.T, atol=2e-4)
 
 
 def test_ionosphere_simulation():
