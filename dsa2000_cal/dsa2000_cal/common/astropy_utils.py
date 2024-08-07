@@ -6,17 +6,15 @@ from astropy import units as au
 from astropy.coordinates import Angle
 from astropy.coordinates.angles import offset_by
 
+from dsa2000_cal.common.coord_utils import lmn_to_icrs
+
 
 def create_random_spherical_layout(num_sources: int, key=None) -> ac.ICRS:
     if key is None:
         key = jax.random.PRNGKey(0)
-    key1, key2 = jax.random.split(key, 2)
-    lon = ac.Longitude(0 * au.deg)
-    lat = ac.Latitude(90 * au.deg)
-    posang = Angle(360 * np.asarray(jax.random.uniform(key1, (num_sources,))), unit=au.deg)
-    distance = Angle(180 * np.asarray(jax.random.uniform(key2, (num_sources,))), unit=au.deg)
-    lon, lat = offset_by(lon=lon, lat=lat, posang=posang, distance=distance)
-    return ac.ICRS(ra=lon, dec=lat)
+    lmn = jax.random.normal(key, (num_sources, 3))
+    lmn /= np.linalg.norm(lmn, axis=1, keepdims=True)
+    return lmn_to_icrs(lmn=lmn * au.dimensionless_unscaled, phase_tracking=ac.ICRS(ra=0 * au.deg, dec=90 * au.deg))
 
 
 def create_spherical_grid(pointing: ac.ICRS, angular_radius: au.Quantity, dr: au.Quantity,
