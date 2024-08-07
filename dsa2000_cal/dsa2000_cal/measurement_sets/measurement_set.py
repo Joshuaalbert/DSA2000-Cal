@@ -17,9 +17,9 @@ from pydantic import Field
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 
 
 class MeasurementSetMetaV0(SerialisableBaseModel):
