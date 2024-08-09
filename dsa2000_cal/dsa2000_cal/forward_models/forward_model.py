@@ -61,9 +61,13 @@ class BaseForwardModel(AbstractForwardModel):
                  add_noise: bool,
                  include_ionosphere: bool,
                  include_dish_effects: bool,
+                 include_simulation: bool,
                  include_calibration: bool,
                  dish_effect_params: DishEffectsParams | None,
                  ionosphere_specification: SPECIFICATION | None,
+                 num_cal_iters: int,
+                 solution_interval: au.Quantity | None,
+                 validity_interval: au.Quantity | None,
                  field_of_view: au.Quantity | None,
                  oversample_factor: float,
                  weighting: str,
@@ -84,6 +88,9 @@ class BaseForwardModel(AbstractForwardModel):
         self.include_calibration = include_calibration
         self.dish_effect_params = dish_effect_params
         self.ionosphere_specification = ionosphere_specification
+        self.num_cal_iters = num_cal_iters
+        self.solution_interval = solution_interval
+        self.validity_interval = validity_interval
         self.field_of_view = field_of_view
         self.oversample_factor = oversample_factor
         self.weighting = weighting
@@ -94,6 +101,7 @@ class BaseForwardModel(AbstractForwardModel):
         self.ionosphere_seed = ionosphere_seed
         self.dish_effects_seed = dish_effects_seed
         self.simulation_seed = simulation_seed
+        self.include_simulation = include_simulation
         self.calibration_seed = calibration_seed
         self.imaging_seed = imaging_seed
 
@@ -150,25 +158,29 @@ class BaseForwardModel(AbstractForwardModel):
             ionosphere_gain_model = systematics_simulator.simulate_ionosphere(ms=ms)
             systematics_gain_model = systematics_gain_model @ ionosphere_gain_model
 
-        # Simulate visibilities
-        simulator = SimulateVisibilities(
-            rime_model=self._build_simulation_rime_model(
-                ms=ms,
-                system_gain_model=systematics_gain_model,
-                horizon_gain_model=horizon_gain_model
-            ),
-            verbose=self.verbose,
-            seed=self.simulation_seed,
-            num_shards=self.num_shards,
-            plot_folder=os.path.join(self.plot_folder, 'simulate'),
-            add_noise=self.add_noise
-        )
-        simulator.simulate(
-            ms=ms
-        )
+        if self.include_simulation:
+            # Simulate visibilities
+            simulator = SimulateVisibilities(
+                rime_model=self._build_simulation_rime_model(
+                    ms=ms,
+                    system_gain_model=systematics_gain_model,
+                    horizon_gain_model=horizon_gain_model
+                ),
+                verbose=self.verbose,
+                seed=self.simulation_seed,
+                num_shards=self.num_shards,
+                plot_folder=os.path.join(self.plot_folder, 'simulate'),
+                add_noise=self.add_noise
+            )
+            simulator.simulate(
+                ms=ms
+            )
 
-        # Image visibilities
-        imagor.image(image_name='dirty_image', ms=ms)
+            # Image visibilities
+            imagor.image(image_name='dirty_image', ms=ms)
+
+            # Create psf
+            imagor.image(image_name='psf', ms=ms, psf=True)
 
         if self.include_calibration:
             # Calibrate visibilities
@@ -178,11 +190,11 @@ class BaseForwardModel(AbstractForwardModel):
                     a_priori_system_gain_model=systematics_gain_model,
                     a_priori_horizon_gain_model=horizon_gain_model
                 ),
-                num_iterations=15,
+                num_iterations=self.num_cal_iters,
                 inplace_subtract=False,
                 residual_ms_folder='residual_ms',
-                solution_interval=None,
-                validity_interval=None,
+                solution_interval=self.solution_interval,
+                validity_interval=self.validity_interval,
                 verbose=self.verbose,
                 seed=self.calibration_seed,
                 num_shards=self.num_shards,

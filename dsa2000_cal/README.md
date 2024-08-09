@@ -6,6 +6,7 @@
 
 ```bash
 MINICONDA_INSTALLER="Miniconda3-latest-Linux-x86_64.sh"
+# MINICONDA_INSTALLER="Miniconda3-latest-Linux-aarch64.sh"
 wget https://repo.anaconda.com/miniconda/${MINICONDA_INSTALLER}
 chmod +x ${MINICONDA_INSTALLER}
 ./${MINICONDA_INSTALLER} -b -p $HOME/miniconda3

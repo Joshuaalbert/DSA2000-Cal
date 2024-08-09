@@ -74,7 +74,8 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
 
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
-def test_measurement_setting(tmp_path, with_autocorr):
+@pytest.mark.parametrize("convention", ['physical', 'casa'])
+def test_measurement_setting(tmp_path, with_autocorr, convention):
     meta = MeasurementSetMetaV0(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
@@ -90,7 +91,8 @@ def test_measurement_setting(tmp_path, with_autocorr):
         antenna_diameters=au.Quantity(np.ones(5), au.m),
         with_autocorr=with_autocorr,
         mount_types='ALT-AZ',
-        system_equivalent_flux_density=au.Quantity(1, au.Jy)
+        system_equivalent_flux_density=au.Quantity(1, au.Jy),
+        convention=convention
     )
     ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
 
@@ -107,12 +109,13 @@ def test_measurement_setting(tmp_path, with_autocorr):
         assert coords.time_obs.shape == (ms.block_size,)
         assert coords.antenna_1.shape == (ms.block_size,)
         assert coords.antenna_2.shape == (ms.block_size,)
+        assert np.all(coords.antenna_1 <= coords.antenna_2)
         assert coords.time_idx.shape == (ms.block_size,)
         assert data.vis.shape == (ms.block_size, 3, 4)
         assert data.weights.shape == (ms.block_size, 3, 4)
         assert data.flags.shape == (ms.block_size, 3, 4)
         for time_idx in coords.time_idx:
-            assert ms.meta.x[time_idx] == time
+            assert ms.meta.times[time_idx] == time
 
         gen_response = VisibilityData(
             vis=np.ones((ms.block_size, 3, 4), dtype=np.complex64),
@@ -156,6 +159,7 @@ def test_measurement_setting_put(tmp_path, with_autocorr):
 
     gen = ms.create_block_generator()
     gen_response = None
+    scale = 1.
     while True:
 
         try:
@@ -165,26 +169,29 @@ def test_measurement_setting_put(tmp_path, with_autocorr):
 
         ms.put(
             data=VisibilityData(
-                vis=2 * np.ones((ms.block_size, 3, 4), dtype=np.complex64),
-                weights=2 * np.ones((ms.block_size, 3, 4), dtype=np.float16),
+                vis=scale * np.ones((ms.block_size, 3, 4), dtype=np.complex64),
+                weights=scale * np.ones((ms.block_size, 3, 4), dtype=np.float16),
                 flags=np.zeros((ms.block_size, 3, 4), dtype=np.bool_)
             ),
             antenna_1=coords.antenna_1,
             antenna_2=coords.antenna_2,
-            times=at.Time([time.isot] * ms.block_size, format='isot')
+            times=time
         )
+        scale += 1
 
-    data = ms.match(antenna_1=0, antenna_2=1, times=ms.meta.x)
+    data = ms.match(antenna_1=0, antenna_2=1, times=ms.meta.times)
     assert data.vis.shape == (len(meta.times), len(meta.freqs), 4)
 
-    data = ms.match(antenna_1=np.asarray([0, 1]), antenna_2=np.asarray([1, 2]), times=ms.meta.x[:2])
+    data = ms.match(antenna_1=np.asarray([0, 1]), antenna_2=np.asarray([1, 2]), times=ms.meta.times[:2])
     assert data.vis.shape == (2, len(meta.freqs), 4)
 
     gen = ms.create_block_generator()
+    scale = 1.
     for time, coords, data in gen:
-        assert np.all(data.vis.real == 2)
-        assert np.all(data.weights == 2)
+        assert np.all(data.vis.real == scale)
+        assert np.all(data.weights == scale)
         assert np.bitwise_not(np.any(data.flags))
+        scale += 1.
 
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
@@ -236,9 +243,9 @@ def test_multi_block_gen(tmp_path, with_autocorr):
         assert data.weights.shape == (ms.block_size * 2, 3, 4)
         assert data.flags.shape == (ms.block_size * 2, 3, 4)
         for time_idx in coords.time_idx:
-            assert ms.meta.x[time_idx] in times
+            assert ms.meta.times[time_idx] in times
         for time in times:
-            assert time in ms.meta.x[coords.time_idx]
+            assert time in ms.meta.times[coords.time_idx]
 
         gen_response = VisibilityData(
             vis=np.ones((ms.block_size * 2, 3, 4), dtype=np.complex64),

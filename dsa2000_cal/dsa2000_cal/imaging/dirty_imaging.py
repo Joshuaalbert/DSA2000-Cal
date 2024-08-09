@@ -38,7 +38,7 @@ class DirtyImaging:
     oversample_factor: float = 5.
     nthreads: int = 1
     epsilon: float = 1e-4
-    convention: str = 'casa'
+    convention: str = 'physical'
     verbose: bool = False
     weighting: str = 'natural'
     seed: int = 42
@@ -48,7 +48,7 @@ class DirtyImaging:
         if self.field_of_view is not None and not self.field_of_view.unit.is_equivalent(au.deg):
             raise ValueError(f"Expected field_of_view to be in degrees, got {self.field_of_view.unit}")
 
-    def image(self, image_name: str, ms: MeasurementSet) -> ImageModel:
+    def image(self, image_name: str, ms: MeasurementSet, psf: bool = False) -> ImageModel:
         print(f"Imaging {ms}")
         # Metrics
         t0 = time_mod.time()
@@ -120,6 +120,9 @@ class DirtyImaging:
         print(f"Image size: {num_pixel} x {num_pixel}")
         print(f"Pixel size: {dl} x {dm}")
 
+        if psf:
+            vis = jnp.ones_like(vis)
+
         dirty_image = self._image_visibilties_jax(
             uvw=uvw,
             vis=vis,
@@ -169,6 +172,11 @@ class DirtyImaging:
         print(f"Saved FITS image to {image_name}.fits")
 
         return image_model
+
+    def image_visibilities(self, uvw: jax.Array, vis: jax.Array, weights: jax.Array,
+                               flags: jax.Array, freqs: jax.Array, num_pixel: int,
+                               dl: jax.Array, dm: jax.Array, center_l: jax.Array, center_m: jax.Array) -> jax.Array:
+        ...
 
     @partial(jax.jit, static_argnames=['self', 'num_pixel'])
     def _image_visibilties_jax(self, uvw: jax.Array, vis: jax.Array, weights: jax.Array,

@@ -20,7 +20,6 @@ from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 
 @partial(jax.jit, static_argnames=['flat_output'])
@@ -237,8 +236,7 @@ class PointSourceModel(AbstractSourceModel):
         l0 = lmn0[:, 0]
         m0 = lmn0[:, 1]
         n0 = lmn0[:, 2]
-        if np.any(n0 < 0):
-            raise BelowHorizonSource()
+
         A = jnp.stack(spectrum, axis=0) * au.Jy  # [num_sources, num_freqs]
 
         if full_stokes:
@@ -292,7 +290,7 @@ class PointSourceModel(AbstractSourceModel):
 
 @dataclasses.dataclass(eq=False)
 class PointPredict:
-    convention: str = 'casa'
+    convention: str = 'physical'
     dtype: SupportsDType = jnp.complex64
 
     def check_predict_inputs(self, model_data: PointModelData

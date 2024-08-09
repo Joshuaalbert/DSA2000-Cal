@@ -10,7 +10,6 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_random_spherical_layout
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
     GaussianSourceModel
@@ -190,14 +189,11 @@ class SyntheticSkyModelProducer:
         source_models = []
         for source in a_team_sources:
             source_model_asset = source_model_registry.get_instance(source_model_registry.get_match(source))
-            try:
-                source_model = FITSSourceModel.from_wsclean_model(
-                    wsclean_fits_files=source_model_asset.get_wsclean_fits_files(),
-                    phase_tracking=self.phase_tracking, freqs=self.freqs, ignore_out_of_bounds=True,
-                    full_stokes=full_stokes
-                )
-            except BelowHorizonSource:
-                continue
+            source_model = FITSSourceModel.from_wsclean_model(
+                wsclean_fits_files=source_model_asset.get_wsclean_fits_files(),
+                phase_tracking=self.phase_tracking, freqs=self.freqs, ignore_out_of_bounds=True,
+                full_stokes=full_stokes
+            )
             source_models.append(source_model)
         return source_models
 

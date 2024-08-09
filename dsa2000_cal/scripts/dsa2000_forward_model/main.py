@@ -28,17 +28,17 @@ def main(ms_folder: str):
     else:
         array_location = array.get_array_location()
         antennas = array.get_antennas()
-        obstimes = at.Time("2024-08-07T00:00:00", scale='tt') + 1.5 * np.arange(412) * au.s
+        obstimes = at.Time("2024-08-07T00:00:00", scale='tt') + 1.5 * np.arange(1) * au.s
         freqs = au.Quantity([700], unit=au.MHz)
         phase_tracking = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
         meta = MeasurementSetMetaV0(
             array_name='dsa2000W',
             array_location=array_location,
             phase_tracking=phase_tracking,
+            pointings=phase_tracking,
             channel_width=array.get_channel_width(),
             integration_time=au.Quantity(1.5, 's'),
             coherencies=['I'],
-            pointings=None,
             times=obstimes,
             freqs=freqs,
             antennas=antennas,

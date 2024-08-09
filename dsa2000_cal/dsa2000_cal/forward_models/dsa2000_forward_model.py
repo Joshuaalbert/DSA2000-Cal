@@ -8,7 +8,7 @@ from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain
-from dsa2000_cal.calibration.probabilistic_models.gains_per_facet import GainsPerFacet
+from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
 from dsa2000_cal.forward_models.forward_model import BaseForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
@@ -36,9 +36,13 @@ class DSA2000ForwardModel(BaseForwardModel):
     add_noise: bool = True
     include_ionosphere: bool = False
     include_dish_effects: bool = False
+    include_simulation: bool = True
     include_calibration: bool = False
     dish_effect_params: DishEffectsParams | None = None
     ionosphere_specification: SPECIFICATION = 'light_dawn'
+    num_cal_iters: int = 15
+    solution_interval: au.Quantity | None = None
+    validity_interval: au.Quantity | None = None
     field_of_view: au.Quantity | None = None
     oversample_factor: float = 5.
     weighting: str = 'natural'
@@ -59,9 +63,13 @@ class DSA2000ForwardModel(BaseForwardModel):
             add_noise=self.add_noise,
             include_ionosphere=self.include_ionosphere,
             include_dish_effects=self.include_dish_effects,
+            include_simulation=self.include_simulation,
             include_calibration=self.include_calibration,
             dish_effect_params=self.dish_effect_params,
             ionosphere_specification=self.ionosphere_specification,
+            num_cal_iters=self.num_cal_iters,
+            solution_interval=self.solution_interval,
+            validity_interval=self.validity_interval,
             field_of_view=self.field_of_view, oversample_factor=self.oversample_factor,
             weighting=self.weighting, epsilon=self.epsilon, dtype=self.dtype,
             verbose=self.verbose, num_shards=self.num_shards,

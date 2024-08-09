@@ -415,7 +415,7 @@ class MeasurementSet:
 
         start_row = 0
 
-        compute_uvw_jax = jax.jit(engine.compute_uvw_jax)
+        compute_uvw_jax = jax.jit(partial(engine.compute_uvw_jax, convention=meta.convention))
         for time_idx in range(num_times):
             # UVW are position(antenna_2) - position(antenna_1)
             # antenna_1, antenna_2 are all possible baselines
@@ -431,17 +431,6 @@ class MeasurementSet:
             )  # [num_baselines, 3]
 
             uvw = np.asarray(uvw)
-
-            # antennas_uvw = earth_location_to_uvw(antennas=meta.antennas, obs_time=time,
-            #                                      phase_tracking=meta.phase_tracking)
-            # uvw = antennas_uvw[antenna_2] - antennas_uvw[antenna_1]
-
-            if meta.convention == 'casa':
-                uvw *= -1.
-            elif meta.convention == 'physical':
-                pass
-            else:
-                raise ValueError(f"Unknown convention {meta.convention}.")
 
             end_row = start_row + uvw.shape[0]
 
@@ -465,7 +454,7 @@ class MeasurementSet:
         Args:
             data: the visibility data being put
             antenna_1: [num_rows] the first antenna
-            antenna_2: num_rows] the second antenna
+            antenna_2: [num_rows] the second antenna
             times: the times
             freqs: the frequencies, if None, all frequencies are returned
         """

@@ -129,7 +129,7 @@ class RFIEmitterSourceModel(AbstractSourceModel):
 @dataclasses.dataclass(eq=False)
 class RFIEmitterPredict:
     delay_engine: NearFieldDelayEngine
-    convention: str = 'casa'
+    convention: str = 'physical'
     dtype: SupportsDType = jnp.complex64
 
     def check_predict_inputs(self, model_data: RFIEmitterModelData

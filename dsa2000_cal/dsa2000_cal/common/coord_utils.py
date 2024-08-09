@@ -53,10 +53,10 @@ def create_uvw_frame(obs_time: at.Time, phase_tracking: ac.ICRS, barycentre: str
     return frame_uvw
 
 
-def earth_location_to_uvw(antennas: EarthLocation, obs_time: at.Time, phase_tracking: ac.ICRS,
-                          barycentre='earth') -> Quantity:
+def earth_location_to_uvw_approx(antennas: EarthLocation, obs_time: at.Time, phase_tracking: ac.ICRS,
+                                 barycentre='earth') -> Quantity:
     """
-    Convert EarthLocation coordinates to UVW coordinates.
+    Convert EarthLocation coordinates to UVW coordinates approximately.
 
     Args:
         antennas: (shape) EarthLocation coordinates

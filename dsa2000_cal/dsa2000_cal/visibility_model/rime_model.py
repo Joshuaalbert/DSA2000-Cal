@@ -9,9 +9,9 @@ from jax import lax
 
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.vec_utils import kron_product
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.visibility_model.facet_model import FacetModel, FacetModelData
 
 
@@ -117,8 +117,11 @@ class RIMEModel:
             vis_mapping = "[s,r,f]"
             is_full_stokes = False
         else:
-            raise ValueError("Gains must be of shape [num_facets, num_time, num_ant, num_chan[, 2, 2]] or "
-                             "[num_facets, num_time, num_ant, num_chan]")
+            raise ValueError(
+                "Gains must be of shape [num_facets, num_time, num_ant, num_chan[, 2, 2]] or "
+                "[num_facets, num_time, num_ant, num_chan], "
+                f"got {np.shape(gains)}"
+            )
 
         @partial(
             multi_vmap,

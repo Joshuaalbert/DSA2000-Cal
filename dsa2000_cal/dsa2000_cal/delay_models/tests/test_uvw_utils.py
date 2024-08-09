@@ -1,7 +1,10 @@
+import jax
 import numpy as np
 import pytest
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
+# Require 64bit to get precision
+jax.config.update("jax_enable_x64", True)
 
 from dsa2000_cal.common.coord_utils import icrs_to_lmn, lmn_to_icrs
 from dsa2000_cal.delay_models.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian

@@ -6,7 +6,7 @@ from astropy.coordinates import offset_by
 from astropy.wcs import WCS
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.coord_utils import earth_location_to_uvw, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
+from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
     icrs_to_enu, enu_to_icrs, lmn_to_icrs_old
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 
@@ -16,7 +16,7 @@ def test_enu_to_uvw():
     array_location = ac.EarthLocation.of_site('vla')
     time = at.Time('2000-01-01T00:00:00', format='isot')
     pointing = ac.ICRS(0 * au.deg, 90 * au.deg)
-    uvw = earth_location_to_uvw(antennas, time, pointing)
+    uvw = earth_location_to_uvw_approx(antennas, time, pointing)
     assert np.linalg.norm(uvw) < 6400 * au.km
 
     enu_frame = ENU(location=ac.EarthLocation.of_site('vla'), obstime=time)
@@ -26,7 +26,7 @@ def test_enu_to_uvw():
         up=np.random.uniform(size=(10,), low=-5, high=5) * au.km,
         frame=enu_frame
     ).transform_to(ac.ITRS).earth_location
-    uvw = earth_location_to_uvw(antennas, time, pointing)
+    uvw = earth_location_to_uvw_approx(antennas, time, pointing)
     assert np.all(np.linalg.norm(uvw, axis=-1) < 6400 * au.km)
 
 
@@ -422,7 +422,7 @@ def test_earth_location_to_uvw():
     phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     antennas = ac.EarthLocation.of_site('vla')
-    uvw = earth_location_to_uvw(antennas=antennas, obs_time=time, phase_tracking=phase_tracking)
+    uvw = earth_location_to_uvw_approx(antennas=antennas, obs_time=time, phase_tracking=phase_tracking)
     print(uvw)
 
     # TODO: should compare to known values.

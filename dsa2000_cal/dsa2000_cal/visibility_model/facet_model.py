@@ -44,7 +44,7 @@ class FacetModel:
     far_field_delay_engine: FarFieldDelayEngine
     geodesic_model: GeodesicModel
 
-    convention: str = "casa"
+    convention: str = "physical"
     dtype: SupportsDType = jnp.complex64
 
     def __post_init__(self):

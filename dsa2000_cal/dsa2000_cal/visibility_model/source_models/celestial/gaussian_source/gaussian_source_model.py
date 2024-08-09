@@ -24,7 +24,6 @@ from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 
 def linear_term_derivation():
@@ -176,8 +175,6 @@ def transform_ellipsoidal_params_to_plane_of_sky(major: au.Quantity, minor: au.Q
     l0 = lmn0[:, 0]
     m0 = lmn0[:, 1]
     n0 = lmn0[:, 2]
-    if np.any(n0 < 0):
-        raise BelowHorizonSource()
 
     # If you truely treat as ellipsoids on the sphere you get something like this:
     if lmn_transform_params:
@@ -481,7 +478,7 @@ def derive_transform():
 @dataclasses.dataclass(eq=False)
 class GaussianPredict:
     order_approx: int = 0
-    convention: str = 'casa'
+    convention: str = 'physical'
     dtype: SupportsDType = jnp.complex64
 
     def check_predict_inputs(self, model_data: GaussianModelData

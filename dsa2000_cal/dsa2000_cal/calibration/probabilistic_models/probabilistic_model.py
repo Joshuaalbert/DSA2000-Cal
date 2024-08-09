@@ -1,13 +1,12 @@
 import dataclasses
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Tuple, Callable, List, Any
 
 import jax
-import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
 
 tfpd = tfp.distributions
 
@@ -45,7 +44,6 @@ class ProbabilisticModelInstance:
         """
         return self.get_init_params_fn()
 
-    @abstractmethod
     def log_prob_joint(self, params: Any) -> jax.Array:
         """
         Compute the joint log probability of the gains and the data.
@@ -58,7 +56,6 @@ class ProbabilisticModelInstance:
         """
         return self.log_prob_joint_fn(params)
 
-    @abstractmethod
     def forward(self, params: Any) -> Tuple[jax.Array, List[jax.Array]]:
         """
         Forward model for the gains.
@@ -87,9 +84,9 @@ class AbstractProbabilisticModel(ABC):
         Returns an instance of a probabilistic model of vis and gains.
 
         Args:
-            freqs: [num_chan] sharded over chan
+            freqs: [num_chan] chans to solve gains at
             times: [num_time] times to solve gains at
-            vis_data: [num_row, num_chan, 2, 2] sharded over chan
+            vis_data: [num_row, num_chan[, 2, 2]] vis local shard over chan
             vis_coords: [num_row, 2]
 
         Returns:

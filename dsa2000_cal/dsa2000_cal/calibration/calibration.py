@@ -64,7 +64,7 @@ class Calibration:
     num_shards: int = 1
     devices: List[jax.Device] | None = None
 
-    solver: Literal['BFGS', 'LM', 'LBFGS'] = 'BFGS'
+    solver: Literal['BFGS', 'LM', 'LBFGS'] = 'LM'
 
     def __post_init__(self):
         # Create folders

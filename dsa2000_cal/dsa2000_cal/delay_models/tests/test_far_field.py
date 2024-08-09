@@ -10,7 +10,7 @@ from jax import numpy as jnp, config
 config.update("jax_enable_x64", True)
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.coord_utils import earth_location_to_uvw
+from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
 
 
@@ -60,7 +60,7 @@ def test_far_field_delay_engine():
 
 @pytest.mark.parametrize('with_autocorr', [True, False])
 def test_compute_uvw(with_autocorr):
-    times = at.Time.now().reshape((1,))
+    times = at.Time(["2021-01-01T00:00:00"], scale='utc')
     array_location = ac.EarthLocation.of_site('vla')
     antennas = ENU(
         east=[0, 10] * au.km,
@@ -69,7 +69,7 @@ def test_compute_uvw(with_autocorr):
         location=array_location,
         obstime=times[0]
     )
-    antennas = antennas.transform_to(ac.ITRS(obstime=times[0])).earth_location
+    antennas = antennas.transform_to(ac.ITRS(obstime=times[0], location=array_location)).earth_location
 
     phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=times[0]).transform_to(ac.ICRS())
 
@@ -77,16 +77,17 @@ def test_compute_uvw(with_autocorr):
         antennas=antennas,
         phase_center=phase_centre,
         start_time=times[0],
-        end_time=times[0],
+        end_time=times[-1],
         verbose=True
     )
     visibilitiy_coords = engine.compute_visibility_coords(
         times=engine.time_to_jnp(times),
-        with_autocorr=with_autocorr
+        with_autocorr=with_autocorr,
+        convention='physical'
     )
     uvw = visibilitiy_coords.uvw[None, :, :] * au.m
 
-    uvw_other = earth_location_to_uvw(
+    uvw_other = earth_location_to_uvw_approx(
         antennas=antennas[None, :],
         obs_time=times[:, None],
         phase_tracking=phase_centre
@@ -102,6 +103,9 @@ def test_compute_uvw(with_autocorr):
     else:
         np.testing.assert_allclose(uvw_other[0, 0, 0], 10 * au.km, atol=1 * au.m)
     np.testing.assert_allclose(uvw, uvw_other, atol=0.9 * au.m)
+
+    print(engine.compute_uvw_jax(engine.time_to_jnp(times), jnp.asarray([0]), jnp.asarray([1]),
+                                 convention='physical'))
 
 
 @pytest.mark.parametrize('time', [at.Time("2024-01-01T00:00:00", scale='utc'),

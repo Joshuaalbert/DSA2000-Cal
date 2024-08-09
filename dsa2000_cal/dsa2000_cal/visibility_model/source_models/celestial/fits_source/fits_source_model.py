@@ -22,7 +22,6 @@ from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import BelowHorizonSource
 
 
 class FITSModelData(NamedTuple):
@@ -234,11 +233,12 @@ class FITSSourceModel(AbstractSourceModel):
                     raise ValueError(f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}")
                 image = hdul0[0].data[:, 0, :, :]  # [stokes, Nm, Nl]
                 w0 = WCS(hdul0[0].header)
-                image = au.Quantity(image, 'Jy') # [stokes, Nm, Nl]
+                image = au.Quantity(image, 'Jy')  # [stokes, Nm, Nl]
                 # Reverse l axis
                 image = image[:, :, ::-1]  # [stokes, Nm, Nl]
                 # Transpose
                 image = image.T  # [Nl, Nm, stokes]
+                Nl, Nm, num_stokes = image.shape
                 # RA--SIN and DEC--SIN
                 if not (w0.wcs.ctype[0].strip().endswith('SIN') and w0.wcs.ctype[1].strip().endswith('SIN')):
                     raise ValueError(f"Expected SIN projection, got {w0.wcs.ctype}")
@@ -258,7 +258,7 @@ class FITSSourceModel(AbstractSourceModel):
                 else:
                     raise ValueError(f"Unknown BUNIT {hdul0[0].header['BUNIT']}")
                 ra0, dec0 = w0.wcs.crval[0], w0.wcs.crval[1]
-                num_stokes, Nm, Nl = image.shape
+
                 centre_l_pix, centre_m_pix = Nl / 2., Nm / 2.  # 0 1 2 3 -> 1.5
                 # Assume pointing is same for all stokes
                 pointing_coord, spectral_coord, stokes_coord = w0.pixel_to_world(
@@ -273,17 +273,16 @@ class FITSSourceModel(AbstractSourceModel):
                 dl = -pixel_size_l.to('rad').value * au.dimensionless_unscaled  # negative pixel size
                 dm = pixel_size_m.to('rad').value * au.dimensionless_unscaled
 
-                print(f"dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
-                      f"centre_ra={ra0}, centre_dec={dec0}\n"
-                      f"l0={l0}, m0={m0}\n"
-                      f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"
-                      f"num_l={Nl}, num_m={Nm}, num_stokes={num_stokes}")
-                if n0 < 0:
-                    raise BelowHorizonSource(f"Source below horizon at {center_icrs} (l0={l0}, m0={m0}, n0={n0})")
-
+                print(
+                    f"dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
+                    f"centre_ra={ra0}, centre_dec={dec0}\n"
+                    f"l0={l0}, m0={m0}\n"
+                    f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"
+                    f"num_l={Nl}, num_m={Nm}, num_stokes={num_stokes}"
+                )
 
                 # Image is in stokes I, so we can just take the first element
-                image = image[:, :, 0] # [Nl, Nm]
+                image = image[:, :, 0]  # [Nl, Nm]
                 if full_stokes:
                     # Convert to linear
                     image = np.asarray(
@@ -355,7 +354,7 @@ class FITSSourceModel(AbstractSourceModel):
 class FITSPredict:
     num_threads: int = 1
     epsilon: float = 1e-6
-    convention: str = 'casa'
+    convention: str = 'physical'
     dtype: SupportsDType = jnp.complex64
 
     def check_predict_inputs(self, model_data: FITSModelData) -> Tuple[bool, bool, bool]:

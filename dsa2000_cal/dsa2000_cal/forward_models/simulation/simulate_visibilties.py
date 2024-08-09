@@ -11,8 +11,8 @@ import numpy as np
 from dsa2000_cal.common.corr_translation import flatten_coherencies
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, VisibilityData
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, VisibilityData
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 
@@ -145,8 +145,10 @@ class SimulateVisibilities:
         # if full_stokes flatten coherencies
         if len(np.shape(vis)) == 4 and np.shape(vis)[-2:] == (2, 2):
             vis = jax.vmap(jax.vmap(flatten_coherencies))(vis)  # [num_row, num_chan, 4]
+            num_pol = 2
         else:
             vis = vis[:, :, None]  # [num_row, num_chan, 1]
+            num_pol = 1
 
         noise_scale = calc_baseline_noise(
             system_equivalent_flux_density=system_equivalent_flux_density_Jy,
@@ -156,8 +158,8 @@ class SimulateVisibilities:
 
         # Simulate measurement noise
         key1, key2 = jax.random.split(key)
-        # Divide by sqrt(2) to account for polarizations
-        noise = (noise_scale / np.sqrt(2.)) * (
+        # Divide by sqrt(2) to account for 2 polarizations
+        noise = (noise_scale / np.sqrt(num_pol)) * (
                 jax.random.normal(key1, vis.shape) + 1j * jax.random.normal(key2, vis.shape)
         )
 

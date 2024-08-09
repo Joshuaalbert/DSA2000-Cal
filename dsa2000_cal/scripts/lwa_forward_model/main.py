@@ -27,7 +27,8 @@ def main(ms_folder: str):
     else:
         array_location = array.get_array_location()
         antennas = array.get_antennas()
-        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 10 * np.arange(60) * au.s
+        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 10 * np.arange(1) * au.s
+        freqs = au.Quantity([55], unit=au.MHz)
         phase_tracking = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
         meta = MeasurementSetMetaV0(
             array_name='lwa',
@@ -38,13 +39,14 @@ def main(ms_folder: str):
             coherencies=['I'],
             pointings=None,
             times=obstimes,
-            freqs=au.Quantity([55], unit=au.MHz),
+            freqs=freqs,
             antennas=antennas,
             antenna_names=array.get_antenna_names(),
             antenna_diameters=array.get_antenna_diameter(),
             with_autocorr=True,
             mount_types='ALT-AZ',
-            system_equivalent_flux_density=array.get_system_equivalent_flux_density()
+            system_equivalent_flux_density=array.get_system_equivalent_flux_density(),
+            convention='physical'
         )
         ms = MeasurementSet.create_measurement_set(ms_folder=ms_folder, meta=meta)
 
@@ -63,7 +65,9 @@ def main(ms_folder: str):
         dtype=jnp.complex128,
         weighting='natural',
         epsilon=1e-6,
-        add_noise=True
+        add_noise=True,
+        include_calibration=False,
+        include_simulation=True
     )
     forward_model.forward(ms=ms)
 
