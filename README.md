@@ -1,12 +1,26 @@
 # DSA2000 Calibration and Forward Modelling
 
-This is written as a bunch of containerised services that carry out the steps of forward modelling.
+This repo contains two components:
 
-To run this, you need to have `docker` installed, if not already the case make sure your user is in the docker group (
-have an admin run this for you `sudo usermod -aG docker $USER`). Then, you can run the following command:
+1. The [dsa2000_cal package](dsa2000_cal), which implements a library for carrying out forward modelling and
+   calibration of radio interferometers. The package is predominantly written in JAX, using astropy to represent
+   physical
+   quantities. The package is designed to be used with the DSA2000 radio interferometer, but can be used with others,
+   e.g.
+   it is used in the OVRO-LWA project. See [the package README](dsa2000_cal/README.md) for more details.
+2. [Workflows](workflows) which contains scripts and Dockerfiles for running distributed workflows utilising the
+   `dsa2000_cal` package. This includes setting up a distributed streaming calibration with low-level interface exposed,
+   sharing data between containers through sharded memory and common namespace; streaming forward modelling to simulate
+   observations; as well as non-streaing variants of the above two workflows.
+
+# Deployment
+
+To run any workflows, you need to have `docker` installed, if not already the case make sure your user is in the docker
+group (
+have an admin run this for you `sudo usermod -aG docker $USER`). Then, you can run the following command in a given
+workflow folder:
 
 ```bash
-# To run everything
 ./run.sh
 ```
 
@@ -62,4 +76,5 @@ sudo curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-dock
 sudo yum install -y nvidia-container-toolkit
 sudo systemctl restart docker\
 ```
+
 ## TODO: set polarisations in Beam 
