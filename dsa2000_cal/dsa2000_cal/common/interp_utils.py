@@ -108,7 +108,7 @@ def multilinear_interp_2d(x, y, xp, yp, z):
     return z_interp
 
 
-def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, alpha1: jax, axis: int = 0):
+def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, alpha1: jax.Array, axis: int = 0):
     """
     Apply interpolation alpha given axis.
 
