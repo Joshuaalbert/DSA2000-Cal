@@ -43,7 +43,7 @@ def test_kron_product_cost():
 
     p2 = kron_product(a, b, c)
 
-    assert np.alltrue(p2 == p1)
+    assert np.all(p2 == p1)
 
     a1 = jax.jit(f).lower(a, b, c).compile().cost_analysis()[0]
     a2 = jax.jit(kron_product).lower(a, b, c).compile().cost_analysis()[0]

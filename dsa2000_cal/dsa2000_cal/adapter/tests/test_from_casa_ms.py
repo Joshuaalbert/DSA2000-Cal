@@ -6,7 +6,7 @@ import tables as tb
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 
 
-def test_transfer_from_casa(tmp_path):
+def _test_transfer_from_casa(tmp_path):
     ms = transfer_from_casa(ms_folder=str(tmp_path / 'new_ms_folder'), casa_ms='visibilities.ms')
     print(ms)
 

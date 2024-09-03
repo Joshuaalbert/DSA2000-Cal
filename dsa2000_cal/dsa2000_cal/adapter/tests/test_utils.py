@@ -14,7 +14,7 @@ def test_from_casa_corrs_to_linear():
         INV_CASA_CORR_TYPES["YX"],
         INV_CASA_CORR_TYPES["YY"]
     ]
-    assert jnp.alltrue(from_casa_corrs_to_linear(casa_coherencies, corrs) == jnp.asarray([1, 2, 3, 4]))
+    assert jnp.all(from_casa_corrs_to_linear(casa_coherencies, corrs) == jnp.asarray([1, 2, 3, 4]))
 
     # Perm
     corrs = [
@@ -23,14 +23,14 @@ def test_from_casa_corrs_to_linear():
         INV_CASA_CORR_TYPES["XY"],
         INV_CASA_CORR_TYPES["YX"]
     ]
-    assert jnp.alltrue(from_casa_corrs_to_linear(casa_coherencies, corrs) == jnp.asarray([1, 3, 4, 2]))
+    assert jnp.all(from_casa_corrs_to_linear(casa_coherencies, corrs) == jnp.asarray([1, 3, 4, 2]))
 
     # Partial
     corrs = [
         INV_CASA_CORR_TYPES["XX"],
         INV_CASA_CORR_TYPES["XY"],
     ]
-    assert jnp.alltrue(from_casa_corrs_to_linear(casa_coherencies[:2], corrs) == jnp.asarray([1, 2, 0, 0]))
+    assert jnp.all(from_casa_corrs_to_linear(casa_coherencies[:2], corrs) == jnp.asarray([1, 2, 0, 0]))
 
     # Circular to Linear
     casa_coherencies = jnp.asarray([1, 2, 3, 4])
@@ -68,7 +68,7 @@ def test_from_linear_to_casa_corrs():
         INV_CASA_CORR_TYPES["YX"],
         INV_CASA_CORR_TYPES["YY"]
     ]
-    assert jnp.alltrue(from_linear_to_casa_corrs(linear_coherencies, corrs) == jnp.asarray([1, 2, 3, 4]))
+    assert jnp.all(from_linear_to_casa_corrs(linear_coherencies, corrs) == jnp.asarray([1, 2, 3, 4]))
 
     # Perm
     corrs = [
@@ -77,14 +77,14 @@ def test_from_linear_to_casa_corrs():
         INV_CASA_CORR_TYPES["XY"],
         INV_CASA_CORR_TYPES["YX"]
     ]
-    assert jnp.alltrue(from_linear_to_casa_corrs(linear_coherencies, corrs) == jnp.asarray([1, 4, 2, 3]))
+    assert jnp.all(from_linear_to_casa_corrs(linear_coherencies, corrs) == jnp.asarray([1, 4, 2, 3]))
 
     # Partial
     corrs = [
         INV_CASA_CORR_TYPES["XX"],
         INV_CASA_CORR_TYPES["XY"],
     ]
-    assert jnp.alltrue(from_linear_to_casa_corrs(linear_coherencies, corrs) == jnp.asarray([1, 2]))
+    assert jnp.all(from_linear_to_casa_corrs(linear_coherencies, corrs) == jnp.asarray([1, 2]))
 
     # Circular to Linear
     linear_coherencies = jnp.asarray([1, 2, 3, 4])
