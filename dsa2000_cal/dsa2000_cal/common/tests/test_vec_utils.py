@@ -10,10 +10,10 @@ from dsa2000_cal.common.vec_utils import vec, unvec, kron_product, kron_inv, kro
 def test_vec():
     a = jnp.asarray([[1, 2],
                      [3, 4]])
-    assert jnp.alltrue(vec(a) == jnp.asarray([1, 3, 2, 4]))
+    assert jnp.all(vec(a) == jnp.asarray([1, 3, 2, 4]))
 
-    assert jnp.alltrue(unvec(vec(a), (2, 2)) == a)
-    assert jnp.alltrue(unvec(vec(a)) == a)
+    assert jnp.all(unvec(vec(a), (2, 2)) == a)
+    assert jnp.all(unvec(vec(a)) == a)
 
 
 def test_kron_product():

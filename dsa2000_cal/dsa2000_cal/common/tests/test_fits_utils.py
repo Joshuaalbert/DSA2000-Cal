@@ -191,7 +191,7 @@ def test_image_model():
     x = ImageModel(
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
         obs_time=obs_time,
-        dl=au.Quantity(-1, au.dimensionless_unscaled),
+        dl=au.Quantity(1, au.dimensionless_unscaled),
         dm=au.Quantity(1, au.dimensionless_unscaled),
         freqs=au.Quantity([100, 200, 300], au.MHz),
         image=au.Quantity(np.ones((10, 10, 3, 4)), au.Jy),
@@ -203,12 +203,12 @@ def test_image_model():
         bandwidth=au.Quantity(300, au.MHz)
     )
     _ = ImageModel.parse_raw(x.json())
-    # dl positive
+    # dl neg
     with pytest.raises(ValueError):
         _ = ImageModel(
             phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
             obs_time=obs_time,
-            dl=au.Quantity(1, au.dimensionless_unscaled),
+            dl=au.Quantity(-1, au.dimensionless_unscaled),
             dm=au.Quantity(1, au.dimensionless_unscaled),
             freqs=au.Quantity([100, 200, 300], au.MHz),
             image=au.Quantity(np.ones((10, 10, 3, 4)), au.Jy),
@@ -259,7 +259,7 @@ def test_save_image_to_fits(tmp_path):
     image_model = ImageModel(
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
         obs_time=obs_time,
-        dl=au.Quantity(-0.01, au.dimensionless_unscaled),
+        dl=au.Quantity(0.01, au.dimensionless_unscaled),
         dm=au.Quantity(0.01, au.dimensionless_unscaled),
         freqs=au.Quantity([100, 200, 300], au.MHz),
         image=au.Quantity(np.random.normal(size=(10, 10, 3, 4)), au.Jy),

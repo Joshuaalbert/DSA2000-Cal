@@ -218,7 +218,7 @@ class SerialisableBaseModel(BaseModel):
 
             # Deserialise InterpolatedArray
             elif field.type_ is InterpolatedArray and isinstance(obj.get(name), dict) and obj[name].get(
-                    "type") == 'dsa2000_cal.uvw.uvw_utils.InterpolatedArray':
+                    "type") == 'dsa2000_cal.common.interp_utils.InterpolatedArray':
                 obj[name] = deserialise_interpolated_array(obj[name])
                 continue
 

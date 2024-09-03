@@ -10,7 +10,6 @@ import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
 from jax import config, numpy as jnp, lax
 
-from dsa2000_cal.common.bit_context import BitContext
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
@@ -375,8 +374,7 @@ class FarFieldDelayEngine:
         w, (u, v) = jax.value_and_grad(self.compute_delay_from_lm_jax, argnums=(0, 1))(l, m, t1, i1, i2)
         return jnp.stack([u, v, w], axis=-1)  # [3]
 
-    def compute_uvw_jax(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array,
-                        convention: str = 'physical') -> jax.Array:
+    def compute_uvw_jax(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array) -> jax.Array:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model.
 
@@ -388,12 +386,7 @@ class FarFieldDelayEngine:
         Returns:
             uvw: [N, 3] UVW coordinates in meters.
         """
-        if convention == 'physical':
-            return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
-        elif convention == 'casa':
-            return jax.vmap(self._single_compute_uvw)(times, antenna_2, antenna_1)
-        else:
-            raise ValueError(f"Unknown convention {convention}")
+        return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
 
     def time_to_jnp(self, times: at.Time) -> jax.Array:
         """
@@ -495,7 +488,6 @@ def far_field_delay(
         [2] Klioner, S. A. (1991). General relativistic model of VLBI delay observations.
             https://www.researchgate.net/publication/253171626
     """
-    # TODO: add support to subtraction precision in 32bit
     c = quantity_to_jnp(const.c)  # m / s
     L_G = jnp.asarray(6.969290134e-10)  # 1 - d(TT) / d(TCG)
     GM_earth = quantity_to_jnp(const.GM_earth)  # m^3 / s^2
@@ -529,7 +521,6 @@ def far_field_delay(
 
     # Eq 11.7
     delta_T_grav = jnp.sum(delta_T_grav_J) + delta_T_grav_earth  # []
-    delta_T_grav *= 0.
     # Around delta_T_grav=-0.00016 m * (|baseline|/1km)
 
     # Since we perform analysis in BCRS kinematically non-rotating dynamic frame we need to convert to GCRS TT-compatible

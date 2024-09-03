@@ -55,6 +55,9 @@ def test_far_field_delay_engine():
     assert np.shape(delay) == ()
 
     print(delay)
+    # 64 bit -- 999.9988935488057
+    # 32 bit -- 999.9988935488057
+
     np.testing.assert_allclose(delay, 1000., atol=0.55)
 
 

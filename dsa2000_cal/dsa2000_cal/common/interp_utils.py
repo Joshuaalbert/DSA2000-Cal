@@ -321,8 +321,9 @@ class InterpolatedArray:
 
     def __post_init__(self):
 
+        print(self.x)
         if len(np.shape(self.x)) != 1:
-            raise ValueError(f"Times must be 1D, got {np.shape(self.x)}.")
+            raise ValueError(f"x must be 1D, got {np.shape(self.x)}.")
 
         def _assert_shape(x):
             if np.shape(x)[self.axis] != np.size(self.x):

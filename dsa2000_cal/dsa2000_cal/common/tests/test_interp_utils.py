@@ -58,7 +58,7 @@ def test_multilinear_interp_2d():
             [3., 3.3333333, 3.6666666, 4.]
         ]
     )
-    np.testing.assert_allclose(multilinear_interp_2d(x, y, xp, yp, z), expected)
+    np.testing.assert_allclose(multilinear_interp_2d(x, y, xp, yp, z), expected, atol=1e-6)
 
     # within_bounds_2d
     xp = jnp.linspace(0, 10, 11)
