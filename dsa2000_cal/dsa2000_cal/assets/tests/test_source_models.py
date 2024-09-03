@@ -1,14 +1,10 @@
 import os
 
-import numpy as np
 import pytest
-from astropy import units as au, time as at, coordinates as ac
+from astropy import time as at, coordinates as ac
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.assets.source_models.cyg_a.source_model import CygASourceModel
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
-from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel
 
 
 def test_model():
@@ -157,3 +153,33 @@ def get_lm_coords_image(fits_file, time: at.Time, phase_tracking: ac.ICRS):
         # dm = mvec[1] - mvec[0]
 
         return image, lmn
+
+
+import astropy.coordinates as ac
+import astropy.time as at
+import astropy.units as au
+import numpy as np
+
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import source_model_registry
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel
+
+
+def test_wsclean_component_files():
+    fill_registries()
+    # Create a sky model for calibration
+    for source in ['cas_a', 'cyg_a', 'tau_a', 'vir_a']:
+        source_model_asset = source_model_registry.get_instance(source_model_registry.get_match(source))
+        time = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
+        freqs = np.linspace(700e6, 2000e6, 1) * au.Hz
+        phase_tracking = ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
+        # source_model = WSCleanSourceModel.from_wsclean_model(
+        #     wsclean_clean_component_file=source_model_asset.get_wsclean_clean_component_file(),
+        #     time=at.Time('2021-01-01T00:00:00', format='isot', scale='utc'),
+        #     freqs=np.linspace(700e6, 2000e6, 2) * au.Hz,
+        #     phase_tracking=ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
+        # )
+
+        fits_model = FITSSourceModel.from_wsclean_model(source_model_asset.get_wsclean_fits_files(),
+                                                        phase_tracking, freqs, ignore_out_of_bounds=True)
+        fits_model.plot()
