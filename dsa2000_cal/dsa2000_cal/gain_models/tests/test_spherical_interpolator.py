@@ -189,7 +189,7 @@ def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
 
 def test_regrid_to_regular_grid():
     num_model_times = 2
-    num_model_dir = 3
+    num_model_dir = 4
     num_ant = 4
     num_model_freqs = 5
     resolution = 10
