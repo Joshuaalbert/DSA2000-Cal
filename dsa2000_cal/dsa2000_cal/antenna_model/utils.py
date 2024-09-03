@@ -189,7 +189,7 @@ def get_dish_model_beam_widths(antenna_model: AbstractAntennaModel, threshold: f
     return get_beam_widths(amplitude[..., 0, 0], theta, freqs, threshold=threshold)
 
 
-def plot_circular_beam(antenna_model: AbstractAntennaModel, theshold: float = 0.01):
+def plot_circular_beam(antenna_model: AbstractAntennaModel, threshold: float = 0.01):
     """
     Plot the circular beam.
 
@@ -198,14 +198,14 @@ def plot_circular_beam(antenna_model: AbstractAntennaModel, theshold: float = 0.
         threshold: threshold value to use to determine beam part to plot
     """
 
-    amplitude = antenna_model.get_amplitude()
+    amplitude = antenna_model.get_amplitude()[..., 0, 0]
     amplitude /= np.max(amplitude, axis=(0, 1))
     circular_mean = np.mean(amplitude, axis=1)
     theta = antenna_model.get_theta()
     norm = plt.Normalize(vmin=antenna_model.get_freqs().value.min(), vmax=antenna_model.get_freqs().value.max())
     for i, freq in enumerate(antenna_model.get_freqs()):
         for k, th in enumerate(theta):
-            if circular_mean[k, i] < theshold:
+            if circular_mean[k, i] < threshold:
                 break
         plt.plot(theta[:k], circular_mean[:k, i],
                  label=freq, color=plt.cm.get_cmap('jet_r')(norm(freq.value)))

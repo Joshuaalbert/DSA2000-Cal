@@ -25,6 +25,6 @@ def _test_bore_sight_coords_to_pixel_coords():
 def test_get_beam_width():
     fill_registries()
     antenna_model = array_registry.get_instance(array_registry.get_match('dsa2000W')).get_antenna_model()
-    plot_circular_beam(antenna_model, theshold=0.5)
+    plot_circular_beam(antenna_model, threshold=0.5)
     freqs, beam_widths = get_dish_model_beam_widths(antenna_model)
     assert np.all(beam_widths > 0. * au.deg) and np.all(beam_widths < 180. * au.deg)
