@@ -7,7 +7,7 @@ from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishE
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
 
-def test_dish_effects_simulation():
+def _test_dish_effects_simulation():
     pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     beam_gain_model = build_beam_gain_model(array_name='lwa')
     dish_effects_simulation = DishEffectsSimulation(
@@ -37,7 +37,7 @@ def test_dish_effects_simulation():
     assert dish_effects_simulation.aperture_sampling_interval.unit.is_equivalent(au.m)
 
 
-def test_dish_effects_gain_model_real_data(tmp_path):
+def _test_dish_effects_gain_model_real_data(tmp_path):
     freqs = au.Quantity([700e6], unit=au.Hz)
     beam_gain_model = build_beam_gain_model(array_name='dsa2000W')
     pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)

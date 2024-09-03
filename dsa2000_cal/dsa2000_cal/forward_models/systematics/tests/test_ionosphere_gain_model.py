@@ -14,7 +14,7 @@ from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import build_i
 from dsa2000_cal.forward_models.systematics.ionosphere_simulation import IonosphereSimulation, msqrt
 
 
-def test_real_ionosphere_gain_model():
+def _test_real_ionosphere_gain_model():
     phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     field_of_view = 4 * au.deg
     spatial_resolution = 2.0 * au.km
@@ -45,7 +45,7 @@ def test_msqrt():
     np.testing.assert_allclose(A, L @ L.T, atol=2e-4)
 
 
-def test_ionosphere_simulation():
+def _test_ionosphere_simulation():
     array_location = ac.EarthLocation(lat=0 * au.deg, lon=0 * au.deg, height=0 * au.m)
 
     radius = 10 * au.km

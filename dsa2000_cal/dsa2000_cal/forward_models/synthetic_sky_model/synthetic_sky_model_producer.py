@@ -57,9 +57,6 @@ class SyntheticSkyModelProducer:
         )
         lmn = icrs_to_lmn(sources=coords, phase_tracking=self.phase_tracking)
 
-        # Filter out those with negative n (below horizon)
-        mask = lmn[:, 2] > 0
-        lmn = lmn[mask, :]
         num_sources = len(lmn)
         source_flux = 10 * au.Jy * ((700 * au.MHz) / np.mean(self.freqs))
         if full_stokes:
