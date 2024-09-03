@@ -13,9 +13,9 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import lax
 from jax import numpy as jnp
 
-from dsa2000_cal.calibration.bfgs import BFGS
-from dsa2000_cal.calibration.lbfgs import LBFGS
-from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
+from dsa2000_cal.calibration.jaxopt.bfgs import BFGS
+from dsa2000_cal.calibration.jaxopt.lbfgs import LBFGS
+from dsa2000_cal.calibration.jaxopt.levenburg_marquardt import LevenbergMarquardt
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
