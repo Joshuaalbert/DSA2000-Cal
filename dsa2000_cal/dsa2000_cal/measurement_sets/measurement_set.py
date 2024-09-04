@@ -66,6 +66,10 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     pointings: ac.ICRS | None = Field(
         description="Pointing direction of each of the antennas."
     )  # [num_antenna]
+    static_beam: bool = Field(
+        default=True,
+        description="If True the beam response does not change over time, otherwise it's a function of time and pointing."
+    )
     times: at.Time = Field(
         description="Centre times of data windows."
     )  # [num_times]

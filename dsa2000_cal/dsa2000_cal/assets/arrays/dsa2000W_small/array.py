@@ -17,7 +17,7 @@ class MockAntennaModel(AltAzAntennaModel):
     def __init__(self):
         self.model_name = 'mock_antenna_model'
         self._num_theta = 60
-        self._num_phi = 15
+        self._num_phi = 40
         self._num_freqs = 20
 
     @cached_property

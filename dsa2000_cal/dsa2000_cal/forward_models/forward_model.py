@@ -123,7 +123,7 @@ class BaseForwardModel(AbstractForwardModel):
         start_time = current_utc()
 
         beam_gain_model = beam_gain_model_factory(ms)
-        beam_gain_model.plot_beam(os.path.join(self.plot_folder, 'beam.png'))
+        beam_gain_model.plot_regridded_beam(os.path.join(self.plot_folder, 'beam.png'))
 
         # Simulate systematics
         systematics_simulator = SimulateSystematics(

@@ -1,6 +1,4 @@
 import numpy as np
-import numpy as np
-import pylab as plt
 import pytest
 from astropy import units as au, coordinates as ac, time as at
 from jax import numpy as jnp
@@ -10,7 +8,7 @@ from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel, \
     phi_theta_from_lmn, regrid_to_regular_grid
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
-
+import matplotlib.pyplot as plt
 
 def test_lmn_from_phi_theta():
     # L = -Y, M = X, N = Z
@@ -218,8 +216,9 @@ def test_regrid_to_regular_grid():
     assert np.shape(gains) == (num_model_times, resolution, resolution, num_ant, num_model_freqs)
 
 
-@pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W'])
-def test_spherical_beam_lwa(array_name):
+
+@pytest.mark.parametrize('array_name', ['dsa2000W_small'])
+def test_spherical_beams(array_name):
     beam_gain_model = build_beam_gain_model(array_name=array_name, full_stokes=False)
     select = beam_gain_model.lmn_data[:, 2] >= 0.  # Select only positive N
     sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,
