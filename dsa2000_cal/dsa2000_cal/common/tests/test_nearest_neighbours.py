@@ -1,4 +1,3 @@
-import time
 from typing import Tuple
 
 import jax
@@ -132,59 +131,3 @@ def brute_force_nearest_neighbors(points: jnp.ndarray, test_point: jnp.ndarray, 
     return -top_k_neg_distances, top_k_indices
 
 
-@pytest.mark.parametrize("k", [1, 2, 3])
-@pytest.mark.parametrize("m", [1, 100, 1000])
-@pytest.mark.parametrize("n", [1000, 100000])
-@pytest.mark.parametrize("average_points_per_cell", [9, 16, 25])
-@pytest.mark.parametrize("kappa", [1., 5., 10.])
-def test_performance(n: int, k: int, m: int, average_points_per_cell: int, kappa: float):
-    """
-    Performance test comparing ApproximateTree with brute-force approach for varying number of points.
-    """
-
-    # Generate uniformly distributed points
-    key = random.PRNGKey(0)
-    points = random.uniform(key, (n, 2))
-
-    # Test now with vmap test_points
-    test_points = random.uniform(jax.random.PRNGKey(1), (m, 2))
-
-    # ApproximateTree method
-    approx_tree = ApproximateTreeNN(average_points_per_cell=average_points_per_cell, kappa=kappa)
-    build_tree = jax.jit(approx_tree.build_tree).lower(points).compile()
-    t0 = time.time()
-    tree = build_tree(points)
-    jax.block_until_ready(tree)
-    tree_build_time = time.time() - t0
-
-    query = jax.jit(jax.vmap(lambda test_point: approx_tree.query(tree, test_point, k))).lower(test_points).compile()
-
-    t0 = time.time()
-    distances_approx, indices_approx = query(test_points)
-    jax.block_until_ready(distances_approx)
-    approx_time = time.time() - t0
-
-    # Brute-force method
-    brute_force_nearest_neighbors_vmap = jax.jit(
-        jax.vmap(lambda test_point: brute_force_nearest_neighbors(points, test_point, k))
-    ).lower(test_points).compile()
-
-    t0 = time.time()
-    distances_brute, indices_brute = brute_force_nearest_neighbors_vmap(test_points)
-    jax.block_until_ready(distances_brute)
-    brute_time = time.time() - t0
-
-    speedup = brute_time / approx_time
-    index_error_rate = np.mean(indices_brute != indices_approx)
-    mean_abs_error = np.mean(np.abs(distances_brute - distances_approx))
-    rmse = np.sqrt(np.mean((distances_brute - distances_approx) ** 2))
-    print(
-        f"n={n}, m={m}, k={k}, avg_points_per_cell={average_points_per_cell}, kappa={kappa}:\n"
-        f"\tTree build time: {tree_build_time:.5f}s\n"
-        f"\tApproximateTree time: {approx_time:.5f}s\n"
-        f"\tBrute-force time: {brute_time:.5f}s\n"
-        f"\tSpeedup: {speedup:.2f}\n"
-        f"\tIndex error rate: {index_error_rate:.2f}\n"
-        f"\tMean absolute error: {mean_abs_error:.5f}\n"
-        f"\tRMSE: {rmse:.5f}\n"
-    )
