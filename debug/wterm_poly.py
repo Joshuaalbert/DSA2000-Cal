@@ -1,5 +1,6 @@
 from functools import partial
 
+import astropy.constants as const
 import astropy.units as au
 import jax
 import jax.numpy as jnp
