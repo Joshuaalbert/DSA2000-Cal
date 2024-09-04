@@ -162,7 +162,7 @@ import numpy as np
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
-from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
 
 
 def test_wsclean_component_files():

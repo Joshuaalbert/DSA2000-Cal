@@ -8,14 +8,14 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import rfi_model_registry, array_registry
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
-from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import \
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
     RFIEmitterSourceModel, RFIEmitterPredict
 
 
 @pytest.mark.parametrize("is_gains", [True, False])
 @pytest.mark.parametrize("direction_dependent_gains", [True, False])
 @pytest.mark.parametrize("full_stokes", [True, False])
-def test_lte_predict(is_gains: bool, direction_dependent_gains: bool, full_stokes: bool):
+def test_rfi_emitter_predict_shapes_correct(is_gains: bool, direction_dependent_gains: bool, full_stokes: bool):
     # Create a simple model
     fill_registries()
     rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('lwa_cell_tower'))

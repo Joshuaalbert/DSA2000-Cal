@@ -250,6 +250,8 @@ class PointSourceModel(AbstractSourceModel):
         )
 
     def get_flux_model(self, lvec=None, mvec=None):
+        if self.is_full_stokes():
+            raise ValueError("Cannot plot full stokes")
         # Use imshow to plot the sky model evaluated over a LM grid
 
         if lvec is None or mvec is None:

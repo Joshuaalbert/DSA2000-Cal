@@ -1,45 +1,10 @@
-import itertools
-import time
-
-import astropy.coordinates as ac
-import astropy.time as at
-import astropy.units as au
 import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import PointSourceModel, \
-    PointPredict, PointModelData
-
-
-def test_point_sources():
-    fill_registries()
-    time = at.Time('2021-01-01T00:00:00', scale='utc')
-
-    # -00:36:28.234,58.50.46.396
-    source_file = source_model_registry.get_instance(source_model_registry.get_match('cas_a')).get_wsclean_clean_component_file()
-    # phase_tracking = ac.SkyCoord("-00h36m28.234s", "58d50m46.396s", frame='icrs')
-    phase_tracking = ac.ICRS(ra=-4 * au.hour, dec=40 * au.deg)
-
-    # -04:00:28.608,40.43.33.595
-    # source_file = source_model_registry.get_instance(source_model_registry.get_match('cyg_a')).get_wsclean_source_file()
-    # phase_tracking = ac.SkyCoord("-04h00m28.608s", "40d43m33.595s", frame='icrs')
-
-    freqs = au.Quantity([50e6, 80e6], 'Hz')
-
-    point_source_model = PointSourceModel.from_wsclean_model(
-        wsclean_clean_component_file=source_file,
-        phase_tracking=phase_tracking,
-        freqs=freqs
-    )
-    assert isinstance(point_source_model, PointSourceModel)
-    assert point_source_model.num_sources > 0
-
-    point_source_model.plot()
+from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointPredict, PointModelData
 
 
 @pytest.mark.parametrize("di_gains", [True, False])
@@ -217,71 +182,4 @@ def test_ensure_gradients_work(di_gains: bool):
                     # Ensure gradient is not zero
                     assert np.all(np.abs(model_data_grad.gains[s, t, a, :, :, :]) > 1e-10)
 
-
-
-@pytest.mark.parametrize("di_gains", [True, False, None])
-def test_benchmark_performance(di_gains):
-    # Benchmark performance
-    # di_gains=True: Time taken for 2048 antennas, 1 channels, 100 sources: 9.648704 s | 6.206855 s | 6.150985 s | 7.489174 s | 6.170542 s | 7.400250 s | 6.066451 s
-    # di_gains=False: Time taken for 2048 antennas, 1 channels, 100 sources: 5.895023 s | 10.000695 s | 9.863059 s | 5.838677 s | 5.838487 s | 5.802181 s | 5.789162 s
-    # di_gains=None: Time taken for 2048 antennas, 1 channels, 100 sources: 2.050352 s | 4.495360 s | 4.380370 s | 1.956469 s | 2.811478 s | 1.797925 s | 1.742006 s
-    dft_predict = PointPredict()
-    num_time = 1
-    for num_ant in [2048]:
-        for num_chan in [1]:
-            for num_source in [100]:
-                freqs = jnp.linspace(700e6, 2000e6, num_chan)
-
-                antennas = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (num_ant, 3))
-                antenna_1, antenna_2 = jnp.asarray(
-                    list(itertools.combinations_with_replacement(range(num_ant), 2))).T
-
-                num_rows = len(antenna_1)
-
-                uvw = antennas[antenna_2] - antennas[antenna_1]
-                uvw = uvw.at[:, 2].mul(1e-3)
-
-                times = jnp.arange(num_time) * 1.5
-                time_idx = jnp.zeros((num_rows,), jnp.int64)
-                time_obs = times[time_idx]
-
-                image = jnp.zeros((num_source, num_chan, 2, 2), dtype=jnp.complex64)
-                image = image.at[..., 0, 0].set(0.5)
-                image = image.at[..., 1, 1].set(0.5)
-                if di_gains is None:
-                    gains = None
-                else:
-                    if di_gains:
-                        gain_shape = (num_time, num_ant, num_chan, 2, 2)
-                    else:
-                        gain_shape = (num_source, num_time, num_ant, num_chan, 2, 2)
-
-                    gains = jnp.ones(gain_shape) + 1j * jnp.zeros(gain_shape)
-                    gains = gains.at[..., 1, 0].set(0.)
-                    gains = gains.at[..., 0, 1].set(0.)
-
-                lmn = jax.random.normal(jax.random.PRNGKey(42), (num_source, 3))
-                lmn /= jnp.linalg.norm(lmn, axis=-1, keepdims=True)
-
-                model_data = PointModelData(
-                    freqs=freqs,
-                    image=image,
-                    gains=gains,
-                    lmn=lmn
-                )
-
-                visibility_coords = VisibilityCoords(
-                    uvw=uvw,
-                    time_obs=time_obs,
-                    antenna_1=antenna_1,
-                    antenna_2=antenna_2,
-                    time_idx=time_idx
-                )
-
-                f = jax.jit(dft_predict.predict).lower(model_data=model_data, visibility_coords=visibility_coords).compile()
-
-                t0 = time.time()
-                visibilities = f(model_data=model_data, visibility_coords=visibility_coords).block_until_ready()
-                t1 = time.time()
-                print(f"Time taken for {num_ant} antennas, {num_chan} channels, {num_source} sources: {t1 - t0:.6f} s")
 
