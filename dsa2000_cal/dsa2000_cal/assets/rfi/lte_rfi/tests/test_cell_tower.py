@@ -12,7 +12,7 @@ def test_lte_rfi_source_factory():
     plt.xlabel('Frequency [MHz]')
     plt.ylabel('Luminosity [W/Hz]')
     plt.show()
-    plt.plot(source_params.delay_acf.x, source_params.delay_acf.values[:, 0, 0])
+    plt.plot(source_params.delay_acf.x, source_params.delay_acf.values[:, 0])
     plt.xlabel('Delay [s]')
     plt.ylabel('Auto-correlation function')
     plt.show()
