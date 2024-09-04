@@ -148,10 +148,8 @@ def test_gaussian_correctness_order_1():
         vis_mae_order_0.append(jnp.abs(vis_gaussian_order_0 - vis_wgridder).mean())
         vis_mae_order_1.append(jnp.abs(vis_gaussian_order_1 - vis_wgridder).mean())
 
-        assert (
-            vis_mae_order_1[-1] < vis_mae_order_0[-1],
-            f"MAE order 0: {vis_mae_order_0[-1]}, MAE order 1: {vis_mae_order_1[-1]}, l0: {l0}"
-        )
+        assert vis_mae_order_1[-1] < vis_mae_order_0[
+            -1], f"MAE order 0: {vis_mae_order_0[-1]}, MAE order 1: {vis_mae_order_1[-1]}, l0: {l0}"
 
     plt.plot(l0_array, vis_mae_order_0, label='order 0')
     plt.plot(l0_array, vis_mae_order_1, label='order 1')
