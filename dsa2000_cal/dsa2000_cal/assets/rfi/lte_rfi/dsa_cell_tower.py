@@ -13,7 +13,7 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 
 
 @rfi_model_registry(template='lte_cell_tower')
-class LWACellTower(AbstractRFIEmitterData):
+class DSACellTower(AbstractRFIEmitterData):
 
     def rfi_injection_model(self) -> str:
         return os.path.join(*self.content_path, 'rfi_injection_model.mat')
