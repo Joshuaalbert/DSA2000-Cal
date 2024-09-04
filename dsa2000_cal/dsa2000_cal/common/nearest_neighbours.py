@@ -1,5 +1,6 @@
 import dataclasses
 import warnings
+from functools import partial
 from typing import NamedTuple, Tuple
 
 import jax
@@ -105,6 +106,46 @@ class ApproximateTreeNN:
             return grid, storage_indices
 
         grid, storage_indices = jax.lax.fori_loop(0, n_points, assign_point, (grid, storage_indices))
+
+        # Some cells may not have any points, thus test points that fall within that cell will have no neighbors.
+        # We can solve this and improve edge effects by filling up all -1 with random points from neighboring cells.
+
+        def body(state):
+            i, grid, storage_indices = state
+            # Get a random neighbour for each unfilled point in each cell
+            G, P = jnp.meshgrid(jnp.arange(np.shape(grid)[0]), jnp.arange(np.shape(grid)[1]), indexing='ij')
+            cell_x, cell_y = self._idx_to_grid(G, n_grid)  # [num_cells, max_points_per_cell]
+            neighbour_inc = jax.random.randint(
+                jax.random.PRNGKey(42), np.shape(G) + (2,),
+                -1, 2
+            )  # [num_cells, max_points_per_cell, 2]
+            neighbour_x = jnp.clip(cell_x + neighbour_inc[:, :, 0], 0, n_grid - 1)
+            neighbour_y = jnp.clip(cell_y + neighbour_inc[:, :, 1], 0, n_grid - 1)
+            neighbour_grid_idx = self._grid_to_idx(neighbour_x, neighbour_y, n_grid)  # [num_cells, max_points_per_cell]
+            random_select = jax.random.randint(jax.random.PRNGKey(42), np.shape(G), 0,
+                                               storage_indices[:, None])  # [num_cells, max_points_per_cell]
+            random_neighbour = grid[neighbour_grid_idx, random_select]  # [num_cells, max_points_per_cell]
+
+            # Check that random neighbour is not already in the cell it would go to
+            @partial(jax.vmap, in_axes=(0, 0))
+            @partial(jax.vmap, in_axes=(0, 0))
+            def check_cell(i, j):
+                return jnp.logical_not(jnp.any(grid[i] == random_neighbour[i, j]))
+
+            replace = (grid == -1) & check_cell(G, P)
+
+            grid = jnp.where(replace, random_neighbour, grid)
+            grid = jnp.sort(grid, axis=1, descending=True)
+            storage_indices = jnp.sum(grid != -1, axis=1)
+            return i + 1, grid, storage_indices
+
+        def cond(state):
+            # Until all -1 are replaced
+            i, grid, storage_indices = state
+            return jnp.any(grid == -1) & (i < 10)
+
+        _, grid, _ = jax.lax.while_loop(cond, body, (0, grid, storage_indices))
+
         return GridTree(grid=grid, points=points, extent=extent)
 
     def query(self, tree: GridTree, test_point: jax.Array, k: int = 1) -> Tuple[jax.Array, jax.Array]:
