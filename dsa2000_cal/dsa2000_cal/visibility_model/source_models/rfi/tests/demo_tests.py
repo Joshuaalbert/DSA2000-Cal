@@ -5,7 +5,7 @@ from astropy import units as au, time as at
 from jax import numpy as jnp
 
 from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry, rfi_model_registry
+from dsa2000_cal.assets.registries import rfi_model_registry, array_registry
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
@@ -15,11 +15,10 @@ from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model imp
 @pytest.mark.parametrize("is_gains", [True, False])
 @pytest.mark.parametrize("direction_dependent_gains", [True, False])
 @pytest.mark.parametrize("full_stokes", [True, False])
-def test_rfi_emitter_predict_shapes_correct(is_gains: bool, direction_dependent_gains: bool, full_stokes: bool):
+def test_rfi_emitter_predict(is_gains: bool, direction_dependent_gains: bool, full_stokes: bool):
     # Create a simple model
     fill_registries()
-    rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('mock_cell_tower'))
-    # Create a simple model
+    rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('lwa_cell_tower'))
     freqs = np.linspace(55, 59, 10) * au.MHz
     rfi_model_params = rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes)
     source_model = RFIEmitterSourceModel(rfi_model_params)
@@ -27,7 +26,7 @@ def test_rfi_emitter_predict_shapes_correct(is_gains: bool, direction_dependent_
         assert source_model.is_full_stokes()
     else:
         assert not source_model.is_full_stokes()
-    array = array_registry.get_instance(array_registry.get_match('dsa2000W_small'))
+    array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
     time = at.Time('2021-01-01T00:00:00', scale='utc')
 
     antennas = array.get_antennas()

@@ -1,6 +1,7 @@
 from functools import cached_property
 from typing import List
 
+import astropy.units as au
 import numpy as np
 from astropy import coordinates as ac
 
@@ -8,6 +9,69 @@ from dsa2000_cal.abc import AbstractAntennaModel
 from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_earth_grid
+
+
+class MockAntennaModel(AbstractAntennaModel):
+    def __init__(self):
+        self.model_name = 'mock_antenna_model'
+        self._num_theta = 10
+        self._num_phi = 15
+        self._num_freqs = 20
+
+    @cached_property
+    def _get_amplitude(self) -> au.Quantity:
+        scalar_amplitude = np.ones((self._num_theta, self._num_phi,
+                                    self._num_freqs)) * au.dimensionless_unscaled  # [num_theta, num_phi, num_freqs]
+        amplitude = np.zeros(scalar_amplitude.shape + (2, 2))
+        amplitude[..., 0, 0] = scalar_amplitude
+        amplitude[..., 1, 1] = scalar_amplitude
+        return amplitude * au.dimensionless_unscaled
+
+    @cached_property
+    def _get_phase(self) -> au.Quantity:
+        return np.zeros_like(self.get_amplitude()) * au.rad
+
+    def get_phase(self) -> au.Quantity:
+        return self._get_phase
+
+    def get_amplitude(self) -> au.Quantity:
+        return self._get_amplitude
+
+    @cached_property
+    def _get_voltage_gain(self) -> au.Quantity:
+        return np.max(np.max(self.get_amplitude()[..., 0, 0], axis=0),
+                      axis=0) * au.dimensionless_unscaled  # [num_freqs]
+
+    def get_voltage_gain(self) -> au.Quantity:
+        """
+        Get the voltage gain of the antenna model. This is used in the correlator to account for amplification of
+        the signal.
+
+        Returns:
+            voltage gain [Nf]
+        """
+        return self._get_voltage_gain  # [Nf]
+
+    @cached_property
+    def _get_freqs(self) -> au.Quantity:
+        return np.linspace(0.7, 2, self._num_freqs) * au.GHz
+
+    def get_freqs(self) -> au.Quantity:
+        return self._get_freqs
+
+    @cached_property
+    def _get_theta(self) -> au.Quantity:
+        return np.linspace(0, 180, self._num_theta) * au.deg  # [num_theta]
+
+    def get_theta(self) -> au.Quantity:
+        return self._get_theta
+
+    @cached_property
+    def _get_phi(self) -> au.Quantity:
+        return np.linspace(0, 360, self._num_phi) * au.deg  # [num_phi]
+
+    def get_phi(self) -> au.Quantity:
+        return self._get_phi
 
 
 @array_registry(template='dsa2000W_small')
@@ -18,8 +82,7 @@ class DSA2000WSmallArray(DSA2000WArray):
 
     @cached_property
     def _get_antenna_model(self) -> AbstractAntennaModel:
-        array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
-        return array.get_antenna_model()
+        return MockAntennaModel()
 
     def get_antenna_model(self) -> AbstractAntennaModel:
         return self._get_antenna_model
