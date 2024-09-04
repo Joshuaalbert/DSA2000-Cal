@@ -26,7 +26,7 @@ def test_transfer_from_casa(tmp_path):
             antenna_1_ms = f.root.antenna_1[:]
             antenna_2_ms = f.root.antenna_2[:]
             time_idx_ms = f.root.time_idx[:]
-            times_ms = ms.meta.x[time_idx_ms]
+            times_ms = ms.meta.times[time_idx_ms]
 
         print(uvw[:10])
         print(uvw_ms[:10])
