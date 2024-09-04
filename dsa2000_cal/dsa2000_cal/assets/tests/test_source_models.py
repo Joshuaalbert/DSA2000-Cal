@@ -1,77 +1,7 @@
-import os
+import astropy.coordinates as ac
+import astropy.time as at
 
-import pytest
-from astropy import time as at, coordinates as ac
-
-from dsa2000_cal.assets.source_models.cyg_a.source_model import CygASourceModel
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
-
-
-def test_model():
-    for file in CygASourceModel(seed='abc').get_wsclean_fits_files():
-        assert os.path.isfile(file)
-
-
-@pytest.mark.parametrize('source', ['cas_a', 'cyg_a', 'tau_a', 'vir_a'])
-def test_orientations(source: str):
-    fill_registries()
-    time = at.Time('2021-01-01T00:00:00', scale='utc')
-
-    # source_file = source_model_registry.get_instance(source_model_registry.get_match('cas_a')).get_wsclean_source_file()
-    # -00:36:28.234,58.50.46.396
-    # phase_tracking = ac.SkyCoord("-00h36m28.234s", "58d50m46.396s", frame='icrs')
-    # phase_tracking = ac.SkyCoord("-00h36m28.234s", "78d50m46.396s", frame='icrs')
-
-    wsclean_fits_files = source_model_registry.get_instance(
-        source_model_registry.get_match(source)).get_wsclean_fits_files()
-    # -04:00:28.608,40.43.33.595
-    phase_tracking = ac.SkyCoord("-04h00m28.608s", "40d43m33.595s", frame='icrs')
-
-    freqs = au.Quantity([65e6, 77e6], 'Hz')
-
-    fits_sources = FITSSourceModel.from_wsclean_model(wsclean_fits_files=wsclean_fits_files,
-                                                      phase_tracking=phase_tracking, freqs=freqs)
-    assert isinstance(fits_sources, FITSSourceModel)
-
-    # Visually verified against ds9, that RA increases over column, and DEC increases over rows.
-    fits_sources.plot()
-    image, lmn = get_lm_coords_image(wsclean_fits_files[0], time=time, phase_tracking=phase_tracking)
-    print(lmn.shape)
-    print(image.shape)  # [Nm, Nl]
-    l = lmn[:, :, 0]
-    m = lmn[:, :, 1]
-    _, dl = np.gradient(l)
-    dm, _ = np.gradient(m)
-    dA = dl * dm
-    # dl = np.diff(l, axis=1, prepend=l[:, 1] - l[:, 0])
-    # dm = np.diff(m, axis=0, prepend=m[1, :] - m[0, :])
-    # print(dl)
-    import pylab as plt
-    plt.imshow(dl, origin='lower',
-               extent=(l.min(), l.max(), m.min(), m.max()))
-    plt.colorbar()
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('dl(l,m)')
-    plt.show()
-
-    # print(dm)
-    plt.imshow(dm, origin='lower',
-               extent=(l.min(), l.max(), m.min(), m.max()))
-    plt.colorbar()
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('dm(l,m)')
-    plt.show()
-
-    # print(dA)
-    plt.imshow(dA, origin='lower',
-               extent=(l.min(), l.max(), m.min(), m.max()))
-    plt.colorbar()
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('dA(l,m)')
-    plt.show()
 
 
 def get_lm_coords_image(fits_file, time: at.Time, phase_tracking: ac.ICRS):
@@ -153,33 +83,3 @@ def get_lm_coords_image(fits_file, time: at.Time, phase_tracking: ac.ICRS):
         # dm = mvec[1] - mvec[0]
 
         return image, lmn
-
-
-import astropy.coordinates as ac
-import astropy.time as at
-import astropy.units as au
-import numpy as np
-
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import source_model_registry
-from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
-
-
-def test_wsclean_component_files():
-    fill_registries()
-    # Create a sky model for calibration
-    for source in ['cas_a', 'cyg_a', 'tau_a', 'vir_a']:
-        source_model_asset = source_model_registry.get_instance(source_model_registry.get_match(source))
-        time = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
-        freqs = np.linspace(700e6, 2000e6, 1) * au.Hz
-        phase_tracking = ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
-        # source_model = WSCleanSourceModel.from_wsclean_model(
-        #     wsclean_clean_component_file=source_model_asset.get_wsclean_clean_component_file(),
-        #     time=at.Time('2021-01-01T00:00:00', format='isot', scale='utc'),
-        #     freqs=np.linspace(700e6, 2000e6, 2) * au.Hz,
-        #     phase_tracking=ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
-        # )
-
-        fits_model = FITSSourceModel.from_wsclean_model(source_model_asset.get_wsclean_fits_files(),
-                                                        phase_tracking, freqs, ignore_out_of_bounds=True)
-        fits_model.plot()

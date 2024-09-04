@@ -6,22 +6,25 @@ import numpy as np
 from astropy import coordinates as ac
 
 from dsa2000_cal.abc import AbstractAntennaModel
+from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaModel
 from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_earth_grid
 
 
-class MockAntennaModel(AbstractAntennaModel):
+class MockAntennaModel(AltAzAntennaModel):
+
     def __init__(self):
         self.model_name = 'mock_antenna_model'
-        self._num_theta = 10
+        self._num_theta = 60
         self._num_phi = 15
         self._num_freqs = 20
 
     @cached_property
     def _get_amplitude(self) -> au.Quantity:
-        scalar_amplitude = np.ones((self._num_theta, self._num_phi,
-                                    self._num_freqs)) * au.dimensionless_unscaled  # [num_theta, num_phi, num_freqs]
+        Theta, Phi, Freq = np.meshgrid(self.get_theta(), self.get_phi(), self.get_freqs(), indexing='ij')
+        scalar_amplitude = np.exp(-Theta ** 2 / (20 * au.deg) ** 2) * np.cos(Phi)**2 * (
+                Freq / (1 * au.GHz)) * au.dimensionless_unscaled  # [num_theta, num_phi, num_freqs]
         amplitude = np.zeros(scalar_amplitude.shape + (2, 2))
         amplitude[..., 0, 0] = scalar_amplitude
         amplitude[..., 1, 1] = scalar_amplitude
