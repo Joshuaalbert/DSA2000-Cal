@@ -355,7 +355,7 @@ class FITSPredict:
     num_threads: int = 1
     epsilon: float = 1e-6
     convention: str = 'physical'
-    dtype: SupportsDType = jnp.complex64
+    dtype: SupportsDType = complex_type
 
     def check_predict_inputs(self, model_data: FITSModelData) -> Tuple[bool, bool, bool]:
         """

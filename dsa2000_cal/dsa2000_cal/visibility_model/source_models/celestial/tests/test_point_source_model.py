@@ -1,5 +1,7 @@
 import os
 
+from dsa2000_cal.common.types import complex_type
+
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 import jax
@@ -29,8 +31,8 @@ def test_dft_predict(di_gains: bool):
     freqs = jnp.ones((chan,))
     model_data = PointModelData(
         freqs=freqs,
-        image=jnp.ones((source, chan, 2, 2), dtype=jnp.complex64),
-        gains=jnp.ones(gain_shape, dtype=jnp.complex64),
+        image=jnp.ones((source, chan, 2, 2), dtype=complex_type),
+        gains=jnp.ones(gain_shape, dtype=complex_type),
         lmn=lmn
     )
     visibility_coords = VisibilityCoords(
@@ -73,7 +75,7 @@ def test_with_sharding():
     lmn = jnp.concatenate([lm, n[:, None]], axis=-1)
 
     image = jnp.ones((source, chan, 2, 2), dtype=jnp.float64)
-    gains = jnp.ones((source, time, ant, chan, 2, 2), dtype=jnp.complex64)
+    gains = jnp.ones((source, time, ant, chan, 2, 2), dtype=complex_type)
     freqs = jnp.ones((chan,))
     freqs = tree_device_put(freqs, NamedSharding(mesh, P('chan')))
 
@@ -131,7 +133,7 @@ def test_ensure_gradients_work(di_gains: bool):
     time_idx = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, time)
     time_obs = times[time_idx]
 
-    image = jnp.zeros((source, chan, 2, 2), dtype=jnp.complex64)
+    image = jnp.zeros((source, chan, 2, 2), dtype=complex_type)
     image = image.at[:, :, 0, 0].set(1.)
     image = image.at[:, :, 1, 1].set(1.)
 

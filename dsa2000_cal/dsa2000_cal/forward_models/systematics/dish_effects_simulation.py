@@ -8,6 +8,7 @@ import jax
 import numpy as np
 from astropy import units as au, coordinates as ac, time as at, constants
 from jax import numpy as jnp
+from jax._src.typing import SupportsDType
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.cache_utils import check_cache
@@ -15,6 +16,7 @@ from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 
 
@@ -150,7 +152,7 @@ class DishEffectsSimulation:
     cache_folder: str
     seed: int = 42
     convention: Literal['physical', 'casa'] = 'physical'
-    dtype: jnp.dtype = jnp.complex64
+    dtype: SupportsDType = complex_type
 
     def __post_init__(self):
         os.makedirs(self.cache_folder, exist_ok=True)
@@ -260,7 +262,8 @@ class DishEffectsSimulation:
             )  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
             model_gains.append(_model_gains)
 
-        model_gains = np.stack(model_gains, axis=0) * au.dimensionless_unscaled # [num_time, Nm, Nl, num_ant, num_model_freq, 2, 2]
+        model_gains = np.stack(model_gains,
+                               axis=0) * au.dimensionless_unscaled  # [num_time, Nm, Nl, num_ant, num_model_freq, 2, 2]
         return model_gains
 
     @partial(jax.jit, static_argnames=['self'])

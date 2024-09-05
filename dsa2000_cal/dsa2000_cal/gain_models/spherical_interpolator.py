@@ -6,11 +6,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as au, time as at
 from jax import numpy as jnp
+from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.gain_models.gain_model import GainModel
 
 
@@ -115,7 +117,7 @@ class SphericalInterpolatorGainModel(GainModel):
     model_times: at.Time  # [num_model_times] # Times at which the model is defined
     model_gains: au.Quantity  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
 
-    dtype: jnp.dtype = jnp.complex64
+    dtype: SupportsDType = complex_type
 
     def __post_init__(self):
         # make sure all 1D

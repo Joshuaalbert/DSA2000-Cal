@@ -52,7 +52,7 @@ class BaseForwardModel(AbstractForwardModel):
         field_of_view: the field of view for imaging, default computes from dish model
         oversample_factor: the oversample factor for imaging, default 2.5
         epsilon: the epsilon for wgridder, default 1e-4
-        dtype: the dtype for imaging, default jnp.complex64
+        dtype: the dtype for imaging, default complex_type
         verbose: the verbosity for imaging, default False
     """
 

@@ -47,7 +47,7 @@ class DSA2000ForwardModel(BaseForwardModel):
     oversample_factor: float = 5.
     weighting: str = 'natural'
     epsilon: float = 1e-4
-    dtype: SupportsDType = jnp.complex64
+    dtype: SupportsDType = complex_type
     verbose: bool = False
     num_shards: int = 1
     ionosphere_seed: int = 42

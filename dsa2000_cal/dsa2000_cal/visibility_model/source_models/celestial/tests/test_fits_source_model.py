@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSPredict, FITSModelData
 
@@ -23,7 +24,7 @@ def test_shapes_correctness(is_gains: bool, image_has_chan: bool, full_stokes: b
     else:
         gain_shape = (time, ant, chan)
     if is_gains:
-        gains = jnp.ones(gain_shape, dtype=jnp.complex64)
+        gains = jnp.ones(gain_shape, dtype=complex_type)
     else:
         gains = None
     if image_has_chan:
@@ -85,7 +86,7 @@ def test_grads_good(image_has_chan: bool, full_stokes: bool):
     else:
         gain_shape = (time, ant, chan)
 
-    gains = jax.random.normal(jax.random.PRNGKey(0), gain_shape, dtype=jnp.complex64)
+    gains = jax.random.normal(jax.random.PRNGKey(0), gain_shape, dtype=complex_type)
 
     if image_has_chan:
         if full_stokes:

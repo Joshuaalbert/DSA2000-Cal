@@ -62,7 +62,7 @@ def main(ms_folder: str):
         num_shards=len(ms.meta.freqs),
         oversample_factor=7.,
         field_of_view=180 * au.deg,
-        dtype=jnp.complex128,
+        dtype=complex_type,
         weighting='natural',
         epsilon=1e-6,
         add_noise=True,

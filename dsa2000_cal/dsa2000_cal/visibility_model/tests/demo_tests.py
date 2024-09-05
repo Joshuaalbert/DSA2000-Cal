@@ -102,7 +102,7 @@ def test_facet_model_gaussian():
     )
 
     gaussian_predict = GaussianPredict(convention='physical',
-                                       dtype=jnp.complex64,
+                                       dtype=complex_type,
                                        order_approx=1)
     vis_gaussian_order_1 = gaussian_predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
@@ -186,7 +186,7 @@ def test_facet_model_point():
     )
 
     predict = PointPredict(convention='physical',
-                           dtype=jnp.complex64)
+                           dtype=complex_type)
     vis_gaussian_order_1 = predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
     dirty = vis2dirty(
@@ -643,7 +643,7 @@ def test_rime_model_correct_shapes():
     assert np.shape(vis) == (rime_model.num_facets, 2, 3, 2, 2)
     assert np.shape(_vis) == (rime_model.num_facets, 2, 3, 2, 2)
 
-    gains = jnp.ones((rime_model.num_facets, len(obstimes), len(antennas), len(freqs), 2, 2), dtype=jnp.complex64)
+    gains = jnp.ones((rime_model.num_facets, len(obstimes), len(antennas), len(freqs), 2, 2), dtype=complex_type)
     summed_vis = rime_model.apply_gains(gains, vis, visibility_coords)
     print(summed_vis)
     assert np.shape(summed_vis) == (2, 3, 2, 2)

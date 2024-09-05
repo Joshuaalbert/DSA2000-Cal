@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
     GaussianPredict, GaussianModelData
@@ -28,9 +29,9 @@ def test_gaussian_predict(di_gains: bool, order_approx: int):
         gain_shape = (source, time, ant, chan, 2, 2)
     freqs = jnp.ones((chan,))
     model_data = GaussianModelData(
-        image=jnp.ones((source, chan, 2, 2), dtype=jnp.complex64),
+        image=jnp.ones((source, chan, 2, 2), dtype=complex_type),
         gains=jnp.ones(gain_shape,
-                       dtype=jnp.complex64),
+                       dtype=complex_type),
         lmn=lmn,
         ellipse_params=jnp.ones((source, 3)),
         freqs=freqs
@@ -80,7 +81,7 @@ def test_ensure_gradients_work(di_gains: bool, order_approx: int):
     time_idx = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, time)
     time_obs = times[time_idx]
 
-    image = jnp.zeros((source, chan, 2, 2), dtype=jnp.complex64)
+    image = jnp.zeros((source, chan, 2, 2), dtype=complex_type)
     image = image.at[:, :, 0, 0].set(1.)
     image = image.at[:, :, 1, 1].set(1.)
 

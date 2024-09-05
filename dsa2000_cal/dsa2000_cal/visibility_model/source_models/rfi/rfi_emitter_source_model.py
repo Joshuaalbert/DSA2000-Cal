@@ -15,6 +15,7 @@ from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
@@ -130,7 +131,7 @@ class RFIEmitterSourceModel(AbstractSourceModel):
 class RFIEmitterPredict:
     delay_engine: NearFieldDelayEngine
     convention: str = 'physical'
-    dtype: SupportsDType = jnp.complex64
+    dtype: SupportsDType = complex_type
 
     def check_predict_inputs(self, model_data: RFIEmitterModelData
                              ) -> Tuple[bool, bool, bool]:

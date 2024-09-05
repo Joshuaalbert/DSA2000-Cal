@@ -1,10 +1,16 @@
 import itertools
 
+import jax
+
+from dsa2000_cal.common.types import complex_type
+
+jax.config.update('jax_enable_x64', True)
+
 import astropy.units as au
 import jax
 import numpy as np
 import pytest
-from jax import numpy as jnp, config
+from jax import numpy as jnp
 
 from dsa2000_cal.common.corr_translation import linear_to_stokes
 from dsa2000_cal.common.wgridder import dirty2vis, vis2dirty
@@ -73,7 +79,7 @@ def test_dirty2vis():
 def test_vis2dirty():
     uvw = jnp.ones((100, 3))
     freqs = jnp.ones((4,))
-    vis = jnp.ones((100, 4), dtype=jnp.complex64)
+    vis = jnp.ones((100, 4), dtype=complex_type)
     npix_x = 100
     npix_y = 100
     pixsize_x = 0.1
@@ -191,6 +197,7 @@ def test_gh53(num_ants: int, num_freqs: int):
     plt.show()
 
     np.testing.assert_allclose(dirty_rec.max(), dirty.max(), atol=2e-1)
+
 
 @pytest.mark.requires_64bit
 def test_gh55_point():
@@ -466,6 +473,7 @@ def test_gh55_gaussian():
     np.testing.assert_allclose(vis_point_predict_stokes.real, vis.real, atol=1e-3)
     np.testing.assert_allclose(vis_point_predict_stokes.imag, vis.imag, atol=1e-3)
 
+
 @pytest.mark.requires_64bit
 @pytest.mark.parametrize("center_offset", [0.0, 0.1, 0.2])
 @pytest.mark.parametrize("negate_w", [False, True])
@@ -596,6 +604,7 @@ def explicit_degridder(uvw, freqs, lmn, pixel_fluxes, negate_w):
                 vis[row, col] += flux * np.exp(phase) / n
     return vis
 
+
 @pytest.mark.requires_64bit
 def test_adjoint_factor():
     # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
@@ -626,7 +635,7 @@ def test_adjoint_factor():
 
     vis = jnp.ones(
         (num_rows, num_freqs),
-        dtype=jnp.complex64
+        dtype=complex_type
     )
 
     dirty = vis2dirty(

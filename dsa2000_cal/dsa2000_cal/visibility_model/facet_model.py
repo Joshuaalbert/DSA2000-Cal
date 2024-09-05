@@ -45,7 +45,7 @@ class FacetModel:
     geodesic_model: GeodesicModel
 
     convention: str = "physical"
-    dtype: SupportsDType = jnp.complex64
+    dtype: SupportsDType = complex_type
 
     def __post_init__(self):
         # Ensure at least one source model is provided

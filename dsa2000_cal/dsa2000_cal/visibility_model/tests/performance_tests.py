@@ -4,6 +4,7 @@ import time
 import jax
 from jax import numpy as jnp
 
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
@@ -35,8 +36,8 @@ def test_apply_gains_benchmark_performance():
         time_idx=time_idx
     )
 
-    vis = jnp.zeros((num_source, num_rows, num_chan, 2, 2), dtype=jnp.complex64)
-    gains = jnp.zeros((num_source, num_time, num_ant, num_chan, 2, 2), dtype=jnp.complex64)
+    vis = jnp.zeros((num_source, num_rows, num_chan, 2, 2), dtype=complex_type)
+    gains = jnp.zeros((num_source, num_time, num_ant, num_chan, 2, 2), dtype=complex_type)
 
     f = jax.jit(RIMEModel.apply_gains).lower(gains=gains, vis=vis, visibility_coords=visibility_coords).compile()
     t0 = time.time()

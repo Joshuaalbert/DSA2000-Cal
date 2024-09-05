@@ -5,6 +5,7 @@ import jax
 import pytest
 from jax import numpy as jnp
 
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianPredict, \
     GaussianModelData
@@ -17,7 +18,7 @@ def test_benchmark_gaussian_performance(di_gains):
     # di_gains = True Time taken for 2048 antennas, 1 channels, 100 sources: 14.163064 s | 9.324887 s | 8.610048 s | 8.988812 s | 11.194738 s | 9.603148 s
     # di_gains = False Time taken for 2048 antennas, 1 channels, 100 sources: 9.601373 s | 13.285119 s | 11.940015 s | 12.057437 s | 9.140454 s | 9.324197 s
     # di_gains = None Time taken for 2048 antennas, 1 channels, 100 sources: 5.436340 s | 8.067334 s | 6.951573 s | 7.103243 s | 5.576627 s | 4.885742 s
-    dft_predict = GaussianPredict(dtype=jnp.complex128)
+    dft_predict = GaussianPredict(dtype=complex_type)
     num_time = 1
     for num_ant in [2048]:
         for num_chan in [1]:
@@ -37,7 +38,7 @@ def test_benchmark_gaussian_performance(di_gains):
                 time_idx = jnp.zeros((num_rows,), jnp.int64)
                 time_obs = times[time_idx]
 
-                image = jnp.zeros((num_source, num_chan, 2, 2), dtype=jnp.complex64)
+                image = jnp.zeros((num_source, num_chan, 2, 2), dtype=complex_type)
                 image = image.at[..., 0, 0].set(0.5)
                 image = image.at[..., 1, 1].set(0.5)
                 if di_gains is None:
@@ -108,7 +109,7 @@ def test_benchmark_performance_point_sources(di_gains):
                 time_idx = jnp.zeros((num_rows,), jnp.int64)
                 time_obs = times[time_idx]
 
-                image = jnp.zeros((num_source, num_chan, 2, 2), dtype=jnp.complex64)
+                image = jnp.zeros((num_source, num_chan, 2, 2), dtype=complex_type)
                 image = image.at[..., 0, 0].set(0.5)
                 image = image.at[..., 1, 1].set(0.5)
                 if di_gains is None:

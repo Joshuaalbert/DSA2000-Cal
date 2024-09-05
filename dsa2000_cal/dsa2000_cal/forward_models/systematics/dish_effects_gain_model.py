@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as au, coordinates as ac
+from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
@@ -24,7 +25,7 @@ def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
                                     dish_effect_params: DishEffectsParams,
                                     plot_folder: str, cache_folder: str, seed: int = 42,
                                     convention: Literal['physical', 'casa'] = 'physical',
-                                    dtype: jnp.dtype = jnp.complex64):
+                                    dtype: SupportsDType = complex_type):
     os.makedirs(plot_folder, exist_ok=True)
 
     dish_effects_simulation = DishEffectsSimulation(

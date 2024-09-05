@@ -135,12 +135,12 @@ def test_gaussian_correctness_order_1():
         )
 
         gaussian_predict = GaussianPredict(convention='physical',
-                                           dtype=jnp.complex128,
+                                           dtype=complex_type,
                                            order_approx=0)
         vis_gaussian_order_0 = gaussian_predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
         gaussian_predict = GaussianPredict(convention='physical',
-                                           dtype=jnp.complex128,
+                                           dtype=complex_type,
                                            order_approx=1)
         vis_gaussian_order_1 = gaussian_predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
