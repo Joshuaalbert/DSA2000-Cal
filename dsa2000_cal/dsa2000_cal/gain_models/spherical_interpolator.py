@@ -27,6 +27,8 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
     Returns:
         [num_model_times, resolution, resolution, [num_ant,] num_model_freqs[, 2, 2]] The regridded gains.
     """
+    if resolution % 2 == 0:
+        raise ValueError("Resolution must be odd so that central pixel falls on l=0,m=0.")
 
     lvec = jnp.linspace(-1., 1., resolution)
     mvec = jnp.linspace(-1., 1., resolution)
@@ -36,15 +38,19 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
     N = jnp.where(LM2 > 1., -N, N)
     lmn_grid = jnp.stack([L.flatten(), M.flatten(), N.flatten()], axis=-1)
 
-    dist, idx = kd_tree_nn(model_lmn, lmn_grid, k=4)
+    dist, idx = kd_tree_nn(model_lmn, lmn_grid, k=6)
+
+    _, idx0 = kd_tree_nn(model_lmn, jnp.asarray([[0., 0., 1.]]), k=1)  # [1,1]
+    idx0 = idx0[0, 0]
+    jax.debug.print('g0={g0}', g0=model_gains[0, idx0, 0, ...])
 
     # Get the closest gains at each Theta, Phi
     if len(np.shape(model_gains)) == 6:
-        gain_mapping = "[T,D,A,F,2,2]"
-        out_mapping = "[T,R,A,F,2,2]"
+        gain_mapping = "[T,D,A,F,p,q]"
+        out_mapping = "[T,R,A,F,p,q]"
     elif len(np.shape(model_gains)) == 5:
-        gain_mapping = "[T,D,F,2,2]"
-        out_mapping = "[T,R,F,2,2]"
+        gain_mapping = "[T,D,F,p,q]"
+        out_mapping = "[T,R,F,p,q]"
     elif len(np.shape(model_gains)) == 4:
         gain_mapping = "[T,D,A,F]"
         out_mapping = "[T,R,A,F]"
@@ -56,33 +62,21 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
 
     @partial(
         multi_vmap,
-        in_mapping=f"[R,k],[R,k],{gain_mapping}",
+        in_mapping=f"[R],[R],[R,k],[R,k],{gain_mapping}",
         out_mapping=out_mapping,
         scan_dims={'T'},
         verbose=True
     )
-    def regrid_model_gains(idx_k, dist_k, model_gains):
-        # Assume symmetric in n
-        weights = 1. / (dist_k + 1e-6)
+    def regrid_model_gains(l_eval, m_eval, idx_k, dist_k, model_gains):
+        weights = 1. / (dist_k + 1e-6) ** 0.5
+        # At peak the interpolation smooths out peak too much
+        near_peak = (l_eval == 0.) & (m_eval == 0.)
         value = jnp.sum(weights * model_gains[idx_k]) / jnp.sum(weights)
+        value = jnp.where(near_peak, model_gains[idx0], value)
         return value
 
-    # def regrid_model_gains(l, m, model_gains):
-    #     # Assume symmetric in n
-    #     lm2 = (jnp.square(l) + jnp.square(m))
-    #     n = jnp.sqrt(jnp.abs(1. - lm2))
-    #     lmn = jnp.stack(
-    #         [l, m, n]
-    #     )  # [3]
-    #     dist = 1. - jnp.sum(lmn * model_lmn, axis=-1)  # [num_model_dir]
-    #     neg_dist_k, idx_k = jax.lax.top_k(-dist, k=4)
-    #     weights = 1. / (-neg_dist_k + 1e-3)
-    #     value = jnp.sum(weights * model_gains[idx_k]) / jnp.sum(weights)
-    #     # value = model_gains[jnp.argmin(dist, axis=-1)]
-    #     horizon_decay = jnp.exp(-10. * n)
-    #     return jnp.where(lm2 > 1., horizon_decay * value, value)
-
     gains = regrid_model_gains(
+        lmn_grid[:, 0], lmn_grid[:, 1],
         idx, dist, model_gains
     )  # [num_model_times, lres*mres, [num_ant,] num_model_freqs, [2,2]]
     gains = jnp.reshape(gains, (model_gains.shape[0], resolution, resolution, *model_gains.shape[2:]))
@@ -179,7 +173,7 @@ class SphericalInterpolatorGainModel(GainModel):
         self.lvec_jax, self.mvec_jax, self.model_gains_jax = regrid_to_regular_grid(
             model_lmn=self.lmn_data,
             model_gains=quantity_to_jnp(self.model_gains),
-            resolution=256
+            resolution=257
         )  # [num_model_times, lres, mres, [num_ant,] num_model_freqs, [2,2]]
 
         if self.tile_antennas:

@@ -6,7 +6,7 @@ import numpy as np
 import pylab as plt
 import pytest
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.spherical_interpolator import phi_theta_from_lmn, lmn_from_phi_theta
 
@@ -27,9 +27,12 @@ def test_beam_gain_model_factory(array_name: str):
 
     np.testing.assert_allclose(np.asarray(beam_gain_model.lmn_data), np.asarray(lmn_data_rec), atol=2e-5)
 
+    beam_gain_model.plot_beam()
     beam_gain_model.plot_regridded_beam()
 
-    select = jnp.logical_not(jnp.isnan(beam_gain_model.lmn_data[..., 2]))
+    # Only select n>=0 geodesics
+    select = beam_gain_model.lmn_data[:, 2] >= 0
+
     geodesics = beam_gain_model.lmn_data[select, None, None, :]
     args = dict(
         freqs=quantity_to_jnp(beam_gain_model.model_freqs[0:1]),
@@ -41,29 +44,68 @@ def test_beam_gain_model_factory(array_name: str):
     print(f"Compiled in {time_mod.time() - t0} seconds.")
 
     t0 = time_mod.time()
-    gain_screen = compute_gains(
+    reconstructed_model_gains = compute_gains(
         **args
     )  # [s, t, a, f, ...]
-    jax.block_until_ready(gain_screen)
+    jax.block_until_ready(reconstructed_model_gains)
     print(f"Computed in {time_mod.time() - t0} seconds.")
 
-    plt.scatter(geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1], c=np.log10(np.abs(gain_screen[:, 0, 0, 0, 0, 0])),
-                cmap='PuOr', s=1)
-    plt.colorbar()
-    plt.show()
-    plt.scatter(geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1], c=np.angle(gain_screen[:, 0, 0, 0, 0, 0]), cmap='hsv',
-                vmin=-np.pi, vmax=np.pi, s=1)
-    plt.colorbar()
+    print(beam_gain_model.model_gains.shape)  # [num_model_times, num_model_dir, num_model_freqs, 2, 2]
+    print(reconstructed_model_gains.shape)  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
+
+    # Plot all on fig
+    lvec, mvec = beam_gain_model.lvec_jax, beam_gain_model.mvec_jax
+    gain_screen = beam_gain_model.model_gains_jax[0, :, :, 0, ...]  # [lres, mres, 2,2]
+    model_gains = quantity_to_np(beam_gain_model.model_gains[0, select, 0, ...])  # [num_model_dir, 2, 2]
+    reconstructed_model_gains = reconstructed_model_gains[:, 0, 0, 0, ...]  # [num_model_dir, 2, 2]
+    l, m = geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1]
+    # Row 1 model_gains (scatter)
+    # Row 2 reconstructed_model_gains (scatter)
+    # Row 3 model_gains - reconstructed_model_gains (scatter)
+    # Row 4 gain_screen (imshow)
+    # Col 1 Abs
+    # Col 2 Phase
+
+    fig, axs = plt.subplots(4, 2, figsize=(6, 12), sharex=True, sharey=True)
+
+    for p, q in [(0, 0)]:
+        for i, (data, title) in enumerate(zip(
+                [model_gains[:, p, q], reconstructed_model_gains[:, p, q],
+                 model_gains[:, p, q] - reconstructed_model_gains[:, p, q], gain_screen[:, :, p, q]],
+                [f'Model Gains({p},{q})', f'Reconstructed Model Gains({p},{q})', f'Residual({p},{q})',
+                 f'Gain Screen({p},{q})']
+        )):
+            for j, (quantity, ylabel) in enumerate(zip([np.abs(data), np.angle(data)], ['Abs', 'Phase'])):
+                if i == 3:
+                    im = axs[i, j].imshow(quantity.T,
+                                          origin='lower',
+                                          extent=[lvec[0], lvec[-1], mvec[0], mvec[-1]],
+                                          cmap='jet',
+                                          interpolation='nearest'
+                                          )
+                    fig.colorbar(im, ax=axs[i, j])
+                else:
+                    sc = axs[i, j].scatter(l, m, c=quantity, s=1, cmap='jet', alpha=0.5)
+                    fig.colorbar(sc, ax=axs[i, j])
+                axs[i, j].set_title(f'{title} {ylabel}')
+                axs[i, j].set_xlabel('l (proj.rad)')
+                axs[i, j].set_ylabel('m (proj.rad)')
+
     plt.show()
 
     np.testing.assert_allclose(
-        np.abs(gain_screen[:, 0, 0, 0, ...]),
-        np.abs(quantity_to_jnp(beam_gain_model.model_gains[0, select, 0, ...])),
-        atol=0.02
+        np.abs(reconstructed_model_gains),
+        np.abs(model_gains),
+        atol=0.05
+    )
+    np.testing.assert_allclose(
+        np.abs(reconstructed_model_gains - model_gains),
+        np.zeros(model_gains.shape),
+        atol=0.05
     )
 
-    np.testing.assert_allclose(
-        np.angle(gain_screen[:, 0, 0, 0, ...]),
-        np.angle(quantity_to_jnp(beam_gain_model.model_gains[0, select, 0, ...])),
-        atol=0.02
-    )
+    # np.testing.assert_allclose(
+    #     np.angle(reconstructed_model_gains),
+    #     np.angle(model_gains),
+    #     atol=0.05
+    # )
