@@ -5,7 +5,7 @@ import pylab as plt
 import pytest
 from astropy import time as at, coordinates as ac, units as au
 
-from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
+from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry, source_model_registry
 from dsa2000_cal.assets.rfi.lte_rfi.lwa_cell_tower import LWACellTower

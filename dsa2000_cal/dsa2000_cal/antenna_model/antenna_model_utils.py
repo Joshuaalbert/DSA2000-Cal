@@ -157,7 +157,8 @@ def get_beam_widths(amplitude: au.Quantity, theta: au.Quantity, freqs: au.Quanti
 
     beam_widths = []
     for i in freq_order:
-        mask = circular_mean[:, i] > 0.5
+        mask = circular_mean[:, i] > threshold
+        mask[:-1] = np.logical_or(mask[:-1], np.diff(circular_mean[:, i]) > 0.)
         argmin = np.argmin(mask)
         th = theta[argmin]
         beam_widths.append(th * 2)
@@ -187,7 +188,7 @@ def get_dish_model_beam_widths(antenna_model: AbstractAntennaModel, threshold: f
     return get_beam_widths(amplitude[..., 0, 0], theta, freqs, threshold=threshold)
 
 
-def plot_circular_beam(antenna_model: AbstractAntennaModel, threshold: float = 0.01):
+def plot_beam_profile(antenna_model: AbstractAntennaModel, threshold: float = 0.01):
     """
     Plot the circular beam.
 
@@ -201,15 +202,12 @@ def plot_circular_beam(antenna_model: AbstractAntennaModel, threshold: float = 0
     circular_mean /= np.max(circular_mean, axis=0, keepdims=True)
     theta = antenna_model.get_theta()
     norm = plt.Normalize(vmin=antenna_model.get_freqs().value.min(), vmax=antenna_model.get_freqs().value.max())
-    for i, freq in enumerate(antenna_model.get_freqs()):
-        mask = circular_mean[:, i] > 0.5
-        argmin = np.argmin(mask)
-        th = theta[argmin]
-        k = int(argmin)
-
+    freqs, beam_widths = get_dish_model_beam_widths(antenna_model, threshold=threshold)
+    for i, freq in enumerate(freqs):
+        k = int(np.interp(beam_widths[i].value / 2., theta.value, np.arange(len(theta))))
         plt.plot(theta[:k], circular_mean[:k, i],
                  label=freq, color=plt.cm.get_cmap('jet_r')(norm(freq.value)))
-        print(f"Freq: {i}, {freq}, theta: {th}")
+        print(f"Freq: {i}, {freq}, theta: {beam_widths[i] / 2.}")
     plt.xlabel('Theta (deg)')
     plt.ylabel('Amplitude')
     plt.title(f"'{antenna_model.__class__.__name__}' Beam")
