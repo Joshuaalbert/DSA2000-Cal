@@ -515,11 +515,11 @@ class PointPredict:
         delay = l * u + m * v + (n - 1.) * w  # scalar
 
         phi = (-2j * np.pi) * delay  # scalar
-        fringe = (jnp.exp(phi) / n)
+        fringe = jnp.exp(phi) / n
 
         if np.shape(image) == (2, 2):  # full stokes
             if g1 is None or g1 is None:
-                return fringe * image
+                return mp_policy.cast_to_vis(fringe * image)
             return mp_policy.cast_to_vis(fringe) * mp_policy.cast_to_vis(kron_product(g1, image, g2.conj().T))
         elif np.shape(image) == ():
             if g1 is None or g1 is None:

@@ -54,24 +54,39 @@ T = TypeVar("T")
 
 def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
     def conditional_cast(x):
-        if (isinstance(x, (np.ndarray, jnp.ndarray)) and
-                jnp.issubdtype(x.dtype, jnp.floating)):
-            x = x.astype(dtype)
-        else:
-            warnings.warn(f"Expected floating type, got {x.dtype}.")
-        return x
+        if not jnp.issubdtype(x.dtype, jnp.floating):
+            warnings.warn(f"Expected integer type, got {x.dtype}.")
+
+        try:
+            return x.astype(dtype)
+        except AttributeError:
+            return x
+
+    return jax.tree_util.tree_map(conditional_cast, tree)
+
+
+def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
+    def conditional_cast(x):
+        if not jnp.issubdtype(x.dtype, jnp.complexfloating):
+            warnings.warn(f"Expected integer type, got {x.dtype}.")
+
+        try:
+            return x.astype(dtype)
+        except AttributeError:
+            return x
 
     return jax.tree_util.tree_map(conditional_cast, tree)
 
 
 def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
     def conditional_cast(x):
-        if (isinstance(x, (np.ndarray, jnp.ndarray)) and
-                jnp.issubdtype(x.dtype, jnp.integer)):
-            x = x.astype(dtype)
-        else:
+        if not jnp.issubdtype(x.dtype, jnp.integer):
             warnings.warn(f"Expected integer type, got {x.dtype}.")
-        return x
+
+        try:
+            return x.astype(dtype)
+        except AttributeError:
+            return x
 
     return jax.tree_util.tree_map(conditional_cast, tree)
 
@@ -93,7 +108,7 @@ class Policy:
 
     def cast_to_vis(self, x: X) -> X:
         """Converts visibility values to the visibility dtype."""
-        return _cast_floating_to(x, self.vis_dtype)
+        return _cast_complex_to(x, self.vis_dtype)
 
     def cast_to_image(self, x: X) -> X:
         """Converts image values to the image dtype."""
@@ -101,7 +116,7 @@ class Policy:
 
     def cast_to_gain(self, x: X) -> X:
         """Converts gain values to the gain dtype."""
-        return _cast_floating_to(x, self.gain_dtype)
+        return _cast_complex_to(x, self.gain_dtype)
 
     def cast_to_index(self, x: X) -> X:
         """Converts lookup index values to the index dtype."""
