@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
