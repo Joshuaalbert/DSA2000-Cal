@@ -5,7 +5,7 @@ import pytest
 from dsa2000_cal.common.bit_context import BitContext
 
 
-@pytest.mark.requires_64bit
+
 def test_bit_context():
     with BitContext(64):
         a = jnp.array(0.)
@@ -39,7 +39,7 @@ def test_bit_context():
         assert b.dtype == jnp.int64
 
 
-@pytest.mark.requires_64bit
+
 def test_bit_context_under_jit():
     @jax.jit
     def add64():

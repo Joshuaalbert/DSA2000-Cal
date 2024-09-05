@@ -1,11 +1,5 @@
 import itertools
 
-import jax
-
-from dsa2000_cal.common.types import complex_type
-
-jax.config.update('jax_enable_x64', True)
-
 import astropy.units as au
 import jax
 import numpy as np
@@ -13,6 +7,7 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.corr_translation import linear_to_stokes
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.common.wgridder import dirty2vis, vis2dirty
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
@@ -206,7 +201,7 @@ def test_gh53(num_ants: int, num_freqs: int):
     np.testing.assert_allclose(dirty_rec.max(), dirty.max(), atol=2e-1)
 
 
-@pytest.mark.requires_64bit
+
 def test_gh55_point():
     # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
     np.random.seed(42)
@@ -481,7 +476,7 @@ def test_gh55_gaussian():
     np.testing.assert_allclose(vis_point_predict_stokes.imag, vis.imag, atol=1e-3)
 
 
-@pytest.mark.requires_64bit
+
 @pytest.mark.parametrize("center_offset", [0.0, 0.1, 0.2])
 @pytest.mark.parametrize("negate_w", [False, True])
 def test_wrong_w(center_offset: float, negate_w: bool):
@@ -612,7 +607,7 @@ def explicit_degridder(uvw, freqs, lmn, pixel_fluxes, negate_w):
     return vis
 
 
-@pytest.mark.requires_64bit
+
 def test_adjoint_factor():
     # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
     np.random.seed(42)

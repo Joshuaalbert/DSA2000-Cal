@@ -15,7 +15,7 @@ from typing import TypeVar, Callable, Tuple, Set, List, Dict
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import tree_util, tree_map, pmap, lax
+from jax import pmap, lax
 from jax._src.numpy.util import check_arraylike, promote_dtypes_inexact
 
 from dsa2000_cal.common.jvp_linear_op import isinstance_namedtuple
@@ -34,10 +34,10 @@ def promote_pytree(func_name: str, pytree: V) -> V:
     Returns:
         pytree with promoted dtypes
     """
-    leaves, tree_def = tree_util.tree_flatten(pytree)
+    leaves, tree_def = jax.tree.flatten(pytree)
     check_arraylike(func_name, *leaves)
     leaves = promote_dtypes_inexact(*leaves)
-    return tree_util.tree_unflatten(tree_def, leaves)
+    return jax.tree.unflatten(tree_def, leaves)
 
 
 def tree_transpose(list_of_trees):
@@ -52,13 +52,13 @@ def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callabl
     """
     Returns functions to ravel and unravel a pytree.
     """
-    leaf_list, tree_def = tree_util.tree_flatten(example_tree)
+    leaf_list, tree_def = jax.tree.flatten(example_tree)
 
     sizes = [leaf.size for leaf in leaf_list]
     shapes = [leaf.shape for leaf in leaf_list]
 
     def ravel_fun(pytree: PT) -> jax.Array:
-        leaf_list, tree_def = tree_util.tree_flatten(pytree)
+        leaf_list, tree_def = jax.tree.flatten(pytree)
         return jnp.concatenate([lax.reshape(leaf, (size,)) for leaf, size in zip(leaf_list, sizes)])
 
     def unravel_fun(flat_array: jax.Array) -> PT:
@@ -67,7 +67,7 @@ def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callabl
         for size, shape in zip(sizes, shapes):
             leaf_list.append(lax.reshape(flat_array[start:start + size], shape))
             start += size
-        return tree_util.tree_unflatten(tree_def, leaf_list)
+        return jax.tree.unflatten(tree_def, leaf_list)
 
     return ravel_fun, unravel_fun
 
@@ -107,7 +107,7 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: in
 
         if chunk_size > 1:
             # Get from first leaf
-            leaves = tree_util.tree_leaves((args, kwargs))
+            leaves = jax.tree.leaves((args, kwargs))
             batch_size = np.shape(leaves[0])[0]
             for leaf in leaves:
                 if np.shape(leaf)[0] != batch_size:
@@ -115,13 +115,14 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: in
             remainder = batch_size % chunk_size
             extra = (chunk_size - remainder) % chunk_size
             if extra > 0:
-                (args, kwargs) = tree_map(lambda x: _pad_extra(x, extra), (args, kwargs))
-            (args, kwargs) = tree_map(lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
-                                      (args, kwargs))
+                (args, kwargs) = jax.tree.map(lambda x: _pad_extra(x, extra), (args, kwargs))
+            (args, kwargs) = jax.tree.map(
+                lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
+                (args, kwargs))
             result = pmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
-            result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
+            result = jax.tree.map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
             if extra > 0:
-                result = tree_map(lambda x: x[:-extra], result)
+                result = jax.tree.map(lambda x: x[:-extra], result)
         else:
             result = queue(*args, **kwargs)
         return result
@@ -167,7 +168,7 @@ def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
     remainder = batch_size % chunk_size
     extra = (chunk_size - remainder) % chunk_size
     if extra > 0:
-        py_tree = tree_map(lambda x: jnp.concatenate([x, jnp.repeat(x[0:1], extra, 0)]), py_tree)
+        py_tree = jax.tree.map(lambda x: jnp.concatenate([x, jnp.repeat(x[0:1], extra, 0)]), py_tree)
 
     def _remove_extra(output_py_tree: S) -> S:
         if extra > 0:

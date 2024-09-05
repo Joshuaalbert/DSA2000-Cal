@@ -7,7 +7,7 @@ from tomographic_kernel.frames import ENU
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 
 
-@pytest.mark.requires_64bit
+
 def test_near_field():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     array_location = ac.EarthLocation.of_site('vla')
