@@ -26,6 +26,22 @@ def skip_if_not_64bit(request):
             )
             pytest.skip(skip_message)
 
+@pytest.fixture(autouse=True)
+def skip_if_not_32bit(request):
+    if request.node.get_closest_marker("requires_32bit"):
+        if jax.config.read("jax_enable_x64"):
+            # Extract test name, file, and line number
+            test_name = request.node.name
+            test_file = request.node.fspath
+            test_line = request.node.location[1]
+
+            # Customize the skip message
+            skip_message = (
+                f"Skipping test '{test_name}' in {test_file} at line {test_line} "
+                "because 32-bit precision is required"
+            )
+            pytest.skip(skip_message)
+
 
 @pytest.fixture(scope="function")
 def mock_measurement_set(tmp_path) -> MeasurementSet:

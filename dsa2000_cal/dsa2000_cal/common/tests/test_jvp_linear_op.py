@@ -1,6 +1,6 @@
 import jax.numpy as jnp
-import pytest
 import numpy as np
+import pytest
 
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 

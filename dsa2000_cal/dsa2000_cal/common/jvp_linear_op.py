@@ -35,7 +35,7 @@ class JVPLinearOp:
     primals: Any | None = None  # The primal value, i.e. where jacobian is evaluated
     more_outputs_than_inputs: bool = False  # If True, the operator is tall, i.e. m > n
     adjoint: bool = False  # If True, the operator is transposed
-    promote_dtypes: bool = False  # If True, promote dtypes to match primal during JVP, and cotangent to match primal_out during VJP
+    promote_dtypes: bool = True  # If True, promote dtypes to match primal during JVP, and cotangent to match primal_out during VJP
 
     def __post_init__(self):
         if not callable(self.fn):
