@@ -9,7 +9,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.nearest_neighbours import ApproximateTreeNN3D
+from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.gain_models.gain_model import GainModel
 
@@ -28,46 +28,44 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
         [num_model_times, resolution, resolution, [num_ant,] num_model_freqs[, 2, 2]] The regridded gains.
     """
 
-    approx_tree_nn = ApproximateTreeNN3D(average_points_per_cell=100)
-    tree = approx_tree_nn.build_tree(model_lmn)
-
     lvec = jnp.linspace(-1., 1., resolution)
     mvec = jnp.linspace(-1., 1., resolution)
+    L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
+    LM2 = L ** 2 - M ** 2
+    N = jnp.sqrt(jnp.abs(1. - L ** 2 - M ** 2))
+    N = jnp.where(LM2 > 1., -N, N)
+    lmn_grid = jnp.stack([L.flatten(), M.flatten(), N.flatten()], axis=-1)
+
+    dist, idx = kd_tree_nn(model_lmn, lmn_grid, k=4)
 
     # Get the closest gains at each Theta, Phi
     if len(np.shape(model_gains)) == 6:
         gain_mapping = "[T,D,A,F,2,2]"
-        out_mapping = "[T,lres,mres,A,F,2,2]"
+        out_mapping = "[T,R,A,F,2,2]"
     elif len(np.shape(model_gains)) == 5:
         gain_mapping = "[T,D,F,2,2]"
-        out_mapping = "[T,lres,mres,F,2,2]"
+        out_mapping = "[T,R,F,2,2]"
     elif len(np.shape(model_gains)) == 4:
         gain_mapping = "[T,D,A,F]"
-        out_mapping = "[T,lres,mres,A,F]"
+        out_mapping = "[T,R,A,F]"
     elif len(np.shape(model_gains)) == 3:
         gain_mapping = "[T,D,F]"
-        out_mapping = "[T,lres,mres,F]"
+        out_mapping = "[T,R,F]"
     else:
         raise ValueError(f"Unsupported shape {np.shape(model_gains)}")
 
     @partial(
         multi_vmap,
-        in_mapping=f"[lres],[mres],{gain_mapping}",
+        in_mapping=f"[R,k],[R,k],{gain_mapping}",
         out_mapping=out_mapping,
         scan_dims={'T'},
         verbose=True
     )
-    def regrid_model_gains(l, m, model_gains):
+    def regrid_model_gains(idx_k, dist_k, model_gains):
         # Assume symmetric in n
-        lm2 = (jnp.square(l) + jnp.square(m))
-        n = jnp.sqrt(jnp.abs(1. - lm2))
-        test_point = jnp.stack([l, m, n], axis=-1)
-        dist_k, idx_k = approx_tree_nn.query(tree=tree, test_point=test_point, k=4)
-        weights = 1. / (dist_k + 1e-3)
+        weights = 1. / (dist_k + 1e-6)
         value = jnp.sum(weights * model_gains[idx_k]) / jnp.sum(weights)
-        # value = model_gains[jnp.argmin(dist, axis=-1)]
-        horizon_decay = jnp.exp(-10. * n)
-        return jnp.where(lm2 > 1., horizon_decay * value, value)
+        return value
 
     # def regrid_model_gains(l, m, model_gains):
     #     # Assume symmetric in n
@@ -84,8 +82,10 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
     #     horizon_decay = jnp.exp(-10. * n)
     #     return jnp.where(lm2 > 1., horizon_decay * value, value)
 
-    gains = regrid_model_gains(lvec, mvec,
-                               model_gains)  # [num_model_times, lres, mres, [num_ant,] num_model_freqs, [2,2]]
+    gains = regrid_model_gains(
+        idx, dist, model_gains
+    )  # [num_model_times, lres*mres, [num_ant,] num_model_freqs, [2,2]]
+    gains = jnp.reshape(gains, (model_gains.shape[0], resolution, resolution, *model_gains.shape[2:]))
 
     return lvec, mvec, gains
 

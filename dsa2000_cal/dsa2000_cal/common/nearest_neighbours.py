@@ -6,6 +6,7 @@ from typing import NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
+from scipy.spatial import KDTree
 
 
 class GridTree2D(NamedTuple):
@@ -338,3 +339,59 @@ class ApproximateTreeNN3D:
         top_k_distances = -top_k_neg_distances
 
         return top_k_distances, point_indices[top_k_indices_within_cell]
+
+
+def kd_tree_nn(points: jax.Array, test_points: jax.Array, k: int = 1) -> Tuple[jax.Array, jax.Array]:
+    """
+    Uses a KD-tree to find the k nearest neighbors to a test point in 3D space.
+
+    Parameters:
+        points: [n, d] Array of points.
+        test_points: [m, d] points to query
+        k: The number of nearest neighbors to find.
+
+    Returns:
+        distances: [m, k] Distances to the k nearest neighbors.
+        indices: [m, k] Indices of the k nearest neighbors.
+    """
+    m, d = np.shape(test_points)
+    k = int(k)
+    args = (
+        points,
+        test_points,
+        k
+    )
+
+    distance_shape_dtype = jax.ShapeDtypeStruct(
+        shape=(m, k),
+        dtype=points.dtype
+    )
+    index_shape_dtype = jax.ShapeDtypeStruct(
+        shape=(m, k),
+        dtype=jnp.int32
+    )
+
+    return jax.pure_callback(_kd_tree_nn_host, (distance_shape_dtype, index_shape_dtype), *args)
+
+
+def _kd_tree_nn_host(points: jax.Array, test_points: jax.Array, k: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Uses a KD-tree to find the k nearest neighbors to a test point in 3D space.
+
+    Parameters:
+        points: [n, d] Array of points.
+        test_points: [m, d] points to query
+        k: The number of nearest neighbors to find.
+
+    Returns:
+        distances: [m, k] Distances to the k nearest neighbors.
+        indices: [m, k] Indices of the k nearest neighbors.
+    """
+    points, test_points = jax.tree.map(np.asarray, (points, test_points))
+    k = int(k)
+    tree = KDTree(points, compact_nodes=False, balanced_tree=False)
+    if k == 1:
+        distances, indices = tree.query(test_points, k=[1]) # unsqueeze k
+    else:
+        distances, indices = tree.query(test_points, k=k)
+    return distances, indices
