@@ -5,11 +5,14 @@ import jax
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as au, time as at
-from jax import numpy as jnp, lax
+from jax import numpy as jnp
+from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.types import complex_type, mp_policy
 from dsa2000_cal.gain_models.gain_model import GainModel
 
 
@@ -26,51 +29,60 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
     Returns:
         [num_model_times, resolution, resolution, [num_ant,] num_model_freqs[, 2, 2]] The regridded gains.
     """
+    if resolution % 2 == 0:
+        raise ValueError("Resolution must be odd so that central pixel falls on l=0,m=0.")
+
     lvec = jnp.linspace(-1., 1., resolution)
     mvec = jnp.linspace(-1., 1., resolution)
+    L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
+    LM2 = L ** 2 - M ** 2
+    N = jnp.sqrt(jnp.abs(1. - L ** 2 - M ** 2))
+    N = jnp.where(LM2 > 1., -N, N)
+    lmn_grid = jnp.stack([L.flatten(), M.flatten(), N.flatten()], axis=-1)
+
+    dist, idx = kd_tree_nn(model_lmn, lmn_grid, k=6)
+
+    _, idx0 = kd_tree_nn(model_lmn, jnp.asarray([[0., 0., 1.]]), k=1)  # [1,1]
+    idx0 = idx0[0, 0]
 
     # Get the closest gains at each Theta, Phi
     if len(np.shape(model_gains)) == 6:
-        gain_mapping = "[T,D,A,F,2,2]"
-        out_mapping = "[T,lres,mres,A,F,2,2]"
+        gain_mapping = "[T,D,A,F,p,q]"
+        out_mapping = "[T,R,A,F,p,q]"
     elif len(np.shape(model_gains)) == 5:
-        gain_mapping = "[T,D,F,2,2]"
-        out_mapping = "[T,lres,mres,F,2,2]"
+        gain_mapping = "[T,D,F,p,q]"
+        out_mapping = "[T,R,F,p,q]"
     elif len(np.shape(model_gains)) == 4:
         gain_mapping = "[T,D,A,F]"
-        out_mapping = "[T,lres,mres,A,F]"
+        out_mapping = "[T,R,A,F]"
     elif len(np.shape(model_gains)) == 3:
         gain_mapping = "[T,D,F]"
-        out_mapping = "[T,lres,mres,F]"
+        out_mapping = "[T,R,F]"
     else:
         raise ValueError(f"Unsupported shape {np.shape(model_gains)}")
 
     @partial(
         multi_vmap,
-        in_mapping=f"[lres],[mres],{gain_mapping}",
+        in_mapping=f"[R],[R],[R,k],[R,k],{gain_mapping}",
         out_mapping=out_mapping,
         scan_dims={'T'},
         verbose=True
     )
-    def regrid_model_gains(l, m, model_gains):
-        # Assume symmetric in n
-        lm2 = (jnp.square(l) + jnp.square(m))
-        n = jnp.sqrt(jnp.abs(1. - lm2))
-        lmn = jnp.stack(
-            [l, m, n]
-        )  # [3]
-        dist = 1. - jnp.sum(lmn * model_lmn, axis=-1)  # [num_model_dir]
-        neg_dist_k, idx_k = lax.top_k(-dist, k=4)
-        weights = 1. / (-neg_dist_k + 1e-3)
+    def regrid_model_gains(l_eval, m_eval, idx_k, dist_k, model_gains):
+        weights = 1. / (dist_k + 1e-6) ** 0.5
+        # At peak the interpolation smooths out peak too much
+        near_peak = (l_eval == 0.) & (m_eval == 0.)
         value = jnp.sum(weights * model_gains[idx_k]) / jnp.sum(weights)
-        # value = model_gains[jnp.argmin(dist, axis=-1)]
-        horizon_decay = jnp.exp(-10. * n)
-        return jnp.where(lm2 > 1., horizon_decay * value, value)
+        value = jnp.where(near_peak, model_gains[idx0], value)
+        return value
 
-    gains = regrid_model_gains(lvec, mvec,
-                               model_gains)  # [num_model_times, lres, mres, [num_ant,] num_model_freqs, [2,2]]
+    gains = regrid_model_gains(
+        lmn_grid[:, 0], lmn_grid[:, 1],
+        idx, dist, model_gains
+    )  # [num_model_times, lres*mres, [num_ant,] num_model_freqs, [2,2]]
+    gains = jnp.reshape(gains, (model_gains.shape[0], resolution, resolution, *model_gains.shape[2:]))
 
-    return lvec, mvec, gains
+    return mp_policy.cast_to_angle(lvec), mp_policy.cast_to_angle(mvec), mp_policy.cast_to_gain(gains)
 
 
 @dataclasses.dataclass(eq=False)
@@ -104,7 +116,7 @@ class SphericalInterpolatorGainModel(GainModel):
     model_times: at.Time  # [num_model_times] # Times at which the model is defined
     model_gains: au.Quantity  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
 
-    dtype: jnp.dtype = jnp.complex64
+    dtype: SupportsDType = complex_type
 
     def __post_init__(self):
         # make sure all 1D
@@ -151,18 +163,20 @@ class SphericalInterpolatorGainModel(GainModel):
         if not self.model_gains.unit.is_equivalent(au.dimensionless_unscaled):
             raise ValueError(f"Expected model_gains to be dimensionless but got {self.model_gains.unit}")
 
-        self.lmn_data = jnp.stack(
-            lmn_from_phi_theta(
-                phi=quantity_to_jnp(self.model_phi, 'rad'),
-                theta=quantity_to_jnp(self.model_theta, 'rad')
-            ),
-            axis=-1
-        )
+        self.lmn_data = mp_policy.cast_to_angle(
+            jnp.stack(
+                lmn_from_phi_theta(
+                    phi=quantity_to_jnp(self.model_phi, 'rad'),
+                    theta=quantity_to_jnp(self.model_theta, 'rad')
+                ),
+                axis=-1
+            )
+        )  # [num_model_dir, 3]
 
         self.lvec_jax, self.mvec_jax, self.model_gains_jax = regrid_to_regular_grid(
             model_lmn=self.lmn_data,
             model_gains=quantity_to_jnp(self.model_gains),
-            resolution=128
+            resolution=257
         )  # [num_model_times, lres, mres, [num_ant,] num_model_freqs, [2,2]]
 
         if self.tile_antennas:
@@ -186,7 +200,9 @@ class SphericalInterpolatorGainModel(GainModel):
             [num_sources, num_times, num_ant, num_freq[, 2, 2]] The beam gain at the given source coordinates.
         """
 
-        relative_model_times = quantity_to_jnp((self.model_times.tt - self.model_times[0].tt).sec * au.s)
+        relative_model_times = mp_policy.cast_to_time(
+            quantity_to_jnp((self.model_times.tt - self.model_times[0].tt).sec * au.s)
+        )
 
         if self.tile_antennas:
             if self.is_full_stokes():
@@ -219,15 +235,27 @@ class SphericalInterpolatorGainModel(GainModel):
             Returns:
                 [[2, 2]] The gain for the given time, theta, phi, freq.
             """
-            # Get time
+            if len(self.model_times) == 1:  # single time
+                gains = gains[0]  # [lres, mres, F[, 2, 2]]
+            else:
+                # Get time
+                (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+                    x=time,
+                    xp=relative_model_times,
+                    regular_grid=is_regular_grid(np.asarray(relative_model_times))
+                )
+                # jax.debug.print("time: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
+                gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [lres, mres, F[, 2, 2]]
+
+            # get freq
             (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
-                x=time,
-                xp=relative_model_times,
-                regular_grid=is_regular_grid(quantity_to_np((self.model_times - self.model_times[0]).sec * au.s))
+                x=freq,
+                xp=mp_policy.cast_to_freq(quantity_to_jnp(self.model_freqs)),
+                regular_grid=is_regular_grid(quantity_to_np(self.model_freqs))
             )
-            # jax.debug.print("time: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                 axis=0)  # [lres, mres, F[, 2, 2]]
+            # jax.debug.print("freq: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=2)  # [lres, mres, [2, 2]]
+
             # get l
             (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
                 x=l,
@@ -235,8 +263,7 @@ class SphericalInterpolatorGainModel(GainModel):
                 regular_grid=True
             )
             # jax.debug.print("l: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                 axis=0)  # [mres, F[, 2, 2]]
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [mres, [, 2, 2]]
             # get m
             (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
                 x=m,
@@ -244,24 +271,15 @@ class SphericalInterpolatorGainModel(GainModel):
                 regular_grid=True
             )
             # jax.debug.print("m: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                 axis=0)  # [F[, 2, 2]]
-            # get freq
-            (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
-                x=freq,
-                xp=quantity_to_jnp(self.model_freqs),
-                regular_grid=is_regular_grid(quantity_to_np(self.model_freqs))
-            )
-            # jax.debug.print("freq: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                 axis=0)  # [[2, 2]]
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [[, 2, 2]]
+
             return gains
 
         gains = interp_model_gains(times, lmn_geodesic[..., 0],
                                    lmn_geodesic[..., 1], freqs,
                                    self.model_gains_jax)  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
 
-        return gains
+        return mp_policy.cast_to_gain(gains)
 
     def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
         gains = self._compute_gain_jax(
@@ -271,8 +289,8 @@ class SphericalInterpolatorGainModel(GainModel):
         )  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
         return gains
 
-    def plot_beam(self, save_fig: str | None = None, time_idx: int = 0, ant_idx: int = 0, freq_idx: int = 0,
-                  p_idx: int = 0, q_idx: int = 0):
+    def plot_regridded_beam(self, save_fig: str | None = None, time_idx: int = 0, ant_idx: int = 0, freq_idx: int = 0,
+                            p_idx: int = 0, q_idx: int = 0):
         """
         Plot the beam gain model screen over plane of sky wrt antenna pointing.
 
@@ -294,7 +312,6 @@ class SphericalInterpolatorGainModel(GainModel):
                 gain_screen = self.model_gains_jax[time_idx, :, :, ant_idx, freq_idx, p_idx, q_idx]  # [nl,nm]
             else:
                 gain_screen = self.model_gains_jax[time_idx, :, :, ant_idx, freq_idx]  # [nl,nm]
-        l_screen, m_screen = np.meshgrid(self.lvec_jax, self.mvec_jax, indexing='ij')
         fig, axs = plt.subplots(2, 1, figsize=(8, 12), sharex=True, sharey=True, squeeze=False)
         # Plot log10(amp)
         sc = axs[0, 0].imshow(
@@ -306,7 +323,7 @@ class SphericalInterpolatorGainModel(GainModel):
         )
         fig.colorbar(sc, ax=axs[0, 0])
         axs[0, 0].set_ylabel('m (proj. rad.)')
-        axs[0, 0].set_title('log10(Amplitude)')
+        axs[0, 0].set_title(f'Gridded log10(Amplitude)[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
         # Plot phase
         sc = axs[1, 0].imshow(
             np.angle(gain_screen.T),
@@ -320,7 +337,50 @@ class SphericalInterpolatorGainModel(GainModel):
         fig.colorbar(sc, ax=axs[1, 0])
         axs[1, 0].set_xlabel('l (proj. rad.)')
         axs[1, 0].set_ylabel('m (proj. rad.)')
-        axs[1, 0].set_title('Phase')
+        axs[1, 0].set_title(f'Gridded Phase[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
+
+        fig.tight_layout()
+
+        if save_fig is not None:
+            plt.savefig(save_fig)
+
+        plt.show()
+
+    def plot_beam(self, save_fig: str | None = None, time_idx: int = 0, ant_idx: int = 0, freq_idx: int = 0,
+                  p_idx: int = 0, q_idx: int = 0):
+
+        # Like plot_regridded_beam, but plots with scatter using original data
+        # self.model_gains are [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
+        if self.tile_antennas:
+            if self.is_full_stokes():
+                gains_data = self.model_gains[time_idx, :, freq_idx, p_idx, q_idx]  # [num_model_dir]
+            else:
+                gains_data = self.model_gains[time_idx, :, freq_idx]
+        else:
+            if self.is_full_stokes():
+                gains_data = self.model_gains[time_idx, :, ant_idx, freq_idx, p_idx, q_idx]
+            else:
+                gains_data = self.model_gains[time_idx, :, ant_idx, freq_idx]
+        l, m, n = lmn_from_phi_theta(self.model_phi.to('rad').value, self.model_theta.to('rad').value)
+        fig, axs = plt.subplots(2, 1, figsize=(8, 12), sharex=True, sharey=True, squeeze=False)
+        # Plot log10(amp)
+        sc = axs[0, 0].scatter(
+            l, m, c=np.log10(np.abs(gains_data)),
+            cmap='PuOr', s=1
+        )
+        fig.colorbar(sc, ax=axs[0, 0])
+        axs[0, 0].set_xlabel('l (proj. rad.)')
+        axs[0, 0].set_ylabel('m (proj. rad.)')
+        axs[0, 0].set_title(f'log10(Amplitude)[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
+        # Plot phase
+        sc = axs[1, 0].scatter(
+            l, m, c=np.angle(gains_data),
+            cmap='hsv', vmin=-np.pi, vmax=np.pi, s=1
+        )
+        fig.colorbar(sc, ax=axs[1, 0])
+        axs[1, 0].set_xlabel('l (proj. rad.)')
+        axs[1, 0].set_ylabel('m (proj. rad.)')
+        axs[1, 0].set_title(f'Phase[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
 
         fig.tight_layout()
 
@@ -350,7 +410,7 @@ def lmn_from_phi_theta(phi, theta):
     l = -y
     m = x
     n = bore_z
-    return l, m, n
+    return mp_policy.cast_to_angle((l, m, n))
 
 
 def phi_theta_from_lmn(l, m, n):
@@ -375,4 +435,4 @@ def phi_theta_from_lmn(l, m, n):
     def wrap(angle):
         return (angle + 2 * np.pi) % (2 * np.pi)
 
-    return wrap(phi), theta
+    return mp_policy.cast_to_angle((wrap(phi), theta))

@@ -24,7 +24,7 @@ def main(num_shards: int):
     mesh = Mesh(devices, axis_names=('i',))
 
     def tree_device_put(tree, sharding):
-        return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
+        return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
 
     @jax.jit
     def f(x):

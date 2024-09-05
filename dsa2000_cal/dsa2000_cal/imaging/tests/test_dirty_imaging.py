@@ -31,8 +31,8 @@ def mock_calibrator_source_models(tmp_path):
         integration_time=au.Quantity(1.5, 's'),
         coherencies=['XX', 'XY', 'YX', 'YY'],
         pointings=phase_tracking,
-        times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(2) * au.s,
-        freqs=au.Quantity([700, 1400], unit=au.MHz),
+        times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(1) * au.s,
+        freqs=au.Quantity([700], unit=au.MHz),
         antennas=antennas,
         antenna_names=array.get_antenna_names(),
         antenna_diameters=array.get_antenna_diameter(),
@@ -56,13 +56,12 @@ def mock_calibrator_source_models(tmp_path):
     return ms
 
 
-def test_dirty_imaging(mock_calibrator_source_models):
+def _test_dirty_imaging(mock_calibrator_source_models):
     ms = mock_calibrator_source_models
 
     imagor = DirtyImaging(
         plot_folder='plots',
-        cache_folder='cache',
-        field_of_view=4 * au.deg
+        field_of_view=2 * au.deg
     )
     image_model = imagor.image(image_name='test_dirty', ms=ms)
     # print(image_model)

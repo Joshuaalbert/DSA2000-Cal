@@ -8,12 +8,12 @@ from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_c
 
 def test_flatten_coherencies():
     coherencies = jnp.asarray([[1, 2], [3, 4]])
-    assert jnp.alltrue(flatten_coherencies(coherencies) == jnp.asarray([1, 2, 3, 4]))
+    assert jnp.all(flatten_coherencies(coherencies) == jnp.asarray([1, 2, 3, 4]))
 
 
 def test_unflatten_coherencies():
     coherencies = jnp.asarray([1, 2, 3, 4])
-    assert jnp.alltrue(unflatten_coherencies(coherencies) == jnp.asarray([[1, 2], [3, 4]]))
+    assert jnp.all(unflatten_coherencies(coherencies) == jnp.asarray([[1, 2], [3, 4]]))
 
 
 def test_linear_to_linear():

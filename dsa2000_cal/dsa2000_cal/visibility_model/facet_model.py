@@ -6,17 +6,18 @@ import jax.numpy as jnp
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
-from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel, \
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, \
     FITSModelData, FITSPredict
-from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
     GaussianSourceModel, GaussianModelData, GaussianPredict
-from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import \
+from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import \
     PointSourceModel, PointModelData, PointPredict
-from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import \
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
     RFIEmitterSourceModel, RFIEmitterModelData, \
     RFIEmitterPredict
 
@@ -45,7 +46,6 @@ class FacetModel:
     geodesic_model: GeodesicModel
 
     convention: str = "physical"
-    dtype: SupportsDType = jnp.complex64
 
     def __post_init__(self):
         # Ensure at least one source model is provided
@@ -177,23 +177,19 @@ class FacetModel:
         # TODO: Not using far field engine yet because UVW are provided, but we could for precision,
         # e.g. in point, gaussian, etc.
         point_predict = PointPredict(
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
         gaussian_predict = GaussianPredict(
             order_approx=1,
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
         faint_predict = FITSPredict(
             epsilon=1e-6,
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
         lte_predict = RFIEmitterPredict(
             delay_engine=self.near_field_delay_engine,
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
 
         vis = None

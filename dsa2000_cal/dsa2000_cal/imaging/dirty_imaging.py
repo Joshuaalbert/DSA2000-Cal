@@ -11,7 +11,7 @@ import pylab as plt
 from astropy import constants
 from jax import lax
 
-from dsa2000_cal.antenna_model.utils import get_dish_model_beam_widths
+from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common import wgridder

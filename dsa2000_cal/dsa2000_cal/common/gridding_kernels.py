@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from astropy import constants
-
 import jax.numpy as jnp
+from astropy import constants
 from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import complex_type
 
 
 @dataclass(eq=False)
@@ -15,7 +15,7 @@ class WProjKernel:
     Class for constructing the W-projection kernel
     """
     convention: Literal['physical', 'casa'] = 'physical'
-    dtype: SupportsDType = jnp.complex64
+    dtype: SupportsDType = complex_type
 
     def kernel(self, l: jnp.ndarray, m: jnp.ndarray, w: jnp.ndarray, freq: jnp.ndarray) -> jnp.ndarray:
         if self.convention == 'physical':

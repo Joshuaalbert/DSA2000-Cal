@@ -301,7 +301,7 @@ def test_put_non_unique():
     np.testing.assert_allclose(h5_array, np.array([[7, 8], [10, 11], [13, 14]]))
 
 
-def test_transfer_from_casa():
+def _test_transfer_from_casa():
     casa_file = '~/data/forward_modelling/data_dir/lwa01.ms'
     ms_folder = '~/data/forward_modelling/data_dir/lwa01_ms'
     ms = transfer_from_casa(

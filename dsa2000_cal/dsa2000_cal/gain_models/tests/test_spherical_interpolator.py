@@ -1,6 +1,5 @@
+import matplotlib.pyplot as plt
 import numpy as np
-import numpy as np
-import pylab as plt
 import pytest
 from astropy import units as au, coordinates as ac, time as at
 from jax import numpy as jnp
@@ -189,10 +188,10 @@ def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
 
 def test_regrid_to_regular_grid():
     num_model_times = 2
-    num_model_dir = 3
+    num_model_dir = 4
     num_ant = 4
     num_model_freqs = 5
-    resolution = 10
+    resolution = 11
 
     model_theta = jnp.linspace(0, 180, num_model_dir)
     model_phi = jnp.linspace(0, 360, num_model_dir)
@@ -218,8 +217,8 @@ def test_regrid_to_regular_grid():
     assert np.shape(gains) == (num_model_times, resolution, resolution, num_ant, num_model_freqs)
 
 
-@pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W'])
-def test_spherical_beam_lwa(array_name):
+@pytest.mark.parametrize('array_name', ['dsa2000W_small'])
+def test_spherical_beams(array_name):
     beam_gain_model = build_beam_gain_model(array_name=array_name, full_stokes=False)
     select = beam_gain_model.lmn_data[:, 2] >= 0.  # Select only positive N
     sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,

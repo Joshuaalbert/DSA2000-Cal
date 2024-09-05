@@ -1,8 +1,9 @@
 import astropy.units as au
 import numpy as np
+import pytest
 
-from dsa2000_cal.antenna_model.utils import bore_sight_coords_to_pixel_coords, pixel_coords_to_bore_sight_coords, \
-    plot_circular_beam, get_dish_model_beam_widths
+from dsa2000_cal.antenna_model.antenna_model_utils import bore_sight_coords_to_pixel_coords, pixel_coords_to_bore_sight_coords, \
+    plot_beam_profile, get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 
@@ -22,9 +23,13 @@ def _test_bore_sight_coords_to_pixel_coords():
     assert np.allclose(Y, Y2)
 
 
-def test_get_beam_width():
+@pytest.mark.parametrize('array_name', ['lwa_mock', 'dsa2000W_small'])
+def test_get_beam_width(array_name: str):
     fill_registries()
-    antenna_model = array_registry.get_instance(array_registry.get_match('dsa2000W')).get_antenna_model()
-    plot_circular_beam(antenna_model, theshold=0.5)
+    antenna_model = array_registry.get_instance(array_registry.get_match(array_name)).get_antenna_model()
+    antenna_model.plot_polar_amplitude()
+    antenna_model.plot_polar_phase()
+    plot_beam_profile(antenna_model, threshold=0.5)
     freqs, beam_widths = get_dish_model_beam_widths(antenna_model)
+    print(freqs, beam_widths)
     assert np.all(beam_widths > 0. * au.deg) and np.all(beam_widths < 180. * au.deg)

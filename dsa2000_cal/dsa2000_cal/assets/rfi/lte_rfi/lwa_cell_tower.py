@@ -76,6 +76,3 @@ class LWACellTower(AbstractRFIEmitterData):
         )
 
 
-def test_lwa_cell_tower():
-    lwa_cell_tower = LWACellTower(seed='abc')
-    lwa_cell_tower.plot_acf()

@@ -13,9 +13,9 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import lax
 from jax import numpy as jnp
 
-from dsa2000_cal.calibration.bfgs import BFGS
-from dsa2000_cal.calibration.lbfgs import LBFGS
-from dsa2000_cal.calibration.levenburg_marquardt import LevenbergMarquardt
+from dsa2000_cal.calibration.jaxopt.bfgs import BFGS
+from dsa2000_cal.calibration.jaxopt.lbfgs import LBFGS
+from dsa2000_cal.calibration.jaxopt.levenburg_marquardt import LevenbergMarquardt
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
@@ -118,7 +118,7 @@ class Calibration:
         mesh = Mesh(devices, axis_names=('chan',))
 
         def tree_device_put(tree, sharding):
-            return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
+            return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
 
         # Determine how many blocks to process at once, and how many blocks to apply the solution over.
         solution_interval = self.solution_interval
@@ -208,11 +208,11 @@ class Calibration:
                 times=tree_device_put(times_jax, NamedSharding(mesh, P())),
                 init_params=last_params,  # already shard as prior output
                 vis_data=tree_device_put(
-                    jax.tree_map(jnp.asarray, data),
+                    jax.tree.map(jnp.asarray, data),
                     NamedSharding(mesh, P(None, 'chan'))
                 ),
                 vis_coords=tree_device_put(
-                    jax.tree_map(jnp.asarray, visibility_coords),
+                    jax.tree.map(jnp.asarray, visibility_coords),
                     NamedSharding(mesh, P())
                 )
             )

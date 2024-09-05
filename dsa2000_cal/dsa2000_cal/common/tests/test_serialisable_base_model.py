@@ -11,36 +11,36 @@ from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 
 
-class TestModelInt(SerialisableBaseModel):
+class MockModelInt(SerialisableBaseModel):
     value: int
 
 
 def test_serialise_deserialise_model():
-    model = TestModelInt(value=10)
+    model = MockModelInt(value=10)
     serialized_data = pickle.dumps(model)
     deserialized_model = pickle.loads(serialized_data)
 
-    assert isinstance(deserialized_model, TestModelInt)
+    assert isinstance(deserialized_model, MockModelInt)
     assert deserialized_model.value == model.value
 
 
 def test_config_values():
-    assert TestModelInt.Config.validate_assignment is True
-    assert TestModelInt.Config.arbitrary_types_allowed is True
-    assert TestModelInt.Config.json_loads == ujson.loads
+    assert MockModelInt.Config.validate_assignment is True
+    assert MockModelInt.Config.arbitrary_types_allowed is True
+    assert MockModelInt.Config.json_loads == ujson.loads
 
 
-class TestModelNp(SerialisableBaseModel):
+class MockModelNp(SerialisableBaseModel):
     array: np.ndarray
 
 
 def test_numpy_array_json_serialization():
-    model = TestModelNp(array=np.array([1, 2, 3]))
+    model = MockModelNp(array=np.array([1, 2, 3]))
     serialized_data = model.json()
 
     # Deserialize from the serialized data
     # deserialized_model = TestModelNp.model_validate_json(serialized_data)
-    deserialized_model = TestModelNp.parse_raw(serialized_data)
+    deserialized_model = MockModelNp.parse_raw(serialized_data)
 
     # Assert that the reconstructed numpy array is correct
     np.testing.assert_array_equal(deserialized_model.array, model.array)

@@ -5,6 +5,8 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import config
 
+from dsa2000_cal.common.types import complex_type
+
 # Set num jax devices
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
@@ -62,7 +64,7 @@ def main(ms_folder: str):
         num_shards=len(ms.meta.freqs),
         oversample_factor=7.,
         field_of_view=180 * au.deg,
-        dtype=jnp.complex128,
+        dtype=complex_type,
         weighting='natural',
         epsilon=1e-6,
         add_noise=True,
