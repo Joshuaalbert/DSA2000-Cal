@@ -22,12 +22,14 @@ from dsa2000_cal.visibility_model.source_models.celestial.point_source_model imp
 
 
 def test_dirty2vis():
-    uvw = jnp.ones((100, 3))
-    freqs = jnp.ones((4,))
+    uvw = 20e3 * jax.random.normal(jax.random.PRNGKey(0), (100, 3))
+    uvw = uvw.at[:, 2].set(0.001 * uvw[:, 2])
+
+    freqs = 1400e6 * jnp.ones((4,))
     dirty = jnp.ones((100, 100))
     wgt = jnp.ones((100, 4))
-    pixsize_x = 0.1
-    pixsize_y = 0.1
+    pixsize_x = 0.001
+    pixsize_y = 0.001
     center_x = 0.0
     center_y = 0.0
     epsilon = 1e-4
@@ -77,15 +79,20 @@ def test_dirty2vis():
 
 
 def test_vis2dirty():
-    uvw = jnp.ones((100, 3))
-    freqs = jnp.ones((4,))
-    vis = jnp.ones((100, 4), dtype=complex_type)
-    npix_x = 100
-    npix_y = 100
-    pixsize_x = 0.1
-    pixsize_y = 0.1
+    uvw = 20e3 * jax.random.normal(jax.random.PRNGKey(0), (100, 3))
+    uvw = uvw.at[:, 2].set(0.001 * uvw[:, 2])
+
+    freqs = 1400e6 * jnp.ones((4,))
+    dirty = jnp.ones((100, 100))
+    wgt = jnp.ones((100, 4))
+    pixsize_x = 0.001
+    pixsize_y = 0.001
     center_x = 0.0
     center_y = 0.0
+    npix_x = 100
+    npix_y = 100
+
+    vis = jnp.ones((100, 4), dtype=complex_type)
     epsilon = 1e-4
     do_wgridding = True
     flip_v = False

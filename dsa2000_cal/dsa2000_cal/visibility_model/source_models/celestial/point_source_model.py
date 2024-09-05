@@ -461,7 +461,7 @@ class PointPredict:
                 def body_fn(accumulate, x):
                     (lmn, g1, g2, image) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [] or [2, 2]
-                    accumulate += delta
+                    accumulate += delta.astype(self.dtype)
                     return accumulate, ()
 
                 xs = (lmn, g1, g2, image)
@@ -469,7 +469,7 @@ class PointPredict:
                 def body_fn(accumulate, x):
                     (lmn, image) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [] or [2, 2]
-                    accumulate += delta
+                    accumulate += delta.astype(self.dtype)
                     return accumulate, ()
 
                 xs = (lmn, image)

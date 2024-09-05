@@ -295,6 +295,8 @@ class RFIEmitterPredict:
             if self.convention == 'casa':
                 phase = jnp.negative(phase)
 
+            phase = phase.astype(self.dtype)
+
             if full_stokes:
                 if is_gains:
                     luminosity = kron_product(g1, luminosity, g2.conj().T)  # [2, 2]
@@ -311,7 +313,7 @@ class RFIEmitterPredict:
                 e_2 = jnp.sqrt(luminosity) * jnp.reciprocal(dist20)  # []
                 visibilities = (e_1 * e_2) * jnp.exp(phase)  # []
             visibilities *= delay_acf_val  # []
-            return jnp.asarray(visibilities, self.dtype)  # [num_chan[,2,2]]
+            return visibilities.astype(self.dtype)  # [num_chan[,2,2]]
 
         vis = compute_phase_from_projection_jax(
             model_data.freqs,

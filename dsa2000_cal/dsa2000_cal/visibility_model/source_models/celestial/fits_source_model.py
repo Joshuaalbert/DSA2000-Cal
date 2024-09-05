@@ -518,7 +518,7 @@ class FITSPredict:
             if squeeze:
                 vis = vis[:, 0]
 
-            return vis  # [num_rows, num_freqs]
+            return vis.astype(self.dtype)  # [num_rows, num_freqs]
 
         visibilities = predict(
             model_data.freqs, model_data.image,
@@ -545,4 +545,4 @@ class FITSPredict:
         if is_gains:
             visibilities = transform(g1, g2, visibilities)  # [num_rows, num_freqs[, 2, 2]]
 
-        return visibilities
+        return visibilities.astype(self.dtype)

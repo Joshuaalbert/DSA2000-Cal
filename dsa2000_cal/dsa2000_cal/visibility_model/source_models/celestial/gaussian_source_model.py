@@ -641,7 +641,7 @@ class GaussianPredict:
                     (lmn, g1, g2, image, ellipse_params) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image,
                                                            ellipse_params)  # [] or [2, 2]
-                    accumulate += delta
+                    accumulate += delta.astype(self.dtype)
                     return accumulate, ()
 
                 xs = (lmn, g1, g2, image, ellipse_params)
@@ -650,7 +650,7 @@ class GaussianPredict:
                     (lmn, image, ellipse_params) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image,
                                                            ellipse_params)  # [] or [2, 2]
-                    accumulate += delta
+                    accumulate += delta.astype(self.dtype)
                     return accumulate, ()
 
                 xs = (lmn, image, ellipse_params)
