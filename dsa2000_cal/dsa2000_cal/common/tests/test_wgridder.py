@@ -192,9 +192,8 @@ def test_gh53(num_ants: int, num_freqs: int):
 
     np.testing.assert_allclose(dirty_rec.max(), dirty.max(), atol=2e-1)
 
-
+@pytest.mark.requires_64bit
 def test_gh55_point():
-    # config.update("jax_enable_x64", True)
     # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
     np.random.seed(42)
     import pylab as plt
@@ -467,12 +466,10 @@ def test_gh55_gaussian():
     np.testing.assert_allclose(vis_point_predict_stokes.real, vis.real, atol=1e-3)
     np.testing.assert_allclose(vis_point_predict_stokes.imag, vis.imag, atol=1e-3)
 
-
+@pytest.mark.requires_64bit
 @pytest.mark.parametrize("center_offset", [0.0, 0.1, 0.2])
 @pytest.mark.parametrize("negate_w", [False, True])
 def test_wrong_w(center_offset: float, negate_w: bool):
-    config.update("jax_enable_x64", True)
-
     np.random.seed(42)
     N = 512
     num_ants = 100
@@ -599,9 +596,8 @@ def explicit_degridder(uvw, freqs, lmn, pixel_fluxes, negate_w):
                 vis[row, col] += flux * np.exp(phase) / n
     return vis
 
-
+@pytest.mark.requires_64bit
 def test_adjoint_factor():
-    # config.update("jax_enable_x64", True)
     # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
     np.random.seed(42)
     import pylab as plt

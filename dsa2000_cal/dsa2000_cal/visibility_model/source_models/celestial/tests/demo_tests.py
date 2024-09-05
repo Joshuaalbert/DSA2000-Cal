@@ -43,9 +43,8 @@ def test_plot_ateam_sources(source):
     fits_sources.plot()
 
 
+@pytest.mark.requires_64bit
 def test_gaussian_correctness_order_1():
-    jax.config.update("jax_enable_x64", True)
-
     major_fwhm_arcsec = 4. * 60
     minor_fwhm_arcsec = 2. * 60
     pos_angle_deg = 90.

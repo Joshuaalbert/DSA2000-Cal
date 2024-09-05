@@ -1,15 +1,13 @@
 import jax.numpy as jnp
 import numpy as np
-from jax import config
-
-config.update("jax_enable_x64", True)
-
+import pytest
 from astropy import coordinates as ac, units as au, time as at
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 
 
+@pytest.mark.requires_64bit
 def test_near_field():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     array_location = ac.EarthLocation.of_site('vla')

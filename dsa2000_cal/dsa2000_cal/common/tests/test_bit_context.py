@@ -1,11 +1,12 @@
 import jax
 import jax.numpy as jnp
+import pytest
 
 from dsa2000_cal.common.bit_context import BitContext
 
 
+@pytest.mark.requires_64bit
 def test_bit_context():
-    jax.config.update("jax_enable_x64", True)
     with BitContext(64):
         a = jnp.array(0.)
         assert a.dtype == jnp.float64
@@ -37,12 +38,9 @@ def test_bit_context():
         b = jnp.array(0, dtype=jnp.int64)
         assert b.dtype == jnp.int64
 
-    jax.config.update("jax_enable_x64", False)
 
-
+@pytest.mark.requires_64bit
 def test_bit_context_under_jit():
-    jax.config.update("jax_enable_x64", True)
-
     @jax.jit
     def add64():
         with BitContext(64):
@@ -119,4 +117,3 @@ def test_bit_context_under_jit():
                 return x + y
 
     assert nested32_int().dtype == jnp.int32
-    jax.config.update("jax_enable_x64", False)
