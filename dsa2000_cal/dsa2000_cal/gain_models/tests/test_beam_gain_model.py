@@ -29,7 +29,7 @@ def test_beam_gain_model_factory(array_name: str):
 
     beam_gain_model.plot_regridded_beam()
 
-    select = (0 < beam_gain_model.lmn_data[..., 2]) & (~jnp.isnan(beam_gain_model.lmn_data[..., 2]))
+    select = jnp.logical_not(jnp.isnan(beam_gain_model.lmn_data[..., 2]))
     geodesics = beam_gain_model.lmn_data[select, None, None, :]
     args = dict(
         freqs=quantity_to_jnp(beam_gain_model.model_freqs[0:1]),

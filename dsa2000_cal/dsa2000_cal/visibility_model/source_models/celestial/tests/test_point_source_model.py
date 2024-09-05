@@ -1,3 +1,7 @@
+import os
+
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+
 import jax
 import numpy as np
 import pytest
@@ -60,7 +64,7 @@ def test_with_sharding():
 
     dft_predict = PointPredict()
     row = 100
-    chan = 4
+    chan = os.cpu_count()
     source = 1
     time = 15
     ant = 24
@@ -181,5 +185,3 @@ def test_ensure_gradients_work(di_gains: bool):
                     print("\tYY", model_data_grad.gains[s, t, a, :, 1, 1])
                     # Ensure gradient is not zero
                     assert np.all(np.abs(model_data_grad.gains[s, t, a, :, :, :]) > 1e-10)
-
-
