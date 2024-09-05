@@ -18,4 +18,5 @@ def test_quantity_to_jnp():
     with pytest.raises(ValueError, match="Expected equivalent unit"):
         quantity_to_jnp(1 * au.m, au.s)
 
+
     assert quantity_to_jnp(1j * au.dimensionless_unscaled) == 1j

@@ -242,4 +242,4 @@ def _kd_tree_nn_host(points: jax.Array, test_points: jax.Array, k: int) -> Tuple
         distances, indices = tree.query(test_points, k=[1])  # unsqueeze k
     else:
         distances, indices = tree.query(test_points, k=k)
-    return distances, indices
+    return distances, indices.astype(int_type)
