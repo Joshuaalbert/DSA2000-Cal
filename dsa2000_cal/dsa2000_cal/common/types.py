@@ -10,3 +10,6 @@ PRNGKey = Array
 FloatArray = Array
 IntArray = Array
 BoolArray = Array
+
+def a_(x):
+    return jnp.asarray(x)

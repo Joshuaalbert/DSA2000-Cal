@@ -59,6 +59,14 @@ def test_beam_gain_model_factory(array_name: str):
     model_gains = quantity_to_np(beam_gain_model.model_gains[0, select, 0, ...])  # [num_model_dir, 2, 2]
     reconstructed_model_gains = reconstructed_model_gains[:, 0, 0, 0, ...]  # [num_model_dir, 2, 2]
     l, m = geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1]
+    reconstruct_diff = model_gains - reconstructed_model_gains
+    reconstruct_diff = np.where(np.abs(reconstruct_diff) < 0.1, np.nan, reconstruct_diff)
+    # Print out the l,m where we see the bad residuals
+    for p in range(2):
+        for q in range(2):
+            print(reconstruct_diff[~np.isnan(reconstruct_diff[:, p, q]), p, q])
+            print(list(zip(l[~np.isnan(reconstruct_diff[:, p, q])], m[~np.isnan(reconstruct_diff[:, p, q])])))
+
     # Row 1 model_gains (scatter)
     # Row 2 reconstructed_model_gains (scatter)
     # Row 3 model_gains - reconstructed_model_gains (scatter)
@@ -66,13 +74,15 @@ def test_beam_gain_model_factory(array_name: str):
     # Col 1 Abs
     # Col 2 Phase
 
-    fig, axs = plt.subplots(4, 2, figsize=(6, 12), sharex=True, sharey=True)
+    for p, q in [(0, 0), (0, 1)]:
+        fig, axs = plt.subplots(4, 2, figsize=(6, 12), sharex=True, sharey=True)
 
-    for p, q in [(0, 0)]:
         for i, (data, title) in enumerate(zip(
-                [model_gains[:, p, q], reconstructed_model_gains[:, p, q],
-                 model_gains[:, p, q] - reconstructed_model_gains[:, p, q], gain_screen[:, :, p, q]],
-                [f'Model Gains({p},{q})', f'Reconstructed Model Gains({p},{q})', f'Residual({p},{q})',
+                [model_gains[:, p, q],
+                 reconstructed_model_gains[:, p, q],
+                 reconstruct_diff[:, p, q],
+                 gain_screen[:, :, p, q]],
+                [f'Model Gains({p},{q})', f'Reconstructed Model Gains({p},{q})', f'Bad Residuals({p},{q})',
                  f'Gain Screen({p},{q})']
         )):
             for j, (quantity, ylabel) in enumerate(zip([np.abs(data), np.angle(data)], ['Abs', 'Phase'])):
@@ -81,7 +91,7 @@ def test_beam_gain_model_factory(array_name: str):
                                           origin='lower',
                                           extent=[lvec[0], lvec[-1], mvec[0], mvec[-1]],
                                           cmap='jet',
-                                          interpolation='nearest'
+                                          interpolation='none'
                                           )
                     fig.colorbar(im, ax=axs[i, j])
                 else:
@@ -91,21 +101,15 @@ def test_beam_gain_model_factory(array_name: str):
                 axs[i, j].set_xlabel('l (proj.rad)')
                 axs[i, j].set_ylabel('m (proj.rad)')
 
-    plt.show()
+        plt.show()
 
-    np.testing.assert_allclose(
-        np.abs(reconstructed_model_gains),
-        np.abs(model_gains),
-        atol=0.05
-    )
     np.testing.assert_allclose(
         np.abs(reconstructed_model_gains - model_gains),
         np.zeros(model_gains.shape),
         atol=0.05
     )
-
-    # np.testing.assert_allclose(
-    #     np.angle(reconstructed_model_gains),
-    #     np.angle(model_gains),
-    #     atol=0.05
-    # )
+    np.testing.assert_allclose(
+        np.abs(reconstructed_model_gains),
+        np.abs(model_gains),
+        atol=0.05
+    )

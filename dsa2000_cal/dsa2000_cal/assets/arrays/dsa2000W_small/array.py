@@ -23,7 +23,7 @@ class MockAntennaModel(AltAzAntennaModel):
     @cached_property
     def _get_amplitude(self) -> au.Quantity:
         Theta, Phi, Freq = np.meshgrid(self.get_theta(), self.get_phi(), self.get_freqs(), indexing='ij')
-        scalar_amplitude = np.exp(-Theta ** 2 / (20 * au.deg) ** 2) * np.cos(Phi) ** 2 * np.sin(Theta) ** 2 * (
+        scalar_amplitude = np.exp(-0.5 * Theta ** 2 / (20 * au.deg) ** 2 * np.cos(Phi) ** 2) * np.cos(Theta) ** 2 * (
                 Freq / (1 * au.GHz)) * au.dimensionless_unscaled  # [num_theta, num_phi, num_freqs]
         amplitude = np.zeros(scalar_amplitude.shape + (2, 2))
         amplitude[..., 0, 0] = scalar_amplitude
@@ -32,7 +32,12 @@ class MockAntennaModel(AltAzAntennaModel):
 
     @cached_property
     def _get_phase(self) -> au.Quantity:
-        return np.zeros_like(self.get_amplitude()) * au.rad
+        Theta, Phi, Freq = np.meshgrid(self.get_theta(), self.get_phi(), self.get_freqs(), indexing='ij')
+        scalar_phase = np.cos(Phi) * np.sin(Theta)  # [num_theta, num_phi, num_freqs]
+        phase = np.zeros(scalar_phase.shape + (2, 2))
+        phase[..., 0, 0] = scalar_phase
+        phase[..., 1, 1] = scalar_phase
+        return phase * au.rad
 
     def get_phase(self) -> au.Quantity:
         return self._get_phase
