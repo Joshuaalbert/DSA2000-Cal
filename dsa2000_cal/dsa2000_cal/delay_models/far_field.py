@@ -445,7 +445,7 @@ class FarFieldDelayEngine:
         uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_visibility_coords(
             jnp.arange(num_times), times, antenna_1, antenna_2)
         return VisibilityCoords(
-            uvw=mp_policy.position_dtype(lax.reshape(uvw, (num_rows, 3))),
+            uvw=mp_policy.length_dtype(lax.reshape(uvw, (num_rows, 3))),
             time_idx=mp_policy.cast_to_index(lax.reshape(time_idx, (num_rows,))),
             time_obs=mp_policy.cast_to_time(lax.reshape(time_obs, (num_rows,))),
             antenna_1=mp_policy.cast_to_index(lax.reshape(antenna_1, (num_rows,))),

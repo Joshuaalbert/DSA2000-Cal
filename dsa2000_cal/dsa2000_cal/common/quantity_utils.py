@@ -25,15 +25,15 @@ def quantity_to_jnp(q: au.Quantity, decompose_unit: au.Unit | str | None = None,
 
     if dtype is None:
         if q.unit.is_equivalent('m'):
-            dtype = mp_policy.position_dtype
+            dtype = mp_policy.length_dtype
         elif q.unit.is_equivalent('s'):
             dtype = mp_policy.time_dtype
         elif q.unit.is_equivalent('Hz'):
-            dtype = mp_policy.frequency_dtype
+            dtype = mp_policy.freq_dtype
         elif q.unit.is_equivalent('deg'):
-            dtype = mp_policy.lmn_dtype
+            dtype = mp_policy.angle_dtype
         elif q.unit.is_equivalent(au.dimensionless_unscaled):
-            dtype = mp_policy.lmn_dtype
+            dtype = mp_policy.angle_dtype
         else:
             dtype = float_type
 

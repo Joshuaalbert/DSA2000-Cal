@@ -88,8 +88,8 @@ class Policy:
     index_dtype: jnp.dtype = jnp.int64
     freq_dtype: jnp.dtype = jnp.float64
     time_dtype: jnp.dtype = jnp.float64
-    position_dtype: jnp.dtype = jnp.float64
-    lmn_dtype: jnp.dtype = jnp.float64
+    length_dtype: jnp.dtype = jnp.float64
+    angle_dtype: jnp.dtype = jnp.float64
 
     def cast_to_vis(self, x: X) -> X:
         """Converts visibility values to the visibility dtype."""
@@ -117,11 +117,11 @@ class Policy:
 
     def cast_to_length(self, x: X) -> X:
         """Converts length values to the position dtype."""
-        return _cast_floating_to(x, self.position_dtype)
+        return _cast_floating_to(x, self.length_dtype)
 
     def cast_to_angle(self, x: X) -> X:
         """Converts lmn values to the lmn dtype."""
-        return _cast_floating_to(x, self.lmn_dtype)
+        return _cast_floating_to(x, self.angle_dtype)
 
 
 mp_policy = Policy()
