@@ -206,7 +206,7 @@ def plot_beam_profile(antenna_model: AbstractAntennaModel, threshold: float = 0.
     for i, freq in enumerate(freqs):
         k = int(np.interp(beam_widths[i].value / 2., theta.value, np.arange(len(theta))))
         plt.plot(theta[:k], circular_mean[:k, i],
-                 label=freq, color=plt.cm.get_cmap('jet_r')(norm(freq.value)))
+                 label=freq, color=plt.get_cmap('jet_r')(norm(freq.value)))
         print(f"Freq: {i}, {freq}, theta: {beam_widths[i] / 2.}")
     plt.xlabel('Theta (deg)')
     plt.ylabel('Amplitude')

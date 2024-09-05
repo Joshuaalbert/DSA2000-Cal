@@ -316,3 +316,4 @@ def test_resolution_error(baseline: au.Quantity):
     axs[1, 0].legend()
     fig.tight_layout()
     plt.show()
+    plt.close('all')

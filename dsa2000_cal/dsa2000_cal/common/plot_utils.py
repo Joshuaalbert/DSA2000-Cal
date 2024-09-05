@@ -31,7 +31,7 @@ def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):
         # Create a GIF using the saved frames
         with imageio.get_writer(gif_path, mode='I', duration=duration, loop=loop) as writer:
             for filename in filenames:
-                image = imageio.imread(filename)
+                image = imageio.v2.imread(filename)
                 writer.append_data(image)
 
         # Temporary files are automatically cleaned up when exiting the block
