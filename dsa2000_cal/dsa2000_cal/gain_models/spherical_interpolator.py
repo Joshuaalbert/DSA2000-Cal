@@ -12,7 +12,7 @@ from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, appl
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.types import complex_type, mp_policy
 from dsa2000_cal.gain_models.gain_model import GainModel
 
 
@@ -44,7 +44,6 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
 
     _, idx0 = kd_tree_nn(model_lmn, jnp.asarray([[0., 0., 1.]]), k=1)  # [1,1]
     idx0 = idx0[0, 0]
-    jax.debug.print('g0={g0}', g0=model_gains[0, idx0, 0, ...])
 
     # Get the closest gains at each Theta, Phi
     if len(np.shape(model_gains)) == 6:
@@ -83,7 +82,7 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
     )  # [num_model_times, lres*mres, [num_ant,] num_model_freqs, [2,2]]
     gains = jnp.reshape(gains, (model_gains.shape[0], resolution, resolution, *model_gains.shape[2:]))
 
-    return lvec, mvec, gains
+    return mp_policy.cast_to_angle(lvec), mp_policy.cast_to_angle(mvec), mp_policy.cast_to_gain(gains)
 
 
 @dataclasses.dataclass(eq=False)
@@ -164,13 +163,15 @@ class SphericalInterpolatorGainModel(GainModel):
         if not self.model_gains.unit.is_equivalent(au.dimensionless_unscaled):
             raise ValueError(f"Expected model_gains to be dimensionless but got {self.model_gains.unit}")
 
-        self.lmn_data = jnp.stack(
-            lmn_from_phi_theta(
-                phi=quantity_to_jnp(self.model_phi, 'rad'),
-                theta=quantity_to_jnp(self.model_theta, 'rad')
-            ),
-            axis=-1
-        )
+        self.lmn_data = mp_policy.cast_to_angle(
+            jnp.stack(
+                lmn_from_phi_theta(
+                    phi=quantity_to_jnp(self.model_phi, 'rad'),
+                    theta=quantity_to_jnp(self.model_theta, 'rad')
+                ),
+                axis=-1
+            )
+        )  # [num_model_dir, 3]
 
         self.lvec_jax, self.mvec_jax, self.model_gains_jax = regrid_to_regular_grid(
             model_lmn=self.lmn_data,
@@ -199,7 +200,9 @@ class SphericalInterpolatorGainModel(GainModel):
             [num_sources, num_times, num_ant, num_freq[, 2, 2]] The beam gain at the given source coordinates.
         """
 
-        relative_model_times = quantity_to_jnp((self.model_times.tt - self.model_times[0].tt).sec * au.s)
+        relative_model_times = mp_policy.cast_to_time(
+            quantity_to_jnp((self.model_times.tt - self.model_times[0].tt).sec * au.s)
+        )
 
         if self.tile_antennas:
             if self.is_full_stokes():
@@ -239,21 +242,19 @@ class SphericalInterpolatorGainModel(GainModel):
                 (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
                     x=time,
                     xp=relative_model_times,
-                    regular_grid=is_regular_grid(quantity_to_np((self.model_times - self.model_times[0]).sec * au.s))
+                    regular_grid=is_regular_grid(np.asarray(relative_model_times))
                 )
                 # jax.debug.print("time: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-                gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                     axis=0)  # [lres, mres, F[, 2, 2]]
+                gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [lres, mres, F[, 2, 2]]
 
             # get freq
             (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
                 x=freq,
-                xp=quantity_to_jnp(self.model_freqs),
+                xp=mp_policy.cast_to_freq(quantity_to_jnp(self.model_freqs)),
                 regular_grid=is_regular_grid(quantity_to_np(self.model_freqs))
             )
             # jax.debug.print("freq: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                 axis=2)  # [lres, mres, [2, 2]]
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=2)  # [lres, mres, [2, 2]]
 
             # get l
             (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
@@ -262,8 +263,7 @@ class SphericalInterpolatorGainModel(GainModel):
                 regular_grid=True
             )
             # jax.debug.print("l: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                 axis=0)  # [mres, [, 2, 2]]
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [mres, [, 2, 2]]
             # get m
             (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
                 x=m,
@@ -271,8 +271,7 @@ class SphericalInterpolatorGainModel(GainModel):
                 regular_grid=True
             )
             # jax.debug.print("m: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1,
-                                 axis=0)  # [[, 2, 2]]
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [[, 2, 2]]
 
             return gains
 
@@ -280,7 +279,7 @@ class SphericalInterpolatorGainModel(GainModel):
                                    lmn_geodesic[..., 1], freqs,
                                    self.model_gains_jax)  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
 
-        return gains
+        return mp_policy.cast_to_gain(gains)
 
     def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
         gains = self._compute_gain_jax(
@@ -411,7 +410,7 @@ def lmn_from_phi_theta(phi, theta):
     l = -y
     m = x
     n = bore_z
-    return l, m, n
+    return mp_policy.cast_to_angle((l, m, n))
 
 
 def phi_theta_from_lmn(l, m, n):
@@ -436,4 +435,4 @@ def phi_theta_from_lmn(l, m, n):
     def wrap(angle):
         return (angle + 2 * np.pi) % (2 * np.pi)
 
-    return wrap(phi), theta
+    return mp_policy.cast_to_angle((wrap(phi), theta))

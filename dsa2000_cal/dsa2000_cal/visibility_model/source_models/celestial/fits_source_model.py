@@ -11,7 +11,6 @@ from astropy.coordinates import StokesCoord
 from astropy.io import fits
 from astropy.wcs import WCS
 from jax import numpy as jnp
-from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common import wgridder
@@ -20,7 +19,7 @@ from dsa2000_cal.common.corr_translation import stokes_I_to_linear
 from dsa2000_cal.common.interp_utils import get_centred_insert_index
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 
@@ -88,13 +87,13 @@ class FITSSourceModel(AbstractSourceModel):
         """
         image = jnp.stack([quantity_to_jnp(image, 'Jy') for image in self.images], axis=0)  # [chan, Nl, Nm[, 2, 2]]
         return FITSModelData(
-            freqs=quantity_to_jnp(self.freqs),
-            image=image,
-            gains=gains,
-            l0=quantity_to_jnp(self.l0),
-            m0=quantity_to_jnp(self.m0),
-            dl=quantity_to_jnp(self.dl),
-            dm=quantity_to_jnp(self.dm)
+            freqs=mp_policy.cast_to_freq(quantity_to_jnp(self.freqs)),
+            image=mp_policy.cast_to_image(image),
+            gains=mp_policy.cast_to_gain(gains),
+            l0=mp_policy.cast_to_angle(quantity_to_jnp(self.l0)),
+            m0=mp_policy.cast_to_angle(quantity_to_jnp(self.m0)),
+            dl=mp_policy.cast_to_angle(quantity_to_jnp(self.dl)),
+            dm=mp_policy.cast_to_angle(quantity_to_jnp(self.dm))
         )
 
     def get_lmn_sources(self) -> jax.Array:
@@ -356,7 +355,6 @@ class FITSPredict:
     num_threads: int = 1
     epsilon: float = 1e-6
     convention: str = 'physical'
-    dtype: SupportsDType = complex_type
 
     def check_predict_inputs(self, model_data: FITSModelData) -> Tuple[bool, bool, bool]:
         """
@@ -518,7 +516,7 @@ class FITSPredict:
             if squeeze:
                 vis = vis[:, 0]
 
-            return vis.astype(self.dtype)  # [num_rows, num_freqs]
+            return mp_policy.cast_to_vis(vis)  # [num_rows, num_freqs]
 
         visibilities = predict(
             model_data.freqs, model_data.image,
@@ -538,11 +536,11 @@ class FITSPredict:
         def transform(g1, g2, vis):
 
             if full_stokes:
-                return kron_product(g1, vis, g2.conj().T)  # [2, 2]
+                return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))  # [2, 2]
             else:
-                return g1 * vis * g2.conj()
+                return mp_policy.cast_to_vis(g1 * vis * g2.conj())
 
         if is_gains:
             visibilities = transform(g1, g2, visibilities)  # [num_rows, num_freqs[, 2, 2]]
 
-        return visibilities.astype(self.dtype)
+        return visibilities

@@ -46,7 +46,6 @@ class FacetModel:
     geodesic_model: GeodesicModel
 
     convention: str = "physical"
-    dtype: SupportsDType = complex_type
 
     def __post_init__(self):
         # Ensure at least one source model is provided
@@ -178,23 +177,19 @@ class FacetModel:
         # TODO: Not using far field engine yet because UVW are provided, but we could for precision,
         # e.g. in point, gaussian, etc.
         point_predict = PointPredict(
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
         gaussian_predict = GaussianPredict(
             order_approx=1,
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
         faint_predict = FITSPredict(
             epsilon=1e-6,
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
         lte_predict = RFIEmitterPredict(
             delay_engine=self.near_field_delay_engine,
-            convention=self.convention,
-            dtype=self.dtype
+            convention=self.convention
         )
 
         vis = None

@@ -21,7 +21,7 @@ from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.types import complex_type, mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
@@ -305,11 +305,11 @@ class GaussianSourceModel(AbstractSourceModel):
             axis=-1
         )
         return GaussianModelData(
-            freqs=quantity_to_jnp(self.freqs),
-            image=quantity_to_jnp(self.A, 'Jy'),
-            lmn=lmn,
-            gains=gains,
-            ellipse_params=ellipse_params
+            freqs=mp_policy.cast_to_freq(quantity_to_jnp(self.freqs)),
+            image=mp_policy.cast_to_image(quantity_to_jnp(self.A, 'Jy')),
+            lmn=mp_policy.cast_to_angle(lmn),
+            gains=mp_policy.cast_to_gain(gains),
+            ellipse_params=mp_policy.cast_to_angle(ellipse_params)
         )
 
     def __post_init__(self):
@@ -483,7 +483,6 @@ def derive_transform():
 class GaussianPredict:
     order_approx: int = 0
     convention: str = 'physical'
-    dtype: SupportsDType = complex_type
 
     def check_predict_inputs(self, model_data: GaussianModelData
                              ) -> Tuple[bool, bool, bool]:
@@ -641,7 +640,7 @@ class GaussianPredict:
                     (lmn, g1, g2, image, ellipse_params) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image,
                                                            ellipse_params)  # [] or [2, 2]
-                    accumulate += delta.astype(self.dtype)
+                    accumulate += mp_policy.cast_to_vis(delta)
                     return accumulate, ()
 
                 xs = (lmn, g1, g2, image, ellipse_params)
@@ -650,12 +649,12 @@ class GaussianPredict:
                     (lmn, image, ellipse_params) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image,
                                                            ellipse_params)  # [] or [2, 2]
-                    accumulate += delta.astype(self.dtype)
+                    accumulate += mp_policy.cast_to_vis(delta)
                     return accumulate, ()
 
                 xs = (lmn, image, ellipse_params)
 
-            init_accumulate = jnp.zeros((2, 2) if full_stokes else (), dtype=self.dtype)
+            init_accumulate = jnp.zeros((2, 2) if full_stokes else (), dtype=mp_policy.vis_dtype)
             vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=4)
             return vis_accumulation  # [] or [2, 2]
 
@@ -766,11 +765,11 @@ class GaussianPredict:
                 pos_angle=theta,
                 total_flux=A
             )
-            return gaussian.fourier(jnp.asarray([u, v]))
+            return mp_policy.cast_to_vis(gaussian.fourier(jnp.asarray([u, v])))
 
         def wkernel(l, m):
             n = jnp.sqrt(1. - l ** 2 - m ** 2)
-            return jnp.exp(-2j * jnp.pi * w * (n - 1.)) / n
+            return mp_policy.cast_to_vis(jnp.exp(-2j * jnp.pi * w * (n - 1.)) / n)
 
         if self.order_approx == 0:
             vis = F_gaussian(u, v) * wkernel(l0, m0)
@@ -784,11 +783,11 @@ class GaussianPredict:
             # maybe divide by 2pi
             wkernel_grad = jax.value_and_grad(wkernel, (0, 1), holomorphic=True)
 
-            W0, (Wl, Wm) = wkernel_grad(jnp.asarray(l0, self.dtype), jnp.asarray(m0, self.dtype))
+            W0, (Wl, Wm) = wkernel_grad(jnp.asarray(l0, mp_policy.vis_dtype), jnp.asarray(m0, mp_policy.vis_dtype))
 
             F_jvp = JVPLinearOp(F_gaussian, promote_dtypes=True)
             vec = (
-                jnp.asarray(Wl, self.dtype), jnp.asarray(Wm, self.dtype)
+                jnp.asarray(Wl, mp_policy.vis_dtype), jnp.asarray(Wm, mp_policy.vis_dtype)
             )
             # promote_dtypes=True so we don't need to cast the primals here. Otherwise:
             # primals = (u.astype(vec[0].dtypegrad), v.astype(vec[1].dtype))
@@ -798,4 +797,4 @@ class GaussianPredict:
             vis = F_gaussian(u, v) * (W0 - l0 * Wl - m0 * Wm) + F_jvp.matvec(*vec) / (-2j * jnp.pi)
         else:
             raise ValueError("order_approx must be 0 or 1")
-        return vis
+        return mp_policy.cast_to_vis(vis)

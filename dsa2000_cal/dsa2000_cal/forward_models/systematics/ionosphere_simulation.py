@@ -109,7 +109,7 @@ class IonosphereSimulation:
         )
 
         def compute_covariance_row(X1: GeodesicTuple):
-            X1 = jax.tree_map(lambda x: x.reshape((1, -1)), X1)
+            X1 = jax.tree.map(lambda x: x.reshape((1, -1)), X1)
             K = tomo_kernel.cov_func(X1, X)
             return K[0, :]
 

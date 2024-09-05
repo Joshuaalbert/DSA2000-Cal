@@ -8,14 +8,13 @@ import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 from astropy import constants as const
-from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
@@ -42,8 +41,8 @@ class RFIEmitterSourceModel(AbstractSourceModel):
             position_enu=self.params.position_enu[item],
             spectral_flux_density=self.params.spectral_flux_density[item],
             delay_acf=InterpolatedArray(
-                x=self.params.delay_acf.x,
-                values=self.params.delay_acf.values[item],
+                x=mp_policy.cast_to_time(self.params.delay_acf.x),
+                values=mp_policy.cast_to_vis(self.params.delay_acf.values[item]),
                 axis=self.params.delay_acf.axis,
                 regular_grid=self.params.delay_acf.regular_grid
             )
@@ -88,11 +87,11 @@ class RFIEmitterSourceModel(AbstractSourceModel):
             model_data: the model data
         """
         return RFIEmitterModelData(
-            freqs=quantity_to_jnp(self.params.freqs),
-            position_enu=quantity_to_jnp(self.params.position_enu),
-            luminosity=quantity_to_jnp(self.params.spectral_flux_density, 'Jy*m^2'),
+            freqs=mp_policy.cast_to_freq(quantity_to_jnp(self.params.freqs)),
+            position_enu=mp_policy.cast_to_length(quantity_to_jnp(self.params.position_enu)),
+            luminosity=mp_policy.cast_to_image(quantity_to_jnp(self.params.spectral_flux_density, 'Jy*m^2')),
             delay_acf=self.params.delay_acf,
-            gains=gains
+            gains=mp_policy.cast_to_gain(gains)
         )
 
     def get_source_positions_enu(self) -> jax.Array:
@@ -131,7 +130,6 @@ class RFIEmitterSourceModel(AbstractSourceModel):
 class RFIEmitterPredict:
     delay_engine: NearFieldDelayEngine
     convention: str = 'physical'
-    dtype: SupportsDType = complex_type
 
     def check_predict_inputs(self, model_data: RFIEmitterModelData
                              ) -> Tuple[bool, bool, bool]:
@@ -278,7 +276,7 @@ class RFIEmitterPredict:
                 axis=0,
                 regular_grid=model_data.delay_acf.regular_grid
             )
-            delay_s = delay / quantity_to_jnp(const.c)
+            delay_s = mp_policy.cast_to_time(delay / quantity_to_jnp(const.c))
             delay_acf_val = delay_acf(time=delay_s)  # []
 
             wavelength = quantity_to_jnp(const.c) / freq  # []
@@ -294,8 +292,6 @@ class RFIEmitterPredict:
 
             if self.convention == 'casa':
                 phase = jnp.negative(phase)
-
-            phase = phase.astype(self.dtype)
 
             if full_stokes:
                 if is_gains:
@@ -313,7 +309,7 @@ class RFIEmitterPredict:
                 e_2 = jnp.sqrt(luminosity) * jnp.reciprocal(dist20)  # []
                 visibilities = (e_1 * e_2) * jnp.exp(phase)  # []
             visibilities *= delay_acf_val  # []
-            return visibilities.astype(self.dtype)  # [num_chan[,2,2]]
+            return mp_policy.cast_to_vis(visibilities)  # [num_chan[,2,2]]
 
         vis = compute_phase_from_projection_jax(
             model_data.freqs,

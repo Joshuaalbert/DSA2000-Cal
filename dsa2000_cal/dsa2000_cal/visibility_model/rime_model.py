@@ -28,7 +28,6 @@ class RIMEModel:
         self.near_field_delay_engine: NearFieldDelayEngine = self.facet_models[0].near_field_delay_engine
         self.far_field_delay_engine: FarFieldDelayEngine = self.facet_models[0].far_field_delay_engine
         self.geodesic_model: GeodesicModel = self.facet_models[0].geodesic_model
-        self.dtype = self.facet_models[0].dtype
         self.convention = self.facet_models[0].convention
 
     @property

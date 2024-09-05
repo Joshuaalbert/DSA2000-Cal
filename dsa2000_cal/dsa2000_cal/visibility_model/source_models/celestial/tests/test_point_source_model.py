@@ -62,7 +62,7 @@ def test_with_sharding():
     mesh = Mesh(devices, axis_names=('chan',))
 
     def tree_device_put(tree, sharding):
-        return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
+        return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
 
     dft_predict = PointPredict()
     row = 100

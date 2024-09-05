@@ -42,7 +42,7 @@ def promote_pytree(func_name: str, pytree: V) -> V:
 
 def tree_transpose(list_of_trees):
     """Convert a list of trees of identical structure into a single tree of lists."""
-    return jax.tree_map(lambda *xs: list(xs), *list_of_trees)
+    return jax.tree.map(lambda *xs: list(xs), *list_of_trees)
 
 
 PT = TypeVar('PT')
@@ -171,7 +171,7 @@ def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
 
     def _remove_extra(output_py_tree: S) -> S:
         if extra > 0:
-            output_py_tree = jax.tree_map(lambda x: x[:-extra], output_py_tree)
+            output_py_tree = jax.tree.map(lambda x: x[:-extra], output_py_tree)
         return output_py_tree
 
     return py_tree, _remove_extra

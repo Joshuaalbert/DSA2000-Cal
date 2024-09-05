@@ -133,10 +133,10 @@ class JVPLinearOp:
                 # JAX squeezed structure to a single element, as the function only returns one output
                 co_tangents = co_tangents[0]
                 if self.promote_dtypes:
-                    primals_out, co_tangents = jax.tree_map(_adjoint_promote_dtypes, primals_out, co_tangents)
+                    primals_out, co_tangents = jax.tree.map(_adjoint_promote_dtypes, primals_out, co_tangents)
             else:
                 if self.promote_dtypes:
-                    primals_out, co_tangents = zip(*jax.tree_map(_adjoint_promote_dtypes, primals_out, co_tangents))
+                    primals_out, co_tangents = zip(*jax.tree.map(_adjoint_promote_dtypes, primals_out, co_tangents))
             del primals_out
             output = f_vjp(co_tangents)
             if len(output) == 1:
@@ -153,7 +153,7 @@ class JVPLinearOp:
 
         primals = self.primals
         if self.promote_dtypes:
-            primals, tangents = zip(*jax.tree_map(_promote_dtypes, primals, tangents))
+            primals, tangents = zip(*jax.tree.map(_promote_dtypes, primals, tangents))
         primal_out, tangent_out = jax.jvp(self.fn, primals, tangents)
         return tangent_out
 

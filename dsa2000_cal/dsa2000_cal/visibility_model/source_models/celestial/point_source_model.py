@@ -9,7 +9,6 @@ import numpy as np
 import pylab as plt
 from astropy import constants
 from jax import numpy as jnp, lax
-from jax._src.typing import SupportsDType
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
@@ -17,7 +16,7 @@ from dsa2000_cal.common.corr_translation import stokes_I_to_linear
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
@@ -163,10 +162,10 @@ class PointSourceModel(AbstractSourceModel):
             ], axis=-1
         )
         return PointModelData(
-            freqs=quantity_to_jnp(self.freqs),
-            image=quantity_to_jnp(self.A, 'Jy'),
-            lmn=lmn,
-            gains=gains
+            freqs=mp_policy.cast_to_freq(quantity_to_jnp(self.freqs)),
+            image=mp_policy.cast_to_image(quantity_to_jnp(self.A, 'Jy')),
+            lmn=mp_policy.cast_to_angle(lmn),
+            gains=mp_policy.cast_to_gain(gains)
         )
 
     @staticmethod
@@ -294,7 +293,6 @@ class PointSourceModel(AbstractSourceModel):
 @dataclasses.dataclass(eq=False)
 class PointPredict:
     convention: str = 'physical'
-    dtype: SupportsDType = complex_type
 
     def check_predict_inputs(self, model_data: PointModelData
                              ) -> Tuple[bool, bool, bool]:
@@ -461,7 +459,7 @@ class PointPredict:
                 def body_fn(accumulate, x):
                     (lmn, g1, g2, image) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [] or [2, 2]
-                    accumulate += delta.astype(self.dtype)
+                    accumulate += mp_policy.cast_to_vis(delta)
                     return accumulate, ()
 
                 xs = (lmn, g1, g2, image)
@@ -469,11 +467,11 @@ class PointPredict:
                 def body_fn(accumulate, x):
                     (lmn, image) = x
                     delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [] or [2, 2]
-                    accumulate += delta.astype(self.dtype)
+                    accumulate += mp_policy.cast_to_vis(delta)
                     return accumulate, ()
 
                 xs = (lmn, image)
-            init_accumulate = jnp.zeros((2, 2) if full_stokes else (), dtype=self.dtype)
+            init_accumulate = jnp.zeros((2, 2) if full_stokes else (), dtype=mp_policy.vis_dtype)
             vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=4)
             return vis_accumulation  # [] or [2, 2]
 
@@ -516,17 +514,14 @@ class PointPredict:
         # -2*pi*freq/c*(l*u + m*v + (n-1)*w)
         delay = l * u + m * v + (n - 1.) * w  # scalar
 
-        phi = jnp.asarray(
-            (-2j * np.pi) * delay,
-            dtype=self.dtype
-        )  # scalar
+        phi = (-2j * np.pi) * delay  # scalar
         fringe = (jnp.exp(phi) / n)
 
         if np.shape(image) == (2, 2):  # full stokes
             if g1 is None or g1 is None:
                 return fringe * image
-            return fringe * kron_product(g1, image, g2.conj().T)
+            return mp_policy.cast_to_vis(fringe) * mp_policy.cast_to_vis(kron_product(g1, image, g2.conj().T))
         elif np.shape(image) == ():
             if g1 is None or g1 is None:
-                return fringe * image
-            return fringe * (g1 * g2.conj() * image)
+                return mp_policy.cast_to_vis(fringe * image)
+            return mp_policy.cast_to_vis(fringe * (g1 * g2.conj() * image))

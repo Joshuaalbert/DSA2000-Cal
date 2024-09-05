@@ -10,10 +10,10 @@ import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
 from jax import config, numpy as jnp, lax
 
-from dsa2000_cal.common.bit_context import BitContext
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 
@@ -435,21 +435,21 @@ class FarFieldDelayEngine:
 
         @partial(multi_vmap, in_mapping="[T],[T],[B],[B]", out_mapping="[T,B,...],[T,B],[T,B],[T,B],[T,B]",
                  verbose=True)
-        def _compute_uvw_batched(time_idx: jax.Array, t1: jax.Array, i1: jax.Array, i2: jax.Array
-                                 ) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+        def _compute_visibility_coords(time_idx: jax.Array, t1: jax.Array, i1: jax.Array, i2: jax.Array
+                                       ) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
             return self._single_compute_uvw(t1, i1, i2), time_idx, t1, i1, i2
 
         num_baselines = len(antenna_2)
         num_times = len(times)
         num_rows = num_baselines * num_times
-        uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_uvw_batched(
+        uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_visibility_coords(
             jnp.arange(num_times), times, antenna_1, antenna_2)
         return VisibilityCoords(
-            uvw=lax.reshape(uvw, (num_rows, 3)),
-            time_idx=lax.reshape(time_idx, (num_rows,)),
-            time_obs=lax.reshape(time_obs, (num_rows,)),
-            antenna_1=lax.reshape(antenna_1, (num_rows,)),
-            antenna_2=lax.reshape(antenna_2, (num_rows,))
+            uvw=mp_policy.position_dtype(lax.reshape(uvw, (num_rows, 3))),
+            time_idx=mp_policy.cast_to_index(lax.reshape(time_idx, (num_rows,))),
+            time_obs=mp_policy.cast_to_time(lax.reshape(time_obs, (num_rows,))),
+            antenna_1=mp_policy.cast_to_index(lax.reshape(antenna_1, (num_rows,))),
+            antenna_2=mp_policy.cast_to_index(lax.reshape(antenna_2, (num_rows,)))
         )
 
 
@@ -562,4 +562,4 @@ def far_field_delay(
 
     proper_delay = (1 - L_G) * coordinate_delay_tcg
 
-    return proper_delay
+    return mp_policy.cast_to_length(proper_delay)  # m

@@ -13,6 +13,7 @@ from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.interp_utils import InterpolatedArray, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
@@ -141,7 +142,7 @@ class GeodesicModel:
                 dec0=dec0
             )  # []
             l, m, n = perley_lmn_from_icrs(ra, dec, ra_pointing, dec_pointing)  # []
-            return jnp.stack([l, m, n], axis=-1)  # [3]
+            return mp_policy.cast_to_angle(jnp.stack([l, m, n], axis=-1))  # [3]
 
         return create_geodesics(antennas_enu, lmn_pointing, lmn_sources)  # [num_sources, num_time, num_ant, 3]
 
@@ -224,7 +225,7 @@ class GeodesicModel:
 
             l, m, n = perley_lmn_from_icrs(ra, dec, ra_pointing, dec_pointing)  # []
 
-            return jnp.stack([l, m, n], axis=-1)
+            return mp_policy.cast_to_angle(jnp.stack([l, m, n], axis=-1))
 
         return create_geodesics(times, lmn_pointing, antennas_enu,
                                 source_positions_enu)  # [num_sources, num_time, num_ant, 3]

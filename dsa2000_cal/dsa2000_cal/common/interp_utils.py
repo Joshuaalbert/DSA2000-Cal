@@ -131,8 +131,8 @@ def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, 
         # return jnp.take(x, i, axis=axis)
         return x[tuple(slices)]
 
-    return left_broadcast_multiply(take(i0), alpha0, axis=axis) + left_broadcast_multiply(
-        take(i1), alpha1, axis=axis)
+    return left_broadcast_multiply(take(i0), alpha0.astype(x), axis=axis) + left_broadcast_multiply(
+        take(i1), alpha1.astype(x), axis=axis)
 
 
 def left_broadcast_multiply(x, y, axis: int = 0):

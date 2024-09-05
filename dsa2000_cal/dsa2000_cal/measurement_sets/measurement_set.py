@@ -540,7 +540,7 @@ class MeasurementSet:
         (i0_time, alpha0_time), (i1_time, alpha1_time) = get_interp_indices_and_weights(
             x=(times - self.ref_time).sec, xp=(self.meta.times - self.ref_time).sec
         )
-        ((i0_time, alpha0_time), (i1_time, alpha1_time)) = jax.tree_map(
+        ((i0_time, alpha0_time), (i1_time, alpha1_time)) = jax.tree.map(
             np.asarray, ((i0_time, alpha0_time), (i1_time, alpha1_time))
         )
         rows0 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i0_time)
@@ -573,7 +573,7 @@ class MeasurementSet:
             (i0_freq, alpha0_freq), (i1_freq, alpha1_freq) = get_interp_indices_and_weights(
                 x=freqs.value, xp=self.meta.freqs.value
             )
-            ((i0_freq, alpha0_freq), (i1_freq, alpha1_freq)) = jax.tree_map(
+            ((i0_freq, alpha0_freq), (i1_freq, alpha1_freq)) = jax.tree.map(
                 np.asarray, ((i0_freq, alpha0_freq), (i1_freq, alpha1_freq))
             )
             i0_freq = _try_get_slice(i0_freq)
