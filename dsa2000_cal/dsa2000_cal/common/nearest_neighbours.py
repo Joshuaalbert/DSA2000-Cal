@@ -8,6 +8,8 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.spatial import KDTree
 
+from dsa2000_cal.common.types import int_type
+
 
 class GridTree2D(NamedTuple):
     grid: jax.Array  # [num_grids, max_points_per_cell]
@@ -214,7 +216,7 @@ def kd_tree_nn(points: jax.Array, test_points: jax.Array, k: int = 1) -> Tuple[j
     )
     index_shape_dtype = jax.ShapeDtypeStruct(
         shape=(m, k),
-        dtype=jnp.int32
+        dtype=int_type
     )
 
     return jax.pure_callback(_kd_tree_nn_host, (distance_shape_dtype, index_shape_dtype), *args)

@@ -4,7 +4,7 @@ import pytest
 from jax import random as random, numpy as jnp
 from jax._src.tree_util import Partial
 
-from dsa2000_cal.common.nearest_neighbours import ApproximateTreeNN2D, GridTree2D
+from dsa2000_cal.common.nearest_neighbours import ApproximateTreeNN2D, GridTree2D, kd_tree_nn
 
 
 @pytest.fixture
@@ -108,3 +108,10 @@ def test_build_tree_handles_empty_points_2d(setup_tree_2d):
     points = jnp.array([]).reshape(0, 2)
     with pytest.raises(ValueError, match="No points provided to build the tree."):
         _ = approx_tree.build_tree(points)
+
+
+def test_kd_tree_nn():
+    points = jnp.array([[0.1, 0.1], [0.15, 0.15], [0.2, 0.2]])
+    test_point = jnp.array([[0.12, 0.12]])
+
+    dist, idx = kd_tree_nn(points, test_point, 2)
