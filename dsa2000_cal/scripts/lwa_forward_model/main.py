@@ -5,6 +5,8 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import config
 
+from dsa2000_cal.common.types import complex_type
+
 # Set num jax devices
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
