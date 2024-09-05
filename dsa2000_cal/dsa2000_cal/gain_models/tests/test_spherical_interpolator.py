@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from astropy import units as au, coordinates as ac, time as at
@@ -8,7 +9,7 @@ from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel, \
     phi_theta_from_lmn, regrid_to_regular_grid
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
-import matplotlib.pyplot as plt
+
 
 def test_lmn_from_phi_theta():
     # L = -Y, M = X, N = Z
@@ -190,7 +191,7 @@ def test_regrid_to_regular_grid():
     num_model_dir = 4
     num_ant = 4
     num_model_freqs = 5
-    resolution = 10
+    resolution = 11
 
     model_theta = jnp.linspace(0, 180, num_model_dir)
     model_phi = jnp.linspace(0, 360, num_model_dir)
@@ -214,7 +215,6 @@ def test_regrid_to_regular_grid():
     model_gains = jnp.ones((num_model_times, num_model_dir, num_ant, num_model_freqs))
     theta, phi, gains = regrid_to_regular_grid(model_lmn, model_gains, resolution)
     assert np.shape(gains) == (num_model_times, resolution, resolution, num_ant, num_model_freqs)
-
 
 
 @pytest.mark.parametrize('array_name', ['dsa2000W_small'])
