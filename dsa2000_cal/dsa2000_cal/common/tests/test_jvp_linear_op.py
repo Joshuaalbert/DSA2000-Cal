@@ -1,3 +1,6 @@
+from typing import NamedTuple
+
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -101,3 +104,46 @@ def test_jvp_op_dtype_promotion():
 
     np.testing.assert_allclose(jvp_op.matvec(fn(*primals).astype(jnp.float32), adjoint=True),
                                jvp_op.matvec(fn(*primals), adjoint=True))
+
+
+def test_jvp_op_pytree_primals_and_cotangents():
+    class Primal(NamedTuple):
+        x: jax.Array
+        y: jax.Array
+
+    class Cotangent(NamedTuple):
+        x: jax.Array
+        y: jax.Array
+        z: jax.Array
+
+    class Cotangent2(NamedTuple):
+        x: jax.Array
+        y: jax.Array
+        z: jax.Array
+        h: jax.Array
+
+    def f(x: Primal) -> tuple[Cotangent, Cotangent2]:
+        return Cotangent(x=x.x, y=x.y, z=x.x + x.y), Cotangent2(x=x.x, y=x.y, z=x.x + x.y, h=x.x - x.y)
+
+    F = JVPLinearOp(f)
+    primal = Primal(x=jnp.ones(2), y=jnp.ones(2))
+    F = F(primal)
+    cotangent = Cotangent(jnp.ones(2), jnp.ones(2), jnp.ones(2)), Cotangent2(jnp.ones(2), jnp.ones(2), jnp.ones(2),
+                                                                             jnp.ones(2))
+    tangent = Primal(jnp.ones(2), jnp.ones(2))
+
+    print(F.matvec(tangent))
+    print(F.matvec(*cotangent, adjoint=True))
+
+    def f(x: Primal, y: Primal) -> tuple[Cotangent, Cotangent2]:
+        return Cotangent(x=x.x, y=x.y, z=x.x + x.y + y.y), Cotangent2(x=x.x + y.x, y=x.y, z=x.x + x.y, h=x.x - x.y)
+
+    F = JVPLinearOp(f)
+    primal = Primal(x=jnp.ones(2), y=jnp.ones(2))
+    F = F(primal, primal)
+    cotangent = Cotangent(jnp.ones(2), jnp.ones(2), jnp.ones(2)), Cotangent2(jnp.ones(2), jnp.ones(2), jnp.ones(2),
+                                                                             jnp.ones(2))
+    tangent = Primal(jnp.ones(2), jnp.ones(2))
+
+    print(F.matvec(tangent, tangent))
+    print(F.matvec(*cotangent, adjoint=True))

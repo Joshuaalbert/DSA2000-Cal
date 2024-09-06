@@ -36,21 +36,26 @@ class JVPLinearOp:
     more_outputs_than_inputs: bool = False  # If True, the operator is tall, i.e. m > n
     adjoint: bool = False  # If True, the operator is transposed
     promote_dtypes: bool = True  # If True, promote dtypes to match primal during JVP, and cotangent to match primal_out during VJP
+    linearize: bool = False
 
     def __post_init__(self):
         if not callable(self.fn):
             raise ValueError('`fn` must be a callable.')
 
-        if isinstance_namedtuple(self.primals) or (not isinstance(self.primals, (tuple, list))):
-            self.primals = (self.primals,)
+        if self.primals is not None:
+            if isinstance_namedtuple(self.primals) or (not isinstance(self.primals, tuple)):
+                self.primals = (self.primals,)
 
     def __call__(self, *primals: Any) -> 'JVPLinearOp':
         return JVPLinearOp(fn=self.fn, primals=primals, more_outputs_than_inputs=self.more_outputs_than_inputs,
                            adjoint=self.adjoint, promote_dtypes=self.promote_dtypes)
 
     def __neg__(self):
-        return JVPLinearOp(fn=lambda *args, **kwargs: -self.fn(*args, **kwargs), primals=self.primals,
-                           more_outputs_than_inputs=self.more_outputs_than_inputs, adjoint=self.adjoint)
+        return JVPLinearOp(
+            fn=lambda *args, **kwargs: -self.fn(*args, **kwargs), primals=self.primals,
+            more_outputs_than_inputs=self.more_outputs_than_inputs, adjoint=self.adjoint,
+            promote_dtypes=self.promote_dtypes
+        )
 
     def __matmul__(self, other):
         if not isinstance(other, (jax.Array, np.ndarray)):
@@ -122,38 +127,44 @@ class JVPLinearOp:
         if adjoint:
             co_tangents = tangents
 
-            def _adjoint_promote_dtypes(primal_out: jax.Array, co_tangent: jax.Array):
-                if co_tangent.dtype != primal_out.dtype:
+            def _get_results_type(primal_out: jax.Array):
+                return primal_out.dtype
+
+            def _adjoint_promote_dtypes(co_tangent: jax.Array, dtype: jnp.dtype):
+                if co_tangent.dtype != dtype:
                     warnings.warn(f"Promoting co-tangent dtype from {co_tangent.dtype} to {primal_out.dtype}.")
-                return primal_out, co_tangent.astype(primal_out.dtype)
+                return co_tangent.astype(dtype)
 
             # v @ J
             primals_out, f_vjp = jax.vjp(self.fn, *self.primals)
-            if isinstance_namedtuple(primals_out) or (not isinstance(primals_out, (tuple, list))):
+
+            if isinstance_namedtuple(primals_out) or (not isinstance(primals_out, tuple)):
                 # JAX squeezed structure to a single element, as the function only returns one output
                 co_tangents = co_tangents[0]
-                if self.promote_dtypes:
-                    primals_out, co_tangents = jax.tree.map(_adjoint_promote_dtypes, primals_out, co_tangents)
-            else:
-                if self.promote_dtypes:
-                    primals_out, co_tangents = zip(*jax.tree.map(_adjoint_promote_dtypes, primals_out, co_tangents))
+
+            if self.promote_dtypes:
+                result_type = jax.tree_map(_get_results_type, primals_out)
+                co_tangents = jax.tree_map(_adjoint_promote_dtypes, co_tangents, result_type)
+
             del primals_out
             output = f_vjp(co_tangents)
             if len(output) == 1:
                 return output[0]
             return output
 
-        def _promote_dtypes(primal: jax.Array, tangent: jax.Array):
-            dtype = jnp.result_type(primal, tangent)
+        def _promote_dtype(primal: jax.Array, dtype: jnp.dtype):
             if primal.dtype != dtype:
                 warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}.")
-            if tangent.dtype != dtype:
-                warnings.warn(f"Promoting tangent dtype from {tangent.dtype} to {dtype}.")
-            return primal.astype(dtype), tangent.astype(dtype)
+            return primal.astype(dtype)
+
+        def _get_result_type(primal: jax.Array, tangent: jax.Array):
+            return jnp.result_type(primal, tangent)
 
         primals = self.primals
         if self.promote_dtypes:
-            primals, tangents = zip(*jax.tree.map(_promote_dtypes, primals, tangents))
+            result_types = jax.tree_map(_get_result_type, primals, tangents)
+            primals = jax.tree.map(_promote_dtype, primals, result_types)
+            tangents = jax.tree.map(_promote_dtype, tangents, result_types)
         primal_out, tangent_out = jax.jvp(self.fn, primals, tangents)
         return tangent_out
 
