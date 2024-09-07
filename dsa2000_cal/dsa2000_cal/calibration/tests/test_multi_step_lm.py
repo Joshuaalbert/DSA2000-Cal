@@ -15,7 +15,7 @@ def test_multi_step_lm():
     chan = os.cpu_count()
     source = 3
 
-    mesh = create_mesh((8,), ('chan',))
+    mesh = create_mesh((len(jax.devices()),), ('chan',))
 
     gains = mp_policy.cast_to_gain(
         jnp.ones((source, ant, chan)) + 1j * 0.1 * jax.random.normal(jax.random.PRNGKey(1),
