@@ -15,8 +15,11 @@ from typing import TypeVar, Callable, Tuple, Set, List, Dict
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import pmap, lax
+from jax import pmap, lax, NamedSharding
+from jax._src.mesh import Mesh
 from jax._src.numpy.util import check_arraylike, promote_dtypes_inexact
+from jax._src.partition_spec import PartitionSpec
+from jax.experimental.mesh_utils import create_device_mesh
 
 from dsa2000_cal.common.jvp_linear_op import isinstance_namedtuple
 
@@ -531,3 +534,48 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
         return tuple(res)
 
     return _permute_output
+
+
+def create_mesh(shape, axis_names, devices=None):
+    """
+    Create a mesh from a shape and axis names.
+
+    Args:
+        shape: the shape of the mesh, total size must evenly divide number of devices.
+        axis_names: the axis names of the mesh.
+        devices: the devices to use, if None, uses all devices.
+
+    Returns:
+        the mesh
+    """
+    if len(shape) != len(axis_names):
+        raise ValueError(f"Shape {shape} and axis names {axis_names} must have the same length.")
+    mesh_size = int(np.prod(shape))
+    if devices is None:
+        devices = jax.devices()
+        if mesh_size < len(devices):
+            devices = devices[:mesh_size]
+    if mesh_size % len(devices) != 0:
+        raise ValueError(f"Mesh size {mesh_size} must evenly divide number of devices {len(devices)}.")
+    mesh_devices = create_device_mesh(mesh_shape=shape, devices=devices)
+    mesh = Mesh(mesh_devices, axis_names=axis_names)
+    return mesh
+
+
+SPT = TypeVar('SPT')
+
+
+def tree_device_put(tree: SPT, mesh: Mesh, axis_names: Tuple[str | None, ...]) -> SPT:
+    """
+    Put a pytree on a device.
+
+    Args:
+        tree: the pytree to put on a device.
+        mesh: the mesh to put the pytree on.
+        axis_names: the axis names of the mesh.
+
+    Returns:
+        the pytree on the device.
+    """
+    sharding = NamedSharding(mesh, PartitionSpec(*axis_names))
+    return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
