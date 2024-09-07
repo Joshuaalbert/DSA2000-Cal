@@ -24,6 +24,27 @@ def isinstance_namedtuple(obj) -> bool:
     )
 
 
+def make_linear(f: Callable, *primals0):
+    """
+    Make a linear function that approximates f around primals0.
+
+    Args:
+        f: the function to linearize
+        *primals0: the point around which to linearize
+
+    Returns:
+        the linearized function
+    """
+    f0, f_jvp = jax.linearize(f, *primals0)
+
+    def f_linear(*primals):
+        diff_primals = jax.tree.map(lambda x, x0: x - x0, primals, primals0)
+        df = f_jvp(*diff_primals)
+        return jax.tree.map(lambda y0, dy: y0 + dy, f0, df)
+
+    return f_linear
+
+
 @dataclasses.dataclass(eq=False)
 class JVPLinearOp:
     """
@@ -36,7 +57,7 @@ class JVPLinearOp:
     more_outputs_than_inputs: bool = False  # If True, the operator is tall, i.e. m > n
     adjoint: bool = False  # If True, the operator is transposed
     promote_dtypes: bool = True  # If True, promote dtypes to match primal during JVP, and cotangent to match primal_out during VJP
-    linearize: bool = False
+    linearize: bool = True  # If True, use linearized function for JVP
 
     def __post_init__(self):
         if not callable(self.fn):
@@ -45,16 +66,27 @@ class JVPLinearOp:
         if self.primals is not None:
             if isinstance_namedtuple(self.primals) or (not isinstance(self.primals, tuple)):
                 self.primals = (self.primals,)
+            if self.linearize:
+                self.linear_fn = make_linear(self.fn, *self.primals)
 
     def __call__(self, *primals: Any) -> 'JVPLinearOp':
-        return JVPLinearOp(fn=self.fn, primals=primals, more_outputs_than_inputs=self.more_outputs_than_inputs,
-                           adjoint=self.adjoint, promote_dtypes=self.promote_dtypes)
+        return JVPLinearOp(
+            fn=self.fn,
+            primals=primals,
+            more_outputs_than_inputs=self.more_outputs_than_inputs,
+            adjoint=self.adjoint,
+            promote_dtypes=self.promote_dtypes,
+            linearize=self.linearize
+        )
 
     def __neg__(self):
         return JVPLinearOp(
-            fn=lambda *args, **kwargs: -self.fn(*args, **kwargs), primals=self.primals,
-            more_outputs_than_inputs=self.more_outputs_than_inputs, adjoint=self.adjoint,
-            promote_dtypes=self.promote_dtypes
+            fn=lambda *args, **kwargs: jax.lax.neg(self.fn(*args, **kwargs)),
+            primals=self.primals,
+            more_outputs_than_inputs=self.more_outputs_than_inputs,
+            adjoint=self.adjoint,
+            promote_dtypes=self.promote_dtypes,
+            linearize=self.linearize
         )
 
     def __matmul__(self, other):
@@ -79,8 +111,14 @@ class JVPLinearOp:
 
     @property
     def T(self) -> 'JVPLinearOp':
-        return JVPLinearOp(fn=self.fn, primals=self.primals, more_outputs_than_inputs=self.more_outputs_than_inputs,
-                           adjoint=not self.adjoint)
+        return JVPLinearOp(
+            fn=self.fn,
+            primals=self.primals,
+            more_outputs_than_inputs=self.more_outputs_than_inputs,
+            adjoint=not self.adjoint,
+            promote_dtypes=self.promote_dtypes,
+            linearize=self.linearize
+        )
 
     def matmul(self, *tangents: Any, adjoint: bool = False, left_multiply: bool = True):
         """
@@ -115,11 +153,12 @@ class JVPLinearOp:
         Compute J.T @ v = sum_i(v_i * J_ij) using a VJP, if adjoint is True.
 
         Args:
-            tangents: pytree of the same structure as the primals.
-            adjoint: if True, compute v @ J, else compute J @ v
+            tangents: if adjoint=False, then  pytree of the same structure as the primals, else pytree of the same
+                structure as the output.
+            adjoint: if True, compute J.T @ v, else compute J @ v
 
         Returns:
-            pytree of matching either f-space (output) or x-space (primals)
+            pytree of matching either f-space (output) if adjoint=False, else x-space (primals)
         """
         if self.primals is None:
             raise ValueError("The primal value must be set to compute the Jacobian.")
@@ -136,7 +175,11 @@ class JVPLinearOp:
                 return co_tangent.astype(dtype)
 
             # v @ J
-            primals_out, f_vjp = jax.vjp(self.fn, *self.primals)
+            if self.linearize:
+                f_vjp = jax.linear_transpose(self.linear_fn, *self.primals)
+                primals_out = jax.eval_shape(self.linear_fn, *self.primals)
+            else:
+                primals_out, f_vjp = jax.vjp(self.fn, *self.primals)
 
             if isinstance_namedtuple(primals_out) or (not isinstance(primals_out, tuple)):
                 # JAX squeezed structure to a single element, as the function only returns one output
@@ -157,23 +200,23 @@ class JVPLinearOp:
                 warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}.")
             return primal.astype(dtype)
 
-        def _get_result_type(primal: jax.Array, tangent: jax.Array):
-            return jnp.result_type(primal, tangent)
+        def _get_result_type(primal: jax.Array):
+            return primal.dtype
 
         primals = self.primals
         if self.promote_dtypes:
-            result_types = jax.tree_map(_get_result_type, primals, tangents)
-            primals = jax.tree.map(_promote_dtype, primals, result_types)
+            result_types = jax.tree_map(_get_result_type, primals)
             tangents = jax.tree.map(_promote_dtype, tangents, result_types)
-        primal_out, tangent_out = jax.jvp(self.fn, primals, tangents)
+        # We use linearised function, so that repeated applications are cheaper.
+        if self.linearize:
+            primal_out, tangent_out = jax.jvp(self.linear_fn, primals, tangents)
+        else:
+            primal_out, tangent_out = jax.jvp(self.fn, primals, tangents)
         return tangent_out
 
     def to_dense(self) -> jax.Array:
         """
         Compute the dense Jacobian at a point.
-
-        Args:
-            x: [n] array
 
         Returns:
             [m, n] array
