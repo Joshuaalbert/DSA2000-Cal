@@ -113,13 +113,16 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
     def __post_init__(self):
         if self.num_approx_steps < 0:
             raise ValueError("num_approx_steps must be non-negative")
-        if self.delta < 1 or self.delta > 2:
+        if isinstance(self.delta, (int, float)) and (self.delta < 1 or self.delta > 2):
             raise ValueError("delta must be 1 <= delta <= 2")
-        if self.mu1 <= self.mu_min:
+        if isinstance(self.mu1, float) and isinstance(self.mu_min, float) and self.mu1 <= self.mu_min:
             raise ValueError("mu1 must be greater than mu_min")
-        if self.mu_min <= 0:
+        if isinstance(self.mu_min, float) and self.mu_min <= 0:
             raise ValueError("mu_min must be positive")
-        if not (
+        if all(map(lambda p: isinstance(p, float), (self.p_any_improvement,
+                                                    self.p_sufficient_improvement,
+                                                    self.p_more_newton,
+                                                    self.p_less_newton))) and not (
                 (0. < self.p_any_improvement)
                 and (self.p_any_improvement < self.p_less_newton)
                 and (self.p_less_newton < self.p_sufficient_improvement)
@@ -132,7 +135,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                 f"{self.p_more_newton}"
             )
 
-        if not (
+        if isinstance(self.c_more_newton, float) and isinstance(self.c_less_newton, float) and not (
                 (0. < self.c_more_newton)
                 and (self.c_more_newton < 1.)
                 and (1. < self.c_less_newton)
@@ -142,6 +145,17 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                 f"got {self.c_more_newton}, {self.c_less_newton}"
             )
         self._residual_fn = self.wrap_residual_fn(self.residual_fn)
+
+        # self.delta = jnp.asarray(self.delta, dtype=jnp.float32)
+        # self.mu1 = jnp.asarray(self.mu1, dtype=jnp.float32)
+        # self.mu_min = jnp.asarray(self.mu_min, dtype=jnp.float32)
+        # self.p_any_improvement = jnp.asarray(self.p_any_improvement, dtype=jnp.float32)
+        # self.p_less_newton = jnp.asarray(self.p_less_newton, dtype=jnp.float32)
+        # self.p_sufficient_improvement = jnp.asarray(self.p_sufficient_improvement, dtype=jnp.float32)
+        # self.p_more_newton = jnp.asarray(self.p_more_newton, dtype=jnp.float32)
+        # self.c_more_newton = jnp.asarray(self.c_more_newton, dtype=jnp.float32)
+        # self.c_less_newton = jnp.asarray(self.c_less_newton, dtype=jnp.float32)
+        #
 
     @staticmethod
     def wrap_residual_fn(residual_fn: Callable[[X], Y]) -> Callable[[X], Y]:
@@ -175,12 +189,11 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
         d = jax.tree.map(jnp.zeros_like, x)
         F = self._residual_fn(x)
         F_norm = pytree_norm_delta(F, power=2)
-        if self.delta == 2:
+        if isinstance(self.delta, int) and self.delta == 2:
             F_norm_delta = F_norm
         else:
             F_norm_delta = pytree_norm_delta(F, power=self.delta)
         damping = mu * F_norm_delta
-
         state = MultiStepLevenbergMarquardtState(
             iteration=jnp.asarray(0),
             x=x,
@@ -256,7 +269,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                 )
             )
 
-            if self.delta == 2:
+            if isinstance(self.delta, int) and self.delta == 2:
                 F_norm_delta = F_norm
             else:
                 F_norm_delta = pytree_norm_delta(F, power=self.delta)
@@ -322,8 +335,8 @@ def pytree_norm_delta(pytree: Any, power: int | float = 2) -> jax.Array:
     square_sum = jax.tree.map(lambda x: jnp.sum(jnp.square(jnp.abs(x))), pytree)
     leaves = jax.tree_leaves(square_sum)
     total_square_sum = sum(leaves[1:], leaves[0])
-    if power == 2:
+    if isinstance(power, int) and power == 2:
         return total_square_sum
-    if power == 1:
+    if isinstance(power, int) and power == 1:
         return jnp.sqrt(total_square_sum)
     return total_square_sum ** (power / 2.)
