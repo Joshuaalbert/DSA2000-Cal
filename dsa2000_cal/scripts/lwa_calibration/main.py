@@ -7,7 +7,7 @@ from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.visibility_model.sky_model import SkyModel
-from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
+from dsa2000_cal.imaging.imagor import Imagor
 from dsa2000_cal.visibility_model.source_models.celestial.wsclean_component_stokes_I_source_model import WSCleanSourceModel
 
 config.update("jax_enable_x64", True)
@@ -67,7 +67,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
     # Save the subtracted visibilities
     _, field_of_view = get_dish_model_beam_widths(array.get_antenna_model())
     field_of_view = np.mean(field_of_view)
-    imagor = DirtyImaging(
+    imagor = Imagor(
         plot_folder='plots/imaging_residuals',
         field_of_view=field_of_view,
         seed=12345,

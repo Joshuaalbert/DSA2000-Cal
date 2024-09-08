@@ -381,8 +381,8 @@ def vis_to_image(uvw: jax.Array, freqs: jax.Array,
         double_precision_accumulation=double_precision_accumulation,
         verbosity=verbosity
     )
-    l = (0.5 * npix_l + jnp.arange(npix_l)) * pixsize_l + center_l
-    m = (0.5 * npix_m + jnp.arange(npix_m)) * pixsize_m + center_m
+    l = (-0.5 * npix_l + jnp.arange(npix_l)) * pixsize_l + center_l
+    m = (-0.5 * npix_m + jnp.arange(npix_m)) * pixsize_m + center_m
     l, m = jnp.meshgrid(l, m, indexing='ij')
     n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))
     n = jnp.where(jnp.isnan(n), 0., n)

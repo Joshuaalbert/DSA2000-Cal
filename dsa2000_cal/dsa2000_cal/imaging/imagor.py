@@ -15,19 +15,22 @@ from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_wi
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common import wgridder
+from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.vec_utils import kron_inv
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)
-class DirtyImaging:
+class Imagor:
     """
-    Performs imaging of visibilties using W-gridder.
+    Performs imaging (without deconvolution) of visibilties using W-gridder.
     """
 
     # Imaging parameters
@@ -48,7 +51,7 @@ class DirtyImaging:
         if self.field_of_view is not None and not self.field_of_view.unit.is_equivalent(au.deg):
             raise ValueError(f"Expected field_of_view to be in degrees, got {self.field_of_view.unit}")
 
-    def image(self, image_name: str, ms: MeasurementSet, psf: bool = False) -> ImageModel:
+    def image(self, image_name: str, ms: MeasurementSet, psf: bool = False, overwrite: bool = False) -> ImageModel:
         print(f"Imaging {ms}")
         # Metrics
         t0 = time_mod.time()
@@ -168,14 +171,14 @@ class DirtyImaging:
         )
         # with open(f"{image_name}.json", 'w') as fp:
         #     fp.write(image_model.json(indent=2))
-        image_model.save_image_to_fits(f"{image_name}.fits", overwrite=False)
+        image_model.save_image_to_fits(f"{image_name}.fits", overwrite=overwrite)
         print(f"Saved FITS image to {image_name}.fits")
 
         return image_model
 
     def image_visibilities(self, uvw: jax.Array, vis: jax.Array, weights: jax.Array,
-                               flags: jax.Array, freqs: jax.Array, num_pixel: int,
-                               dl: jax.Array, dm: jax.Array, center_l: jax.Array, center_m: jax.Array) -> jax.Array:
+                           flags: jax.Array, freqs: jax.Array, num_pixel: int,
+                           dl: jax.Array, dm: jax.Array, center_l: jax.Array, center_m: jax.Array) -> jax.Array:
         ...
 
     @partial(jax.jit, static_argnames=['self', 'num_pixel'])
@@ -255,67 +258,74 @@ class DirtyImaging:
 
         return image_single_coh(vis, weights, jnp.logical_not(flags))
 
-    def evaluate_beam(self, freqs: jax.Array, times: jax.Array,
-                      beam_gain_model: GainModel, geodesic_model: GeodesicModel,
-                      num_l: int, num_m: int,
-                      dl: jax.Array, dm: jax.Array, center_l: jax.Array, center_m: jax.Array) -> jax.Array:
-        """
-        Evaluate the beam at a grid of lmn points.
 
-        Args:
-            freqs: [num_freqs] the frequency values
-            times: [num_time] the time values
-            beam_gain_model: the beam gain model
-            geodesic_model: the geodesic model
-            num_l: the number of l points
-            num_m: the number of m points
-            dl: the l spacing
-            dm: the m spacing
-            center_l: the center l
-            center_m: the center m
+def evaluate_beam(freqs: jax.Array, times: jax.Array,
+                  beam_gain_model: GainModel, geodesic_model: GeodesicModel,
+                  num_l: int, num_m: int,
+                  dl: jax.Array, dm: jax.Array, center_l: jax.Array, center_m: jax.Array) -> jax.Array:
+    """
+    Evaluate the beam at a grid of lmn points.
 
-        Returns:
-            beam: [num_l, num_m, num_time, num_freqs[, 2, 2]]
-        """
-        lvec = (0.5 * num_l + jnp.arange(num_l)) * dl + center_l
-        mvec = (0.5 * num_m + jnp.arange(num_m)) * dm + center_m
-        l, m = jnp.meshgrid(lvec, mvec, indexing='ij')
-        n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))
-        lmn_sources = jnp.reshape(jnp.stack([l, m, n], axis=-1), (-1, 3))
-        if not beam_gain_model.tile_antennas:
-            raise ValueError("Beam gain model must be identical for all antennas.")
-        geodesics = geodesic_model.compute_far_field_geodesic(
-            times=times, lmn_sources=lmn_sources, antenna_indices=jnp.asarray([0])
-        )  # [num_sources, num_time, 1, 3]
-        beam = beam_gain_model.compute_gain(freqs=freqs, times=times,
-                                            geodesics=geodesics)  # [num_sources, num_time, 1, num_freqs[, 2, 2]]
-        beam = beam[:, :, 0, ...]  # [num_sources, num_time, num_freqs[, 2, 2]]
-        res_shape = (num_l, num_m) + beam.shape[1:]
-        return lax.reshape(beam, res_shape)  # [num_l, num_m, num_time, num_freqs[, 2, 2]]
+    Args:
+        freqs: [num_freqs] the frequency values
+        times: [num_time] the time values
+        beam_gain_model: the beam gain model
+        geodesic_model: the geodesic model
+        num_l: the number of l points
+        num_m: the number of m points
+        dl: the l spacing
+        dm: the m spacing
+        center_l: the center l
+        center_m: the center m
 
-    # def divide_out_beam(self, image: jax.Array, beam: jax.Array
-    #                     ) -> jax.Array:
-    #     """
-    #     Divide out the beam from the image.
-    #
-    #     Args:
-    #         image: [num_pixel, num_pixel, 4/1]
-    #         beam: [num_pixel, num_pixel[,2,2]]
-    #
-    #     Returns:
-    #         image: [num_pixel, num_pixel, 4/1]
-    #     """
-    #     def _remove(image, beam):
-    #         if np.shape(image) == (1,):
-    #             if np.shape(beam) != ():
-    #                 raise ValueError(f"Expected beam to be scalar, got {np.shape(beam)}")
-    #             return image / beam
-    #         elif np.shape(image) == (4,):
-    #             if np.shape(beam) != (2, 2):
-    #                 raise ValueError(f"Expected beam to be [4], got {np.shape(beam)}")
-    #             return image / beam
-    #         return kron_inv(beam, image, beam.conj().T)
-    #
-    #         return jax.vmap(jax.vmap(_remove))(image, beam)
-    #     else:
-    #         raise ValueError(f"Unknown beam shape {np.shape(beam)}")
+    Returns:
+        beam: [num_l, num_m, num_time, num_freqs[, 2, 2]]
+    """
+    lvec = (-0.5 * num_l + jnp.arange(num_l)) * dl + center_l  # [num_l]
+    mvec = (-0.5 * num_m + jnp.arange(num_m)) * dm + center_m  # [num_m]
+    l, m = jnp.meshgrid(lvec, mvec, indexing='ij')  # [num_l, num_m]
+    n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))  # [num_l, num_m]
+    lmn_sources = mp_policy.cast_to_angle(jnp.reshape(jnp.stack([l, m, n], axis=-1), (-1, 3)))  # [num_sources, 3]
+    if not beam_gain_model.tile_antennas:
+        raise ValueError("Beam gain model must be identical for all antennas.")
+    geodesics = geodesic_model.compute_far_field_geodesic(
+        times=times, lmn_sources=lmn_sources, antenna_indices=jnp.asarray([0], mp_policy.index_dtype)
+    )  # [num_sources, num_time, 1, 3]
+    # jax.debug.print("geodesics={geodesics}", geodesics=geodesics)
+    beam = beam_gain_model.compute_gain(freqs=freqs, times=times,
+                                        geodesics=geodesics)  # [num_sources, num_time, 1, num_freqs[, 2, 2]]
+    beam = beam[:, :, 0, ...]  # [num_sources, num_time, num_freqs[, 2, 2]]
+    res_shape = (num_l, num_m) + beam.shape[1:]
+    return lax.reshape(beam, res_shape)  # [num_l, num_m, num_time, num_freqs[, 2, 2]]
+
+
+def divide_out_beam(image: jax.Array, beam: jax.Array
+                    ) -> jax.Array:
+    """
+    Divide out the beam from the image.
+
+    Args:
+        image: [num_pixel, num_pixel, 4/1]
+        beam: [num_pixel, num_pixel[,2,2]]
+
+    Returns:
+        image: [num_pixel, num_pixel, 4/1]
+    """
+
+    def _remove(image, beam):
+        if (np.shape(image) == ()) or (np.shape(image) == (1,)):
+            if np.shape(beam) != ():
+                raise ValueError(f"Expected beam to be scalar, got {np.shape(beam)}")
+            return image / beam
+        elif np.shape(image) == (4,):
+            if np.shape(beam) != (2, 2):
+                raise ValueError(f"Expected beam to be full-stokes.")
+            return flatten_coherencies(kron_inv(beam, unflatten_coherencies(image), beam.T.conj()))
+        elif np.shape(image) == (2, 2):
+            if np.shape(beam) != (2, 2):
+                raise ValueError(f"Expected beam to be full-stokes.")
+            return kron_inv(beam, image, beam.T.conj())
+        else:
+            raise ValueError(f"Unknown image shape {np.shape(image)} and beam shape {np.shape(beam)}.")
+
+    return jax.vmap(jax.vmap(_remove))(image, beam)

@@ -239,7 +239,7 @@ class SphericalInterpolatorGainModel(GainModel):
                 gains = gains[0]  # [lres, mres, F[, 2, 2]]
             else:
                 # Get time
-                (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+                (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
                     x=time,
                     xp=relative_model_times,
                     regular_grid=is_regular_grid(np.asarray(relative_model_times))
@@ -248,7 +248,7 @@ class SphericalInterpolatorGainModel(GainModel):
                 gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [lres, mres, F[, 2, 2]]
 
             # get freq
-            (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
                 x=freq,
                 xp=mp_policy.cast_to_freq(quantity_to_jnp(self.model_freqs)),
                 regular_grid=is_regular_grid(quantity_to_np(self.model_freqs))
@@ -257,7 +257,7 @@ class SphericalInterpolatorGainModel(GainModel):
             gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=2)  # [lres, mres, [2, 2]]
 
             # get l
-            (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
                 x=l,
                 xp=self.lvec_jax,
                 regular_grid=True
@@ -265,7 +265,7 @@ class SphericalInterpolatorGainModel(GainModel):
             # jax.debug.print("l: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
             gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [mres, [, 2, 2]]
             # get m
-            (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
                 x=m,
                 xp=self.mvec_jax,
                 regular_grid=True

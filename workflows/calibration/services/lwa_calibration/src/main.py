@@ -6,7 +6,7 @@ from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
-from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
+from dsa2000_cal.imaging.imagor import Imagor
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 config.update("jax_enable_x64", True)
@@ -71,7 +71,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
     subtracted_ms = calibration.calibrate(ms=ms)
 
     # Save the subtracted visibilities
-    imagor = DirtyImaging(
+    imagor = Imagor(
         plot_folder='plots/imaging_residuals',
         field_of_view=field_of_view,
         seed=12345,

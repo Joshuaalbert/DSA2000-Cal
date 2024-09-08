@@ -15,10 +15,9 @@ from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
 from dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
+from dsa2000_cal.imaging.imagor import Imagor
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, beam_gain_model_factory
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 
@@ -137,7 +136,7 @@ class BaseForwardModel(AbstractForwardModel):
             full_stokes=ms.is_full_stokes()
         )
 
-        imagor = DirtyImaging(
+        imagor = Imagor(
             plot_folder=os.path.join(self.plot_folder, 'imaging'),
             field_of_view=self.field_of_view,
             seed=self.imaging_seed,

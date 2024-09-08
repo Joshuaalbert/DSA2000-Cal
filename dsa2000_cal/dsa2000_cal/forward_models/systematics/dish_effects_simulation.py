@@ -420,7 +420,7 @@ class DishEffectsSimulation:
         horizon_peak_astigmatism = system_params.horizon_peak_astigmatism  # [num_ant, 1]
         surface_error = system_params.surface_error  # [num_ant, 1]
 
-        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
             rel_time,
             jnp.asarray((self.model_times - self.ref_time).sec)
         )

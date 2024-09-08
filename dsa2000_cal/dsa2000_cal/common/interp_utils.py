@@ -5,6 +5,8 @@ import jax
 import numpy as np
 from jax import lax, numpy as jnp
 
+from dsa2000_cal.common.types import mp_policy, FloatArray, Array
+
 
 def optimized_interp_jax_safe(x, xp, yp):
     """
@@ -156,47 +158,56 @@ def left_broadcast_multiply(x, y, axis: int = 0):
     return x * y
 
 
-def get_interp_indices_and_weights(x, xp, regular_grid: bool = False) -> tuple[
-    tuple[int | jax.Array, float | jax.Array], tuple[int | jax.Array, float | jax.Array]]:
+def get_interp_indices_and_weights(x: FloatArray, xp: FloatArray, regular_grid: bool = False,
+                                   check_spacing: bool = False, clip_out_of_bounds: bool = False) -> Tuple[
+    Array, Array, Array, Array]:
     """
     One-dimensional linear interpolation. Outside bounds is also linear from nearest two points.
 
     Args:
-        x: the x-coordinates at which to evaluate the interpolated values
-        xp: the x-coordinates of the data points, must be increasing
+        x: scalar, the x-coordinate at which to evaluate the interpolated values
+        xp: [n] the x-coordinates of the data points, must be increasing
+        regular_grid: if True, use faster index determination
+        check_spacing: if True, check spacing between points
+        clip_out_of_bounds: if True, clip out-of-bounds values to the nearest edge
 
     Returns:
-        the interpolated values, same shape as `x`
+        i0: the index of the first point
+        alpha0: the weight of the first point
+        i1: the index of the second point
+        alpha1: the weight of the second point
     """
 
-    x = jnp.asarray(x, dtype=jnp.float_)
-    xp = jnp.asarray(xp, dtype=jnp.float_)
-    if len(np.shape(xp)) == 0:
-        xp = jnp.reshape(xp, (-1,))
-    if np.shape(xp)[0] == 0:
+    if len(np.shape(xp)) != 1:
+        raise ValueError(f"Times must be 1D, got {np.shape(xp)}.")
+    if np.size(xp) == 0:
         raise ValueError("xp must be non-empty")
-    if np.shape(xp)[0] == 1:
-        return (jnp.zeros_like(x, dtype=jnp.int32), jnp.ones_like(x)), (
-            jnp.zeros_like(x, dtype=jnp.int32), jnp.zeros_like(x))
+    if np.shape(xp) == (1,):
+        return (jnp.zeros_like(x, dtype=mp_policy.index_dtype), jnp.ones_like(x),
+                jnp.zeros_like(x, dtype=mp_policy.index_dtype), jnp.zeros_like(x))
+    if clip_out_of_bounds:
+        x = jax.lax.clamp(xp[0], x, xp[-1])
 
     # Find xp[i1-1] < x <= xp[i1]
+    one = jnp.asarray(1, mp_policy.index_dtype)
     if regular_grid:
         # Use faster index determination
-        delta_x = xp[1] - xp[0]
-        i1 = jnp.clip((jnp.ceil((x - xp[0]) / delta_x)).astype(jnp.int64), 1, len(xp) - 1)
-        i0 = i1 - 1
+        dx = xp[1] - xp[0]
+        i1 = mp_policy.cast_to_index(jnp.clip(jnp.ceil((x - xp[0]) / dx), one, len(xp) - 1))
+        i0 = i1 - one
     else:
-        i1 = jnp.clip(jnp.searchsorted(xp, x, side='right'), 1, len(xp) - 1)
-        i0 = i1 - 1
+        i1 = mp_policy.cast_to_index(jnp.clip(jnp.searchsorted(xp, x, side='right'), one, len(xp) - 1))
+        i0 = i1 - one
+        dx = xp[i1] - xp[i0]
 
-    dx = xp[i1] - xp[i0]
     delta = x - xp[i0]
-
-    epsilon = np.spacing(np.finfo(xp.dtype).eps)
-    dx0 = jnp.abs(dx) <= epsilon  # Prevent NaN gradients when `dx` is small.
-    dx = jnp.where(dx0, 1, dx)
-    alpha = delta / dx
-    return (i0, (1. - alpha)), (i1, alpha)
+    if check_spacing:
+        epsilon = np.spacing(np.finfo(xp.dtype).eps)
+        dx0 = jnp.abs(dx) <= epsilon  # Prevent NaN gradients when `dx` is small.
+        dx = jnp.where(dx0, 1., dx)
+    alpha1 = delta / dx
+    alpha0 = 1. - alpha1
+    return i0, alpha0.astype(x.dtype), i1, alpha1.astype(x.dtype)
 
 
 def get_nn_points(x, y, k=3, mode='euclidean'):
@@ -350,7 +361,7 @@ class InterpolatedArray:
         Returns:
             value at given time
         """
-        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(time, self.x, regular_grid=self.regular_grid)
+        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(time, self.x, regular_grid=self.regular_grid)
         return jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
 
 

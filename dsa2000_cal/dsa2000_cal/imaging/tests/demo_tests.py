@@ -6,16 +6,16 @@ import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
+from dsa2000_cal.imaging.imagor import Imagor
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet, VisibilityData
 
 
 @pytest.fixture(scope='function')
 def mock_calibrator_source_models(tmp_path):
     fill_registries()
-
+    array_name = 'dsa2000W_small'
     # Load array
-    array = array_registry.get_instance(array_registry.get_match('dsa2000W_small'))
+    array = array_registry.get_instance(array_registry.get_match(array_name))
     array_location = array.get_array_location()
     antennas = array.get_antennas()
 
@@ -24,7 +24,7 @@ def mock_calibrator_source_models(tmp_path):
     phase_tracking = ac.ICRS(phase_tracking.ra, phase_tracking.dec)
 
     meta = MeasurementSetMetaV0(
-        array_name='dsa2000W_small',
+        array_name=array_name,
         array_location=array_location,
         phase_tracking=phase_tracking,
         channel_width=array.get_channel_width(),
@@ -56,12 +56,12 @@ def mock_calibrator_source_models(tmp_path):
     return ms
 
 
-def _test_dirty_imaging(mock_calibrator_source_models):
+def test_dirty_imaging(mock_calibrator_source_models):
     ms = mock_calibrator_source_models
 
-    imagor = DirtyImaging(
+    imagor = Imagor(
         plot_folder='plots',
         field_of_view=2 * au.deg
     )
-    image_model = imagor.image(image_name='test_dirty', ms=ms)
+    image_model = imagor.image(image_name='test_dirty', ms=ms, overwrite=True)
     # print(image_model)
