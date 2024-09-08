@@ -25,7 +25,7 @@ def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
                                     beam_gain_model: BeamGainModel,
                                     dish_effect_params: DishEffectsParams,
                                     plot_folder: str, cache_folder: str, seed: int = 42,
-                                    convention: Literal['physical', 'casa'] = 'physical',
+                                    convention: Literal['physical', 'engineering'] = 'physical',
                                     dtype: SupportsDType = complex_type):
     os.makedirs(plot_folder, exist_ok=True)
 

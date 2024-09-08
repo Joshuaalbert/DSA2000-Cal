@@ -290,7 +290,7 @@ class RFIEmitterPredict:
             tracking_delay = 2j * jnp.pi * w / wavelength  # []
             phase += tracking_delay
 
-            if self.convention == 'casa':
+            if self.convention == 'engineering':
                 phase = jnp.negative(phase)
 
             if full_stokes:

@@ -16,7 +16,7 @@ class ApertureTransform:
             f_image = int f_aperture(x) e^{2i pi x nu} dx
             f_aperture = int f_image(nu) e^{-2i pi x nu} dnu
 
-    For casa convention, the transform is defined as:
+    For engineering convention, the transform is defined as:
 
     .. math::
 
@@ -29,7 +29,7 @@ class ApertureTransform:
     def to_image(self, f_aperture, axes, dx):
         if self.convention == 'physical':
             return self._to_image_fourier(f_aperture, axes, dx)
-        elif self.convention == 'casa':
+        elif self.convention == 'engineering':
             return self._to_image_casa(f_aperture, axes, dx)
         else:
             raise ValueError(f"Unknown convention {self.convention}")
@@ -37,7 +37,7 @@ class ApertureTransform:
     def to_aperture(self, f_image, axes, dnu):
         if self.convention == 'physical':
             return self._to_aperture_fourier(f_image, axes, dnu)
-        elif self.convention == 'casa':
+        elif self.convention == 'engineering':
             return self._to_aperture_casa(f_image, axes, dnu)
         else:
             raise ValueError(f"Unknown convention {self.convention}")

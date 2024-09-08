@@ -151,7 +151,7 @@ class DishEffectsSimulation:
     plot_folder: str
     cache_folder: str
     seed: int = 42
-    convention: Literal['physical', 'casa'] = 'physical'
+    convention: Literal['physical', 'engineering'] = 'physical'
     dtype: SupportsDType = complex_type
 
     def __post_init__(self):
@@ -455,7 +455,7 @@ class DishEffectsSimulation:
 
         total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [Nm, Nl, num_ant, 1]
 
-        if self.convention == 'casa':
+        if self.convention == 'engineering':
             constant = jnp.asarray(2j * jnp.pi, self.dtype)  # [num_freqs]
         elif self.convention == 'physical':
             constant = jnp.asarray(-2j * jnp.pi, self.dtype)  # [num_freqs]

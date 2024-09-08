@@ -28,7 +28,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
     ms = transfer_from_casa(
         ms_folder=ms_folder,
         casa_ms=casa_ms,
-        convention='casa'
+        convention='engineering'
     )
     print(f"Created {ms}")
 

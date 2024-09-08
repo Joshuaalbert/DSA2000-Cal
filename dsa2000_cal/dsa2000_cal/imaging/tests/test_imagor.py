@@ -50,7 +50,8 @@ def mock_calibrator_source_models(tmp_path):
     return ms
 
 
-def test_evaluate_beam(mock_calibrator_source_models: MeasurementSet):
+@pytest.mark.parametrize("centre_offset", [0.0, 0.1, 0.2])
+def test_evaluate_beam(mock_calibrator_source_models: MeasurementSet, centre_offset: float):
     ms = mock_calibrator_source_models
     t0 = time.time()
     beam_gain_model = build_beam_gain_model(
@@ -66,8 +67,7 @@ def test_evaluate_beam(mock_calibrator_source_models: MeasurementSet):
     num_m = 100
     dl = 0.001
     dm = 0.001
-    center_l = 0.
-    center_m = 0.
+    center_l = center_m = centre_offset
     beam = evaluate_beam(freqs, times, beam_gain_model, geodesic_model, num_l, num_m, dl, dm, center_l, center_m)
     assert beam.shape == (num_l, num_m, len(times), len(freqs), 2, 2)
     assert np.all(np.isfinite(beam))

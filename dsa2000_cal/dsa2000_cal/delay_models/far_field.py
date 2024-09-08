@@ -390,7 +390,7 @@ class FarFieldDelayEngine:
         """
         if convention == 'physical':
             return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
-        elif convention == 'casa':
+        elif convention == 'engineering':
             return jax.vmap(self._single_compute_uvw)(times, antenna_2, antenna_1)
         else:
             raise ValueError(f"Unknown convention {convention}")
@@ -428,7 +428,7 @@ class FarFieldDelayEngine:
 
         if convention == 'physical':
             antenna_1, antenna_2 = antenna_1, antenna_2
-        elif convention == 'casa':
+        elif convention == 'engineering':
             antenna_1, antenna_2 = antenna_2, antenna_1
         else:
             raise ValueError(f"Unknown convention {convention}")

@@ -22,6 +22,7 @@ from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_inv
+from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
@@ -204,8 +205,8 @@ class Imagor:
             dirty_image: [num_pixel, num_pixel, 4/1]
         """
 
-        if self.convention == 'casa':
-            uvw = jnp.negative(uvw)  # CASA convention
+        if self.convention == 'engineering':
+            uvw = jnp.negative(uvw)
 
         if self.weighting == 'uniform':
             @partial(multi_vmap,
@@ -238,7 +239,7 @@ class Imagor:
                  out_mapping="[...,p]",
                  verbose=True)
         def image_single_coh(vis, weights, mask):
-            dirty_image = wgridder.vis2dirty(
+            dirty_image = vis_to_image(
                 uvw=uvw,
                 freqs=freqs,
                 vis=vis,
@@ -252,7 +253,9 @@ class Imagor:
                 mask=mask,
                 wgt=weights,
                 verbosity=0,
-                nthreads=self.nthreads
+                nthreads=self.nthreads,
+                scale_by_n=True,
+                normalise=True
             )  # [num_l, num_m]
             return dirty_image
 
@@ -328,4 +331,5 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
         else:
             raise ValueError(f"Unknown image shape {np.shape(image)} and beam shape {np.shape(beam)}.")
 
-    return jax.vmap(jax.vmap(_remove))(image, beam)
+    pb_cor_image = jax.vmap(jax.vmap(_remove))(image, beam)
+    return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)

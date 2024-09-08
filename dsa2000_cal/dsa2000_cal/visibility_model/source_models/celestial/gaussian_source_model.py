@@ -684,7 +684,7 @@ class GaussianPredict:
         """
         wavelength = quantity_to_jnp(constants.c) / freq
 
-        if self.convention == 'casa':
+        if self.convention == 'engineering':
             uvw = jnp.negative(uvw)
 
         uvw /= wavelength

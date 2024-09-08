@@ -24,6 +24,11 @@ Array = Union[
     jax.Array,  # JAX array type
     np.ndarray,  # NumPy array type
 ]
+ComplexArray = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+    complex
+]
 FloatArray = Union[
     jax.Array,  # JAX array type
     np.ndarray,  # NumPy array type
@@ -41,6 +46,8 @@ BoolArray = Union[
 ]
 
 Array.__doc__ = "Type annotation for JAX array-like objects, with no scalar types."
+
+ComplexArray.__doc__ = "Type annotation for JAX array-like objects, with complex scalar types."
 
 FloatArray.__doc__ = "Type annotation for JAX array-like objects, with float scalar types."
 

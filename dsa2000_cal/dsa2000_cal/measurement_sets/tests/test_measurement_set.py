@@ -74,7 +74,7 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
 
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
-@pytest.mark.parametrize("convention", ['physical', 'casa'])
+@pytest.mark.parametrize("convention", ['physical', 'engineering'])
 def test_measurement_setting(tmp_path, with_autocorr, convention):
     meta = MeasurementSetMetaV0(
         array_name="test_array",
@@ -307,5 +307,5 @@ def _test_transfer_from_casa():
     ms = transfer_from_casa(
         ms_folder=ms_folder,
         casa_ms=casa_file,
-        convention='casa'  # Or else UVW coordinates are very wrong.
+        convention='engineering'  # Or else UVW coordinates are very wrong.
     )

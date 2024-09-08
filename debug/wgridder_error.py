@@ -7,7 +7,7 @@ from ducc0.wgridder import dirty2vis
 
 @pytest.mark.parametrize("center_offset", [0.0, 0.1, 0.2])
 @pytest.mark.parametrize("negate_w", ['neg_w', 'pos_w'])
-@pytest.mark.parametrize("convention", ['casa', 'physical'])
+@pytest.mark.parametrize("convention", ['engineering', 'physical'])
 @pytest.mark.parametrize("negate_wgridder_center_xy", ['neg_center', 'normal_center'])
 def test_wrong_w(center_offset: float, negate_w: str, convention: str, negate_wgridder_center_xy: str):
     np.random.seed(42)
@@ -70,7 +70,7 @@ def explicit_degridder(uvw, freqs, lmn, pixel_fluxes, negate_w, convention):
     vis = np.zeros((len(uvw), len(freqs)), dtype=np.complex128)
     c = 299792458.  # m/s
 
-    if convention == 'casa':
+    if convention == 'engineering':
         uvw = -uvw
 
     for row, (u, v, w) in enumerate(uvw):

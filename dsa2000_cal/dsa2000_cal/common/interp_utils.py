@@ -177,7 +177,10 @@ def get_interp_indices_and_weights(x: FloatArray, xp: FloatArray, regular_grid: 
         i1: the index of the second point
         alpha1: the weight of the second point
     """
-
+    if not isinstance(x, (jax.Array, np.ndarray)):
+        x = jnp.asarray(x)
+    if not isinstance(xp, (jax.Array, np.ndarray)):
+        xp = jnp.asarray(xp)
     if len(np.shape(xp)) != 1:
         raise ValueError(f"Times must be 1D, got {np.shape(xp)}.")
     if np.size(xp) == 0:

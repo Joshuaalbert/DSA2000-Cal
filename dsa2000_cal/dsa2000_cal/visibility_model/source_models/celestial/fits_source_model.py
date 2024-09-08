@@ -492,7 +492,7 @@ class FITSPredict:
             Returns:
                 vis: [num_rows [, num_freqs]]
             """
-            if self.convention == 'casa':
+            if self.convention == 'engineering':
                 uvw = jnp.negative(uvw)
 
             squeeze = False

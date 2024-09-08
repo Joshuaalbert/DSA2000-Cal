@@ -102,11 +102,11 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
         description="System equivalent flux density."
     )
 
-    convention: Literal['physical', 'casa'] = Field(
+    convention: Literal['physical', 'engineering'] = Field(
         default='physical',
         description="Convention of the data, 'physical' means uvw are computed for antennas_2 - antenna_1. "
                     "The RIME model should use the same convention to model visibilities. "
-                    "Using 'casa' means uvw are computed for antenna_1 - antenna_2."
+                    "Using 'engineering' means uvw are computed for antenna_1 - antenna_2."
     )
 
     def __init__(self, **data) -> None:

@@ -8,6 +8,8 @@ __all__ = [
     'vis2dirty'
 ]
 
+from dsa2000_cal.common.types import FloatArray, ComplexArray, mp_policy
+
 
 # TODO: set JVP for these, which is just the operator itself.
 def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
@@ -285,21 +287,6 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         raise ValueError("npix_x and npix_y must be at least 32.")
 
     # Make sure the output is in JY/PIXEL
-    # num_rows = np.shape(uvw)[0]
-    # num_freqs = np.shape(freqs)[0]
-    # # Factor to convert adjoint gridding and degridding into inverses in the limit of total uvw coverage.
-    # adjoint_factor = np.reciprocal((4. * num_rows - np.sqrt(8. * num_rows + 1.) - 1)) * 4. / num_freqs
-    # if wgt is not None:
-    #     adjoint_factor /= np.mean(wgt)
-
-    # Adjoint factor is the DFT zero-term I(0,0) = sum_{u,v,nu} S(u,v,nu)
-
-    sampling_function = np.ones(np.shape(vis), output_type)
-    if wgt is not None:
-        sampling_function *= wgt
-    if mask is not None:
-        sampling_function[mask == 0] = 0.
-    adjoint_factor = np.reciprocal(np.sum(sampling_function))
 
     _ = wgridder.vis2dirty(
         uvw=uvw,
@@ -324,19 +311,21 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         dirty=dirty,
         double_precision_accumulation=double_precision_accumulation
     )
-    dirty *= adjoint_factor
     return dirty
 
 
-def vis_to_image(uvw: jax.Array, freqs: jax.Array,
-                 vis: jax.Array, wgt: jax.Array | None,
-                 mask: jax.Array | None,
-                 pixsize_m: jax.Array, pixsize_l: jax.Array,
-                 center_m: jax.Array, center_l: jax.Array,
+def vis_to_image(uvw: FloatArray, freqs: FloatArray,
+                 vis: ComplexArray,
+                 pixsize_m: FloatArray, pixsize_l: FloatArray,
+                 center_m: FloatArray, center_l: FloatArray,
                  npix_m: int, npix_l: int,
+                 wgt: FloatArray | None = None,
+                 mask: FloatArray | None = None,
                  epsilon: float = 1e-6,
                  nthreads: int = 1, verbosity: int = 0,
-                 double_precision_accumulation: bool = False):
+                 double_precision_accumulation: bool = False,
+                 scale_by_n: bool = True,
+                 normalise: bool = True) -> jax.Array:
     """
     Compute the image from the visibilities.
 
@@ -356,12 +345,14 @@ def vis_to_image(uvw: jax.Array, freqs: jax.Array,
         nthreads: number of threads to use.
         verbosity: verbosity level, 0, 1.
         double_precision_accumulation: whether to use double precision for accumulation, which reduces numerical errors.
+        scale_by_n: whether to scale the image by n(l,m).
+        normalise: whether to normalise the image by the zero-term of the DFT.
 
     Returns:
         [npix_l, npix_m] array of image.
     """
     # Make scaled image, I'(l,m)=I(l,m)/n(l,m) such that PSF(l=0,m=0)=1
-    scaled_image = vis2dirty(
+    image = vis2dirty(
         uvw=uvw,
         freqs=freqs,
         vis=vis,
@@ -381,12 +372,23 @@ def vis_to_image(uvw: jax.Array, freqs: jax.Array,
         double_precision_accumulation=double_precision_accumulation,
         verbosity=verbosity
     )
-    l = (-0.5 * npix_l + jnp.arange(npix_l)) * pixsize_l + center_l
-    m = (-0.5 * npix_m + jnp.arange(npix_m)) * pixsize_m + center_m
-    l, m = jnp.meshgrid(l, m, indexing='ij')
-    n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))
-    n = jnp.where(jnp.isnan(n), 0., n)
-    return scaled_image * n
+    if scale_by_n:
+        l = (-0.5 * npix_l + jnp.arange(npix_l)) * pixsize_l + center_l
+        m = (-0.5 * npix_m + jnp.arange(npix_m)) * pixsize_m + center_m
+        l, m = jnp.meshgrid(l, m, indexing='ij')
+        n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))
+        n = jnp.where(jnp.isnan(n), 0., n)
+        image = image * n
+    if normalise:
+        # Adjoint normalising factor is the DFT zero-term i.e. sum_{u,v,nu} S(u,v,nu)
+        sampling_function = np.ones(np.shape(vis), image.dtype)
+        if wgt is not None:
+            sampling_function *= wgt
+        if mask is not None:
+            sampling_function[mask == 0] = 0.
+        adjoint_normalising_factor = np.reciprocal(np.sum(sampling_function))
+        image *= adjoint_normalising_factor
+    return mp_policy.cast_to_image(image)
 
 
 def image_to_vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
@@ -416,7 +418,7 @@ def image_to_vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     """
     # Divides I(l,m) by n(l,m) then applies gridding with w-term taken into account.
     # Pixels should be in Jy/pixel.
-    return dirty2vis(
+    return mp_policy.cast_to_vis(dirty2vis(
         uvw=uvw,
         freqs=freqs,
         dirty=dirty,
@@ -432,4 +434,4 @@ def image_to_vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
         divide_by_n=True,
         nthreads=nthreads,
         verbosity=verbosity
-    )
+    ))
