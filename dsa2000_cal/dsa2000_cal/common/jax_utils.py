@@ -504,6 +504,9 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
         if isinstance_namedtuple(outs) or not isinstance(outs, tuple):
             outs = (outs,)
 
+        if len(outs) != len(output_dims):
+            raise ValueError(f"Number of outputs {len(outs)} must match output mapping {out_mapping}.")
+
         res = []
         for out, dims in zip(outs, output_dims):
             if dims == out_perm:
