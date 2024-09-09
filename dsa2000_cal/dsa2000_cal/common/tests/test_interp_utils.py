@@ -113,7 +113,7 @@ def test_multilinear_interp_2d():
 
 
 def test_get_interp_indices_and_weights():
-    xp = [0, 1, 2, 3]
+    xp = jnp.asarray([0, 1, 2, 3])
     x = 1.5
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp)
     print(i0, alpha0, i1, alpha1)
@@ -153,25 +153,42 @@ def test_get_interp_indices_and_weights():
     print(i0, alpha0, i1, alpha1)
     assert xp[i0] * alpha0 + xp[i1] * alpha1 == 5
 
-    xp = [0., 0.]
+    xp = jnp.asarray([0., 0.])
     x = 0.
+
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp)
+    print(i0, alpha0, i1, alpha1)
+    with pytest.raises(AssertionError):
+        assert i0 == 0
+        assert alpha0 == 1
+        assert i1 == 1
+        assert alpha1 == 0.
+
+    (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp, check_spacing=True)
     print(i0, alpha0, i1, alpha1)
     assert i0 == 0
     assert alpha0 == 1
     assert i1 == 1
     assert alpha1 == 0.
 
-    xp = [0., 0.]
+    xp = jnp.asarray([0., 0.])
     x = -1
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp)
+    print(i0, alpha0, i1, alpha1)
+    with pytest.raises(AssertionError):
+        assert i0 == 0
+        assert alpha0 == 2.
+        assert i1 == 1
+        assert alpha1 == -1.
+
+    (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp, check_spacing=True)
     print(i0, alpha0, i1, alpha1)
     assert i0 == 0
     assert alpha0 == 2.
     assert i1 == 1
     assert alpha1 == -1.
 
-    xp = [0.]
+    xp = jnp.asarray([0.])
     x = 0.5
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp)
     print(i0, alpha0, i1, alpha1)
@@ -181,8 +198,8 @@ def test_get_interp_indices_and_weights():
     assert alpha1 == 0.
 
     # Vector ops
-    xp = [0, 1, 2, 3]
-    x = [1.5, 1.5]
+    xp = jnp.asarray([0, 1, 2, 3])
+    x = jnp.asarray([1.5, 1.5])
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp)
     print(i0, alpha0, i1, alpha1)
     np.testing.assert_array_equal(i0, jnp.asarray([1, 1]))
@@ -190,8 +207,8 @@ def test_get_interp_indices_and_weights():
     np.testing.assert_array_equal(i1, jnp.asarray([2, 2]))
     np.testing.assert_array_equal(alpha1, jnp.asarray([0.5, 0.5]))
 
-    xp = [0, 1, 2, 3]
-    x = [1.5, 2.5]
+    xp = jnp.asarray([0, 1, 2, 3])
+    x = jnp.asarray([1.5, 2.5])
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp)
     print(i0, alpha0, i1, alpha1)
     np.testing.assert_array_equal(i0, jnp.asarray([1, 2]))
