@@ -8,7 +8,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.corr_translation import linear_to_stokes
 from dsa2000_cal.common.types import mp_policy
-from dsa2000_cal.common.wgridder import dirty2vis, vis2dirty
+from dsa2000_cal.common.wgridder import dirty2vis, vis2dirty, image_to_vis, vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
     GaussianPredict, GaussianModelData, GaussianSourceModel
@@ -178,21 +178,15 @@ def test_gh55_gaussian():
     wgt = None  # np.ones((num_rows, num_freqs))
     # wgt = np.random.uniform(size=(num_rows, num_freqs))
 
-    vis = dirty2vis(
+    vis = image_to_vis(
         uvw=uvw,
         freqs=freqs,
         dirty=dirty,
-        wgt=None,
         pixsize_m=dm,
         pixsize_l=dl,
         center_m=m0,
         center_l=l0,
-        epsilon=1e-4,
-        do_wgridding=True,
-        flip_v=False,
-        divide_by_n=True,
-        nthreads=1,
-        verbosity=0,
+        epsilon=1e-4
     )
     print(vis)
 
@@ -233,12 +227,10 @@ def test_gh55_gaussian():
     plt.colorbar(sc)
     plt.show()
 
-    dirty_rec = vis2dirty(
+    dirty_rec = vis_to_image(
         uvw=uvw,
         freqs=freqs,
-        # vis=vis,
         vis=vis_predict_stokes,
-        # vis=vis - vis_point_predict_stokes,
         npix_m=N,
         npix_l=N,
         pixsize_m=dm,
@@ -246,12 +238,7 @@ def test_gh55_gaussian():
         wgt=wgt,
         center_m=m0,
         center_l=l0,
-        epsilon=1e-4,
-        do_wgridding=True,
-        flip_v=False,
-        divide_by_n=False,
-        nthreads=1,
-        verbosity=0
+        epsilon=1e-4
     )
 
     plt.imshow(dirty_rec.T, origin='lower',

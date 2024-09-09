@@ -13,7 +13,7 @@ from dsa2000_cal.assets.registries import array_registry, source_model_registry,
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import complex_type
-from dsa2000_cal.common.wgridder import vis2dirty
+from dsa2000_cal.common.wgridder import vis2dirty, vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
@@ -107,7 +107,7 @@ def test_facet_model_gaussian():
                                        order_approx=1)
     vis_gaussian_order_1 = gaussian_predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
-    dirty = vis2dirty(
+    dirty = vis_to_image(
         uvw=uvw,
         freqs=freqs,
         vis=vis_gaussian_order_1,
@@ -190,7 +190,7 @@ def test_facet_model_point():
                            dtype=complex_type)
     vis_gaussian_order_1 = predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
-    dirty = vis2dirty(
+    dirty = vis_to_image(
         uvw=uvw,
         freqs=freqs,
         vis=vis_gaussian_order_1,
@@ -288,7 +288,7 @@ def test_facet_model_fits():
     print(pixsize * 180 / np.pi * 3600)
     n = 4096
 
-    dirty = vis2dirty(
+    dirty = vis_to_image(
         uvw=visibility_coords.uvw,
         freqs=quantity_to_jnp(freqs),
         vis=vis,
@@ -398,7 +398,7 @@ def test_facet_model():
     pixsize = quantity_to_jnp(const.c / (freqs[0] * au.MHz) / (20 * au.km))
     print(pixsize * 180 / np.pi * 3600)
     n = 4096
-    dirty = vis2dirty(
+    dirty = vis_to_image(
         uvw=visibility_coords.uvw,
         freqs=quantity_to_jnp(freqs),
         vis=vis[:, :, 0, 0],
@@ -498,7 +498,7 @@ def test_facet_model_lte():
 
     l0 = 0.
     m0 = 0.
-    dirty = vis2dirty(
+    dirty = vis_to_image(
         uvw=visibility_coords.uvw,
         freqs=quantity_to_jnp(freqs),
         vis=vis,

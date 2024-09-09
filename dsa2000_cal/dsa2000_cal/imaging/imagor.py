@@ -14,7 +14,6 @@ from jax import lax
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.common import wgridder
 from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
@@ -333,3 +332,5 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
 
     pb_cor_image = jax.vmap(jax.vmap(_remove))(image, beam)
     return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)
+
+

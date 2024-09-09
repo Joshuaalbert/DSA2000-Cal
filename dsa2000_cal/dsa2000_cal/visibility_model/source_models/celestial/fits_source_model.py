@@ -500,7 +500,7 @@ class FITSPredict:
                 freqs = freqs[None]
                 squeeze = True
 
-            vis = wgridder.dirty2vis(
+            vis = wgridder.image_to_vis(
                 uvw=uvw,
                 freqs=freqs,
                 dirty=image,
@@ -508,8 +508,6 @@ class FITSPredict:
                 pixsize_l=dl,
                 center_m=m0,
                 center_l=l0,
-                wgt=None,  # Always None
-                flip_v=False,
                 epsilon=self.epsilon
             )  # [num_rows, num_chan/1]
 
