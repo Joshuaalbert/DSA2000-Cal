@@ -53,7 +53,8 @@ def mock_calibrator_source_models(tmp_path):
         except StopIteration:
             break
         gen_response = VisibilityData(
-            vis=np.ones_like(data.vis),
+            vis=np.ones_like(data.vis) + 1e-1 * (
+                        np.random.normal(size=data.vis.shape) + 1j * np.random.normal(size=data.vis.shape)),
             flags=np.zeros_like(data.flags),
             weights=np.ones_like(data.weights)
         )

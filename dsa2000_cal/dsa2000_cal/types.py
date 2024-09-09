@@ -10,8 +10,8 @@ class CalibrationSolutions(SerialisableBaseModel):
     """
     Calibration solutions, stored in a serialisable format.
     """
-    pointings: ac.ICRS | None  # [[ant]]
     times: at.Time  # [time]
+    pointings: ac.ICRS | None  # [[ant]]
     antennas: ac.EarthLocation  # [ant]
     antenna_labels: List[str]  # [ant]
     freqs: au.Quantity  # [chan]

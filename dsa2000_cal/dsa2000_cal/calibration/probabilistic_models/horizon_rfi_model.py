@@ -1,10 +1,10 @@
 import dataclasses
 
-import haiku as hk
 import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 from jaxns import Model
+from jaxns.framework import context as ctx
 from jaxns.framework import ops
 
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel
@@ -32,14 +32,10 @@ class HorizonRFIModel(AbstractProbabilisticModel):
             times=times
         )  # [facets]
 
-        # TODO: explore using checkpointing
         vis = self.rime_model.predict_visibilities(
             model_data=model_data,
             visibility_coords=vis_coords
         )  # [num_cal, num_row, num_chan[, 2, 2]]
-
-        # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))'
-        # TODO: https://jax.readthedocs.io/en/latest/notebooks/shard_map.html#fsdp-tp-with-shard-map-at-the-top-level
 
         # vis now contains the model visibilities for each calibrator
         def prior_model():
@@ -100,9 +96,9 @@ class HorizonRFIModel(AbstractProbabilisticModel):
                 # Use jaxns.framework.ops to transform the params into the args for likelihood
                 return ops.prepare_input(W=params, prior_model=prior_model)
 
-            return hk.transform(_forward).apply(
+            return ctx.transform(_forward).apply(
                 params=model.params, rng=jax.random.PRNGKey(0)
-            )
+            ).fn_val
 
         def log_prob_joint(params):
             def _log_prob_joint():
@@ -119,9 +115,9 @@ class HorizonRFIModel(AbstractProbabilisticModel):
                 )
                 return log_prob_prior + log_prob_likelihood
 
-            return hk.transform(_log_prob_joint).apply(
+            return ctx.transform(_log_prob_joint).apply(
                 params=model.params, rng=jax.random.PRNGKey(0)
-            )
+            ).fn_val
 
         return ProbabilisticModelInstance(
             get_init_params_fn=get_init_params,
