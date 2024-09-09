@@ -55,6 +55,7 @@ class Calibration:
     inplace_subtract: bool
     plot_folder: str
     solution_folder: str
+    num_approx_steps: int = 0
     validity_interval: au.Quantity | None = None
     solution_interval: au.Quantity | None = None
     residual_ms_folder: str | None = None
@@ -333,7 +334,7 @@ class Calibration:
         solver = MultiStepLevenbergMarquardt(
             residual_fn=residual_fn,
             num_iterations=num_iterations,
-            num_approx_steps=5,
+            num_approx_steps=self.num_approx_steps,
             verbose=True
         )
 

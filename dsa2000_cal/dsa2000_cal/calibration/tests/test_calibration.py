@@ -54,7 +54,7 @@ def mock_calibrator_source_models(tmp_path):
             break
         gen_response = VisibilityData(
             vis=np.ones_like(data.vis) + 1e-1 * (
-                        np.random.normal(size=data.vis.shape) + 1j * np.random.normal(size=data.vis.shape)),
+                    np.random.normal(size=data.vis.shape) + 1j * np.random.normal(size=data.vis.shape)),
             flags=np.zeros_like(data.flags),
             weights=np.ones_like(data.weights)
         )
@@ -95,6 +95,7 @@ def test_calibration(mock_calibrator_source_models):
         # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
         probabilistic_models=probabilistic_models,
         num_iterations=1,
+        num_approx_steps=0,
         inplace_subtract=True,
         plot_folder='plots',
         solution_folder='solutions',
