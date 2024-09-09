@@ -45,8 +45,9 @@ def test_product_gain_model():
     times = quantity_to_jnp((obstimes.tt - obstimes[0].tt).sec * au.s)
     freqs = jnp.linspace(0.1, 0.5, num_freq)
 
-    result = (product_gain_model.compute_gain
-              (freqs=freqs, times=times, geodesics=geodesic_model.compute_far_field_geodesic(times, lmn_sources))
-              )
+    result = product_gain_model.compute_gain(
+        freqs=freqs, times=times, geodesics=geodesic_model.compute_far_field_geodesic(times, lmn_sources)
+    )
+
     expected = gain @ gain
     np.testing.assert_array_equal(result, expected)

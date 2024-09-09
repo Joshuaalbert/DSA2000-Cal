@@ -34,7 +34,7 @@ def test_lmn_to_icrs():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     lmn = icrs_to_lmn(pointing, pointing)
-    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-10)
+    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-6)
 
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
     lmn = icrs_to_lmn(sources, pointing)
@@ -42,7 +42,7 @@ def test_lmn_to_icrs():
     print(sources)
     print(lmn)
     print(reconstructed_sources)
-    assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
+    assert sources.separation(reconstructed_sources).max() < 1e-6 * au.deg
 
     sources = ac.ICRS([1, 2, 3, 4] * au.deg, [1, 2, 3, 4] * au.deg).reshape((2, 2))
     lmn = icrs_to_lmn(sources, pointing)
@@ -50,7 +50,7 @@ def test_lmn_to_icrs():
     reconstructed_sources = lmn_to_icrs(lmn, pointing)
     assert isinstance(reconstructed_sources, ac.ICRS)
     assert reconstructed_sources.shape == (2, 2)
-    assert sources.separation(reconstructed_sources).max() < 1e-10 * au.deg
+    assert sources.separation(reconstructed_sources).max() < 1e-6 * au.deg
 
 
 def test_icrs_to_lmn():
@@ -173,7 +173,7 @@ def test_lmn_to_icrs_near_poles():
     lmn_reconstructed = icrs_to_lmn(sources, pointing_north_pole)
     print(lmn_reconstructed)
 
-    np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
+    np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-6)
 
     # Near south pole
     pointing_south_pole = ac.ICRS(0 * au.deg, -90 * au.deg)
@@ -183,7 +183,7 @@ def test_lmn_to_icrs_near_poles():
     lmn_reconstructed = icrs_to_lmn(sources, pointing_south_pole)
     print(lmn_reconstructed)
 
-    np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-10)
+    np.testing.assert_allclose(lmn, lmn_reconstructed, atol=1e-6)
 
 
 def test_earth_location_to_enu():

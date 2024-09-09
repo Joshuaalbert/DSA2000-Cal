@@ -13,6 +13,7 @@ from jax import config, numpy as jnp, lax
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 
@@ -110,6 +111,30 @@ class FarFieldDelayEngine:
             'saturn': 95.16 * const.GM_earth,
             'uranus': 14.54 * const.GM_earth,
             'neptune': 17.15 * const.GM_earth
+        }
+        self.J2_coefficients = {
+            'sun': 2.2e-7,
+            'moon': 2.034e-4,
+            'mercury': 6.0e-6,
+            'venus': 4.458e-6,
+            'earth': 1.08263e-3,
+            'mars': 1.960e-3,
+            'jupiter': 1.4736e-2,
+            'saturn': 1.6298e-2,
+            'uranus': 3.34343e-3,
+            'neptune': 3.411e-3
+        }
+        self.radii = {
+            'sun': const.R_sun,
+            'moon': 0.2727 * const.R_earth,
+            'mercury': 0.3829 * const.R_earth,
+            'venus': 0.9499 * const.R_earth,
+            'earth': const.R_earth,
+            'mars': 0.5320 * const.R_earth,
+            'jupiter': const.R_jup,
+            'saturn': 9.45 * const.R_earth,
+            'uranus': 4.01 * const.R_earth,
+            'neptune': 3.88 * const.R_earth
         }
 
         self.ra0 = jnp.asarray(self.phase_center.ra.rad)
@@ -268,7 +293,7 @@ class FarFieldDelayEngine:
             i2: the index of the second antenna.
 
         Returns:
-            delay: the delay in meters, i.e. light travel distance.
+            delay: the delay in meters, i.e. light travel distance, from i2 to antenna i1.
         """
 
         if np.shape(l) != () or np.shape(m) != ():
@@ -277,7 +302,7 @@ class FarFieldDelayEngine:
         if np.shape(t1) != () or np.shape(i1) != () or np.shape(i2) != ():
             raise ValueError(f"t1, i1, i2 must be scalars got {np.shape(t1)}, {np.shape(i1)}, {np.shape(i2)}")
 
-        n = jnp.sqrt(1. - jnp.square(l) - jnp.square(m))
+        n = jnp.sqrt(1. - (jnp.square(l) + jnp.square(m)))
         ra, dec = perley_icrs_from_lmn(l=l, m=m, n=n, ra0=self.ra0, dec0=self.dec0)
         K_bcrs = celestial_to_cartesian(ra, dec)
 
@@ -350,7 +375,8 @@ class FarFieldDelayEngine:
         w, (u, v) = jax.value_and_grad(self.compute_delay_from_lm_jax, argnums=(0, 1))(l, m, t1, i1, i2)
         return jnp.stack([u, v, w], axis=-1)  # [3]
 
-    def compute_uvw_jax(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array) -> jax.Array:
+    def compute_uvw_jax(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array,
+                        convention: str = 'physical') -> jax.Array:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model.
 
@@ -362,7 +388,12 @@ class FarFieldDelayEngine:
         Returns:
             uvw: [N, 3] UVW coordinates in meters.
         """
-        return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
+        if convention == 'physical':
+            return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
+        elif convention == 'engineering':
+            return jax.vmap(self._single_compute_uvw)(times, antenna_2, antenna_1)
+        else:
+            raise ValueError(f"Unknown convention {convention}")
 
     def time_to_jnp(self, times: at.Time) -> jax.Array:
         """
@@ -376,13 +407,15 @@ class FarFieldDelayEngine:
         """
         return jnp.asarray((times.tt - self.ref_time.tt).sec)  # [N]
 
-    def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True) -> VisibilityCoords:
+    def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True,
+                                  convention: str = 'physical') -> VisibilityCoords:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model in batched mode.
 
         Args:
             times: [T] Time of observation, in tt scale in seconds, relative to the first time.
             with_autocorr: bool, whether to include autocorrelations.
+            convention: str, the convention to use for the UVW coordinates.
 
         Returns:
             visibility_coords: [T*B] stacked time-wise
@@ -393,23 +426,30 @@ class FarFieldDelayEngine:
         else:
             antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
 
+        if convention == 'physical':
+            antenna_1, antenna_2 = antenna_1, antenna_2
+        elif convention == 'engineering':
+            antenna_1, antenna_2 = antenna_2, antenna_1
+        else:
+            raise ValueError(f"Unknown convention {convention}")
+
         @partial(multi_vmap, in_mapping="[T],[T],[B],[B]", out_mapping="[T,B,...],[T,B],[T,B],[T,B],[T,B]",
                  verbose=True)
-        def _compute_uvw_batched(time_idx: jax.Array, t1: jax.Array, i1: jax.Array, i2: jax.Array
-                                 ) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+        def _compute_visibility_coords(time_idx: jax.Array, t1: jax.Array, i1: jax.Array, i2: jax.Array
+                                       ) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
             return self._single_compute_uvw(t1, i1, i2), time_idx, t1, i1, i2
 
         num_baselines = len(antenna_2)
         num_times = len(times)
         num_rows = num_baselines * num_times
-        uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_uvw_batched(
+        uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_visibility_coords(
             jnp.arange(num_times), times, antenna_1, antenna_2)
         return VisibilityCoords(
-            uvw=lax.reshape(uvw, (num_rows, 3)),
-            time_idx=lax.reshape(time_idx, (num_rows,)),
-            time_obs=lax.reshape(time_obs, (num_rows,)),
-            antenna_1=lax.reshape(antenna_1, (num_rows,)),
-            antenna_2=lax.reshape(antenna_2, (num_rows,))
+            uvw=mp_policy.length_dtype(lax.reshape(uvw, (num_rows, 3))),
+            time_idx=mp_policy.cast_to_index(lax.reshape(time_idx, (num_rows,))),
+            time_obs=mp_policy.cast_to_time(lax.reshape(time_obs, (num_rows,))),
+            antenna_1=mp_policy.cast_to_index(lax.reshape(antenna_1, (num_rows,))),
+            antenna_2=mp_policy.cast_to_index(lax.reshape(antenna_2, (num_rows,)))
         )
 
 
@@ -455,12 +495,12 @@ def far_field_delay(
         [2] Klioner, S. A. (1991). General relativistic model of VLBI delay observations.
             https://www.researchgate.net/publication/253171626
     """
+    # TODO: add support to subtraction precision in 32bit
     c = quantity_to_jnp(const.c)  # m / s
     L_G = jnp.asarray(6.969290134e-10)  # 1 - d(TT) / d(TCG)
     GM_earth = quantity_to_jnp(const.GM_earth)  # m^3 / s^2
 
     b_gcrs = x_2_gcrs(t1) - x_1_gcrs(t1)
-
 
     # Eq 11.6, accurate for use in 11.3 and 11.5
     X_1_bcrs = X_earth_bcrs(t1) + x_1_gcrs(t1)  # [3]
@@ -477,18 +517,19 @@ def far_field_delay(
     R_2J = X_2_bcrs - X_J_bcrs_t1J - V_earth_bcrs(t1) * (K_bcrs @ b_gcrs) / c  # [num_J, 3]
 
     # Eq 11.1
-    delta_T_grav_J = 2. * (GM_J) / c ** 2 * (1. + (V_J_bcrs(t_1J) @ K_bcrs)/c) * jnp.log(
+    delta_T_grav_J = 2. * (GM_J) / c ** 2 * (1. + (V_J_bcrs(t_1J) @ K_bcrs) / c) * jnp.log(
         (norm(R_1J) + R_1J @ K_bcrs) / (norm(R_2J) + R_2J @ K_bcrs)
     )  # [num_J]
 
     # Eq 11.2 =7.383900660090742e-11 - 7.383279239381223e-11 =
-    delta_T_grav_earth = 2. * GM_earth / c ** 2 * (1. + (K_bcrs @ V_earth_bcrs(t1))/c) * jnp.log(
+    delta_T_grav_earth = 2. * GM_earth / c ** 2 * (1. + (K_bcrs @ V_earth_bcrs(t1)) / c) * jnp.log(
         (norm(x_1_gcrs(t1)) + K_bcrs @ x_1_gcrs(t1)) / (norm(x_2_gcrs(t1)) + K_bcrs @ x_2_gcrs(t1))
     )  # []
     # (K @ V)/c term is around 1e-4 for Earth term (around 1e-15m delay)
 
     # Eq 11.7
     delta_T_grav = jnp.sum(delta_T_grav_J) + delta_T_grav_earth  # []
+    delta_T_grav *= 0.
     # Around delta_T_grav=-0.00016 m * (|baseline|/1km)
 
     # Since we perform analysis in BCRS kinematically non-rotating dynamic frame we need to convert to GCRS TT-compatible
@@ -521,4 +562,4 @@ def far_field_delay(
 
     proper_delay = (1 - L_G) * coordinate_delay_tcg
 
-    return proper_delay
+    return mp_policy.cast_to_length(proper_delay)  # m

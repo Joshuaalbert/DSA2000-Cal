@@ -10,11 +10,11 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_random_spherical_layout
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.visibility_model.source_models.celestial.fits_source.fits_source_model import FITSSourceModel
-from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source.gaussian_source_model import \
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
     GaussianSourceModel
-from dsa2000_cal.visibility_model.source_models.celestial.point_source.point_source_model import PointSourceModel
-from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source.rfi_emitter_source_model import \
+from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointSourceModel
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
     RFIEmitterSourceModel
 
 
@@ -57,9 +57,6 @@ class SyntheticSkyModelProducer:
         )
         lmn = icrs_to_lmn(sources=coords, phase_tracking=self.phase_tracking)
 
-        # Filter out those with negative n (below horizon)
-        mask = lmn[:, 2] > 0
-        lmn = lmn[mask, :]
         num_sources = len(lmn)
         source_flux = 10 * au.Jy * ((700 * au.MHz) / np.mean(self.freqs))
         if full_stokes:

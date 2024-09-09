@@ -169,7 +169,7 @@ def kron_inv(a: jax.Array, K: jax.Array, c: jax.Array) -> jax.Array:
 
     Args:
         a: [n, m]
-        b: [m, p]
+        K: [m, p]
         c: [p, q]
 
     Returns:

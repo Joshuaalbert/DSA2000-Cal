@@ -12,6 +12,7 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.uvw_utils import norm
 
 
@@ -372,7 +373,7 @@ def near_field_delay(
         # atomic clocks tick at the rate of proper time, thus we need to covert to proper time.
         # 4.19 in [2] -- for Earth based observers the rate of proper time is the same as TT (by construction).
         proper_delay = (1. - L_G) * coordinate_delay
-        return proper_delay, norm(b_gcrs, axis=-1)
+        return mp_policy.cast_to_length(proper_delay), mp_policy.cast_to_length(norm(b_gcrs, axis=-1))
 
     proper_time1, dist1 = _delay(x_1_gcrs)
     proper_time2, dist2 = _delay(x_2_gcrs)

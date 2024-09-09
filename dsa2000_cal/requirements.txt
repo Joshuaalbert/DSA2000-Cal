@@ -1,12 +1,12 @@
 pydantic<2.0.0
-numpy
+numpy<2
 ujson
 astropy>=6.1
 h5parm
 tables
 jax>=0.4.25
 jaxlib
-jaxns>=2.5.3
+jaxns>=2.6.0
 jaxopt
 python-casacore
 scipy

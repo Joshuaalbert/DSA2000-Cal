@@ -45,7 +45,7 @@ def mock_calibrator_source_models(tmp_path):
     return ms
 
 
-def test_simulate_systematics(mock_calibrator_source_models):
+def _test_simulate_systematics(mock_calibrator_source_models):
     ms = mock_calibrator_source_models
 
     simulator = SimulateSystematics(

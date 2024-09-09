@@ -1,13 +1,11 @@
-import jax
 import numpy as np
 import pytest
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
-# Require 64bit to get precision
-jax.config.update("jax_enable_x64", True)
 
 from dsa2000_cal.common.coord_utils import icrs_to_lmn, lmn_to_icrs
 from dsa2000_cal.delay_models.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian
+
 
 
 @pytest.mark.parametrize('ra0', [0, np.pi / 2, np.pi])
@@ -22,12 +20,14 @@ def test_perley_icrs_from_lmn(ra, dec, ra0, dec0):
     np.testing.assert_allclose(dec, _dec)
 
 
+
 @pytest.mark.parametrize('ra', [0, 90, 180])
 @pytest.mark.parametrize('dec', [0, 90, -90])
 def test_celestial_to_cartesian(ra, dec):
     sources = ac.ICRS(ra * au.deg, dec * au.deg)
     np.testing.assert_allclose(celestial_to_cartesian(sources.ra.rad, sources.dec.rad), sources.cartesian.xyz.value.T,
                                atol=1e-7)
+
 
 
 @pytest.mark.parametrize('ra0', [0, 90, 180])
@@ -41,6 +41,7 @@ def test_lm_to_k_bcrs(ra0, dec0):
     np.testing.assert_allclose(x.cartesian.xyz.value, K_bcrs, atol=1e-5)
 
 
+
 def test_icrs_to_lmn_against_perley():
     phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
@@ -50,6 +51,7 @@ def test_icrs_to_lmn_against_perley():
     lmn_perley = np.stack(
         perley_lmn_from_icrs(source.ra.rad, source.dec.rad, phase_tracking.ra.rad, phase_tracking.dec.rad), axis=-1)
     np.testing.assert_allclose(lmn_ours, lmn_perley, atol=2e-5)
+
 
 
 def test_lmn_to_icrs_against_perley():

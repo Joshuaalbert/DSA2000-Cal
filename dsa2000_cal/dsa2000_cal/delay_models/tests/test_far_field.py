@@ -5,13 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from astropy import time as at, coordinates as ac, units as au
-from jax import numpy as jnp, config
-
-config.update("jax_enable_x64", True)
+from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
+
 
 
 def test_far_field_delay_engine():
@@ -55,7 +54,11 @@ def test_far_field_delay_engine():
     assert np.shape(delay) == ()
 
     print(delay)
+    # 64 bit -- 999.9988935488057
+    # 32 bit -- 999.9988935488057
+
     np.testing.assert_allclose(delay, 1000., atol=0.55)
+
 
 
 @pytest.mark.parametrize('with_autocorr', [True, False])
@@ -106,6 +109,7 @@ def test_compute_uvw(with_autocorr):
 
     print(engine.compute_uvw_jax(engine.time_to_jnp(times), jnp.asarray([0]), jnp.asarray([1]),
                                  convention='physical'))
+
 
 
 @pytest.mark.parametrize('time', [at.Time("2024-01-01T00:00:00", scale='utc'),
@@ -229,6 +233,7 @@ def test_aberated_plane_of_sky(time: at.Time, baseline: au.Quantity):
     plt.show()
 
 
+
 @pytest.mark.parametrize('baseline', [10 * au.km, 100 * au.km, 1000 * au.km])
 def test_resolution_error(baseline: au.Quantity):
     # aberation happens when uvw coordinates are assumed to be consistent for all points in the sky, however
@@ -311,3 +316,4 @@ def test_resolution_error(baseline: au.Quantity):
     axs[1, 0].legend()
     fig.tight_layout()
     plt.show()
+    plt.close('all')

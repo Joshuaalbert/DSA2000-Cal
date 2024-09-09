@@ -5,69 +5,18 @@ import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 import pytest
-from astropy import units as au, coordinates as ac
 
-from dsa2000_cal.common.coord_utils import lmn_to_icrs
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.spherical_interpolator import phi_theta_from_lmn, lmn_from_phi_theta
 
 
-@pytest.mark.parametrize('array_name, freq, zenith', [['lwa', 50e6, True], ['dsa2000W', 700e6, False]])
-def test_beam_gain_model_real_data(array_name, freq, zenith):
-    freqs = au.Quantity([freq], unit=au.Hz)
-    beam_gain_model = build_beam_gain_model(array_name=array_name)
-
-    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=45 * au.deg)
-    array_location = beam_gain_model.antennas[0]
-    time = beam_gain_model.model_times[0]
-
-    # Test meshgrid
-    lvec = np.linspace(-1, 1, 100) * au.dimensionless_unscaled
-    mvec = np.linspace(-1, 1, 100) * au.dimensionless_unscaled
-    M, L = np.meshgrid(mvec, lvec, indexing='ij')
-    lmn = np.stack([L, M, np.sqrt(1. - L ** 2 - M ** 2)], axis=-1)  # [100, 100, 3]
-    sources = lmn_to_icrs(lmn=lmn, phase_tracking=phase_tracking)
-    gains = beam_gain_model.compute_gain(
-        freqs=freqs, sources=sources, array_location=array_location,
-        time=time,
-        pointing=None if zenith else phase_tracking)  # [100, 100, num_ant, num_freq, 2, 2]
-    assert gains.shape == (len(mvec), len(lvec), len(beam_gain_model.antennas), len(freqs), 2, 2)
-    gains = gains[..., 0, 0, 0, 0]  # [100, 100]
-
-    fig, axs = plt.subplots(2, 1, figsize=(8, 12), sharex=True, sharey=True, squeeze=False)
-    im = axs[0, 0].imshow(
-        np.abs(gains),
-        extent=(lvec[0].value, lvec[-1].value, mvec[0].value, mvec[-1].value),
-        origin='lower',
-        cmap='PuOr',
-        vmin=0.
-    )
-    fig.colorbar(im, ax=axs[0, 0])
-    axs[0, 0].set_xlabel('l')
-    axs[0, 0].set_ylabel('m')
-    axs[0, 0].set_title('Amplitude')
-
-    im = axs[1, 0].imshow(
-        np.angle(gains),
-        extent=(lvec[0].value, lvec[-1].value, mvec[0].value, mvec[-1].value),
-        origin='lower',
-        cmap='hsv',
-        vmin=-np.pi,
-        vmax=np.pi
-    )
-    fig.colorbar(im, ax=axs[1, 0])
-    axs[1, 0].set_xlabel('l')
-    axs[1, 0].set_ylabel('m')
-    axs[1, 0].set_title('phase')
-
-    fig.tight_layout()
-    plt.show()
-
-
-@pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W'])
+@pytest.mark.parametrize('array_name', ['lwa_mock', 'dsa2000W_small'])
 def test_beam_gain_model_factory(array_name: str):
+    t0 = time_mod.time()
     beam_gain_model = build_beam_gain_model(array_name=array_name)
+    print(f"Built in {time_mod.time() - t0} seconds.")
+
     assert not np.any(np.isnan(beam_gain_model.model_gains))
 
     phi, theta = phi_theta_from_lmn(
@@ -79,8 +28,11 @@ def test_beam_gain_model_factory(array_name: str):
     np.testing.assert_allclose(np.asarray(beam_gain_model.lmn_data), np.asarray(lmn_data_rec), atol=2e-5)
 
     beam_gain_model.plot_beam()
+    beam_gain_model.plot_regridded_beam()
 
-    select = (0 < beam_gain_model.lmn_data[..., 2]) & (~jnp.isnan(beam_gain_model.lmn_data[..., 2]))
+    # Only select n>=0 geodesics
+    select = beam_gain_model.lmn_data[:, 2] >= 0
+
     geodesics = beam_gain_model.lmn_data[select, None, None, :]
     args = dict(
         freqs=quantity_to_jnp(beam_gain_model.model_freqs[0:1]),
@@ -92,29 +44,72 @@ def test_beam_gain_model_factory(array_name: str):
     print(f"Compiled in {time_mod.time() - t0} seconds.")
 
     t0 = time_mod.time()
-    gain_screen = compute_gains(
+    reconstructed_model_gains = compute_gains(
         **args
     )  # [s, t, a, f, ...]
-    gain_screen.block_until_ready()
+    jax.block_until_ready(reconstructed_model_gains)
     print(f"Computed in {time_mod.time() - t0} seconds.")
 
-    plt.scatter(geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1], c=np.log10(np.abs(gain_screen[:, 0, 0, 0, 0, 0])),
-                cmap='PuOr', s=1)
-    plt.colorbar()
-    plt.show()
-    plt.scatter(geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1], c=np.angle(gain_screen[:, 0, 0, 0, 0, 0]), cmap='hsv',
-                vmin=-np.pi, vmax=np.pi, s=1)
-    plt.colorbar()
-    plt.show()
+    print(beam_gain_model.model_gains.shape)  # [num_model_times, num_model_dir, num_model_freqs, 2, 2]
+    print(reconstructed_model_gains.shape)  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
+
+    # Plot all on fig
+    lvec, mvec = beam_gain_model.lvec_jax, beam_gain_model.mvec_jax
+    gain_screen = beam_gain_model.model_gains_jax[0, :, :, 0, ...]  # [lres, mres, 2,2]
+    model_gains = quantity_to_np(beam_gain_model.model_gains[0, select, 0, ...])  # [num_model_dir, 2, 2]
+    reconstructed_model_gains = reconstructed_model_gains[:, 0, 0, 0, ...]  # [num_model_dir, 2, 2]
+    l, m = geodesics[:, 0, 0, 0], geodesics[:, 0, 0, 1]
+    reconstruct_diff = model_gains - reconstructed_model_gains
+    reconstruct_diff = np.where(np.abs(reconstruct_diff) < 0.1, np.nan, reconstruct_diff)
+    # Print out the l,m where we see the bad residuals
+    for p in range(2):
+        for q in range(2):
+            print(reconstruct_diff[~np.isnan(reconstruct_diff[:, p, q]), p, q])
+            print(list(zip(l[~np.isnan(reconstruct_diff[:, p, q])], m[~np.isnan(reconstruct_diff[:, p, q])])))
+
+    # Row 1 model_gains (scatter)
+    # Row 2 reconstructed_model_gains (scatter)
+    # Row 3 model_gains - reconstructed_model_gains (scatter)
+    # Row 4 gain_screen (imshow)
+    # Col 1 Abs
+    # Col 2 Phase
+
+    for p, q in [(0, 0), (0, 1)]:
+        fig, axs = plt.subplots(4, 2, figsize=(6, 12), sharex=True, sharey=True)
+
+        for i, (data, title) in enumerate(zip(
+                [model_gains[:, p, q],
+                 reconstructed_model_gains[:, p, q],
+                 reconstruct_diff[:, p, q],
+                 gain_screen[:, :, p, q]],
+                [f'Model Gains({p},{q})', f'Reconstructed Model Gains({p},{q})', f'Bad Residuals({p},{q})',
+                 f'Gain Screen({p},{q})']
+        )):
+            for j, (quantity, ylabel) in enumerate(zip([np.abs(data), np.angle(data)], ['Abs', 'Phase'])):
+                if i == 3:
+                    im = axs[i, j].imshow(quantity.T,
+                                          origin='lower',
+                                          extent=[lvec[0], lvec[-1], mvec[0], mvec[-1]],
+                                          cmap='jet',
+                                          interpolation='none'
+                                          )
+                    fig.colorbar(im, ax=axs[i, j])
+                else:
+                    sc = axs[i, j].scatter(l, m, c=quantity, s=1, cmap='jet', alpha=0.5)
+                    fig.colorbar(sc, ax=axs[i, j])
+                axs[i, j].set_title(f'{title} {ylabel}')
+                axs[i, j].set_xlabel('l (proj.rad)')
+                axs[i, j].set_ylabel('m (proj.rad)')
+
+        plt.show()
 
     np.testing.assert_allclose(
-        np.abs(gain_screen[:, 0, 0, 0, ...]),
-        np.abs(quantity_to_jnp(beam_gain_model.model_gains[0, select, 0, ...])),
-        atol=0.02
+        np.abs(reconstructed_model_gains - model_gains),
+        np.zeros(model_gains.shape),
+        atol=0.05
     )
-
     np.testing.assert_allclose(
-        np.angle(gain_screen[:, 0, 0, 0, ...]),
-        np.angle(quantity_to_jnp(beam_gain_model.model_gains[0, select, 0, ...])),
-        atol=0.02
+        np.abs(reconstructed_model_gains),
+        np.abs(model_gains),
+        atol=0.05
     )

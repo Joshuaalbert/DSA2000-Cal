@@ -2,13 +2,12 @@ import re
 from typing import Tuple, Dict, Optional, List
 
 import numpy as np
-from africanus.model.coherency import convert
 from astropy import coordinates as ac
 from astropy import units as au
-from h5parm.utils import parse_coordinates_bbs
 from pydantic import Field
 
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.common.wsclean_util import parse_coordinates_bbs
 
 
 class SourceModel(SerialisableBaseModel):
@@ -18,9 +17,8 @@ class SourceModel(SerialisableBaseModel):
     lm: np.ndarray = Field(
         description="Source direction cosines of shape [source, 2]",
     )
-    corrs: List[List[str]] = Field(
+    corrs: List[str] = Field(
         description="Correlations in the source model",
-        default=[['XX', 'XY'], ['YX', 'YY']],
     )
     freqs: np.ndarray = Field(
         description="Frequencies of shape [chan]",
@@ -188,13 +186,7 @@ class BBSSkyModel:
             axis=1
         )  # [source, corr]
 
-        output_corrs = [['XX', 'XY'], ['YX', 'YY']]
-        image_corr = convert(
-            stokes_image,
-            ['I', 'Q', 'U', 'V'],
-            output_corrs
-        )  # [source, 2, 2]
-        image_corr = np.tile(image_corr[:, None, :, :], [1, len(self.channels), 1, 1])  # [source, chan, 2, 2]
+        image_corr = np.tile(stokes_image[:, None, :], [1, len(self.channels), 1])  # [source, chan, 4]
         if 'ReferenceFrequency' in data_dict and 'SpectralIndex' in data_dict:
             ## TODO: Add spectral model if necessary
             pass
@@ -202,6 +194,6 @@ class BBSSkyModel:
         return SourceModel(
             image=image_corr,
             lm=direction_cosines,
-            corrs=output_corrs,
+            corrs=['I', 'Q', 'U', 'V'],
             freqs=self.channels
         )

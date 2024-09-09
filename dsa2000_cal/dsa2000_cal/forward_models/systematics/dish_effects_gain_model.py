@@ -6,8 +6,10 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as au, coordinates as ac
+from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
@@ -23,8 +25,8 @@ def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
                                     beam_gain_model: BeamGainModel,
                                     dish_effect_params: DishEffectsParams,
                                     plot_folder: str, cache_folder: str, seed: int = 42,
-                                    convention: Literal['physical', 'casa'] = 'physical',
-                                    dtype: jnp.dtype = jnp.complex64):
+                                    convention: Literal['physical', 'engineering'] = 'physical',
+                                    dtype: SupportsDType = complex_type):
     os.makedirs(plot_folder, exist_ok=True)
 
     dish_effects_simulation = DishEffectsSimulation(

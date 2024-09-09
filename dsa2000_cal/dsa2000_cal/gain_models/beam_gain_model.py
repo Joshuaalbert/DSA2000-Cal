@@ -6,20 +6,11 @@ from astropy import units as au, time as at
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)
 class BeamGainModel(SphericalInterpolatorGainModel):
     ...
-
-
-def beam_gain_model_factory(ms: MeasurementSet) -> BeamGainModel:
-    return build_beam_gain_model(
-        array_name=ms.meta.array_name,
-        model_times=ms.meta.times,
-        full_stokes=ms.is_full_stokes()
-    )
 
 
 def build_beam_gain_model(
@@ -61,10 +52,12 @@ def build_beam_gain_model(
         (len(model_phi), len(model_freqs), 2, 2)
     ) * au.dimensionless_unscaled  # [num_dir, num_freqs, 2, 2]
 
-    # Repeat twice to set the same gain for all times
-    gains = au.Quantity(np.repeat(gains[None, ...], 2, axis=0))  # [num_times, num_dir, num_freqs, 2, 2]
-    # Just to min and max times
-    model_times = at.Time([model_times.tt.min(), model_times.tt.max()])
+    if len(model_times) == 1:
+        gains = au.Quantity(gains[None, ...])  # [num_times, num_dir, num_freqs, 2, 2]
+    else:
+        gains = au.Quantity(
+            np.repeat(gains[None, ...], len(model_times), axis=0)
+        )  # [num_times, num_dir, num_freqs, 2, 2]
 
     if not full_stokes:
         gains = gains[..., 0, 0]

@@ -3,7 +3,6 @@ import os
 from typing import List
 
 import astropy.units as au
-import jax.numpy as jnp
 from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
@@ -11,6 +10,7 @@ from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import Diago
     ScalarUnconstrainedGain
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
+from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.forward_models.forward_model import BaseForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
@@ -48,7 +48,7 @@ class LWAForwardModel(BaseForwardModel):
     oversample_factor: float = 5.
     weighting: str = 'natural'
     epsilon: float = 1e-4
-    dtype: SupportsDType = jnp.complex64
+    dtype: SupportsDType = complex_type
     verbose: bool = False
     num_shards: int = 1
     ionosphere_seed: int = 42
@@ -155,7 +155,7 @@ class LWAForwardModel(BaseForwardModel):
             )
 
         rime_model = RIMEModel(
-            facet_models=rfi_facet_models# + celestial_facet_models
+            facet_models=rfi_facet_models  # + celestial_facet_models
         )
         return rime_model
 

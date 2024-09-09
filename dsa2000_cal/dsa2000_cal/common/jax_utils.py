@@ -15,8 +15,11 @@ from typing import TypeVar, Callable, Tuple, Set, List, Dict
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import tree_util, tree_map, pmap, lax
+from jax import pmap, lax, NamedSharding
+from jax._src.mesh import Mesh
 from jax._src.numpy.util import check_arraylike, promote_dtypes_inexact
+from jax._src.partition_spec import PartitionSpec
+from jax.experimental.mesh_utils import create_device_mesh
 
 from dsa2000_cal.common.jvp_linear_op import isinstance_namedtuple
 
@@ -34,15 +37,15 @@ def promote_pytree(func_name: str, pytree: V) -> V:
     Returns:
         pytree with promoted dtypes
     """
-    leaves, tree_def = tree_util.tree_flatten(pytree)
+    leaves, tree_def = jax.tree.flatten(pytree)
     check_arraylike(func_name, *leaves)
     leaves = promote_dtypes_inexact(*leaves)
-    return tree_util.tree_unflatten(tree_def, leaves)
+    return jax.tree.unflatten(tree_def, leaves)
 
 
 def tree_transpose(list_of_trees):
     """Convert a list of trees of identical structure into a single tree of lists."""
-    return jax.tree_map(lambda *xs: list(xs), *list_of_trees)
+    return jax.tree.map(lambda *xs: list(xs), *list_of_trees)
 
 
 PT = TypeVar('PT')
@@ -52,13 +55,13 @@ def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callabl
     """
     Returns functions to ravel and unravel a pytree.
     """
-    leaf_list, tree_def = tree_util.tree_flatten(example_tree)
+    leaf_list, tree_def = jax.tree.flatten(example_tree)
 
     sizes = [leaf.size for leaf in leaf_list]
     shapes = [leaf.shape for leaf in leaf_list]
 
     def ravel_fun(pytree: PT) -> jax.Array:
-        leaf_list, tree_def = tree_util.tree_flatten(pytree)
+        leaf_list, tree_def = jax.tree.flatten(pytree)
         return jnp.concatenate([lax.reshape(leaf, (size,)) for leaf, size in zip(leaf_list, sizes)])
 
     def unravel_fun(flat_array: jax.Array) -> PT:
@@ -67,7 +70,7 @@ def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callabl
         for size, shape in zip(sizes, shapes):
             leaf_list.append(lax.reshape(flat_array[start:start + size], shape))
             start += size
-        return tree_util.tree_unflatten(tree_def, leaf_list)
+        return jax.tree.unflatten(tree_def, leaf_list)
 
     return ravel_fun, unravel_fun
 
@@ -107,7 +110,7 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: in
 
         if chunk_size > 1:
             # Get from first leaf
-            leaves = tree_util.tree_leaves((args, kwargs))
+            leaves = jax.tree.leaves((args, kwargs))
             batch_size = np.shape(leaves[0])[0]
             for leaf in leaves:
                 if np.shape(leaf)[0] != batch_size:
@@ -115,13 +118,14 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: in
             remainder = batch_size % chunk_size
             extra = (chunk_size - remainder) % chunk_size
             if extra > 0:
-                (args, kwargs) = tree_map(lambda x: _pad_extra(x, extra), (args, kwargs))
-            (args, kwargs) = tree_map(lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
-                                      (args, kwargs))
+                (args, kwargs) = jax.tree.map(lambda x: _pad_extra(x, extra), (args, kwargs))
+            (args, kwargs) = jax.tree.map(
+                lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
+                (args, kwargs))
             result = pmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
-            result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
+            result = jax.tree.map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
             if extra > 0:
-                result = tree_map(lambda x: x[:-extra], result)
+                result = jax.tree.map(lambda x: x[:-extra], result)
         else:
             result = queue(*args, **kwargs)
         return result
@@ -167,11 +171,11 @@ def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
     remainder = batch_size % chunk_size
     extra = (chunk_size - remainder) % chunk_size
     if extra > 0:
-        py_tree = tree_map(lambda x: jnp.concatenate([x, jnp.repeat(x[0:1], extra, 0)]), py_tree)
+        py_tree = jax.tree.map(lambda x: jnp.concatenate([x, jnp.repeat(x[0:1], extra, 0)]), py_tree)
 
     def _remove_extra(output_py_tree: S) -> S:
         if extra > 0:
-            output_py_tree = jax.tree_map(lambda x: x[:-extra], output_py_tree)
+            output_py_tree = jax.tree.map(lambda x: x[:-extra], output_py_tree)
         return output_py_tree
 
     return py_tree, _remove_extra
@@ -530,3 +534,48 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
         return tuple(res)
 
     return _permute_output
+
+
+def create_mesh(shape, axis_names, devices=None):
+    """
+    Create a mesh from a shape and axis names.
+
+    Args:
+        shape: the shape of the mesh, total size must evenly divide number of devices.
+        axis_names: the axis names of the mesh.
+        devices: the devices to use, if None, uses all devices.
+
+    Returns:
+        the mesh
+    """
+    if len(shape) != len(axis_names):
+        raise ValueError(f"Shape {shape} and axis names {axis_names} must have the same length.")
+    mesh_size = int(np.prod(shape))
+    if devices is None:
+        devices = jax.devices()
+        if mesh_size < len(devices):
+            devices = devices[:mesh_size]
+    if mesh_size % len(devices) != 0:
+        raise ValueError(f"Mesh size {mesh_size} must evenly divide number of devices {len(devices)}.")
+    mesh_devices = create_device_mesh(mesh_shape=shape, devices=devices)
+    mesh = Mesh(mesh_devices, axis_names=axis_names)
+    return mesh
+
+
+SPT = TypeVar('SPT')
+
+
+def tree_device_put(tree: SPT, mesh: Mesh, axis_names: Tuple[str | None, ...]) -> SPT:
+    """
+    Put a pytree on a device.
+
+    Args:
+        tree: the pytree to put on a device.
+        mesh: the mesh to put the pytree on.
+        axis_names: the axis names of the mesh.
+
+    Returns:
+        the pytree on the device.
+    """
+    sharding = NamedSharding(mesh, PartitionSpec(*axis_names))
+    return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)

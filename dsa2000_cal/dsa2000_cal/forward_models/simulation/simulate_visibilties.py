@@ -60,7 +60,7 @@ class SimulateVisibilities:
         mesh = Mesh(devices, axis_names=('chan',))
 
         def tree_device_put(tree, sharding):
-            return jax.tree_map(lambda x: jax.device_put(x, sharding), tree)
+            return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
 
         # Metrics
         vis_sum = 0.
@@ -81,7 +81,7 @@ class SimulateVisibilities:
 
             times_jax = jnp.asarray((times.tt - ms.ref_time).sec)
 
-            visibility_coords = jax.tree_map(jnp.asarray, visibility_coords)
+            visibility_coords = jax.tree.map(jnp.asarray, visibility_coords)
 
             key, sim_key = jax.random.split(key, 2)
 
@@ -102,7 +102,7 @@ class SimulateVisibilities:
             )
 
             # Save the results by pushing the response back to the generator
-            gen_response = jax.tree_map(np.asarray, sim_vis_data)
+            gen_response = jax.tree.map(np.asarray, sim_vis_data)
 
             vis_sum += np.sum(sim_vis_data.vis)
         t1 = time_mod.time()

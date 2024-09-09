@@ -15,10 +15,9 @@ from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
 from dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.imaging.dirty_imaging import DirtyImaging
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
+from dsa2000_cal.imaging.imagor import Imagor
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, beam_gain_model_factory
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 
@@ -52,7 +51,7 @@ class BaseForwardModel(AbstractForwardModel):
         field_of_view: the field of view for imaging, default computes from dish model
         oversample_factor: the oversample factor for imaging, default 2.5
         epsilon: the epsilon for wgridder, default 1e-4
-        dtype: the dtype for imaging, default jnp.complex64
+        dtype: the dtype for imaging, default complex_type
         verbose: the verbosity for imaging, default False
     """
 
@@ -123,7 +122,7 @@ class BaseForwardModel(AbstractForwardModel):
         start_time = current_utc()
 
         beam_gain_model = beam_gain_model_factory(ms)
-        beam_gain_model.plot_beam(os.path.join(self.plot_folder, 'beam.png'))
+        beam_gain_model.plot_regridded_beam(os.path.join(self.plot_folder, 'beam.png'))
 
         # Simulate systematics
         systematics_simulator = SimulateSystematics(
@@ -137,7 +136,7 @@ class BaseForwardModel(AbstractForwardModel):
             full_stokes=ms.is_full_stokes()
         )
 
-        imagor = DirtyImaging(
+        imagor = Imagor(
             plot_folder=os.path.join(self.plot_folder, 'imaging'),
             field_of_view=self.field_of_view,
             seed=self.imaging_seed,

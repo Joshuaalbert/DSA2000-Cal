@@ -46,10 +46,6 @@ class AbstractRFIEmitterData(ABC, BaseContent):
         BaseContent.__init__(self, *args, **kwargs)
 
     @abstractmethod
-    def rfi_injection_model(self) -> str:
-        ...
-
-    @abstractmethod
     def make_source_params(self, freqs: au.Quantity, central_freq: au.Quantity | None = None,
                            full_stokes: bool = False) -> RFIEmitterSourceModelParams:
         """

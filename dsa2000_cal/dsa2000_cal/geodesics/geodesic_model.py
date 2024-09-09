@@ -13,11 +13,19 @@ from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.interp_utils import InterpolatedArray, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
 @dataclasses.dataclass(eq=False)
 class GeodesicModel:
+    """
+    Computes geodesics for each antenna of an array in both near and far field.
+
+    That is, given source location information, e.g. lmn (wrt phase center), or source location in ENU
+    (wrt array location), return the lmn coordinates of the sources for each antenna. This can handle zenith
+    pointing antennas by setting pointing to None.
+    """
     antennas: ac.EarthLocation
     array_location: ac.EarthLocation
     phase_center: ac.ICRS
@@ -60,7 +68,7 @@ class GeodesicModel:
                 )
             )  # [[num_ant,] 3]
             self.lmn_pointings = InterpolatedArray(
-                x=jnp.stack([obstimes[0], obstimes[-1]]),
+                x=jnp.stack([obstimes[0], obstimes[-1] + 1e-6]),  # Add 1e-6 to avoid interpolation errors
                 values=jnp.stack([pointing_lmn, pointing_lmn], axis=0),
                 axis=0,
                 regular_grid=regular_grid
@@ -126,6 +134,8 @@ class GeodesicModel:
             # Note: antennas_enu arg is necessary for multi_vmap to work correctly, even though it's not used.
             # Get RA/DEC of pointings wrt phase centre
             ra0, dec0 = self.ra0, self.dec0
+            # jax.debug.print("ra0={ra0}, dec0={dec0}",ra0=ra0, dec0=dec0)
+            # jax.debug.print("lmn_pointing={lmn_pointing}",lmn_pointing=lmn_pointing)
             ra_pointing, dec_pointing = perley_icrs_from_lmn(
                 l=lmn_pointing[0],
                 m=lmn_pointing[1],
@@ -133,6 +143,7 @@ class GeodesicModel:
                 ra0=ra0,
                 dec0=dec0
             )  # [[num_ant]]
+            # jax.debug.print("ra_pointing={ra_pointing}, dec_pointing={dec_pointing}",ra_pointing=ra_pointing, dec_pointing=dec_pointing)
             ra, dec = perley_icrs_from_lmn(
                 l=lmn_source[0],
                 m=lmn_source[1],
@@ -140,10 +151,13 @@ class GeodesicModel:
                 ra0=ra0,
                 dec0=dec0
             )  # []
+            # jax.debug.print("ra={ra}, dec={dec}",ra=ra, dec=dec)
             l, m, n = perley_lmn_from_icrs(ra, dec, ra_pointing, dec_pointing)  # []
-            return jnp.stack([l, m, n], axis=-1)  # [3]
+            # jax.debug.print("l={l}, m={m}, n={n}",l=l, m=m, n=n)
+            return mp_policy.cast_to_angle(jnp.stack([l, m, n], axis=-1))  # [3]
 
-        return create_geodesics(antennas_enu, lmn_pointing, lmn_sources)  # [num_sources, num_time, num_ant, 3]
+        return mp_policy.cast_to_angle(
+            create_geodesics(antennas_enu, lmn_pointing, lmn_sources))  # [num_sources, num_time, num_ant, 3]
 
     def compute_near_field_geodesics(self, times: jax.Array, source_positions_enu: jax.Array,
                                      antenna_indices: jax.Array | None = None) -> jax.Array:
@@ -224,7 +238,8 @@ class GeodesicModel:
 
             l, m, n = perley_lmn_from_icrs(ra, dec, ra_pointing, dec_pointing)  # []
 
-            return jnp.stack([l, m, n], axis=-1)
+            return mp_policy.cast_to_angle(jnp.stack([l, m, n], axis=-1))
 
-        return create_geodesics(times, lmn_pointing, antennas_enu,
-                                source_positions_enu)  # [num_sources, num_time, num_ant, 3]
+        return create_geodesics(
+            times, lmn_pointing, antennas_enu, source_positions_enu
+        )  # [num_sources, num_time, num_ant, 3]

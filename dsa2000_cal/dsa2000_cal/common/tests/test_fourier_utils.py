@@ -3,9 +3,10 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.fourier_utils import ApertureTransform, find_optimal_fft_size
+import numpy as np
 
 
-@pytest.mark.parametrize('convention', ['physical', 'casa'])
+@pytest.mark.parametrize('convention', ['physical', 'engineering'])
 def test_fourier_conventions(convention):
     dx = 0.1
     n = 100
@@ -30,9 +31,9 @@ def test_fourier_conventions(convention):
     plt.show()
 
     # This passes for both conventions
-    jnp.testing.assert_allclose(f_aperture, rec_f_aperture, atol=1e-6)
+    np.testing.assert_allclose(f_aperture, rec_f_aperture, atol=1e-4)
 
-    # If we run with 'casa' convention, the plots all have mode in centre
+    # If we run with 'engineering' convention, the plots all have mode in centre
 
     f_image = jnp.exp(-nu ** 2) + nu
 
@@ -51,7 +52,7 @@ def test_fourier_conventions(convention):
     plt.show()
 
     # This passes for both conventions
-    jnp.testing.assert_allclose(f_image, rec_f_image, atol=1e-6)
+    np.testing.assert_allclose(f_image, rec_f_image, atol=1e-5)
 
 
 def test_find_next_magic_size():

@@ -74,7 +74,7 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
 
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
-@pytest.mark.parametrize("convention", ['physical', 'casa'])
+@pytest.mark.parametrize("convention", ['physical', 'engineering'])
 def test_measurement_setting(tmp_path, with_autocorr, convention):
     meta = MeasurementSetMetaV0(
         array_name="test_array",
@@ -301,11 +301,11 @@ def test_put_non_unique():
     np.testing.assert_allclose(h5_array, np.array([[7, 8], [10, 11], [13, 14]]))
 
 
-def test_transfer_from_casa():
+def _test_transfer_from_casa():
     casa_file = '~/data/forward_modelling/data_dir/lwa01.ms'
     ms_folder = '~/data/forward_modelling/data_dir/lwa01_ms'
     ms = transfer_from_casa(
         ms_folder=ms_folder,
         casa_ms=casa_file,
-        convention='casa'  # Or else UVW coordinates are very wrong.
+        convention='engineering'  # Or else UVW coordinates are very wrong.
     )

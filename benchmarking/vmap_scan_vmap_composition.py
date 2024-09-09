@@ -1,11 +1,10 @@
 import time
 
 import jax
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
 from jax import lax
 from jax import random, jit
-import pandas as pd
 
 
 def main(batch_size1, batch_size2, batch_size3, length):
@@ -95,21 +94,30 @@ def main(batch_size1, batch_size2, batch_size3, length):
     }
 
 
-if __name__ == '__main__':
+def main():
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError("Please install pandas using `pip install pandas`")
+
     results = []
     for batch_size1 in [10, 50, 100]:
         for batch_size2 in [10, 50, 100]:
             for batch_size3 in [10, 50, 100]:
                 for length in [1, 10, 100]:
-                    results.append(main(batch_size1=batch_size1, batch_size2=batch_size2, batch_size3=batch_size3, length=length))
+                    results.append(
+                        main(batch_size1=batch_size1, batch_size2=batch_size2, batch_size3=batch_size3, length=length))
 
     # Convert results to a DataFrame
     df = pd.DataFrame(results)
 
     # Separate the results into three DataFrames
-    vmap_scan_vmap_wins = df[(df['dt_vmap_scan_vmap'] < df['dt_scan_vmap_vmap']) & (df['dt_vmap_scan_vmap'] < df['dt_vmap_vmap_scan'])]
-    scan_vmap_vmap_wins = df[(df['dt_scan_vmap_vmap'] < df['dt_vmap_scan_vmap']) & (df['dt_scan_vmap_vmap'] < df['dt_vmap_vmap_scan'])]
-    vmap_vmap_scan_wins = df[(df['dt_vmap_vmap_scan'] < df['dt_scan_vmap_vmap']) & (df['dt_vmap_vmap_scan'] < df['dt_vmap_scan_vmap'])]
+    vmap_scan_vmap_wins = df[
+        (df['dt_vmap_scan_vmap'] < df['dt_scan_vmap_vmap']) & (df['dt_vmap_scan_vmap'] < df['dt_vmap_vmap_scan'])]
+    scan_vmap_vmap_wins = df[
+        (df['dt_scan_vmap_vmap'] < df['dt_vmap_scan_vmap']) & (df['dt_scan_vmap_vmap'] < df['dt_vmap_vmap_scan'])]
+    vmap_vmap_scan_wins = df[
+        (df['dt_vmap_vmap_scan'] < df['dt_scan_vmap_vmap']) & (df['dt_vmap_vmap_scan'] < df['dt_vmap_scan_vmap'])]
 
     # Print the results
     print("vmap(scan(vmap)) wins:")
@@ -120,3 +128,7 @@ if __name__ == '__main__':
 
     print("\nvmap(vmap(scan)) wins:")
     print(vmap_vmap_scan_wins[['batch_size1', 'batch_size2', 'batch_size3', 'length', 'dt_vmap_vmap_scan']])
+
+
+if __name__ == '__main__':
+    main()
