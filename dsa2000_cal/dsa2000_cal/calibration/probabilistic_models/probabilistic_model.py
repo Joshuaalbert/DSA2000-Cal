@@ -1,15 +1,13 @@
 import dataclasses
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Tuple, Callable, List, Any
 
+import astropy.time as at
 import jax
-import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_cal.common.types import ComplexArray, FloatArray
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
-
-tfpd = tfp.distributions
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)
@@ -76,6 +74,7 @@ class AbstractProbabilisticModel(ABC):
     Represents a probabilistic model and generates instances, based on data.
     """
 
+    @abstractmethod
     def create_model_instance(self, freqs: jax.Array,
                               times: jax.Array,
                               vis_data: VisibilityData,
@@ -92,5 +91,17 @@ class AbstractProbabilisticModel(ABC):
 
         Returns:
             An instance
+        """
+        ...
+
+    @abstractmethod
+    def save_solution(self, solution: Any, file_name: str, times: at.Time, ms: MeasurementSet):
+        """
+        Save the solution to a folder.
+
+        Args:
+            solution: Any
+            file_name: str
+            times: at.Time
         """
         ...

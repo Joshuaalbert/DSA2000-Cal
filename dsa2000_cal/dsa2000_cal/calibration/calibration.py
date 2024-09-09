@@ -21,7 +21,6 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
-from dsa2000_cal.types import CalibrationSolutions
 
 tfpd = tfp.distributions
 
@@ -47,7 +46,6 @@ class Calibration:
         residual_ms_folder: the folder to save residuals to.
         seed: the random seed.
         verbose: if True, print verbose output.
-        num_shards: the number of shards to use.
     """
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
     probabilistic_models: List[AbstractProbabilisticModel]
@@ -192,7 +190,7 @@ class Calibration:
                 time_idx=mp_policy.cast_to_index(visibility_coords.time_idx)
             )  # [num_row, ...]
 
-            gain_solutions, residual, state, diagnostics = block_until_ready(
+            solutions, residual, state, diagnostics = block_until_ready(
                 self._solve_jax(
                     key=solve_key,
                     freqs=tree_device_put(freqs_jax, mesh, ('chan',)),
@@ -241,21 +239,12 @@ class Calibration:
                 plt.close(fig)
 
                 # Save gains to files
-                for model_idx, gain_solution in enumerate(gain_solutions):
-                    # Save to file
-                    solution = CalibrationSolutions(
-                        gains=np.asarray(gain_solution),
-                        times=times,
-                        antennas=ms.meta.antennas,
-                        antenna_labels=ms.meta.antenna_names,
-                        freqs=ms.meta.freqs,
-                        pointings=ms.meta.pointings
+                for model_idx, solution in enumerate(solutions):
+                    self.probabilistic_models[model_idx].save_solution(
+                        solution=solution,
+                        file_name=os.path.join(self.solution_folder,
+                                               f"calibration_solution_m{model_idx:03d}_c{cadence_idx:03d}.json")
                     )
-                    file_name = os.path.join(
-                        self.solution_folder, f"calibration_solution_m{model_idx:03d}_c{cadence_idx:03d}.json"
-                    )
-                    with open(file_name, "w") as fp:
-                        fp.write(solution.json(indent=2))
         # Measure total solve time.
         t1 = time_mod.time()
 
@@ -336,16 +325,16 @@ class Calibration:
         def residual_fn(params: List[Any]) -> Any:
             vis_model, _ = probabilistic_model_instance.forward(params)  # [num_row, num_chan[, 4]]
             vis_residuals = vis_data.vis - vis_model
-            if vis_data.weights is not None:
-                vis_residuals *= jnp.sqrt(vis_data.weights)
-            if vis_data.flags is not None:
-                vis_residuals = jnp.where(vis_data.flags, 0., vis_residuals)
+            weights = jnp.sqrt(vis_data.weights)
+            weights *= mp_policy.cast_to_weight(jnp.logical_not(vis_data.flags))
+            vis_residuals *= weights
             return vis_residuals
 
         solver = MultiStepLevenbergMarquardt(
             residual_fn=residual_fn,
             num_iterations=num_iterations,
-            num_approx_steps=5
+            num_approx_steps=5,
+            verbose=True
         )
 
         if init_state is None:

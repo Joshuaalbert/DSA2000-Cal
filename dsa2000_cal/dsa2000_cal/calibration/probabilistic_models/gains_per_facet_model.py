@@ -1,10 +1,13 @@
 import dataclasses
+from typing import Any
 
-import haiku as hk
+import astropy.time as at
 import jax
+import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 from jaxns import Model
+from jaxns.framework import context as ctx
 from jaxns.framework import ops
 from jaxns.internals.constraint_bijections import quick_unit, quick_unit_inverse
 
@@ -13,7 +16,8 @@ from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import Abs
     ProbabilisticModelInstance
 from dsa2000_cal.common.jax_utils import promote_pytree
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
+from dsa2000_cal.types import CalibrationSolutions
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 tfpd = tfp.distributions
@@ -24,7 +28,8 @@ class GainsPerFacet(AbstractProbabilisticModel):
     rime_model: RIMEModel
     gain_prior_model: AbstractGainPriorModel
 
-    def create_model_instance(self, freqs: jax.Array,
+    def create_model_instance(self,
+                              freqs: jax.Array,
                               times: jax.Array,
                               vis_data: VisibilityData,
                               vis_coords: VisibilityCoords
@@ -33,14 +38,10 @@ class GainsPerFacet(AbstractProbabilisticModel):
             times=times
         )  # [facets]
 
-        # TODO: explore using checkpointing
         vis = self.rime_model.predict_visibilities(
             model_data=model_data,
             visibility_coords=vis_coords
         )  # [num_cal, num_row, num_chan[, 2, 2]]
-
-        # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))'
-        # TODO: https://jax.readthedocs.io/en/latest/notebooks/shard_map.html#fsdp-tp-with-shard-map-at-the-top-level
 
         # vis now contains the model visibilities for each calibrator
         def prior_model():
@@ -103,9 +104,7 @@ class GainsPerFacet(AbstractProbabilisticModel):
                 # Use jaxns.framework.ops to transform the params into the args for likelihood
                 return ops.prepare_input(W=W, prior_model=prior_model)
 
-            return hk.transform(_forward).apply(
-                params=model.params, rng=jax.random.PRNGKey(0)
-            )
+            return ctx.transform(_forward).apply(params=model.params, rng=jax.random.PRNGKey(0)).fn_val
 
         def log_prob_joint(params):
             W = jax.tree.map(quick_unit, params)
@@ -124,12 +123,23 @@ class GainsPerFacet(AbstractProbabilisticModel):
                 )
                 return log_prob_prior + log_prob_likelihood
 
-            return hk.transform(_log_prob_joint).apply(
-                params=model.params, rng=jax.random.PRNGKey(0)
-            )
+            return ctx.transform(_log_prob_joint).apply(params=model.params, rng=jax.random.PRNGKey(0)).fn_val
 
         return ProbabilisticModelInstance(
             get_init_params_fn=get_init_params,
             forward_fn=forward,
             log_prob_joint_fn=log_prob_joint
         )
+
+    def save_solution(self, solution: Any, file_name: str, times: at.Time, ms: MeasurementSet):
+        # Save to file
+        solution = CalibrationSolutions(
+            gains=np.asarray(solution),
+            times=times,
+            freqs=ms.meta.freqs,
+            antennas=ms.meta.antennas,
+            antenna_labels=ms.meta.antenna_labels,
+            pointings=ms.meta.pointings
+        )
+        with open(file_name, "w") as fp:
+            fp.write(solution.json(indent=2))
