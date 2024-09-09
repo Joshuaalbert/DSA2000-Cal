@@ -10,7 +10,7 @@ import warnings
 
 from functools import partial
 
-from typing import TypeVar, Callable, Tuple, Set, List, Dict
+from typing import TypeVar, Callable, Tuple, Set, List, Dict, Union, Any
 
 import jax
 import jax.numpy as jnp
@@ -582,3 +582,9 @@ def tree_device_put(tree: SPT, mesh: Mesh, axis_names: Tuple[str | None, ...]) -
     """
     sharding = NamedSharding(mesh, PartitionSpec(*axis_names))
     return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
+
+
+BUX = TypeVar('BUX', bound=Union[jax.Array, Any])
+
+def block_until_ready(x: BUX) -> BUX:
+    return jax.block_until_ready(x)

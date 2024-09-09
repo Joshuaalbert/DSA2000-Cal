@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
@@ -28,5 +29,5 @@ def test_compute_beam_at_data_points(array_name: str):
     gain_screen = compute_gains(
         **args
     )  # [s, t, a, f, ...]
-    jax.block_until_ready(gain_screen)
+    block_until_ready(gain_screen)
     print(f"Computed in {time_mod.time() - t0} seconds.")

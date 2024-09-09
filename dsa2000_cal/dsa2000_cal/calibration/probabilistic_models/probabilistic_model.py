@@ -5,6 +5,7 @@ from typing import Tuple, Callable, List, Any
 import jax
 import tensorflow_probability.substrates.jax as tfp
 
+from dsa2000_cal.common.types import ComplexArray, FloatArray
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
 
@@ -44,7 +45,7 @@ class ProbabilisticModelInstance:
         """
         return self.get_init_params_fn()
 
-    def log_prob_joint(self, params: Any) -> jax.Array:
+    def log_prob_joint(self, params: Any) -> FloatArray:
         """
         Compute the joint log probability of the gains and the data.
 
@@ -56,7 +57,7 @@ class ProbabilisticModelInstance:
         """
         return self.log_prob_joint_fn(params)
 
-    def forward(self, params: Any) -> Tuple[jax.Array, List[jax.Array]]:
+    def forward(self, params: Any) -> Tuple[ComplexArray, List[Any]]:
         """
         Forward model for the gains.
 

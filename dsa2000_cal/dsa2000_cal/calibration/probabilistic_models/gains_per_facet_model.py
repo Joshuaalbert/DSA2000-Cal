@@ -98,6 +98,7 @@ class GainsPerFacet(AbstractProbabilisticModel):
 
         def forward(params):
             W = jax.tree.map(quick_unit, params)
+
             def _forward():
                 # Use jaxns.framework.ops to transform the params into the args for likelihood
                 return ops.prepare_input(W=W, prior_model=prior_model)
@@ -108,6 +109,7 @@ class GainsPerFacet(AbstractProbabilisticModel):
 
         def log_prob_joint(params):
             W = jax.tree.map(quick_unit, params)
+
             def _log_prob_joint():
                 # Use jaxns.framework.ops to compute the log prob of joint
                 log_prob_prior = ops.compute_log_prob_prior(

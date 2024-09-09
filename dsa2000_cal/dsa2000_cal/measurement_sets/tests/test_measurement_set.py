@@ -309,3 +309,17 @@ def _test_transfer_from_casa():
         casa_ms=casa_file,
         convention='engineering'  # Or else UVW coordinates are very wrong.
     )
+
+
+def test_reshape_antenna_blocks():
+    # Ensure that reshaping blocks is correct
+    num_ant = 10
+    num_time = 2
+    vis_data = np.concatenate([
+        t * np.ones(num_ant) for t in range(num_time)
+    ])
+
+    # Reshape
+    vis_data_block = np.reshape(vis_data, (num_time, num_ant))
+    for t in range(num_time):
+        np.testing.assert_allclose(vis_data_block[t, :], t)

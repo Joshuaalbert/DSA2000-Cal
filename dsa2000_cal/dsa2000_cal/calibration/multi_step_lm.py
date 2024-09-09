@@ -4,6 +4,8 @@ from typing import NamedTuple, Any, Callable, TypeVar, Generic, Union, Tuple
 
 import numpy as np
 
+from dsa2000_cal.common.types import IntArray, FloatArray, mp_policy
+
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 import jax
@@ -59,20 +61,21 @@ def test_convert_to_real():
 
 
 class MultiStepLevenbergMarquardtState(NamedTuple):
-    iteration: jax.Array  # iteration number
+    iteration: IntArray  # iteration number
     x: X  # current solution, may be a pytree
     delta_x: X  # step, may be a pytree
-    damping: jax.Array  # damping factor
+    damping: FloatArray  # damping factor
     F: Y  # residual, may be a pytree
-    F_norm: jax.Array  # norm of the residual
-    mu: jax.Array  # damping factor
+    F_norm: FloatArray  # norm of the residual
+    mu: FloatArray  # damping factor
 
 
-class Diagnostics(NamedTuple):
-    iteration: jax.Array
-    F_norm: jax.Array
-    r: jax.Array
-    error: jax.Array
+class MultiStepLevenbergMarquardtDiagnostic(NamedTuple):
+    iteration: IntArray  # A single iteration is an exact step followed by inexact steps
+    step: IntArray  # An inexact step
+    F_norm: FloatArray  # |F(x_k)|_2^2
+    r: FloatArray  # r = (|F(x_k)|^2 - |F(x_{k+1})|^2) / (|F(x_k)|^2 - |F(x_{k+1} + J_k dx_k)|^2)
+    delta_norm: FloatArray  # ||dx_k||_2 / size(dx_k)
 
 
 @dataclasses.dataclass(eq=False)
@@ -91,22 +94,23 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
     """
     residual_fn: Callable[[X], Y]
     num_approx_steps: int = 0
+    num_iterations: int = 1
     more_outputs_than_inputs: bool = False
 
     # Improvement threshold
-    p_any_improvement: float = 0.1  # p0 > 0
-    p_less_newton: float = 0.25  # p2 -- less than sufficient improvement
-    p_sufficient_improvement: float = 0.5  # p1 > p0
-    p_more_newton: float = 0.75  # p3 -- more than sufficient improvement
+    p_any_improvement: FloatArray = 0.1  # p0 > 0
+    p_less_newton: FloatArray = 0.25  # p2 -- less than sufficient improvement
+    p_sufficient_improvement: FloatArray = 0.5  # p1 > p0
+    p_more_newton: FloatArray = 0.75  # p3 -- more than sufficient improvement
 
     # Damping alteration factors 0 < c_more_newton < 1 < c_less_newton
-    c_more_newton: float = 0.1
-    c_less_newton: float = 2.
+    c_more_newton: FloatArray = 0.1
+    c_less_newton: FloatArray = 2.
     # Damping factor = mu1 * ||F(x)||^delta, 1 <= delta <= 2
-    delta: int = 2
+    delta: IntArray | FloatArray = 2
     # mu1 > mu_min > 0
-    mu1: float = 1.
-    mu_min: float = 1e-3
+    mu1: FloatArray = 1.
+    mu_min: FloatArray = 1e-3
 
     verbose: bool = False
 
@@ -146,21 +150,20 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             )
         self._residual_fn = self.wrap_residual_fn(self.residual_fn)
 
-        # self.delta = jnp.asarray(self.delta, dtype=jnp.float32)
-        # self.mu1 = jnp.asarray(self.mu1, dtype=jnp.float32)
-        # self.mu_min = jnp.asarray(self.mu_min, dtype=jnp.float32)
-        # self.p_any_improvement = jnp.asarray(self.p_any_improvement, dtype=jnp.float32)
-        # self.p_less_newton = jnp.asarray(self.p_less_newton, dtype=jnp.float32)
-        # self.p_sufficient_improvement = jnp.asarray(self.p_sufficient_improvement, dtype=jnp.float32)
-        # self.p_more_newton = jnp.asarray(self.p_more_newton, dtype=jnp.float32)
-        # self.c_more_newton = jnp.asarray(self.c_more_newton, dtype=jnp.float32)
-        # self.c_less_newton = jnp.asarray(self.c_less_newton, dtype=jnp.float32)
-        #
+        self.delta = jnp.asarray(self.delta, dtype=jnp.float32)
+        self.mu1 = jnp.asarray(self.mu1, dtype=jnp.float32)
+        self.mu_min = jnp.asarray(self.mu_min, dtype=jnp.float32)
+        self.p_any_improvement = jnp.asarray(self.p_any_improvement, dtype=jnp.float32)
+        self.p_less_newton = jnp.asarray(self.p_less_newton, dtype=jnp.float32)
+        self.p_sufficient_improvement = jnp.asarray(self.p_sufficient_improvement, dtype=jnp.float32)
+        self.p_more_newton = jnp.asarray(self.p_more_newton, dtype=jnp.float32)
+        self.c_more_newton = jnp.asarray(self.c_more_newton, dtype=jnp.float32)
+        self.c_less_newton = jnp.asarray(self.c_less_newton, dtype=jnp.float32)
 
     @staticmethod
     def wrap_residual_fn(residual_fn: Callable[[X], Y]) -> Callable[[X], Y]:
         """
-        Wrap the residual function to handle complex inputs and outputs.
+        Wrap the residual function to handle complex outputs by treating real and imag separately.
         """
 
         def wrapped_residual_fn(x: X) -> Y:
@@ -177,6 +180,23 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
 
         return wrapped_residual_fn
 
+    def update_initial_state(self, state: MultiStepLevenbergMarquardtState) -> MultiStepLevenbergMarquardtState:
+        """
+        Update another state into a valid initial state, using the current state as a starting point.
+
+        Args:
+            state: state to update
+
+        Returns:
+            updated state
+        """
+        init_state = self.create_initial_state(state.x)
+        return init_state._replace(
+            mu=state.mu,
+            delta_x=state.delta_x,
+            damping=init_state.damping * (state.mu / init_state.mu)
+        )
+
     def create_initial_state(self, x0: X) -> MultiStepLevenbergMarquardtState:
         """
         Create the initial state for the algorithm.
@@ -186,7 +206,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
         """
         x = x0
         mu = self.mu1
-        d = jax.tree.map(jnp.zeros_like, x)
+        d = jax.tree.map(jnp.zeros_like, x)  # zeros_like copies over sharding
         F = self._residual_fn(x)
         F_norm = pytree_norm_delta(F, power=2)
         if isinstance(self.delta, int) and self.delta == 2:
@@ -205,7 +225,8 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
         )
         return state
 
-    def solve(self, state: MultiStepLevenbergMarquardtState) -> MultiStepLevenbergMarquardtState:
+    def solve(self, state: MultiStepLevenbergMarquardtState) -> Tuple[
+        MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
 
         # Convert complex to real
         x_real_imag, merge_fn = convert_to_real(state.x)
@@ -216,6 +237,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             delta_x=delta_x_real_imag
         )
 
+        # For solving make the inputs purely real.
         residual_fn = lambda x: self._residual_fn(merge_fn(x))
 
         def build_matvec(J: JVPLinearOp, damping: jax.Array):
@@ -229,8 +251,8 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
 
         output_dtypes = jax.tree.map(lambda x: x.dtype, state)
 
-        def body(state: MultiStepLevenbergMarquardtState, J: JVPLinearOp) -> Tuple[
-            MultiStepLevenbergMarquardtState, None]:
+        def body(iteration: int, step: int, state: MultiStepLevenbergMarquardtState, J: JVPLinearOp) -> Tuple[
+            MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
             # d_k = -(J_k^T J_k + λ_k I)^(-1) J_k^T F(x_k)
             JTF = J.matvec(state.F, adjoint=True)
             # jax.debug.print("JTF: {JTF}", JTF=JTF)
@@ -269,7 +291,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                 )
             )
 
-            if isinstance(self.delta, int) and self.delta == 2:
+            if isinstance(self.delta, (int, float)) and self.delta == 2:
                 F_norm_delta = F_norm
             else:
                 F_norm_delta = pytree_norm_delta(F, power=self.delta)
@@ -291,26 +313,38 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             )
             # Cast to the original dtype for sanity
             state = jax.tree_map(lambda x, dtype: x.astype(dtype), state, output_dtypes)
+            delta_norm = pytree_norm_delta(delta_x, power=1) / pytree_norm_delta(jax.tree.map(jnp.ones_like, delta_x),
+                                                                                 power=1)
 
             if self.verbose:
-                error = pytree_norm_delta(delta_x, power=1)
                 jax.debug.print(
-                    "Iter: {i}, r: {r}, any_improvement: {any_improvement}, "
+                    "Iter: {i}, Step: {step}, r: {r}, any_improvement: {any_improvement}, "
                     "sufficient_improvement: {sufficient_improvement}, more_newton: {more_newton}, "
                     "less_newton: {less_newton}:\n"
-                    "\t|F|^2 -> {F_norm}, damping -> {damping}, mu -> {mu}, error -> {error}",
-                    i=state.iteration, r=r, any_improvement=any_improvement,
+                    "\t|F|^2 -> {F_norm}, damping -> {damping}, mu -> {mu}, delta_norm -> {delta_norm}",
+                    i=iteration, step=step, r=r, any_improvement=any_improvement,
                     sufficient_improvement=sufficient_improvement,
                     more_newton=more_newton, less_newton=less_newton, F_norm=F_norm, damping=damping,
-                    mu=mu, error=error
+                    mu=mu, delta_norm=delta_norm
                 )
-            return state, None
+            diagnostic = MultiStepLevenbergMarquardtDiagnostic(
+                iteration=iteration,
+                step=step,
+                F_norm=state.F_norm,
+                r=r,
+                delta_norm=delta_norm
+            )
+            return state, diagnostic
 
-        J = J_bare(state.x)
-        for i in range(self.num_approx_steps + 1):
-            state, _ = body(state, J)
-        J = J_bare(state.x)
-        state, _ = body(state, J)
+        diagnostics = []
+        for iteration in range(self.num_iterations):
+            # Does one initial exact step using the current jacobian estimate, followed by inexact steps using the same
+            # jacobian estimate (which is slightly cheaper).
+            J = J_bare(state.x)
+            for step in range(self.num_approx_steps + 1):
+                state, diagnostic = body(mp_policy.cast_to_index(iteration), mp_policy.cast_to_index(step), state, J)
+                diagnostics.append(diagnostic)
+        diagnostics = jax.tree.map(lambda *args: jnp.stack(args), *diagnostics)
 
         # Convert back to complex
         state = state._replace(
@@ -318,10 +352,10 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             delta_x=merge_fn(state.delta_x)
         )
 
-        return state
+        return state, diagnostics
 
 
-def pytree_norm_delta(pytree: Any, power: int | float = 2) -> jax.Array:
+def pytree_norm_delta(pytree: Any, power: FloatArray | IntArray = 2) -> jax.Array:
     """
     Compute 2-norm raised to the power of a pytree.
 
@@ -335,8 +369,8 @@ def pytree_norm_delta(pytree: Any, power: int | float = 2) -> jax.Array:
     square_sum = jax.tree.map(lambda x: jnp.sum(jnp.square(jnp.abs(x))), pytree)
     leaves = jax.tree_leaves(square_sum)
     total_square_sum = sum(leaves[1:], leaves[0])
-    if isinstance(power, int) and power == 2:
+    if isinstance(power, (int, float)) and power == 2:
         return total_square_sum
-    if isinstance(power, int) and power == 1:
+    if isinstance(power, (int, float)) and power == 1:
         return jnp.sqrt(total_square_sum)
     return total_square_sum ** (power / 2.)

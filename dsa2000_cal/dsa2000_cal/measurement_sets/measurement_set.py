@@ -15,8 +15,10 @@ import tables as tb
 from astropy import time as at
 from pydantic import Field
 
+from dsa2000_cal.adapter.utils import translate_corrs
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel, build_beam_gain_model
@@ -306,7 +308,7 @@ class MeasurementSet:
         Returns:
             the times in TT seconds since ref time
         """
-        return jnp.asarray((times.tt - self.ref_time).sec)
+        return mp_policy.cast_to_time((times.tt - self.ref_time).sec)
 
     def is_full_stokes(self) -> bool:
         """
@@ -628,7 +630,8 @@ class MeasurementSet:
 
     def create_block_generator(self, start_time_idx: int = 0, end_time_idx: int | None = None,
                                vis: bool = True, weights: bool = True, flags: bool = True,
-                               relative_time_idx: bool = False, num_blocks: int = 1) -> Generator[
+                               relative_time_idx: bool = False, num_blocks: int = 1,
+                               corrs: List[str] | List[List[str]] | None = None) -> Generator[
         Tuple[at.Time, VisibilityCoords, VisibilityData], VisibilityData | None, None
     ]:
         """
@@ -656,6 +659,25 @@ class MeasurementSet:
             RuntimeError: if the time index is out of bounds
             RuntimeError: if the row is out of bounds
         """
+        if corrs is None:
+            corrs = self.meta.coherencies
+
+        @jax.jit
+        @jax.vmap
+        @jax.vmap
+        def transform_corr_from_fn(coh: jax.Array) -> jax.Array:
+            return translate_corrs(
+                coh, from_corrs=self.meta.coherencies, to_corrs=corrs
+            )  # num_rows : num_chan : [num_coherencies] -> [num_coherencies]
+
+        @jax.jit
+        @jax.vmap
+        @jax.vmap
+        def transform_corr_to_fn(coh: jax.Array) -> jax.Array:
+            return translate_corrs(
+                coh, from_corrs=corrs, to_corrs=self.meta.coherencies
+            )  # num_rows : num_chan : [num_coherencies] -> [num_coherencies]
+
         if num_blocks <= 0:
             raise ValueError(f"Number of blocks {num_blocks} must be positive.")
         if self.meta.with_autocorr:
@@ -698,25 +720,28 @@ class MeasurementSet:
                     output_time_idx = output_time_idx - from_time_idx
 
                 coords = VisibilityCoords(
-                    uvw=f.root.uvw[from_row:to_row],
-                    time_obs=output_time_obs,
-                    antenna_1=f.root.antenna_1[from_row:to_row],
-                    antenna_2=f.root.antenna_2[from_row:to_row],
-                    time_idx=output_time_idx
+                    uvw=mp_policy.cast_to_length(f.root.uvw[from_row:to_row]),
+                    time_obs=mp_policy.cast_to_time(output_time_obs),
+                    antenna_1=mp_policy.cast_to_index(f.root.antenna_1[from_row:to_row]),
+                    antenna_2=mp_policy.cast_to_index(f.root.antenna_2[from_row:to_row]),
+                    time_idx=mp_policy.cast_to_index(output_time_idx)
                 )
                 data = VisibilityData(
-                    vis=f.root.vis[from_row:to_row] if vis else None,
-                    weights=f.root.weights[from_row:to_row] if weights else None,
-                    flags=f.root.flags[from_row:to_row] if flags else None
+                    vis=mp_policy.cast_to_vis(
+                        transform_corr_from_fn(f.root.vis[from_row:to_row])) if vis is not None else None,
+                    weights=mp_policy.cast_to_weight(
+                        transform_corr_from_fn(f.root.weights[from_row:to_row])) if weights is not None else None,
+                    flags=mp_policy.cast_to_flag(
+                        transform_corr_from_fn(f.root.flags[from_row:to_row])) if flags is not None else None
                 )
                 response = yield (times, coords, data)
                 if response is not None and isinstance(response, VisibilityData):
                     if response.vis is not None:
-                        f.root.vis[from_row:to_row] = response.vis
+                        f.root.vis[from_row:to_row] = np.asarray(transform_corr_to_fn(response.vis))
                     if response.weights is not None:
-                        f.root.weights[from_row:to_row] = response.weights
+                        f.root.weights[from_row:to_row] = np.asarray(transform_corr_to_fn(response.weights))
                     if response.flags is not None:
-                        f.root.flags[from_row:to_row] = response.flags
+                        f.root.flags[from_row:to_row] = np.asarray(transform_corr_to_fn(response.flags))
 
 
 def get_non_unqiue(h5_array, indices, axis=0, indices_sorted: bool = False):

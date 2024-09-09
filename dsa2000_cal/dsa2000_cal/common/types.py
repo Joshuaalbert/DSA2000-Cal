@@ -60,10 +60,11 @@ T = TypeVar("T")
 
 def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
     def conditional_cast(x):
-        if not jnp.issubdtype(x.dtype, jnp.floating):
-            warnings.warn(f"Expected integer type, got {x.dtype}.")
-
+        if isinstance(x, float):
+            return jnp.asarray(x, dtype=dtype)
         try:
+            if not jnp.issubdtype(x.dtype, jnp.floating):
+                warnings.warn(f"Expected float type, got {x.dtype}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -73,10 +74,11 @@ def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
 
 def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
     def conditional_cast(x):
-        if not jnp.issubdtype(x.dtype, jnp.complexfloating):
-            warnings.warn(f"Expected integer type, got {x.dtype}.")
-
+        if isinstance(x, complex):
+            return jnp.asarray(x, dtype=dtype)
         try:
+            if not jnp.issubdtype(x.dtype, jnp.complexfloating):
+                warnings.warn(f"Expected complex type, got {x.dtype}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -86,10 +88,25 @@ def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
 
 def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
     def conditional_cast(x):
-        if not jnp.issubdtype(x.dtype, jnp.integer):
-            warnings.warn(f"Expected integer type, got {x.dtype}.")
-
+        if isinstance(x, int):
+            return jnp.asarray(x, dtype=dtype)
         try:
+            if not jnp.issubdtype(x.dtype, jnp.integer):
+                warnings.warn(f"Expected integer type, got {x.dtype}.")
+            return x.astype(dtype)
+        except AttributeError:
+            return x
+
+    return jax.tree_util.tree_map(conditional_cast, tree)
+
+
+def _cast_bool_to(tree: T, dtype: jnp.dtype) -> T:
+    def conditional_cast(x):
+        if isinstance(x, bool):
+            return jnp.asarray(x, dtype=dtype)
+        try:
+            if not jnp.issubdtype(x.dtype, jnp.bool_):
+                warnings.warn(f"Expected bool type, got {x.dtype}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -104,6 +121,8 @@ X = TypeVar("X")
 class Policy:
     """Encapsulates casting for inputs, outputs and parameters."""
     vis_dtype: jnp.dtype = jnp.complex64
+    weight_dtype: jnp.dtype = jnp.float32
+    flag_dtype: jnp.dtype = jnp.bool_
     image_dtype: jnp.dtype = jnp.float32
     gain_dtype: jnp.dtype = jnp.complex64
     index_dtype: jnp.dtype = jnp.int64
@@ -115,6 +134,14 @@ class Policy:
     def cast_to_vis(self, x: X) -> X:
         """Converts visibility values to the visibility dtype."""
         return _cast_complex_to(x, self.vis_dtype)
+
+    def cast_to_weight(self, x: X) -> X:
+        """Converts weight values to the weight dtype."""
+        return _cast_floating_to(x, self.weight_dtype)
+
+    def cast_to_flag(self, x: X) -> X:
+        """Converts flag values to the flag dtype."""
+        return _cast_bool_to(x, self.flag_dtype)
 
     def cast_to_image(self, x: X) -> X:
         """Converts image values to the image dtype."""

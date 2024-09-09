@@ -3,9 +3,9 @@ from typing import List
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import lax
 
-from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies, linear_to_circular
+from dsa2000_cal.common.corr_translation import linear_to_circular, \
+    circular_to_linear
 
 CASA_CORR_TYPES = {
     5: "RR",
@@ -21,83 +21,78 @@ CASA_CORR_TYPES = {
 INV_CASA_CORR_TYPES = {v: k for k, v in CASA_CORR_TYPES.items()}
 
 
-def from_casa_corrs_to_linear(casa_coherencies: jax.Array, corrs: List[int], flat_output: bool = True) -> jax.Array:
-    if np.size(casa_coherencies) != len(corrs):
-        raise ValueError("The number of correlation types must match the number of correlation data.")
-    if np.size(casa_coherencies) == 1 and np.shape(casa_coherencies) == ():
-        casa_coherencies = lax.reshape(casa_coherencies, (1,))
-    zero = jnp.asarray(0., dtype=casa_coherencies.dtype)
-    XX = zero
-    XY = zero
-    YX = zero
-    YY = zero
-    RR = zero
-    RL = zero
-    LR = zero
-    LL = zero
-    for i, coor in enumerate(corrs):
-        if CASA_CORR_TYPES[coor] == "XX":
-            XX = casa_coherencies[i]
-        elif CASA_CORR_TYPES[coor] == "XY":
-            XY = casa_coherencies[i]
-        elif CASA_CORR_TYPES[coor] == "YX":
-            YX = casa_coherencies[i]
-        elif CASA_CORR_TYPES[coor] == "YY":
-            YY = casa_coherencies[i]
-        elif CASA_CORR_TYPES[coor] == "RR":
-            RR = casa_coherencies[i]
-        elif CASA_CORR_TYPES[coor] == "RL":
-            RL = casa_coherencies[i]
-        elif CASA_CORR_TYPES[coor] == "LR":
-            LR = casa_coherencies[i]
-        elif CASA_CORR_TYPES[coor] == "LL":
-            LL = casa_coherencies[i]
-    # Detect coor type provided
-    linear_provided = len({"XX", "XY", "YX", "YY"}.intersection(set([CASA_CORR_TYPES[coor] for coor in corrs]))) > 0
-    circular_provided = len({"RR", "RL", "LR", "LL"}.intersection(set([CASA_CORR_TYPES[coor] for coor in corrs]))) > 0
-    if linear_provided and circular_provided:
-        raise ValueError("Both linear and circular correlation types provided.")
+def translate_corrs(coherencies: jax.Array,
+                    from_corrs: List[int | str] | List[List[int | str]],
+                    to_corrs: List[int | str] | List[List[int | str]]) -> jax.Array:
+    """
+    Convert linear coherencies to any array of CASA coherencies.
 
-    if linear_provided:
-        output = jnp.asarray([XX, XY, YX, YY])
-    elif circular_provided:
-        output = jnp.asarray([RR, RL, LR, LL])
-    else:
-        raise ValueError(f"Strange correlation types provided {corrs}.")
+    Args:
+        coherencies: any array of coherencies.
+        from_corrs: any array of CASA coherencies.
+        to_corrs: any array of CASA coherencies.
 
-    if flat_output:
-        return output
+    Returns:
+        coherencies in the type and order of corrs.
+    """
 
-    return unflatten_coherencies(output)
+    _from_corrs = from_corrs
+    _to_corrs = to_corrs
+    from_corrs, from_treedef = jax.tree.flatten(from_corrs)
+    from_corrs = [(INV_CASA_CORR_TYPES[coor] if isinstance(coor, str) else coor) for coor in from_corrs]
+    to_corrs, to_treedef = jax.tree.flatten(to_corrs)
+    to_corrs = [(INV_CASA_CORR_TYPES[coor] if isinstance(coor, str) else coor) for coor in to_corrs]
 
+    if np.size(coherencies) != len(from_corrs):
+        raise ValueError(f"Input coherencies must match input coors {_from_corrs}.")
 
-def from_linear_to_casa_corrs(linear_coherencies: jax.Array, corrs: List[int]) -> jax.Array:
-    if np.size(linear_coherencies) != 4:
-        raise ValueError("Linear coherencies must have 4 elements.")
-    if np.shape(linear_coherencies) == (2, 2):
-        linear_coherencies = flatten_coherencies(linear_coherencies)
-    XX, XY, YX, YY = linear_coherencies
-    # Detect coor type provided
-    linear_provided = len({"XX", "XY", "YX", "YY"}.intersection(set([CASA_CORR_TYPES[coor] for coor in corrs]))) > 0
-    circular_provided = len({"RR", "RL", "LR", "LL"}.intersection(set([CASA_CORR_TYPES[coor] for coor in corrs]))) > 0
-    if linear_provided and circular_provided:
-        raise ValueError("Both linear and circular correlation types provided.")
-    if linear_provided:
-        data_dict = {
-            INV_CASA_CORR_TYPES["XX"]: XX,
-            INV_CASA_CORR_TYPES["XY"]: XY,
-            INV_CASA_CORR_TYPES["YX"]: YX,
-            INV_CASA_CORR_TYPES["YY"]: YY
+    if _from_corrs == _to_corrs:
+        return coherencies
+
+    if len(np.shape(coherencies)) != 1:
+        coherencies = jnp.reshape(coherencies, (-1,))
+
+    # Detect mismatch in coor type provided
+    linear_provided_from = len(
+        {"XX", "XY", "YX", "YY"}.intersection(set([CASA_CORR_TYPES[coor] for coor in from_corrs]))) > 0
+    circular_provided_from = len(
+        {"RR", "RL", "LR", "LL"}.intersection(set([CASA_CORR_TYPES[coor] for coor in from_corrs]))) > 0
+    if linear_provided_from and circular_provided_from:
+        raise ValueError(f"Both linear and circular correlation input types provided, {from_corrs}.")
+    linear_provided_to = len(
+        {"XX", "XY", "YX", "YY"}.intersection(set([CASA_CORR_TYPES[coor] for coor in to_corrs]))) > 0
+    circular_provided_to = len(
+        {"RR", "RL", "LR", "LL"}.intersection(set([CASA_CORR_TYPES[coor] for coor in to_corrs]))) > 0
+    if linear_provided_to and circular_provided_to:
+        raise ValueError(f"Both linear and circular correlation output types provided, {to_corrs}.")
+
+    zero = jnp.asarray(0., dtype=coherencies.dtype)
+    data_dict = {
+        CASA_CORR_TYPES[coor]: zero for coor in INV_CASA_CORR_TYPES.values()
+    }
+    data_dict.update(
+        {
+            CASA_CORR_TYPES[coor]: coherencies[i] for coor, i in zip(from_corrs, range(len(coherencies)))
         }
-        return jnp.asarray([data_dict[coor] for coor in corrs])
-    elif circular_provided:
-        RR, RL, LR, LL = linear_to_circular(linear_coherencies, flat_output=True)
-        data_dict = {
-            INV_CASA_CORR_TYPES["RR"]: RR,
-            INV_CASA_CORR_TYPES["RL"]: RL,
-            INV_CASA_CORR_TYPES["LR"]: LR,
-            INV_CASA_CORR_TYPES["LL"]: LL
-        }
-        return jnp.asarray([data_dict[coor] for coor in corrs])
-    else:
-        raise ValueError(f"Strange correlation types provided {corrs}.")
+    )
+
+    if linear_provided_from and circular_provided_to:
+        coh_circ = linear_to_circular(jnp.stack([data_dict['XX'], data_dict['XY'], data_dict['YX'], data_dict['YY']]),
+                                      flat_output=True)
+        data_dict.update(
+            {
+                CASA_CORR_TYPES[coor]: coh_circ[i] for coor, i in zip(['RR', 'RL', 'LR', 'LL'], range(len(coh_circ)))
+            }
+        )
+    elif circular_provided_from and linear_provided_to:
+        coh_lin = circular_to_linear(jnp.stack([data_dict['RR'], data_dict['RL'], data_dict['LR'], data_dict['LL']]),
+                                     flat_output=True)
+        data_dict.update(
+            {
+                CASA_CORR_TYPES[coor]: coh_lin[i] for coor, i in zip(['XX', 'XY', 'YX', 'YY'], range(len(coh_lin)))
+            }
+        )
+
+    # Data dict is full now, construct the result
+    output = [data_dict[CASA_CORR_TYPES[coor]] for coor in to_corrs]
+    return jnp.asarray(jax.tree.unflatten(to_treedef, output), coherencies.dtype)
