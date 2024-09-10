@@ -47,6 +47,7 @@ def test_multi_step_lm():
         x = (x.real, x.imag)
 
         lm = MultiStepLevenbergMarquardt(residual_fn=residuals,
+                                         num_iterations=2,
                                          num_approx_steps=1,
                                          verbose=True)
         state = lm.create_initial_state(x)

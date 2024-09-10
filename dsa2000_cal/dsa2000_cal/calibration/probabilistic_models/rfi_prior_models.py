@@ -47,8 +47,8 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
     azimuth_max: au.Quantity = 360. * au.deg
     height_min: au.Quantity = 0. * au.m
     height_max: au.Quantity = 120. * au.m
-    luminosity_min: au.Quantity = 1e-15 * (au.W / au.MHz)  # W / MHz
-    luminosity_max: au.Quantity = 1e-11 * (au.W / au.MHz)  # W / MHz
+    luminosity_min: au.Quantity = 1e-13 * (au.W / au.MHz)  # W / MHz
+    luminosity_max: au.Quantity = 1e-10 * (au.W / au.MHz)  # W / MHz
 
     def __post_init__(self):
         if not self.distance_min.unit.is_equivalent("km"):
@@ -128,8 +128,8 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
 
             luminosity = yield Prior(
                 tfpd.Uniform(
-                    low=quantity_to_jnp(self.luminosity_min) * jnp.ones((self.num_emitters, 2, 2)),
-                    high=quantity_to_jnp(self.luminosity_max) * jnp.ones((self.num_emitters, 2, 2))
+                    low=quantity_to_jnp(self.luminosity_min, 'Jy*m^2') * jnp.ones((self.num_emitters, 2, 2)),
+                    high=quantity_to_jnp(self.luminosity_max, 'Jy*m^2') * jnp.ones((self.num_emitters, 2, 2))
                 ),
                 name='luminosity'
             ).parametrised()

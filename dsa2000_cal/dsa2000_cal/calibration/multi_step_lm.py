@@ -8,6 +8,7 @@ os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 
@@ -298,9 +299,9 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             )
             # Cast to the original dtype for sanity
             state = jax.tree.map(lambda x, dtype: x.astype(dtype), state, output_dtypes)
-            delta_norm = pytree_norm_delta(delta_x, power=1) / pytree_norm_delta(jax.tree.map(jnp.ones_like, delta_x),
-                                                                                 power=1)
-            error = pytree_norm_delta(JTF, power=1) / pytree_norm_delta(jax.tree.map(jnp.ones_like, JTF), power=1)
+            num_params = sum(jax.tree.leaves(jax.tree.map(np.size, delta_x)))
+            delta_norm = pytree_norm_delta(delta_x, power=1) / np.sqrt(num_params)
+            error = pytree_norm_delta(JTF, power=1) / np.sqrt(num_params)
 
             if self.verbose:
                 jax.debug.print(

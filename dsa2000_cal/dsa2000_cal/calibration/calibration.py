@@ -140,12 +140,12 @@ class Calibration:
         solve_durations = []
         residual_mae = []
         residual_rmse = []
+        errors = []
         t0 = time_mod.time()
 
         # Inputs
         freqs_jax = quantity_to_jnp(ms.meta.freqs)
 
-        # TODO: Apply UV cutoff to ignore galactic plane
         gen = ms.create_block_generator(
             vis=True, weights=True, flags=True, relative_time_idx=True,
             num_blocks=num_blocks, corrs=[['XX', 'XY'], ['YX', 'YY']]
@@ -226,15 +226,19 @@ class Calibration:
                 )
 
                 # Plot results
-                fig, axs = plt.subplots(2, 1, figsize=(6, 6), squeeze=False, sharex=True)
+                fig, axs = plt.subplots(3, 1, figsize=(6, 6), squeeze=False, sharex=True)
                 axs[0][0].plot(diagnostics.F_norm)
                 axs[0][0].set_title(fr"Cadence window: {cadence_idx} residual norm")
                 axs[0][0].set_xlabel("Solver Iteration")
-                axs[0][0].set_ylabel(r"$|F(x)|^2$")
+                axs[0][0].set_ylabel(r"$\|F\|_2^2 / n$")
                 axs[1][0].plot(diagnostics.delta_norm)
                 axs[1][0].set_title(fr"Cadence window: {cadence_idx} delta norm")
                 axs[1][0].set_xlabel("Solver Iteration")
-                axs[1][0].set_ylabel(r"$\Delta x$")
+                axs[1][0].set_ylabel(r"$\|\Delta x\|_2 / n$")
+                axs[2][0].plot(diagnostics.error)
+                axs[2][0].set_title(fr"Cadence window: {cadence_idx} error")
+                axs[2][0].set_xlabel("Solver Iteration")
+                axs[2][0].set_ylabel(r"$\|J^T F\|_2 / n$")
                 fig.tight_layout()
                 fig.savefig(f"{self.plot_folder}/solver_diagnostics_{cadence_idx}.png")
                 plt.close(fig)
@@ -254,7 +258,7 @@ class Calibration:
         print(f"Completed calibration in {t1 - t0} seconds.")
         print(f"Residuals stored in: {ms}. Solutions stored in: {self.solution_folder}")
 
-        fig, axs = plt.subplots(2, 1, figsize=(6, 6), sharex=True, squeeze=False)
+        fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True, squeeze=False)
         # Plot durations
         axs[0][0].plot(solve_durations)
         axs[0][0].set_title("Solver Durations")
@@ -271,7 +275,6 @@ class Calibration:
         axs[1][0].set_title("Residual MAE per iteration")
         axs[1][0].set_xlabel("Chunk Index")
         axs[1][0].set_ylabel("MAE")
-
         fig.tight_layout()
         fig.savefig(f"{self.plot_folder}/solver_durations.png")
         plt.close(fig)

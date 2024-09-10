@@ -205,6 +205,10 @@ class Imagor:
             dirty_image: [num_pixel, num_pixel, 4/1]
         """
 
+        # Remove auto-correlations
+        baseline_length = jnp.linalg.norm(uvw, axis=-1)  # [num_rows]
+        flags = jnp.logical_or(flags, baseline_length[:, None, None] < 1.0)  # [num_rows, num_chan, coh]
+
         if self.convention == 'engineering':
             uvw = jnp.negative(uvw)
 
@@ -333,5 +337,3 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
 
     pb_cor_image = jax.vmap(jax.vmap(_remove))(image, beam)
     return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)
-
-
