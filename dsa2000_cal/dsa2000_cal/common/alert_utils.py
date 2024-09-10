@@ -21,8 +21,7 @@ def get_grandparent_info(relative_depth: int = 6):
     """
     # Get the grandparent frame (caller of the caller)
     s = []
-    depth = min(1 + relative_depth, len(inspect.stack()) - 1)
-    for i in range(depth + 1):
+    for depth in range(min(1 + relative_depth, len(inspect.stack()) - 1) + 1):
         caller_frame = inspect.stack()[depth]
         caller_file = caller_frame.filename
         caller_line = caller_frame.lineno
