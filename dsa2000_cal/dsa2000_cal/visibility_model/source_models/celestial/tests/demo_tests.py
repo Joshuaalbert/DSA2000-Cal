@@ -20,7 +20,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model 
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointSourceModel
 
 
-@pytest.mark.parametrize('source', ['cas_a', 'cyg_a', 'tau_a', 'vir_a'])
+@pytest.mark.parametrize('source', ['cas_a', 'cyg_a', 'tau_a', 'vir_a', 'illustris-a'])
 def test_plot_ateam_sources(source):
     fill_registries()
     time = at.Time('2021-01-01T00:00:00', scale='utc')
