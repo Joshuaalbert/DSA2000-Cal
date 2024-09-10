@@ -710,7 +710,7 @@ class MeasurementSet:
                 if to_time_idx > len(self.meta.times):
                     raise RuntimeError(f"Time index {to_time_idx} out of bounds.")
                 times = self.meta.times[from_time_idx:to_time_idx]
-                from_time_idx += num_blocks
+
                 to_row = from_row + self.block_size * num_blocks
                 if to_row > end_row:
                     raise RuntimeError(f"Row {from_row} + block size {self.block_size} * num blocks {num_blocks}.")
@@ -718,6 +718,7 @@ class MeasurementSet:
                 output_time_obs = time_obs[output_time_idx]
                 if relative_time_idx:
                     output_time_idx = output_time_idx - from_time_idx
+                from_time_idx += num_blocks
 
                 coords = VisibilityCoords(
                     uvw=mp_policy.cast_to_length(f.root.uvw[from_row:to_row]),

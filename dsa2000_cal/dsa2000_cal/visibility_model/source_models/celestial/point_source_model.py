@@ -402,7 +402,6 @@ class PointPredict:
             _t = visibility_coords.time_idx
             _a1 = visibility_coords.antenna_1
             _a2 = visibility_coords.antenna_2
-
             if direction_dependent_gains:
                 if full_stokes:
                     g1 = model_data.gains[:, _t, _a1, :, :, :]

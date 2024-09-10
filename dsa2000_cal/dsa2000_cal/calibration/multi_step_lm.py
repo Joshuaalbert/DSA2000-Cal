@@ -2,8 +2,6 @@ import dataclasses
 import os
 from typing import NamedTuple, Any, Callable, TypeVar, Generic, Union, Tuple
 
-import numpy as np
-
 from dsa2000_cal.common.types import IntArray, FloatArray, mp_policy
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
@@ -46,20 +44,6 @@ def convert_to_real(x: CT) -> Tuple[_CT, Callable[[_CT], CT]]:
     return x_real_imag_leaves, merge
 
 
-def test_convert_to_real():
-    x = {'a': jnp.array([1.0, 2.0]), 'b': jnp.array([1.0 + 1.0j, 2.0 + 2.0j])}
-    x_real_imag, merge = convert_to_real(x)
-    print(x_real_imag)
-    np.testing.assert_allclose(x_real_imag[0], x['a'])
-    np.testing.assert_allclose(x_real_imag[1][0], x['b'].real)
-    np.testing.assert_allclose(x_real_imag[1][1], x['b'].imag)
-    x_rec = merge(x_real_imag)
-    np.testing.assert_allclose(x_rec['a'], x['a'])
-    np.testing.assert_allclose(x_rec['b'], x['b'])
-    assert x_rec['a'].dtype == x['a'].dtype
-    assert x_rec['b'].dtype == x['b'].dtype
-
-
 class MultiStepLevenbergMarquardtState(NamedTuple):
     iteration: IntArray  # iteration number
     x: X  # current solution, may be a pytree
@@ -76,6 +60,7 @@ class MultiStepLevenbergMarquardtDiagnostic(NamedTuple):
     F_norm: FloatArray  # |F(x_k)|_2^2
     r: FloatArray  # r = (|F(x_k)|^2 - |F(x_{k+1})|^2) / (|F(x_k)|^2 - |F(x_{k+1} + J_k dx_k)|^2)
     delta_norm: FloatArray  # ||dx_k||_2 / size(dx_k)
+    error: FloatArray  # |J^T F(x_k)|_2 / size(J^T F(x_k))
 
 
 @dataclasses.dataclass(eq=False)
@@ -315,24 +300,27 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             state = jax.tree.map(lambda x, dtype: x.astype(dtype), state, output_dtypes)
             delta_norm = pytree_norm_delta(delta_x, power=1) / pytree_norm_delta(jax.tree.map(jnp.ones_like, delta_x),
                                                                                  power=1)
+            error = pytree_norm_delta(JTF, power=1) / pytree_norm_delta(jax.tree.map(jnp.ones_like, JTF), power=1)
 
             if self.verbose:
                 jax.debug.print(
                     "Iter: {i}, Step: {step}, r: {r}, any_improvement: {any_improvement}, "
                     "sufficient_improvement: {sufficient_improvement}, more_newton: {more_newton}, "
                     "less_newton: {less_newton}:\n"
-                    "\t|F|^2 -> {F_norm}, damping -> {damping}, mu -> {mu}, delta_norm -> {delta_norm}",
+                    "\t|F|^2 -> {F_norm}, damping -> {damping}, mu -> {mu}, delta_norm -> {delta_norm}, "
+                    "error -> {error}",
                     i=iteration, step=step, r=r, any_improvement=any_improvement,
                     sufficient_improvement=sufficient_improvement,
                     more_newton=more_newton, less_newton=less_newton, F_norm=F_norm, damping=damping,
-                    mu=mu, delta_norm=delta_norm
+                    mu=mu, delta_norm=delta_norm, error=error
                 )
             diagnostic = MultiStepLevenbergMarquardtDiagnostic(
                 iteration=iteration,
                 step=step,
                 F_norm=state.F_norm,
                 r=r,
-                delta_norm=delta_norm
+                delta_norm=delta_norm,
+                error=error
             )
             return state, diagnostic
 

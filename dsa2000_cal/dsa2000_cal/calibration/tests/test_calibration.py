@@ -64,8 +64,8 @@ def mock_calibrator_source_models(tmp_path):
 
     point_source_model = PointSourceModel(
         freqs=ms.meta.freqs,
-        l0=[0] * au.dimensionless_unscaled,
-        m0=[0] * au.dimensionless_unscaled,
+        l0=[0.1] * au.dimensionless_unscaled,
+        m0=[0.1] * au.dimensionless_unscaled,
         A=(
               np.ones((1, len(ms.meta.freqs), 2, 2))
               if ms.is_full_stokes() else np.ones((1, len(ms.meta.freqs)))

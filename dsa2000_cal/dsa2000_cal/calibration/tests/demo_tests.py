@@ -1,8 +1,12 @@
+import os
+
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import numpy as np
 import pytest
+
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry

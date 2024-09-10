@@ -2,9 +2,10 @@ import itertools
 import time
 
 import jax
+import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, convert_to_real
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.types import mp_policy
 
@@ -63,3 +64,17 @@ def test_multi_step_lm():
     block_until_ready(run(antenna1, antenna2, vis_per_source, data))
     run_time = time.time() - t0
     print(f"Run time: {run_time}")
+
+
+def test_convert_to_real():
+    x = {'a': jnp.array([1.0, 2.0]), 'b': jnp.array([1.0 + 1.0j, 2.0 + 2.0j])}
+    x_real_imag, merge = convert_to_real(x)
+    print(x_real_imag)
+    np.testing.assert_allclose(x_real_imag[0], x['a'])
+    np.testing.assert_allclose(x_real_imag[1][0], x['b'].real)
+    np.testing.assert_allclose(x_real_imag[1][1], x['b'].imag)
+    x_rec = merge(x_real_imag)
+    np.testing.assert_allclose(x_rec['a'], x['a'])
+    np.testing.assert_allclose(x_rec['b'], x['b'])
+    assert x_rec['a'].dtype == x['a'].dtype
+    assert x_rec['b'].dtype == x['b'].dtype

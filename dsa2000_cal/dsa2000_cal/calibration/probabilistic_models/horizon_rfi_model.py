@@ -79,16 +79,18 @@ class HorizonRFIModel(AbstractProbabilisticModel):
             log_likelihood=log_likelihood
         )
 
+        U = model.sample_U(jax.random.PRNGKey(0))
+        if len(U) > 0:
+            raise ValueError("This model has non-parametrised variables. Please update.")
+
         def get_init_params():
-            if len(model.__U_placeholder) > 0:
-                raise ValueError("This model has non-parametrised variables. Please update.")
             return model.params
 
         def forward(params):
-            return model(params).prepare_input(U=model.__U_placeholder)
+            return model(params).prepare_input(U=U)
 
         def log_prob_joint(params):
-            return model(params).log_prob_joint(U=model.__U_placeholder, allow_nan=False)
+            return model(params).log_prob_joint(U=U, allow_nan=False)
 
         return ProbabilisticModelInstance(
             get_init_params_fn=get_init_params,

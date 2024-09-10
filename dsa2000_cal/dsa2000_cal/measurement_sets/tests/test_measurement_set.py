@@ -75,7 +75,8 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
 @pytest.mark.parametrize("convention", ['physical', 'engineering'])
-def test_measurement_setting(tmp_path, with_autocorr, convention):
+@pytest.mark.parametrize("relative_time_idx", [True, False])
+def test_measurement_setting(tmp_path, with_autocorr, convention, relative_time_idx):
     meta = MeasurementSetMetaV0(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
@@ -96,9 +97,10 @@ def test_measurement_setting(tmp_path, with_autocorr, convention):
     )
     ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
 
-    gen = ms.create_block_generator()
+    gen = ms.create_block_generator(relative_time_idx=relative_time_idx)
 
     gen_response = None
+    ti = 0
     while True:
         try:
             time, coords, data = gen.send(gen_response)
@@ -114,8 +116,22 @@ def test_measurement_setting(tmp_path, with_autocorr, convention):
         assert data.vis.shape == (ms.block_size, 3, 4)
         assert data.weights.shape == (ms.block_size, 3, 4)
         assert data.flags.shape == (ms.block_size, 3, 4)
-        for time_idx in coords.time_idx:
-            assert ms.meta.times[time_idx] == time
+
+        assert np.all(coords.time_idx >= 0)
+        assert np.all(coords.time_idx < len(meta.times))
+        assert np.all(coords.antenna_1 >= 0)
+        assert np.all(coords.antenna_1 < len(meta.antennas))
+        assert np.all(coords.antenna_2 >= 0)
+        assert np.all(coords.antenna_2 < len(meta.antennas))
+
+        if not relative_time_idx:
+            for time_idx in coords.time_idx:
+                assert ms.meta.times[time_idx] == time
+        else:
+            for time_idx in coords.time_idx:
+                assert ms.meta.times[ti + time_idx] == time
+        ti += 1
+
 
         gen_response = VisibilityData(
             vis=np.ones((ms.block_size, 3, 4), dtype=np.complex64),
@@ -123,7 +139,7 @@ def test_measurement_setting(tmp_path, with_autocorr, convention):
             flags=np.ones((ms.block_size, 3, 4), dtype=np.bool_)
         )
 
-    gen = ms.create_block_generator()
+    gen = ms.create_block_generator(relative_time_idx=relative_time_idx)
     gen_response = None
     while True:
         try:
@@ -134,6 +150,7 @@ def test_measurement_setting(tmp_path, with_autocorr, convention):
         assert np.all(data.vis.real == 1)
         assert np.all(data.weights == 0)
         assert np.all(data.flags)
+
 
 
 @pytest.mark.parametrize("with_autocorr", [True, False])

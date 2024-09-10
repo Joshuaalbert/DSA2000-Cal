@@ -64,7 +64,7 @@ def main(ms_folder: str):
         weighting='natural',
         epsilon=1e-6,
         add_noise=True,
-        include_calibration=True,
+        include_calibration=False,
         include_simulation=True
     )
     forward_model.forward(ms=ms)

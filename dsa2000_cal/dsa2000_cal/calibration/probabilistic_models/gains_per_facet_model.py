@@ -35,6 +35,12 @@ class GainsPerFacet(AbstractProbabilisticModel):
             times=times
         )  # [facets]
 
+        # jax.debug.print(
+        #     '{time_idx}\n{antenna1}\n{antenna2}',
+        #     time_idx=vis_coords.time_idx,
+        #     antenna1=vis_coords.antenna_1, antenna2=vis_coords.antenna_2
+        # )
+
         vis = self.rime_model.predict_visibilities(
             model_data=model_data,
             visibility_coords=vis_coords
@@ -89,18 +95,19 @@ class GainsPerFacet(AbstractProbabilisticModel):
             prior_model=prior_model,
             log_likelihood=log_likelihood
         )
-        print(dir(model))
+
+        U = model.sample_U(jax.random.PRNGKey(0))
+        if len(U) > 0:
+            raise ValueError("This model has non-parametrised variables. Please update.")
 
         def get_init_params():
-            if len(model.__U_placeholder) > 0:
-                raise ValueError("This model has non-parametrised variables. Please update.")
             return model.params
 
         def forward(params):
-            return model(params).prepare_input(U=model.__U_placeholder)
+            return model(params).prepare_input(U=U)
 
         def log_prob_joint(params):
-            return model(params).log_prob_joint(U=model.__U_placeholder, allow_nan=False)
+            return model(params).log_prob_joint(U=U, allow_nan=False)
 
         return ProbabilisticModelInstance(
             get_init_params_fn=get_init_params,
