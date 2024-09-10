@@ -49,6 +49,7 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
     height_max: au.Quantity = 120. * au.m
     luminosity_min: au.Quantity = 1e-13 * (au.W / au.MHz)  # W / MHz
     luminosity_max: au.Quantity = 1e-10 * (au.W / au.MHz)  # W / MHz
+    full_stokes: bool = True
 
     def __post_init__(self):
         if not self.distance_min.unit.is_equivalent("km"):
@@ -126,14 +127,24 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
                 regular_grid=True
             )  # [ E]
 
-            luminosity = yield Prior(
-                tfpd.Uniform(
-                    low=quantity_to_jnp(self.luminosity_min, 'Jy*m^2') * jnp.ones((self.num_emitters, 2, 2)),
-                    high=quantity_to_jnp(self.luminosity_max, 'Jy*m^2') * jnp.ones((self.num_emitters, 2, 2))
-                ),
-                name='luminosity'
-            ).parametrised()
-            luminosity = jnp.tile(luminosity[:, None, :, :], (1, len(freqs), 1, 1))  # [num_source, num_chan, 2, 2]
+            if self.full_stokes:
+                luminosity = yield Prior(
+                    tfpd.Uniform(
+                        low=quantity_to_jnp(self.luminosity_min, 'Jy*m^2') * jnp.ones((self.num_emitters, 2, 2)),
+                        high=quantity_to_jnp(self.luminosity_max, 'Jy*m^2') * jnp.ones((self.num_emitters, 2, 2))
+                    ),
+                    name='luminosity'
+                ).parametrised()
+                luminosity = jnp.tile(luminosity[:, None, :, :], (1, len(freqs), 1, 1))  # [num_source, num_chan, 2, 2]
+            else:
+                luminosity = yield Prior(
+                    tfpd.Uniform(
+                        low=quantity_to_jnp(self.luminosity_min, 'Jy*m^2') * jnp.ones((self.num_emitters)),
+                        high=quantity_to_jnp(self.luminosity_max, 'Jy*m^2') * jnp.ones((self.num_emitters))
+                    ),
+                    name='luminosity'
+                ).parametrised()
+                luminosity = jnp.tile(luminosity[:, None], (1, len(freqs)))  # [num_source, num_chan]
 
             geodesics = self.geodesic_model.compute_near_field_geodesics(
                 times=times,

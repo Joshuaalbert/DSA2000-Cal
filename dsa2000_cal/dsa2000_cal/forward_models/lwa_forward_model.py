@@ -8,7 +8,9 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain, \
     ScalarUnconstrainedGain
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
+from dsa2000_cal.calibration.probabilistic_models.horizon_rfi_model import HorizonRFIModel
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
+from dsa2000_cal.calibration.probabilistic_models.rfi_prior_models import FullyParameterisedRFIHorizonEmitter
 from dsa2000_cal.forward_models.forward_model import BaseForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
@@ -16,6 +18,7 @@ from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterPredict
 
 
 @dataclasses.dataclass(eq=False)
@@ -186,15 +189,31 @@ class LWAForwardModel(BaseForwardModel):
 
         if ms.is_full_stokes():
             gain_prior_model = DiagonalUnconstrainedGain()
+            rfi_prior_model = FullyParameterisedRFIHorizonEmitter(
+                beam_gain_model=ms.beam_gain_model,
+                geodesic_model=ms.geodesic_model,
+                full_stokes=True
+            )
         else:
             gain_prior_model = ScalarUnconstrainedGain()
+            rfi_prior_model = FullyParameterisedRFIHorizonEmitter(
+                beam_gain_model=ms.beam_gain_model,
+                geodesic_model=ms.geodesic_model,
+                full_stokes=False
+            )
 
         gains_per_facet = GainsPerFacet(
             gain_prior_model=gain_prior_model,
             rime_model=rime_model
         )
-        # TODO: Construct RFI parameterisation per RFI source.
+        horizon_rfi = HorizonRFIModel(
+            rfi_prior_model=rfi_prior_model,
+            rfi_predict=RFIEmitterPredict(
+                delay_engine=ms.near_field_delay_engine,
+                convention=ms.meta.convention
+            )
+        )
 
-        probabilistic_models = [gains_per_facet]
+        probabilistic_models = [gains_per_facet, horizon_rfi]
 
         return probabilistic_models
