@@ -12,7 +12,7 @@ from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import complex_type
-from dsa2000_cal.common.wgridder import dirty2vis, image_to_vis
+from dsa2000_cal.common.wgridder import image_to_vis
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianModelData, \
@@ -42,7 +42,6 @@ def test_plot_ateam_sources(source):
     assert isinstance(fits_sources, FITSSourceModel)
 
     fits_sources.plot()
-
 
 
 def test_gaussian_correctness_order_1():

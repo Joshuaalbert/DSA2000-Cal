@@ -9,11 +9,10 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry, source_model_registry, rfi_model_registry
-
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import complex_type
-from dsa2000_cal.common.wgridder import vis2dirty, vis_to_image
+from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel

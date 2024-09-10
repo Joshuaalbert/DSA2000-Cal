@@ -213,6 +213,7 @@ def detect_mixed_corrs(corrs: List[str]):
     Returns:
         True if mixed corrs are present, False otherwise.
     """
+    corrs = [CASA_CORR_TYPES[corr] if isinstance(corr, int) else corr for corr in corrs]
     linear_present = is_linear_present(corrs)
     circular_present = is_circular_present(corrs)
     stokes_present = is_stokes_present(corrs)
