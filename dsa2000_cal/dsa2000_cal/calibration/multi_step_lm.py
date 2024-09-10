@@ -176,7 +176,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                     return (x.real, x.imag)
                 return x
 
-            return [jax.tree_map(_make_real, output)]
+            return [jax.tree.map(_make_real, output)]
 
         return wrapped_residual_fn
 
@@ -312,7 +312,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                 mu=mu
             )
             # Cast to the original dtype for sanity
-            state = jax.tree_map(lambda x, dtype: x.astype(dtype), state, output_dtypes)
+            state = jax.tree.map(lambda x, dtype: x.astype(dtype), state, output_dtypes)
             delta_norm = pytree_norm_delta(delta_x, power=1) / pytree_norm_delta(jax.tree.map(jnp.ones_like, delta_x),
                                                                                  power=1)
 
@@ -367,7 +367,7 @@ def pytree_norm_delta(pytree: Any, power: FloatArray | IntArray = 2) -> jax.Arra
         2-norm of the pytree raised to the power
     """
     square_sum = jax.tree.map(lambda x: jnp.sum(jnp.square(jnp.abs(x))), pytree)
-    leaves = jax.tree_leaves(square_sum)
+    leaves = jax.tree.leaves(square_sum)
     total_square_sum = sum(leaves[1:], leaves[0])
     if isinstance(power, (int, float)) and power == 2:
         return total_square_sum

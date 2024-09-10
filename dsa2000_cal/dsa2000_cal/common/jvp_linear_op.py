@@ -190,8 +190,8 @@ class JVPLinearOp:
                 co_tangents = co_tangents[0]
 
             if self.promote_dtypes:
-                result_type = jax.tree_map(_get_results_type, primals_out)
-                co_tangents = jax.tree_map(_adjoint_promote_dtypes, co_tangents, result_type)
+                result_type = jax.tree.map(_get_results_type, primals_out)
+                co_tangents = jax.tree.map(_adjoint_promote_dtypes, co_tangents, result_type)
 
             del primals_out
             output = f_vjp(co_tangents)
@@ -209,7 +209,7 @@ class JVPLinearOp:
 
         primals = self.primals
         if self.promote_dtypes:
-            result_types = jax.tree_map(_get_result_type, primals)
+            result_types = jax.tree.map(_get_result_type, primals)
             tangents = jax.tree.map(_promote_dtype, tangents, result_types)
         # We use linearised function, so that repeated applications are cheaper.
         if self.linearize:

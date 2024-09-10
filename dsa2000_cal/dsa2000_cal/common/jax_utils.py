@@ -153,7 +153,7 @@ def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
         pytree with chunk dimension added, and callable to remove extra
     """
 
-    leaves = jax.tree_util.tree_leaves(py_tree)
+    leaves = jax.tree.leaves(py_tree)
 
     if len(leaves) == 0:
         raise ValueError("Leaves must be non-empty to add a chunk dim.")

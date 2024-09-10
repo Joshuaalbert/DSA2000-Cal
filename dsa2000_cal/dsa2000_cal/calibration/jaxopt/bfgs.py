@@ -40,7 +40,7 @@ _einsum = partial(jnp.einsum, precision=jax.lax.Precision.HIGHEST)
 def pytree_to_flat_array(pytree, dtype):
     """Utility to flatten a pytree."""
     flattened = [jnp.asarray(leaf, dtype).reshape(-1)
-                 for leaf in jax.tree_util.tree_leaves(pytree)]
+                 for leaf in jax.tree.leaves(pytree)]
     return jnp.concatenate(flattened)
 
 

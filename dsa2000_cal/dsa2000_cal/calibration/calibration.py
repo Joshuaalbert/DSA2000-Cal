@@ -485,13 +485,13 @@ class Calibration:
                 x, (num_time, num_row // num_time) + x.shape[1:]
             )  # [num_time, num_row // num_time, num_chan, [ 4]]
 
-        reshaped_vis_data = jax.tree_map(_reshape_vis_data, vis_data)
+        reshaped_vis_data = jax.tree.map(_reshape_vis_data, vis_data)
 
         def _reshape_vis_coords(x):
             return lax.reshape(
                 x, (num_time, num_row // num_time) + x.shape[1:]
             )  # [num_time, num_row // num_time, ...]
 
-        reshape_vis_coords = jax.tree_map(_reshape_vis_coords, vis_coords)
+        reshape_vis_coords = jax.tree.map(_reshape_vis_coords, vis_coords)
 
         return reshape_vis_coords, reshaped_vis_data

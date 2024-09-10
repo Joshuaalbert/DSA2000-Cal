@@ -69,7 +69,7 @@ def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
         except AttributeError:
             return x
 
-    return jax.tree_util.tree_map(conditional_cast, tree)
+    return jax.tree.map(conditional_cast, tree)
 
 
 def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
@@ -83,7 +83,7 @@ def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
         except AttributeError:
             return x
 
-    return jax.tree_util.tree_map(conditional_cast, tree)
+    return jax.tree.map(conditional_cast, tree)
 
 
 def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
@@ -97,7 +97,7 @@ def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
         except AttributeError:
             return x
 
-    return jax.tree_util.tree_map(conditional_cast, tree)
+    return jax.tree.map(conditional_cast, tree)
 
 
 def _cast_bool_to(tree: T, dtype: jnp.dtype) -> T:
@@ -111,7 +111,7 @@ def _cast_bool_to(tree: T, dtype: jnp.dtype) -> T:
         except AttributeError:
             return x
 
-    return jax.tree_util.tree_map(conditional_cast, tree)
+    return jax.tree.map(conditional_cast, tree)
 
 
 X = TypeVar("X")
