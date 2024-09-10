@@ -1,7 +1,6 @@
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-import jax
 import numpy as np
 import pylab as plt
 import pytest
@@ -16,40 +15,6 @@ def pytest_runtest_teardown(item, nextitem):
     """Hook to run plt.close('all') after each test."""
     yield  # Run the actual test teardown
     plt.close('all')  # Close all plots after each test
-
-
-@pytest.fixture(autouse=True)
-def skip_if_not_64bit(request):
-    if request.node.get_closest_marker("requires_64bit"):
-        if not jax.config.read("jax_enable_x64"):
-            # Extract test name, file, and line number
-            test_name = request.node.name
-            test_file = request.node.fspath
-            test_line = request.node.location[1]
-
-            # Customize the skip message
-            skip_message = (
-                f"Skipping test '{test_name}' in {test_file} at line {test_line} "
-                "because 64-bit precision is required"
-            )
-            pytest.skip(skip_message)
-
-
-@pytest.fixture(autouse=True)
-def skip_if_not_32bit(request):
-    if request.node.get_closest_marker("requires_32bit"):
-        if jax.config.read("jax_enable_x64"):
-            # Extract test name, file, and line number
-            test_name = request.node.name
-            test_file = request.node.fspath
-            test_line = request.node.location[1]
-
-            # Customize the skip message
-            skip_message = (
-                f"Skipping test '{test_name}' in {test_file} at line {test_line} "
-                "because 32-bit precision is required"
-            )
-            pytest.skip(skip_message)
 
 
 @pytest.fixture(scope="function")
