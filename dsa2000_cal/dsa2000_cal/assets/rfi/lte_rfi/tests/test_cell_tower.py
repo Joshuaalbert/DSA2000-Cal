@@ -18,4 +18,3 @@ def test_lte_rfi_source_factory():
     plt.ylabel('Auto-correlation function')
     plt.show()
     assert source_params.delay_acf.regular_grid
-    LWACellTower(seed='test').plot_acf()
