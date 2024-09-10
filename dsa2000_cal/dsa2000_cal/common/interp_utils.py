@@ -48,7 +48,6 @@ def optimized_interp_jax_safe(x, xp, yp):
     # Perform interpolation, adjusting for small dx values to avoid NaN gradients
     f = jnp.where(dx0, yp0, yp0 + (delta / jnp.where(dx0, 1.0, dx)) * df)
     f = yp0 + (delta / dx) * df
-    print(delta, dx, df)
     return f
 
 
@@ -337,7 +336,6 @@ class InterpolatedArray:
 
     def __post_init__(self):
 
-        print(self.x)
         if len(np.shape(self.x)) != 1:
             raise ValueError(f"x must be 1D, got {np.shape(self.x)}.")
 

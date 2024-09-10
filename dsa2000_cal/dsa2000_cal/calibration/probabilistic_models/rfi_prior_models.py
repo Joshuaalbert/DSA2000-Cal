@@ -101,18 +101,18 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
 
             max_delay = 1e-5  # seconds
             delay_acf_x = jnp.linspace(0., max_delay, self.acf_resolution)
-            delay_acf_x = jnp.concatenate([delay_acf_x[::-1], delay_acf_x[1:]])
+            delay_acf_x = jnp.concatenate([-delay_acf_x[::-1], delay_acf_x[1:]])
             delay_acf_values_real = yield Prior(
                 tfpd.Uniform(
-                    low=-0.2 * jnp.ones((self.acf_resolution, self.num_emitters)),
+                    low=-1. * jnp.ones((self.acf_resolution, self.num_emitters)),
                     high=1. * jnp.ones((self.acf_resolution, self.num_emitters))
                 ),
                 name='delay_acf_values_real'
             )
             delay_acf_values_imag = yield Prior(
                 tfpd.Uniform(
-                    low=-0.2 * jnp.ones((self.acf_resolution, self.num_emitters)),
-                    high=0.2 * jnp.ones((self.acf_resolution, self.num_emitters))
+                    low=-1. * jnp.ones((self.acf_resolution, self.num_emitters)),
+                    high=1. * jnp.ones((self.acf_resolution, self.num_emitters))
                 ),
                 name='delay_acf_values_imag'
             )  # [num_delays, num_emitters]

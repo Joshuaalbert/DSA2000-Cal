@@ -15,7 +15,7 @@ from jax import numpy as jnp
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, MultiStepLevenbergMarquardtState, \
     MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
-    ProbabilisticModelInstance
+    ProbabilisticModelInstance, combine_probabilistic_model_instances
 from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put, block_until_ready, multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import mp_policy
@@ -370,7 +370,7 @@ class Calibration:
             vis_residuals = vis_data_chunk.vis - vis_model[:, 0, ...]
             return vis_residuals
 
-        _, gains = probabilistic_model_instance.forward(state.x)
+        _, constrained_params = probabilistic_model_instance.forward(state.x)
 
         reshape_vis_coords, reshaped_vis_data = Calibration.reshape_solint_data(
             times=times, vis_coords=vis_coords, vis_data=vis_data
@@ -379,7 +379,7 @@ class Calibration:
         # Stack again
         vis_residuals = lax.reshape(vis_residuals, vis_data.vis.shape)  # [num_row, num_chan, 4]
 
-        return gains, vis_residuals, state, diagnostics
+        return constrained_params, vis_residuals, state, diagnostics
 
     def create_probabilistic_model_instance(self, freqs: jax.Array, times: jax.Array, vis_coords: VisibilityCoords,
                                             vis_data: VisibilityData) -> ProbabilisticModelInstance:
@@ -403,10 +403,7 @@ class Calibration:
                 vis_coords=vis_coords
             ) for probabilistic_model in self.probabilistic_models
         ]
-        probabilistic_model_instance = probabilistic_model_instances[0]
-        for other_model in probabilistic_model_instances[1:]:
-            probabilistic_model_instance = probabilistic_model_instance + other_model
-        return probabilistic_model_instance
+        return combine_probabilistic_model_instances(probabilistic_model_instances)
 
     @staticmethod
     def compute_average_solint_data(

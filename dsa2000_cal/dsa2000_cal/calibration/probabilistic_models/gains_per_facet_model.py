@@ -1,10 +1,10 @@
 import dataclasses
-from typing import Any
+from typing import Any, List
 
-import astropy.time as at
 import jax
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
+from astropy import time as at, coordinates as ac, units as au
 from jax import numpy as jnp
 from jaxns import Model
 from jaxns.framework import context as ctx
@@ -15,9 +15,9 @@ from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import Abstr
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
     ProbabilisticModelInstance
 from dsa2000_cal.common.jax_utils import promote_pytree
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
-from dsa2000_cal.types import CalibrationSolutions
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 tfpd = tfp.distributions
@@ -132,9 +132,11 @@ class GainsPerFacet(AbstractProbabilisticModel):
         )
 
     def save_solution(self, solution: Any, file_name: str, times: at.Time, ms: MeasurementSet):
+        solution: jax.Array = solution
+        solution = jax.tree.map(np.asarray, solution)
         # Save to file
-        solution = CalibrationSolutions(
-            gains=np.asarray(solution),
+        data = CalibrationSolutions(
+            gains=solution * au.dimensionless_unscaled,
             times=times,
             freqs=ms.meta.freqs,
             antennas=ms.meta.antennas,
@@ -142,4 +144,16 @@ class GainsPerFacet(AbstractProbabilisticModel):
             pointings=ms.meta.pointings
         )
         with open(file_name, "w") as fp:
-            fp.write(solution.json(indent=2))
+            fp.write(data.json(indent=2))
+
+
+class CalibrationSolutions(SerialisableBaseModel):
+    """
+    Calibration solutions, stored in a serialisable format.
+    """
+    times: at.Time  # [time]
+    pointings: ac.ICRS | None  # [[ant]]
+    antennas: ac.EarthLocation  # [ant]
+    antenna_labels: List[str]  # [ant]
+    freqs: au.Quantity  # [chan]
+    gains: au.Quantity  # [facet, time, ant, chan[, 2, 2]]

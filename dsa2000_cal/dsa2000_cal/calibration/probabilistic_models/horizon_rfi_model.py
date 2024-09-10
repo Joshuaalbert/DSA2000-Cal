@@ -1,9 +1,10 @@
 import dataclasses
-from typing import Any
+from typing import Any, List
 
 import jax
+import numpy as np
 import tensorflow_probability.substrates.jax as tfp
-from astropy import time as at
+from astropy import time as at, coordinates as ac, units as au
 from jax import numpy as jnp
 from jaxns import Model
 from jaxns.framework import context as ctx
@@ -12,7 +13,9 @@ from jaxns.framework import ops
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
     ProbabilisticModelInstance
 from dsa2000_cal.calibration.probabilistic_models.rfi_prior_models import AbstractRFIPriorModel
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import promote_pytree
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
 from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterModelData, \
@@ -117,5 +120,37 @@ class HorizonRFIModel(AbstractProbabilisticModel):
         )
 
     def save_solution(self, solution: Any, file_name: str, times: at.Time, ms: MeasurementSet):
-        print(solution)
-        pass
+        solution: RFIEmitterModelData = solution
+        solution = jax.tree.map(np.asarray, solution)
+        data = RFIEmitterSolutions(
+            times=times,
+            pointings=ms.meta.pointings,
+            freqs=ms.meta.freqs,
+            position_enu=solution.position_enu * au.m,
+            array_location=ms.meta.array_location,
+            luminosity=solution.luminosity * (au.W / au.MHz),
+            delay_acf=solution.delay_acf,
+            antennas=ms.meta.antennas,
+            antenna_labels=ms.meta.antenna_names,
+            gains=solution.gains * au.dimensionless_unscaled
+        )
+        with open(file_name, "w") as fp:
+            fp.write(data.json(indent=2))
+
+
+class RFIEmitterSolutions(SerialisableBaseModel):
+    """
+    Calibration solutions, stored in a serialisable format.
+    """
+
+    times: at.Time  # [time]
+    pointings: ac.ICRS | None  # [[ant]]
+    freqs: au.Quantity  # [num_chans]
+    position_enu: au.Quantity  # [E, 3]
+    array_location: ac.EarthLocation
+    luminosity: au.Quantity  # [E, num_chans[,2,2]]
+    delay_acf: InterpolatedArray  # [E]
+
+    antennas: ac.EarthLocation  # [ant]
+    antenna_labels: List[str]  # [ant]
+    gains: au.Quantity | None = None  # [[E,] time, ant, chan[, 2, 2]]
