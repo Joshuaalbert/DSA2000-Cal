@@ -381,12 +381,12 @@ def vis_to_image(uvw: FloatArray, freqs: FloatArray,
         image = image * n
     if normalise:
         # Adjoint normalising factor is the DFT zero-term i.e. sum_{u,v,nu} S(u,v,nu)
-        sampling_function = np.ones(np.shape(vis), image.dtype)
+        sampling_function = jnp.ones(np.shape(vis), image.dtype)
         if wgt is not None:
-            sampling_function *= wgt
+            sampling_function *= mp_policy.cast_to_image(wgt)
         if mask is not None:
-            sampling_function[mask == 0] = 0.
-        adjoint_normalising_factor = np.reciprocal(np.sum(sampling_function))
+            sampling_function *= mp_policy.cast_to_image(mask, quiet=True)
+        adjoint_normalising_factor = jnp.reciprocal(jnp.sum(sampling_function))
         image *= adjoint_normalising_factor
     return mp_policy.cast_to_image(image)
 

@@ -78,21 +78,21 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
                     high=quantity_to_jnp(self.distance_max) * ones
                 ),
                 name='distance'
-            )
+            ).parametrised()
             azimuth = yield Prior(
                 tfpd.Uniform(
                     low=quantity_to_jnp(self.azimuth_min) * ones,
                     high=quantity_to_jnp(self.azimuth_max) * ones
                 ),
                 name='azimuth'
-            )
+            ).parametrised()
             height = yield Prior(
                 tfpd.Uniform(
                     low=quantity_to_jnp(self.height_min) * ones,
                     high=quantity_to_jnp(self.height_max) * ones
                 ),
                 name='height'
-            )
+            ).parametrised()
             # Convert to ENU, azimuth is measured East of North
             east = distance * jnp.sin(jnp.deg2rad(azimuth))
             north = distance * jnp.cos(jnp.deg2rad(azimuth))
@@ -104,18 +104,18 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
             delay_acf_x = jnp.concatenate([-delay_acf_x[::-1], delay_acf_x[1:]])
             delay_acf_values_real = yield Prior(
                 tfpd.Uniform(
-                    low=-1. * jnp.ones((self.acf_resolution, self.num_emitters)),
+                    low=-0.5 * jnp.ones((self.acf_resolution, self.num_emitters)),
                     high=1. * jnp.ones((self.acf_resolution, self.num_emitters))
                 ),
                 name='delay_acf_values_real'
-            )
+            ).parametrised()
             delay_acf_values_imag = yield Prior(
                 tfpd.Uniform(
                     low=-1. * jnp.ones((self.acf_resolution, self.num_emitters)),
                     high=1. * jnp.ones((self.acf_resolution, self.num_emitters))
                 ),
                 name='delay_acf_values_imag'
-            )  # [num_delays, num_emitters]
+            ).parametrised()  # [num_delays, num_emitters]
             delay_acf_values = jax.lax.complex(delay_acf_values_real, delay_acf_values_imag)
             delay_acf_values /= delay_acf_values[0:1, :]  # normalise central value to 1
             delay_acf_values = jnp.concatenate([delay_acf_values[::-1], delay_acf_values[1:]], axis=0)
@@ -132,7 +132,7 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
                     high=quantity_to_jnp(self.luminosity_max) * jnp.ones((self.num_emitters, 2, 2))
                 ),
                 name='luminosity'
-            )
+            ).parametrised()
             luminosity = jnp.tile(luminosity[:, None, :, :], (1, len(freqs), 1, 1))  # [num_source, num_chan, 2, 2]
 
             geodesics = self.geodesic_model.compute_near_field_geodesics(

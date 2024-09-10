@@ -21,7 +21,7 @@ from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model imp
 @pytest.fixture(scope='function')
 def mock_calibrator_source_models(tmp_path):
     fill_registries()
-    array_name = 'dsa2000W_small'
+    array_name = 'lwa'
     # Load array
     array = array_registry.get_instance(array_registry.get_match(array_name))
     array_location = array.get_array_location()
@@ -109,7 +109,7 @@ def test_calibration(mock_calibrator_source_models):
         # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
         probabilistic_models=probabilistic_models,
         num_iterations=1,
-        num_approx_steps=0,
+        num_approx_steps=5,
         inplace_subtract=True,
         plot_folder='plots',
         solution_folder='solutions',

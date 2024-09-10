@@ -5,7 +5,6 @@ from typing import List
 
 import jax
 from astropy import units as au
-from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.calibration.calibration import Calibration
@@ -51,7 +50,6 @@ class BaseForwardModel(AbstractForwardModel):
         field_of_view: the field of view for imaging, default computes from dish model
         oversample_factor: the oversample factor for imaging, default 2.5
         epsilon: the epsilon for wgridder, default 1e-4
-        dtype: the dtype for imaging, default complex_type
         verbose: the verbosity for imaging, default False
     """
 
@@ -71,7 +69,6 @@ class BaseForwardModel(AbstractForwardModel):
                  oversample_factor: float,
                  weighting: str,
                  epsilon: float,
-                 dtype: SupportsDType,
                  verbose: bool,
                  num_shards: int,
                  ionosphere_seed: int,
@@ -94,7 +91,6 @@ class BaseForwardModel(AbstractForwardModel):
         self.oversample_factor = oversample_factor
         self.weighting = weighting
         self.epsilon = epsilon
-        self.dtype = dtype
         self.verbose = verbose
         self.num_shards = num_shards
         self.ionosphere_seed = ionosphere_seed
@@ -190,13 +186,13 @@ class BaseForwardModel(AbstractForwardModel):
                     a_priori_horizon_gain_model=horizon_gain_model
                 ),
                 num_iterations=self.num_cal_iters,
+                num_approx_steps=0,
                 inplace_subtract=False,
                 residual_ms_folder='residual_ms',
                 solution_interval=self.solution_interval,
                 validity_interval=self.validity_interval,
                 verbose=self.verbose,
                 seed=self.calibration_seed,
-                num_shards=self.num_shards,
                 plot_folder=os.path.join(self.plot_folder, 'calibration'),
                 solution_folder=self.solution_folder
             )

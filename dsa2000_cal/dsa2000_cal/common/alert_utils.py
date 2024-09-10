@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import requests
 
 
-def get_grandparent_info(relative_depth: int = 6):
+def get_grandparent_info(relative_depth: int = 7):
     """
     Get the file, line number and function name of the caller of the caller of this function.
 
@@ -21,12 +21,12 @@ def get_grandparent_info(relative_depth: int = 6):
     """
     # Get the grandparent frame (caller of the caller)
     s = []
-    for depth in range(min(1 + relative_depth, len(inspect.stack()) - 1) + 1):
+    for depth in range(1, min(1 + relative_depth, len(inspect.stack()) - 1) + 1):
         caller_frame = inspect.stack()[depth]
         caller_file = caller_frame.filename
         caller_line = caller_frame.lineno
         caller_func = caller_frame.function
-        s.append(f"{caller_file}:{caller_line} in {caller_func}")
+        s.append(f"{os.path.basename(caller_file)}:{caller_line} in {caller_func}")
     s = s[::-1]
     s = f"at {' -> '.join(s)}"
     return s

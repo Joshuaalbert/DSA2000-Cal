@@ -152,7 +152,8 @@ class Imagor:
             plt.xlabel('l [rad]')
             plt.ylabel('m [rad]')
             plt.colorbar()
-            plt.savefig(f"{self.plot_folder}/{image_name}_coh{coh}.png")
+            plt.title(f"{image_name} {ms.meta.coherencies[coh]}")
+            plt.savefig(f"{self.plot_folder}/{image_name}_{ms.meta.coherencies[coh]}.png")
             plt.show()
         image_model = ImageModel(
             phase_tracking=ms.meta.phase_tracking,

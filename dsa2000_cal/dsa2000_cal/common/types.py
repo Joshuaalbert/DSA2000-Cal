@@ -60,12 +60,12 @@ BoolArray.__doc__ = "Type annotation for JAX array-like objects, with bool scala
 T = TypeVar("T")
 
 
-def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
+def _cast_floating_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
     def conditional_cast(x):
         if isinstance(x, float):
             return jnp.asarray(x, dtype=dtype)
         try:
-            if not jnp.issubdtype(x.dtype, jnp.floating):
+            if not quiet and not jnp.issubdtype(x.dtype, jnp.floating):
                 warnings.warn(f"Expected float type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
@@ -74,12 +74,12 @@ def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
     return jax.tree.map(conditional_cast, tree)
 
 
-def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
+def _cast_complex_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
     def conditional_cast(x):
         if isinstance(x, complex):
             return jnp.asarray(x, dtype=dtype)
         try:
-            if not jnp.issubdtype(x.dtype, jnp.complexfloating):
+            if not quiet and not jnp.issubdtype(x.dtype, jnp.complexfloating):
                 warnings.warn(f"Expected complex type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
@@ -88,12 +88,12 @@ def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
     return jax.tree.map(conditional_cast, tree)
 
 
-def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
+def _cast_integer_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
     def conditional_cast(x):
         if isinstance(x, int):
             return jnp.asarray(x, dtype=dtype)
         try:
-            if not jnp.issubdtype(x.dtype, jnp.integer):
+            if not quiet and not jnp.issubdtype(x.dtype, jnp.integer):
                 warnings.warn(f"Expected integer type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
@@ -102,12 +102,12 @@ def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
     return jax.tree.map(conditional_cast, tree)
 
 
-def _cast_bool_to(tree: T, dtype: jnp.dtype) -> T:
+def _cast_bool_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
     def conditional_cast(x):
         if isinstance(x, bool):
             return jnp.asarray(x, dtype=dtype)
         try:
-            if not jnp.issubdtype(x.dtype, jnp.bool_):
+            if not quiet and not jnp.issubdtype(x.dtype, jnp.bool_):
                 warnings.warn(f"Expected bool type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
@@ -133,45 +133,45 @@ class Policy:
     length_dtype: jnp.dtype = jnp.float64
     angle_dtype: jnp.dtype = jnp.float64
 
-    def cast_to_vis(self, x: X) -> X:
+    def cast_to_vis(self, x: X, quiet: bool = False) -> X:
         """Converts visibility values to the visibility dtype."""
-        return _cast_complex_to(x, self.vis_dtype)
+        return _cast_complex_to(x, self.vis_dtype, quiet=quiet)
 
-    def cast_to_weight(self, x: X) -> X:
+    def cast_to_weight(self, x: X, quiet: bool = False) -> X:
         """Converts weight values to the weight dtype."""
-        return _cast_floating_to(x, self.weight_dtype)
+        return _cast_floating_to(x, self.weight_dtype, quiet=quiet)
 
-    def cast_to_flag(self, x: X) -> X:
+    def cast_to_flag(self, x: X, quiet: bool = False) -> X:
         """Converts flag values to the flag dtype."""
-        return _cast_bool_to(x, self.flag_dtype)
+        return _cast_bool_to(x, self.flag_dtype, quiet=quiet)
 
-    def cast_to_image(self, x: X) -> X:
+    def cast_to_image(self, x: X, quiet: bool = False) -> X:
         """Converts image values to the image dtype."""
-        return _cast_floating_to(x, self.image_dtype)
+        return _cast_floating_to(x, self.image_dtype, quiet=quiet)
 
-    def cast_to_gain(self, x: X) -> X:
+    def cast_to_gain(self, x: X, quiet: bool = False) -> X:
         """Converts gain values to the gain dtype."""
-        return _cast_complex_to(x, self.gain_dtype)
+        return _cast_complex_to(x, self.gain_dtype, quiet=quiet)
 
-    def cast_to_index(self, x: X) -> X:
+    def cast_to_index(self, x: X, quiet: bool = False) -> X:
         """Converts lookup index values to the index dtype."""
-        return _cast_integer_to(x, self.index_dtype)
+        return _cast_integer_to(x, self.index_dtype, quiet=quiet)
 
-    def cast_to_freq(self, x: X) -> X:
+    def cast_to_freq(self, x: X, quiet: bool = False) -> X:
         """Converts frequency values to the frequency dtype."""
-        return _cast_floating_to(x, self.freq_dtype)
+        return _cast_floating_to(x, self.freq_dtype, quiet=quiet)
 
-    def cast_to_time(self, x: X) -> X:
+    def cast_to_time(self, x: X, quiet: bool = False) -> X:
         """Converts time values to the time dtype."""
-        return _cast_floating_to(x, self.time_dtype)
+        return _cast_floating_to(x, self.time_dtype, quiet=quiet)
 
-    def cast_to_length(self, x: X) -> X:
+    def cast_to_length(self, x: X, quiet: bool = False) -> X:
         """Converts length values to the position dtype."""
-        return _cast_floating_to(x, self.length_dtype)
+        return _cast_floating_to(x, self.length_dtype, quiet=quiet)
 
-    def cast_to_angle(self, x: X) -> X:
+    def cast_to_angle(self, x: X, quiet: bool = False) -> X:
         """Converts lmn values to the lmn dtype."""
-        return _cast_floating_to(x, self.angle_dtype)
+        return _cast_floating_to(x, self.angle_dtype, quiet=quiet)
 
 
 mp_policy = Policy()

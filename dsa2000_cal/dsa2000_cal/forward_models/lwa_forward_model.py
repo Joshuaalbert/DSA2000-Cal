@@ -3,14 +3,12 @@ import os
 from typing import List
 
 import astropy.units as au
-from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain, \
     ScalarUnconstrainedGain
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
-from dsa2000_cal.common.types import complex_type
 from dsa2000_cal.forward_models.forward_model import BaseForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
@@ -48,7 +46,6 @@ class LWAForwardModel(BaseForwardModel):
     oversample_factor: float = 5.
     weighting: str = 'natural'
     epsilon: float = 1e-4
-    dtype: SupportsDType = complex_type
     verbose: bool = False
     num_shards: int = 1
     ionosphere_seed: int = 42
@@ -72,7 +69,7 @@ class LWAForwardModel(BaseForwardModel):
             solution_interval=self.solution_interval,
             validity_interval=self.validity_interval,
             field_of_view=self.field_of_view, oversample_factor=self.oversample_factor,
-            weighting=self.weighting, epsilon=self.epsilon, dtype=self.dtype,
+            weighting=self.weighting, epsilon=self.epsilon,
             verbose=self.verbose, num_shards=self.num_shards,
             ionosphere_seed=self.ionosphere_seed, dish_effects_seed=self.dish_effects_seed,
             simulation_seed=self.simulation_seed, calibration_seed=self.calibration_seed,
@@ -109,8 +106,7 @@ class LWAForwardModel(BaseForwardModel):
                 near_field_delay_engine=ms.near_field_delay_engine,
                 far_field_delay_engine=ms.far_field_delay_engine,
                 geodesic_model=ms.geodesic_model,
-                convention=ms.meta.convention,
-                dtype=self.dtype
+                convention=ms.meta.convention
             )
         )
         # for a_team_source in ["cas_a", "cyg_a", "vir_a", "tau_a"]:
@@ -126,8 +122,7 @@ class LWAForwardModel(BaseForwardModel):
                     near_field_delay_engine=ms.near_field_delay_engine,
                     far_field_delay_engine=ms.far_field_delay_engine,
                     geodesic_model=ms.geodesic_model,
-                    convention=ms.meta.convention,
-                    dtype=self.dtype
+                    convention=ms.meta.convention
                 )
             )
 
@@ -149,13 +144,12 @@ class LWAForwardModel(BaseForwardModel):
                     near_field_delay_engine=ms.near_field_delay_engine,
                     far_field_delay_engine=ms.far_field_delay_engine,
                     geodesic_model=ms.geodesic_model,
-                    convention=ms.meta.convention,
-                    dtype=self.dtype
+                    convention=ms.meta.convention
                 )
             )
 
         rime_model = RIMEModel(
-            facet_models=rfi_facet_models  # + celestial_facet_models
+            facet_models=rfi_facet_models + celestial_facet_models
         )
         return rime_model
 
@@ -182,8 +176,7 @@ class LWAForwardModel(BaseForwardModel):
                 near_field_delay_engine=ms.near_field_delay_engine,
                 far_field_delay_engine=ms.far_field_delay_engine,
                 geodesic_model=ms.geodesic_model,
-                convention=ms.meta.convention,
-                dtype=self.dtype
+                convention=ms.meta.convention
             ) for a_team_source in a_team_sources
         ]
 

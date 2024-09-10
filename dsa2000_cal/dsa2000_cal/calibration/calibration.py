@@ -329,7 +329,7 @@ class Calibration:
             vis_model, _ = probabilistic_model_instance.forward(params)  # [num_row, num_chan[, 4]]
             vis_residuals = vis_data.vis - vis_model
             weights = jnp.sqrt(vis_data.weights)
-            weights *= mp_policy.cast_to_weight(jnp.logical_not(vis_data.flags))
+            weights *= mp_policy.cast_to_weight(jnp.logical_not(vis_data.flags), quiet=True)
             vis_residuals *= weights
             return vis_residuals
 

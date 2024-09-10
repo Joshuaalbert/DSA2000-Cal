@@ -45,7 +45,7 @@ class PointSourceModelParams(SerialisableBaseModel):
     freqs: au.Quantity  # [num_freqs] Frequencies
     l0: au.Quantity  # [num_sources] l coordinate of the source
     m0: au.Quantity  # [num_sources] m coordinate of the source
-    A: au.Quantity  # [num_sources, num_freqs] Flex amplitude of the source
+    A: au.Quantity  # [num_sources, num_freqs[,2,2]] Flex amplitude of the source
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
@@ -250,8 +250,7 @@ class PointSourceModel(AbstractSourceModel):
         )
 
     def get_flux_model(self, lvec=None, mvec=None):
-        if self.is_full_stokes():
-            raise ValueError("Cannot plot full stokes")
+
         # Use imshow to plot the sky model evaluated over a LM grid
 
         if lvec is None or mvec is None:
@@ -273,7 +272,10 @@ class PointSourceModel(AbstractSourceModel):
             l_idx = int((self.l0[i] - lvec[0]) / dl)
             m_idx = int((self.m0[i] - mvec[0]) / dm)
             if l_idx >= 0 and l_idx < lvec.size and m_idx >= 0 and m_idx < mvec.size:
-                flux_model[m_idx, l_idx] += self.A[i, 0]
+                if self.is_full_stokes():
+                    flux_model[m_idx, l_idx] += self.A[i, 0, 0, 0]
+                else:
+                    flux_model[m_idx, l_idx] += self.A[i, 0]
         return lvec, mvec, flux_model
 
     def plot(self, save_file: str = None):

@@ -414,8 +414,6 @@ class GaussianSourceModel(AbstractSourceModel):
         )
 
     def get_flux_model(self, lvec=None, mvec=None):
-        if self.is_full_stokes():
-            raise ValueError("Cannot plot full stokes.")
 
         # Use imshow to plot the sky model evaluated over a LM grid
         if lvec is None or mvec is None:
@@ -442,13 +440,19 @@ class GaussianSourceModel(AbstractSourceModel):
         pixel_area = (lvec[1] - lvec[0]) * (mvec[1] - mvec[0])
 
         for i in range(self.num_sources):
+            if self.is_full_stokes():
+                A = quantity_to_jnp(self.A[i, 0, 0, 0], 'Jy')
+            else:
+                A = quantity_to_jnp(self.A[i, 0], 'Jy')
+
             args = (
-                quantity_to_jnp(self.A[i, 0], 'Jy'),
+                A,
                 quantity_to_jnp(self.l0[i]),
                 quantity_to_jnp(self.m0[i]),
                 quantity_to_jnp(self.major[i]),
                 quantity_to_jnp(self.minor[i]),
-                quantity_to_jnp(self.theta[i]))
+                quantity_to_jnp(self.theta[i])
+            )
             flux_density += np.asarray(_gaussian_flux(*args)) * au.Jy
         return lvec, mvec, flux_density * pixel_area
 

@@ -1,11 +1,8 @@
 import os
 
-import jax.numpy as jnp
 import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import config
-
-from dsa2000_cal.common.types import complex_type
 
 # Set num jax devices
 config.update("jax_enable_x64", True)
@@ -38,7 +35,7 @@ def main(ms_folder: str):
             phase_tracking=phase_tracking,
             channel_width=array.get_channel_width(),
             integration_time=au.Quantity(10, 's'),
-            coherencies=['I'],
+            coherencies=['XX', 'XY', 'YX', 'YY'],
             pointings=None,
             times=obstimes,
             freqs=freqs,
@@ -64,11 +61,10 @@ def main(ms_folder: str):
         num_shards=len(ms.meta.freqs),
         oversample_factor=7.,
         field_of_view=180 * au.deg,
-        dtype=complex_type,
         weighting='natural',
         epsilon=1e-6,
         add_noise=True,
-        include_calibration=False,
+        include_calibration=True,
         include_simulation=True
     )
     forward_model.forward(ms=ms)

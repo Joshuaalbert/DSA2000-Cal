@@ -195,7 +195,8 @@ def get_interp_indices_and_weights(x: FloatArray, xp: FloatArray, regular_grid: 
     if regular_grid:
         # Use faster index determination
         dx = xp[1] - xp[0]
-        i1 = mp_policy.cast_to_index(jnp.clip(jnp.ceil((x - xp[0]) / dx), one, len(xp) - 1))
+        _i1 = jnp.ceil((x - xp[0]) / dx).astype(mp_policy.index_dtype)
+        i1 = mp_policy.cast_to_index(jnp.clip(_i1, one, len(xp) - 1))
         i0 = i1 - one
     else:
         i1 = mp_policy.cast_to_index(jnp.clip(jnp.searchsorted(xp, x, side='right'), one, len(xp) - 1))

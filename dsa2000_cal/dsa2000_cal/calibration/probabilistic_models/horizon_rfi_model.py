@@ -7,8 +7,6 @@ import tensorflow_probability.substrates.jax as tfp
 from astropy import time as at, coordinates as ac, units as au
 from jax import numpy as jnp
 from jaxns import Model
-from jaxns.framework import context as ctx
-from jaxns.framework import ops
 
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
     ProbabilisticModelInstance
@@ -82,36 +80,15 @@ class HorizonRFIModel(AbstractProbabilisticModel):
         )
 
         def get_init_params():
-            # Could use model.sample_W() for a random start
-            return model._W_placeholder()
+            if len(model.__U_placeholder) > 0:
+                raise ValueError("This model has non-parametrised variables. Please update.")
+            return model.params
 
         def forward(params):
-            def _forward():
-                # Use jaxns.framework.ops to transform the params into the args for likelihood
-                return ops.prepare_input(W=params, prior_model=prior_model)
-
-            return ctx.transform(_forward).apply(
-                params=model.params, rng=jax.random.PRNGKey(0)
-            ).fn_val
+            return model(params).prepare_input(U=model.__U_placeholder)
 
         def log_prob_joint(params):
-            def _log_prob_joint():
-                # Use jaxns.framework.ops to compute the log prob of joint
-                log_prob_prior = ops.compute_log_prob_prior(
-                    W=params,
-                    prior_model=model.prior_model
-                )
-                log_prob_likelihood = ops.compute_log_likelihood(
-                    W=params,
-                    prior_model=model.prior_model,
-                    log_likelihood=model.log_likelihood,
-                    allow_nan=False
-                )
-                return log_prob_prior + log_prob_likelihood
-
-            return ctx.transform(_log_prob_joint).apply(
-                params=model.params, rng=jax.random.PRNGKey(0)
-            ).fn_val
+            return model(params).log_prob_joint(U=model.__U_placeholder, allow_nan=False)
 
         return ProbabilisticModelInstance(
             get_init_params_fn=get_init_params,
