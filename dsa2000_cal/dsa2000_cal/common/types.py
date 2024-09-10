@@ -6,6 +6,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from dsa2000_cal.common.alert_utils import get_grandparent_info
+
 if not jax.config.read('jax_enable_x64'):
     warnings.warn("JAX x64 is not enabled. Setting it now, but check for errors.")
     jax.config.update('jax_enable_x64', True)
@@ -64,7 +66,7 @@ def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.floating):
-                warnings.warn(f"Expected float type, got {x.dtype}.")
+                warnings.warn(f"Expected float type, got {x.dtype}, {get_grandparent_info(6)}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -78,7 +80,7 @@ def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.complexfloating):
-                warnings.warn(f"Expected complex type, got {x.dtype}.")
+                warnings.warn(f"Expected complex type, got {x.dtype}, {get_grandparent_info(6)}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -92,7 +94,7 @@ def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.integer):
-                warnings.warn(f"Expected integer type, got {x.dtype}.")
+                warnings.warn(f"Expected integer type, got {x.dtype}, {get_grandparent_info(6)}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -106,7 +108,7 @@ def _cast_bool_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.bool_):
-                warnings.warn(f"Expected bool type, got {x.dtype}.")
+                warnings.warn(f"Expected bool type, got {x.dtype}, {get_grandparent_info(6)}.")
             return x.astype(dtype)
         except AttributeError:
             return x
