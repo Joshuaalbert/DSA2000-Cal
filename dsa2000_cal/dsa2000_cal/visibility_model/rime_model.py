@@ -106,8 +106,8 @@ class RIMEModel:
         Returns:
             vis: [num_row, num_chans[, 2, 2]] visibilities with gains applied
         """
-        g1 = gains[:, visibility_coords.antenna_1, visibility_coords.time_idx, :, ...]
-        g2 = gains[:, visibility_coords.antenna_2, visibility_coords.time_idx, :, ...]
+        g1 = gains[:, visibility_coords.time_idx, visibility_coords.antenna_1, :, ...]
+        g2 = gains[:, visibility_coords.time_idx, visibility_coords.antenna_2, :, ...]
         if len(np.shape(gains)) == 6:
             gains_mapping = "[s,r,f,2,2]"
             vis_mapping = "[s,r,f,2,2]"
