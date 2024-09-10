@@ -16,17 +16,17 @@ class ProbabilisticModelInstance:
     log_prob_joint_fn: Callable[[Any], jax.Array]
     forward_fn: Callable[[Any], Tuple[jax.Array, List[jax.Array]]]
 
-    def __sum__(self, other: 'ProbabilisticModelInstance') -> 'ProbabilisticModelInstance':
-        def get_init_params_fn() -> Tuple[Any, Any]:
-            return (self.get_init_params(), other.get_init_params())
+    def __add__(self, other: 'ProbabilisticModelInstance') -> 'ProbabilisticModelInstance':
+        def get_init_params_fn() -> List[Any]:
+            return [self.get_init_params(), other.get_init_params()]
 
         def log_prob_joint_fn(params: List[Any]):
             return self.log_prob_joint(params[0]) + other.log_prob_joint(params[1])
 
-        def forward_fn(params: Any):
+        def forward_fn(params: List[Any]):
             vis1, gains1 = self.forward(params[0])
             vis2, gains2 = other.forward(params[1])
-            return vis1 + vis2, gains1 + gains2
+            return vis1 + vis2, [gains1, gains2]
 
         return ProbabilisticModelInstance(
             get_init_params_fn=get_init_params_fn,

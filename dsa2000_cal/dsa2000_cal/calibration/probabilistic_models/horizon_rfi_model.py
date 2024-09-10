@@ -1,65 +1,56 @@
 import dataclasses
+from typing import Any
 
 import jax
 import tensorflow_probability.substrates.jax as tfp
+from astropy import time as at
 from jax import numpy as jnp
 from jaxns import Model
 from jaxns.framework import context as ctx
 from jaxns.framework import ops
 
-from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
     ProbabilisticModelInstance
+from dsa2000_cal.calibration.probabilistic_models.rfi_prior_models import AbstractRFIPriorModel
 from dsa2000_cal.common.jax_utils import promote_pytree
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
-from dsa2000_cal.visibility_model.rime_model import RIMEModel
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterModelData, \
+    RFIEmitterPredict
 
 tfpd = tfp.distributions
 
 
 @dataclasses.dataclass(eq=False)
 class HorizonRFIModel(AbstractProbabilisticModel):
-    rime_model: RIMEModel
-    gain_prior_model: AbstractGainPriorModel
+    rfi_prior_model: AbstractRFIPriorModel
+    rfi_predict: RFIEmitterPredict
 
     def create_model_instance(self, freqs: jax.Array,
                               times: jax.Array,
                               vis_data: VisibilityData,
                               vis_coords: VisibilityCoords
                               ) -> ProbabilisticModelInstance:
-        model_data = self.rime_model.get_model_data(
-            times=times
-        )  # [facets]
-
-        vis = self.rime_model.predict_visibilities(
-            model_data=model_data,
-            visibility_coords=vis_coords
-        )  # [num_cal, num_row, num_chan[, 2, 2]]
-
-        # vis now contains the model visibilities for each calibrator
         def prior_model():
-            gain_prior_model = self.gain_prior_model.build_prior_model(
-                num_source=self.rime_model.num_facets,
-                num_ant=self.rime_model.num_antennas,
+            rfi_prior_model = self.rfi_prior_model.build_prior_model(
                 freqs=freqs,
                 times=times
             )
-            gains: jax.Array = yield from gain_prior_model()  # [num_source, num_ant, num_chan[, 2, 2]]
-            visibilities = self.rime_model.apply_gains(
-                gains=gains,
-                vis=vis,
+            rfi_emitter_model_data: RFIEmitterModelData = yield from rfi_prior_model()  # [num_source, num_ant, num_chan[, 2, 2]]
+
+            visibilities = self.rfi_predict.predict(
+                model_data=rfi_emitter_model_data,
                 visibility_coords=vis_coords
             )  # [num_row, num_chan[, 2, 2]]
-            return visibilities, gains
+            return visibilities, rfi_emitter_model_data
 
-        def log_likelihood(vis_model: jax.Array, gains: jax.Array):
+        def log_likelihood(vis_model: jax.Array, rfi_emitter_model_data: RFIEmitterModelData):
             """
             Compute the log probability of the data given the gains.
 
             Args:
                 vis_model: [num_rows, num_chan, 4]
-                gains: [num_source, num_ant, num_chan, 2, 2]
+                rfi_emitter_model_data: [num_source, num_ant, num_chan, 2, 2]
 
             Returns:
                 log_prob: scalar
@@ -124,3 +115,7 @@ class HorizonRFIModel(AbstractProbabilisticModel):
             forward_fn=forward,
             log_prob_joint_fn=log_prob_joint
         )
+
+    def save_solution(self, solution: Any, file_name: str, times: at.Time, ms: MeasurementSet):
+        print(solution)
+        pass

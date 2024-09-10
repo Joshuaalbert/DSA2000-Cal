@@ -332,6 +332,8 @@ class InterpolatedArray:
 
     axis: int = 0
     regular_grid: bool = False
+    check_spacing: bool = False
+    clip_out_of_bounds: bool = False
 
     def __post_init__(self):
 
@@ -364,8 +366,35 @@ class InterpolatedArray:
         Returns:
             value at given time
         """
-        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(time, self.x, regular_grid=self.regular_grid)
+        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(time, self.x, regular_grid=self.regular_grid,
+                                                                  check_spacing=self.check_spacing,
+                                                                  clip_out_of_bounds=self.clip_out_of_bounds)
         return jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
+
+
+# Define how the object is flattened (converted to a list of leaves and a context tuple)
+def interpolated_array_flatten(interpolated_array: InterpolatedArray):
+    # Leaves are the arrays (x, values), and auxiliary data is the rest
+    return (
+        [interpolated_array.x, interpolated_array.values], (
+        interpolated_array.axis, interpolated_array.regular_grid, interpolated_array.check_spacing,
+        interpolated_array.clip_out_of_bounds))
+
+
+# Define how the object is unflattened (reconstructed from leaves and context)
+def interpolated_array_unflatten(aux_data, children):
+    x, values = children
+    axis, regular_grid, check_spacing, clip_out_of_bounds = aux_data
+    return InterpolatedArray(x, values, axis=axis, regular_grid=regular_grid, check_spacing=check_spacing,
+                             clip_out_of_bounds=clip_out_of_bounds)
+
+
+# Register the custom pytree
+jax.tree_util.register_pytree_node(
+    InterpolatedArray,
+    interpolated_array_flatten,
+    interpolated_array_unflatten
+)
 
 
 def is_regular_grid(q: np.ndarray):

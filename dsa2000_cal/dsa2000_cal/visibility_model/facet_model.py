@@ -185,7 +185,7 @@ class FacetModel:
             epsilon=1e-6,
             convention=self.convention
         )
-        lte_predict = RFIEmitterPredict(
+        rfi_predict = RFIEmitterPredict(
             delay_engine=self.near_field_delay_engine,
             convention=self.convention
         )
@@ -210,7 +210,7 @@ class FacetModel:
             else:
                 vis += fits_vis
         if model_data.rfi_emitter_model_data is not None:
-            lte_vis = lte_predict.predict(model_data.rfi_emitter_model_data, visibility_coords)
+            lte_vis = rfi_predict.predict(model_data.rfi_emitter_model_data, visibility_coords)
             if vis is None:
                 vis = lte_vis
             else:

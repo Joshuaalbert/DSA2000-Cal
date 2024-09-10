@@ -138,7 +138,7 @@ class GainsPerFacet(AbstractProbabilisticModel):
             times=times,
             freqs=ms.meta.freqs,
             antennas=ms.meta.antennas,
-            antenna_labels=ms.meta.antenna_labels,
+            antenna_labels=ms.meta.antenna_names,
             pointings=ms.meta.pointings
         )
         with open(file_name, "w") as fp:

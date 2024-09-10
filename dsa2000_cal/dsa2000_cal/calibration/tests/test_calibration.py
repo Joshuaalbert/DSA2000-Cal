@@ -84,12 +84,23 @@ def test_calibration(mock_calibrator_source_models):
                         geodesic_model=ms.geodesic_model,
                         far_field_delay_engine=ms.far_field_delay_engine,
                         near_field_delay_engine=ms.near_field_delay_engine,
+                        gain_model=ms.beam_gain_model,
                         convention=ms.meta.convention
                     )
                 ]
             ),
             gain_prior_model=UnconstrainedGain()
-        )
+        ),
+        # HorizonRFIModel(
+        #     rfi_prior_model=FullyParameterisedRFIHorizonEmitter(
+        #         geodesic_model=ms.geodesic_model,
+        #         beam_gain_model=ms.beam_gain_model
+        #     ),
+        #     rfi_predict=RFIEmitterPredict(
+        #         delay_engine=ms.near_field_delay_engine,
+        #         convention=ms.meta.convention
+        #     )
+        # )
     ]
     calibration = Calibration(
         # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.

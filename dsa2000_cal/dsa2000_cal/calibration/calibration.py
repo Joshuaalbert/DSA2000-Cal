@@ -244,13 +244,15 @@ class Calibration:
                     self.probabilistic_models[model_idx].save_solution(
                         solution=solution,
                         file_name=os.path.join(self.solution_folder,
-                                               f"calibration_solution_m{model_idx:03d}_c{cadence_idx:03d}.json")
+                                               f"calibration_solution_m{model_idx:03d}_c{cadence_idx:03d}.json"),
+                        times=times,
+                        ms=ms
                     )
         # Measure total solve time.
         t1 = time_mod.time()
 
         print(f"Completed calibration in {t1 - t0} seconds.")
-        print(f"Residuals stored in {ms}. Solutions in {self.solution_folder}")
+        print(f"Residuals stored in: {ms}. Solutions stored in: {self.solution_folder}")
 
         fig, axs = plt.subplots(2, 1, figsize=(6, 6), sharex=True, squeeze=False)
         # Plot durations

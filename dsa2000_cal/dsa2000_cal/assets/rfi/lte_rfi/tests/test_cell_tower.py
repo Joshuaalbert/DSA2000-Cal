@@ -1,6 +1,7 @@
 import numpy as np
 from astropy import units as au
 
+from dsa2000_cal.assets.rfi.lte_rfi.lwa_cell_tower import LWACellTower
 from dsa2000_cal.assets.rfi.lte_rfi.mock_cell_tower import MockCellTower
 
 
@@ -17,3 +18,4 @@ def test_lte_rfi_source_factory():
     plt.ylabel('Auto-correlation function')
     plt.show()
     assert source_params.delay_acf.regular_grid
+    LWACellTower(seed='test').plot_acf()
