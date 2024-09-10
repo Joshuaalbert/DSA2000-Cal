@@ -66,7 +66,7 @@ def _cast_floating_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.floating):
-                warnings.warn(f"Expected float type, got {x.dtype}, {get_grandparent_info(6)}.")
+                warnings.warn(f"Expected float type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -80,7 +80,7 @@ def _cast_complex_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.complexfloating):
-                warnings.warn(f"Expected complex type, got {x.dtype}, {get_grandparent_info(6)}.")
+                warnings.warn(f"Expected complex type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -94,7 +94,7 @@ def _cast_integer_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.integer):
-                warnings.warn(f"Expected integer type, got {x.dtype}, {get_grandparent_info(6)}.")
+                warnings.warn(f"Expected integer type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
             return x
@@ -108,7 +108,7 @@ def _cast_bool_to(tree: T, dtype: jnp.dtype) -> T:
             return jnp.asarray(x, dtype=dtype)
         try:
             if not jnp.issubdtype(x.dtype, jnp.bool_):
-                warnings.warn(f"Expected bool type, got {x.dtype}, {get_grandparent_info(6)}.")
+                warnings.warn(f"Expected bool type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
             return x

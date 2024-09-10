@@ -174,7 +174,7 @@ class JVPLinearOp:
             def _adjoint_promote_dtypes(co_tangent: jax.Array, dtype: jnp.dtype):
                 if co_tangent.dtype != dtype:
                     warnings.warn(
-                        f"Promoting co-tangent dtype from {co_tangent.dtype} to {dtype}, {get_grandparent_info(2)}."
+                        f"Promoting co-tangent dtype from {co_tangent.dtype} to {dtype}, {get_grandparent_info()}."
                     )
                 return co_tangent.astype(dtype)
 
@@ -201,7 +201,7 @@ class JVPLinearOp:
 
         def _promote_dtype(primal: jax.Array, dtype: jnp.dtype):
             if primal.dtype != dtype:
-                warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}, at {get_grandparent_info(2)}.")
+                warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}, at {get_grandparent_info()}.")
             return primal.astype(dtype)
 
         def _get_result_type(primal: jax.Array):

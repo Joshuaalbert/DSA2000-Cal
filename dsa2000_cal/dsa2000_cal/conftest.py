@@ -3,11 +3,19 @@ import astropy.time as at
 import astropy.units as au
 import jax
 import numpy as np
+import pylab as plt
 import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Hook to run plt.close('all') after each test."""
+    yield  # Run the actual test teardown
+    plt.close('all')  # Close all plots after each test
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +33,7 @@ def skip_if_not_64bit(request):
                 "because 64-bit precision is required"
             )
             pytest.skip(skip_message)
+
 
 @pytest.fixture(autouse=True)
 def skip_if_not_32bit(request):
