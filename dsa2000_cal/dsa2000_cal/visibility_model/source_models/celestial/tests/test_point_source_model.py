@@ -135,8 +135,8 @@ def test_gh55_point():
     pixsize = 0.5 * np.pi / 180 / 3600.  # 5 arcsec
     x0 = 0.
     y0 = 0.
-    l0 = y0
-    m0 = x0
+    l0 = x0
+    m0 = y0
     dl = pixsize
     dm = pixsize
     dirty = np.zeros((N, N))  # [Nl, Nm]
@@ -175,8 +175,8 @@ def test_gh55_point():
         dirty=dirty,
         pixsize_m=dm,
         pixsize_l=dl,
-        center_m=x0,
-        center_l=y0,
+        center_m=m0,
+        center_l=l0,
         epsilon=1e-4
     )
     print(vis)
@@ -214,7 +214,7 @@ def test_gh55_point():
     image = np.zeros((2, num_freqs, 2, 2))  # [source, chan, 2, 2]
     image[:, :, 0, 0] = 0.5
     image[:, :, 1, 1] = 0.5
-    gains = np.ones((2, num_ants, num_freqs, 2, 2), jnp.complex64)  # [[source,] time, ant, chan, 2, 2]
+    gains = np.zeros((2, num_ants, num_freqs, 2, 2), jnp.complex64)  # [[source,] time, ant, chan, 2, 2]
     gains[..., 0, 0] = 1.
     gains[..., 1, 1] = 1.
     lmn = np.stack([lmn1, lmn2], axis=0)  # [source, 3]
