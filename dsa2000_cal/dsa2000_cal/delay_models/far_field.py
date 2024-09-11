@@ -529,7 +529,7 @@ def far_field_delay(
 
     # Eq 11.7
     delta_T_grav = jnp.sum(delta_T_grav_J) + delta_T_grav_earth  # []
-    delta_T_grav *= 0.
+    # delta_T_grav *= 0.
     # Around delta_T_grav=-0.00016 m * (|baseline|/1km)
 
     # Since we perform analysis in BCRS kinematically non-rotating dynamic frame we need to convert to GCRS TT-compatible

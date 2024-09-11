@@ -38,12 +38,14 @@ class Imagor:
     plot_folder: str
 
     field_of_view: au.Quantity | None = None
+    baseline_min: au.Quantity = 1. * au.m
     oversample_factor: float = 5.
     nthreads: int | None = None
     epsilon: float = 1e-4
     convention: str = 'physical'
     verbose: bool = False
     weighting: str = 'natural'
+    spectral_cube: bool = False
     seed: int = 42
 
     def __post_init__(self):
@@ -207,7 +209,8 @@ class Imagor:
 
         # Remove auto-correlations
         baseline_length = jnp.linalg.norm(uvw, axis=-1)  # [num_rows]
-        flags = jnp.logical_or(flags, baseline_length[:, None, None] < 1.0)  # [num_rows, num_chan, coh]
+        flags = jnp.logical_or(flags, baseline_length[:, None, None] < quantity_to_jnp(
+            self.baseline_min))  # [num_rows, num_chan, coh]
 
         if self.convention == 'engineering':
             uvw = jnp.negative(uvw)

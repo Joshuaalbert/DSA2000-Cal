@@ -3,6 +3,7 @@ import astropy.time as at
 import astropy.units as au
 import numpy as np
 import pytest
+from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
@@ -10,18 +11,15 @@ from dsa2000_cal.imaging.imagor import Imagor
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet, VisibilityData
 
 
-@pytest.fixture(scope='function')
-def mock_calibrator_source_models(tmp_path):
+def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan):
     fill_registries()
-    array_name = 'dsa2000W_small'
     # Load array
     array = array_registry.get_instance(array_registry.get_match(array_name))
     array_location = array.get_array_location()
     antennas = array.get_antennas()
 
-    # -00:36:29.015,58.45.50.398
-    phase_tracking = ac.SkyCoord("-00h36m29.015s", "58d45m50.398s", frame='icrs')
-    phase_tracking = ac.ICRS(phase_tracking.ra, phase_tracking.dec)
+    obstime = at.Time("2021-01-01T00:00:00", scale='utc')
+    phase_tracking = zenith = ENU(0, 0, 1, obstime=obstime, location=array_location).transform_to(ac.ICRS())
 
     meta = MeasurementSetMetaV0(
         array_name=array_name,
@@ -29,10 +27,10 @@ def mock_calibrator_source_models(tmp_path):
         phase_tracking=phase_tracking,
         channel_width=array.get_channel_width(),
         integration_time=au.Quantity(1.5, 's'),
-        coherencies=['XX', 'XY', 'YX', 'YY'],
+        coherencies=['XX', 'XY', 'YX', 'YY'] if full_stokes else ['I'],
         pointings=phase_tracking,
-        times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(1) * au.s,
-        freqs=au.Quantity([700], unit=au.MHz),
+        times=obstime + 1.5 * np.arange(1) * au.s,
+        freqs=au.Quantity(np.linspace(700, 2000, num_chan), unit=au.MHz),
         antennas=antennas,
         antenna_names=array.get_antenna_names(),
         antenna_diameters=array.get_antenna_diameter(),
@@ -40,7 +38,7 @@ def mock_calibrator_source_models(tmp_path):
         mount_types='ALT-AZ'
     )
     ms = MeasurementSet.create_measurement_set(str(tmp_path), meta)
-    gen = ms.create_block_generator(vis=True, weights=False, flags=True)
+    gen = ms.create_block_generator(vis=True, weights=True, flags=True)
     gen_response = None
     while True:
         try:
@@ -56,8 +54,23 @@ def mock_calibrator_source_models(tmp_path):
     return ms
 
 
-def test_dirty_imaging(mock_calibrator_source_models):
-    ms = mock_calibrator_source_models
+@pytest.mark.parametrize("full_stokes", [True, False])
+@pytest.mark.parametrize("num_chan", [1, 2])
+def test_dirty_imaging(tmp_path, full_stokes, num_chan):
+    ms = build_calibrator_source_models('dsa2000W_small', tmp_path, full_stokes, num_chan)
+
+    imagor = Imagor(
+        plot_folder='plots',
+        field_of_view=2 * au.deg
+    )
+    image_model = imagor.image(image_name='test_dirty', ms=ms, overwrite=True)
+    # print(image_model)
+
+
+@pytest.mark.parametrize("full_stokes", [False])
+@pytest.mark.parametrize("num_chan", [40])
+def test_demo(tmp_path, full_stokes, num_chan):
+    ms = build_calibrator_source_models('dsa2000W', tmp_path, full_stokes, num_chan)
 
     imagor = Imagor(
         plot_folder='plots',
