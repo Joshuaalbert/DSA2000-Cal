@@ -1,3 +1,4 @@
+import itertools
 import os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -30,7 +31,6 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
         uvw: [num_rows, 3] array of uvw coordinates.
         freqs: [num_freqs] array of frequencies.
         dirty: [num_l, num_m] array of dirty image, in units of JY/PIXEL.
-            If num_freqs is present, the visibilities in each channel are computed with respective image slice.
         pixsize_m: scalar, pixel size in x direction.
         pixsize_l: scalar, pixel size in y direction.
         center_m: scalar, center of image in x direction.
@@ -87,8 +87,8 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
 def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
                     dirty: np.ndarray, wgt: np.ndarray | None,
                     mask: np.ndarray | None,
-                    pixsize_m: float, pixsize_l: float,
-                    center_m: float, center_l: float,
+                    pixsize_m: np.ndarray | float, pixsize_l: np.ndarray | float,
+                    center_m: np.ndarray | float, center_l: np.ndarray | float,
                     epsilon: float, do_wgridding: bool,
                     flip_v: bool, divide_by_n: bool,
                     sigma_min: float, sigma_max: float,
@@ -99,8 +99,7 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Args:
         uvw: [num_rows, 3] array of uvw coordinates.
         freqs: [num_freqs] array of frequencies.
-        dirty: [[num_freqs,]num_l, num_m] array of dirty image, in units of JY/PIXEL.
-            If num_freqs is present, the visibilities in each channel are computed with respective image slice.
+        dirty: [num_l, num_m] array of dirty image, in units of JY/PIXEL.
         wgt: [num_rows, num_freqs] array of weights, multiplied with output visibilities.
         mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
         pixsize_m: scalar, pixel size in x direction.
@@ -119,17 +118,16 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
+    uvw = np.asarray(uvw, order='C', dtype=np.float64)  # [num_rows, 3]
+    freqs = np.asarray(freqs, order='C', dtype=np.float64)  # [num_freqs[,1]]
+    dirty = np.asarray(dirty, order='C')  # [..., num_l, num_m]
+    image_dims = np.shape(dirty)  # [..., num_l, num_m]
+    batch_dims = image_dims[:-2]  # [...]
+    chan_dims = np.shape(freqs)  # [num_freq[,1]]
+    point_dims = np.shape(center_l)  # [[num_freqs]]
 
-    uvw = np.asarray(uvw, order='F', dtype=np.float64)
-    freqs = np.asarray(freqs, dtype=np.float64)
-    dirty = np.asarray(dirty, order='F')
-    if len(np.shape(dirty)) == 3:
-        if np.shape(dirty)[0] != np.shape(freqs)[0]:
-            raise ValueError(f"Expected dirty to have shape (num_freqs, num_l, num_m), got {np.shape(dirty)}")
-        dirty = np.asarray(dirty, order='c')  # [num_freqs, num_l, num_m]
-        per_chan_image = True
-    else:
-        per_chan_image = False
+    spectral_cube = len(point_dims) == 1
+
     num_rows, _ = np.shape(uvw)
 
     if wgt is not None:
@@ -140,62 +138,93 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
 
     output_dtype = (1j * np.ones(1, dtype=dirty.dtype)).dtype
 
-    def compute_vis_for_channel(chan_idx):
+    def compute_vis_for_channel_spectral(indices):
+        chan_idx = indices[0]
         chan_slice = slice(chan_idx, chan_idx + 1)
-        dirty_slice = dirty[chan_idx, :, :]
-        freqs_slice = freqs[chan_idx, :]
+        dirty_slice = dirty[indices + (Ellipsis,)]  # [num_l, num_m]
+        freqs_slice = freqs[chan_idx, :]  # [1]
+        center_l_slice = float(center_l[chan_idx])  # ()
+        center_m_slice = float(center_m[chan_idx])  # ()
+        pixsize_l_slice = float(pixsize_l[chan_idx])  # ()
+        pixsize_m_slice = float(pixsize_m[chan_idx])  # ()
         wgt_slice = wgt[:, chan_slice] if wgt is not None else None
         mask_slice = mask[:, chan_slice] if mask is not None else None
-        output_vis_slice = output_vis[chan_slice, :, :]
-        wgridder.dirty2vis(
-            uvw=uvw,
-            freq=freqs_slice,
-            dirty=dirty_slice,
-            wgt=wgt_slice,
-            mask=mask_slice,
-            pixsize_x=float(pixsize_l),
-            pixsize_y=float(pixsize_m),
-            center_x=float(center_l),
-            center_y=float(center_m),
-            epsilon=float(epsilon),
-            do_wgridding=do_wgridding,
-            flip_v=flip_v,
-            divide_by_n=divide_by_n,
-            sigma_min=sigma_min,
-            sigma_max=sigma_max,
-            nthreads=1,  # Each thread will handle one channel
-            verbosity=verbosity,
-            vis=output_vis_slice
-        )
+        output_vis_slice = output_vis[(Ellipsis,) + indices]  # [num_rows, 1]
+        try:
+            wgridder.dirty2vis(
+                uvw=uvw,
+                freq=freqs_slice,
+                dirty=dirty_slice,
+                wgt=wgt_slice,
+                mask=mask_slice,
+                pixsize_x=pixsize_l_slice,
+                pixsize_y=pixsize_m_slice,
+                center_x=center_l_slice,
+                center_y=center_m_slice,
+                epsilon=float(epsilon),
+                do_wgridding=bool(do_wgridding),
+                flip_v=bool(flip_v),
+                divide_by_n=bool(divide_by_n),
+                sigma_min=float(sigma_min),
+                sigma_max=float(sigma_max),
+                nthreads=1,  # Each thread will handle one channel
+                verbosity=int(verbosity),
+                vis=output_vis_slice
+            )
+        except Exception as e:
+            print(e)
+            raise e
 
-    if per_chan_image:
-        num_freqs, _ = np.shape(freqs)
-        output_vis = np.zeros((num_freqs, num_rows) + np.shape(freqs)[1:], order='F', dtype=output_dtype)
+    def compute_vis_for_channel_non_spectral(indices):
+        dirty_slice = dirty[indices + (Ellipsis,)]  # [num_l, num_m]
+        output_vis_slice = output_vis[(Ellipsis,) + indices]  # [num_rows, num_freqs]
+        try:
+            wgridder.dirty2vis(
+                uvw=uvw,
+                freq=freqs,
+                dirty=dirty_slice,
+                wgt=wgt,
+                mask=mask,
+                pixsize_x=float(pixsize_l),
+                pixsize_y=float(pixsize_m),
+                center_x=float(center_l),
+                center_y=float(center_m),
+                epsilon=float(epsilon),
+                do_wgridding=bool(do_wgridding),
+                flip_v=bool(flip_v),
+                divide_by_n=bool(divide_by_n),
+                sigma_min=float(sigma_min),
+                sigma_max=float(sigma_max),
+                nthreads=1,  # Each thread will handle one channel
+                verbosity=int(verbosity),
+                vis=output_vis_slice
+            )
+        except Exception as e:
+            print(e)
+            raise e
+
+    if spectral_cube:
+        print("Spectral cube prediction: (image: [chan, num_l, num_m] -> vis: [num_rows, chan])")
+        print(freqs.shape, dirty.shape, pixsize_l.shape)
+        all_indices = list(itertools.product(*[range(dim) for dim in batch_dims]))
+        # Put dims at end so memory ordering is nice
+        output_vis = np.zeros((num_rows, 1) + batch_dims, order='F', dtype=output_dtype)
         with ThreadPoolExecutor(max_workers=nthreads) as executor:
-            executor.map(compute_vis_for_channel, range(num_freqs))
+            executor.map(compute_vis_for_channel_spectral, all_indices)
+        # transpose to batch_dims + [num_rows, num_freqs]
+        perm = tuple([i + 2 for i in range(len(batch_dims))] + [0, 1])
+        output_vis = np.transpose(output_vis, axes=perm)
     else:
-        num_freqs, = np.shape(freqs)
-        output_vis = np.zeros((num_rows, num_freqs), order='F', dtype=output_dtype)
-        _ = wgridder.dirty2vis(
-            uvw=uvw,
-            freq=freqs,
-            dirty=dirty,
-            wgt=wgt,
-            mask=mask,
-            pixsize_x=float(pixsize_l),
-            pixsize_y=float(pixsize_m),
-            center_x=float(center_l),
-            center_y=float(center_m),
-            epsilon=float(epsilon),
-            do_wgridding=do_wgridding,
-            flip_v=flip_v,
-            divide_by_n=divide_by_n,
-            sigma_min=sigma_min,
-            sigma_max=sigma_max,
-            nthreads=nthreads,
-            verbosity=verbosity,
-            vis=output_vis
-        )
+        num_freqs, = chan_dims
+        batch_dims = image_dims[:-2]
+        all_indices = list(itertools.product(*[range(dim) for dim in batch_dims]))
+        # Put dims at end so memory ordering is nice
+        output_vis = np.zeros((num_rows, num_freqs) + batch_dims, order='F', dtype=output_dtype)
+        with ThreadPoolExecutor(max_workers=nthreads) as executor:
+            executor.map(compute_vis_for_channel_non_spectral, all_indices)
+        # transpose to batch_dims + [num_rows, num_freqs]
+        perm = tuple([i + 2 for i in range(len(batch_dims))] + [0, 1])
+        output_vis = np.transpose(output_vis, axes=perm)
 
     return output_vis
 
@@ -259,9 +288,13 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
 
     output_dtype = vis.real.dtype
 
+    if spectral_cube:
+        shape = (npix_l, npix_m, len(freqs))
+    else:
+        shape = (npix_l, npix_m)
     # Define the expected shape & dtype of output.
     result_shape_dtype = jax.ShapeDtypeStruct(
-        shape=(npix_m, npix_l),
+        shape=shape,
         dtype=output_dtype
     )
 
@@ -321,8 +354,8 @@ def _host_vis2dirty(uvw: np.ndarray, freqs: np.ndarray,
         if spectral_cube=False an [npix_l, npix_m] array of dirty image, in units of JY/PIXEL,
         else an [npix_l, npix_m, num_freqs] array of dirty images.
     """
-    uvw = np.asarray(uvw, order='F', dtype=np.float64)
-    freqs = np.asarray(freqs, dtype=np.float64)
+    uvw = np.asarray(uvw, order='C', dtype=np.float64)
+    freqs = np.asarray(freqs, order='C', dtype=np.float64)
     vis = np.asarray(vis, order='F')  # Fortran order for better cache locality
 
     output_type = vis.real.dtype
