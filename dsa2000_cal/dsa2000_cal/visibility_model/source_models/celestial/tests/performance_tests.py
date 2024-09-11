@@ -177,7 +177,10 @@ def build_mock_visibility_coord(ant: int, time: int) -> VisibilityCoords:
 
 
 @pytest.mark.parametrize('source', ['cas_a', 'cyg_a', 'tau_a', 'vir_a'])
-@pytest.mark.parametrize('chan,ant', [(1920, 20), (40, 2048)])
+@pytest.mark.parametrize('chan,ant', [
+    (40, 2048),
+    (1920, 256)
+])
 def test_benchmark_fits_predict(source, chan: int, ant: int):
     fill_registries()
     wsclean_fits_files = source_model_registry.get_instance(
