@@ -137,7 +137,6 @@ class BaseForwardModel(AbstractForwardModel):
             field_of_view=self.field_of_view,
             seed=self.imaging_seed,
             oversample_factor=self.oversample_factor,
-            nthreads=len(jax.devices()),
             convention=ms.meta.convention,
             weighting=self.weighting
         )

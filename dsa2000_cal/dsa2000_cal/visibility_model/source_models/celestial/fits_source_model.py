@@ -352,7 +352,7 @@ class FITSSourceModel(AbstractSourceModel):
 
 @dataclasses.dataclass(eq=False)
 class FITSPredict:
-    num_threads: int = 1
+    num_threads: int | None = None
     epsilon: float = 1e-6
     convention: str = 'physical'
 

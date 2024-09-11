@@ -39,7 +39,7 @@ class Imagor:
 
     field_of_view: au.Quantity | None = None
     oversample_factor: float = 5.
-    nthreads: int = 1
+    nthreads: int | None = None
     epsilon: float = 1e-4
     convention: str = 'physical'
     verbose: bool = False
