@@ -14,11 +14,11 @@ from dsa2000_cal.common.astropy_utils import mean_itrs
 @array_registry(template='lwa')
 class LWAArray(AbstractArray):
     """
-    DSA2000W array class.
+    LWA array class.
     """
 
     def get_channel_width(self) -> au.Quantity:
-        return (86874511.71875 - 40960937.5) / 1920 * au.Hz
+        return 23913.3199056 * au.Hz
 
     def get_array_location(self) -> ac.EarthLocation:
         return mean_itrs(self.get_antennas().get_itrs()).earth_location
