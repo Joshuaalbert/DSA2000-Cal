@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import jax
 import numpy as np
 import pytest
@@ -14,10 +16,11 @@ from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model imp
 
 
 def build_mock_rfi_model_data(is_gains: bool, full_stokes: bool, direction_dependent_gains: bool, chan: int,
-                              num_time: int) -> RFIEmitterModelData:
+                              num_time: int) -> Tuple[RFIEmitterModelData, RFIEmitterPredict]:
     # Create a simple model
     fill_registries()
-    rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('mock_cell_tower'))
+    # rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('mock_cell_tower'))
+    rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('parametric_mock_cell_tower'))
     # Create a simple model
     freqs = np.linspace(55, 59, chan) * au.MHz
     rfi_model_params = rfi_model.make_source_params(freqs=freqs, full_stokes=full_stokes)
@@ -48,7 +51,7 @@ def build_mock_rfi_model_data(is_gains: bool, full_stokes: bool, direction_depen
                 gains_shape = (1, num_time, ant, len(freqs))
             else:
                 gains_shape = (num_time, ant, len(freqs),)
-        gains = 1j * 1e-3 * jax.random.normal(jax.random.PRNGKey(42), gains_shape)
+        gains = 1. + 1j * 1e-3 * jax.random.normal(jax.random.PRNGKey(42), gains_shape)
     else:
         gains = None
     model_data = source_model.get_model_data(gains=gains)
