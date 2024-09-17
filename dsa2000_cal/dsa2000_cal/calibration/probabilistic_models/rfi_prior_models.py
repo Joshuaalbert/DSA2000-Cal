@@ -12,8 +12,8 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
-from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterModelData
 from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterModelData
 
 tfpd = tfp.distributions
 
@@ -101,7 +101,7 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
         source_positions_enu = jnp.stack([east, north, up], axis=-1)  # [E, 3]
         return source_positions_enu
 
-    def get_acf(self):
+    def get_acf(self, freqs: jax.Array):
         max_delay = 1e-5  # seconds
         delay_acf_x = jnp.linspace(0., max_delay, self.acf_resolution)
         delay_acf_x = jnp.concatenate([-delay_acf_x[::-1], delay_acf_x[1:]])
@@ -122,15 +122,7 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
         delay_acf_values = jax.lax.complex(delay_acf_values_real, delay_acf_values_imag)
         delay_acf_values /= delay_acf_values[0:1, :]  # normalise central value to 1
         delay_acf_values = jnp.concatenate([delay_acf_values[::-1], delay_acf_values[1:]], axis=0)
-        delay_acf = InterpolatedArray(
-            x=delay_acf_x,
-            values=delay_acf_values,
-            axis=0,
-            regular_grid=True
-        )  # [ E]
-        return delay_acf
 
-    def get_spectral_power(self, freqs: jax.Array):
         if self.full_stokes:
             luminosity = yield Prior(
                 tfpd.Uniform(
@@ -139,7 +131,8 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
                 ),
                 name='luminosity'
             ).parametrised()
-            luminosity = jnp.tile(luminosity[:, None, :, :], (1, len(freqs), 1, 1))  # [num_source, num_chan, 2, 2]
+            luminosity = jnp.tile(luminosity[:, None, :, :], (1, len(freqs), 1, 1))  # [e, num_chan, 2, 2]
+            delay_acf_values = delay_acf_values[:, :, None, None, None] * luminosity  # [num_delays, e, num_chan, 2, 2]
         else:
             luminosity = yield Prior(
                 tfpd.Uniform(
@@ -148,14 +141,22 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
                 ),
                 name='luminosity'
             ).parametrised()
-            luminosity = jnp.tile(luminosity[:, None], (1, len(freqs)))  # [num_source, num_chan]
-        return luminosity
+            luminosity = jnp.tile(luminosity[:, None], (1, len(freqs)))  # [e, num_chan]
+
+            delay_acf_values = delay_acf_values[:, :, None] * luminosity  # [num_delays, e, num_chan]
+
+        delay_acf = InterpolatedArray(
+            x=delay_acf_x,
+            values=delay_acf_values,
+            axis=0,
+            regular_grid=True
+        )  # [ E]
+        return delay_acf
 
     def build_prior_model(self, freqs: jax.Array, times: jax.Array) -> PriorModelType:
         def prior_model():
             source_positions_enu = yield from self.get_source_enu()
-            delay_acf = yield from self.get_acf()
-            luminosity = yield from self.get_spectral_power(freqs)
+            delay_acf = yield from self.get_acf(freqs)
 
             geodesics = self.geodesic_model.compute_near_field_geodesics(
                 times=times,
@@ -169,15 +170,11 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
             return RFIEmitterModelData(
                 freqs=freqs,
                 position_enu=source_positions_enu,
-                luminosity=luminosity,
                 delay_acf=delay_acf,
                 gains=gains
             )
 
         return prior_model
-
-
-
 
 
 @dataclasses.dataclass(eq=False)
@@ -197,7 +194,11 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
         super().__post_init__()
         self.fwhm_high = self.channel_width
 
-    def get_acf(self):
+    def get_acf(self, freqs: jax.Array):
+        chan_width = quantity_to_jnp(self.channel_width)
+        # chan_width = freqs[1] - freqs[0]
+        chan_lower = freqs - chan_width / 2
+        chan_upper = freqs + chan_width / 2
         ones = jnp.ones((self.num_emitters,), dtype=mp_policy.freq_dtype)
         mu = yield Prior(
             tfpd.Uniform(
@@ -242,8 +243,8 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
         else:
             spectral_power = yield Prior(
                 tfpd.Uniform(
-                    low=quantity_to_jnp(self.min_channel_power/self.channel_width, 'Jy*m^2/Hz') * ones,
-                    high=quantity_to_jnp(self.max_channel_power/self.channel_width, 'Jy*m^2/Hz') * ones
+                    low=quantity_to_jnp(self.min_channel_power / self.channel_width, 'Jy*m^2/Hz') * ones,
+                    high=quantity_to_jnp(self.max_channel_power / self.channel_width, 'Jy*m^2/Hz') * ones
                 ),
                 name='spectral_power'
             ).parametrised()
@@ -252,6 +253,8 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
             mu=mu,
             fwhp=fwhp,
             spectral_power=spectral_power,
+            channel_lower=chan_lower,
+            channel_upper=chan_upper,
             resolution=self.acf_resolution,
             convention=self.convention
         )

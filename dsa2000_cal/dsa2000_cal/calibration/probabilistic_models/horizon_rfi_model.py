@@ -16,6 +16,7 @@ from dsa2000_cal.common.jax_utils import promote_pytree
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
+from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterModelData, \
     RFIEmitterPredict
 
@@ -107,7 +108,6 @@ class HorizonRFIModel(AbstractProbabilisticModel):
             freqs=ms.meta.freqs,
             position_enu=solution.position_enu * au.m,
             array_location=ms.meta.array_location,
-            luminosity=(solution.luminosity * (au.Jy * au.m ** 2)).to('Jy*km^2'),
             delay_acf=solution.delay_acf,
             antennas=ms.meta.antennas,
             antenna_labels=ms.meta.antenna_names,
@@ -127,8 +127,7 @@ class RFIEmitterSolutions(SerialisableBaseModel):
     freqs: au.Quantity  # [num_chans]
     position_enu: au.Quantity  # [E, 3]
     array_location: ac.EarthLocation
-    luminosity: au.Quantity  # [E, num_chans[,2,2]]
-    delay_acf: InterpolatedArray  # [E]
+    delay_acf: InterpolatedArray | ParametricDelayACF # [E]
 
     antennas: ac.EarthLocation  # [ant]
     antenna_labels: List[str]  # [ant]

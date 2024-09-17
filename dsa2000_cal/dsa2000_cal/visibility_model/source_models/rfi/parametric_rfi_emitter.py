@@ -14,8 +14,8 @@ class ParametricDelayACF:
     mu: FloatArray  # [E]
     fwhp: FloatArray  # [E]
     spectral_power: FloatArray  # [E[,2,2]] in Jy*m^2/Hz
-    channel_lower: jax.Array  # [chan]
-    channel_upper: jax.Array  # [chan]
+    channel_lower: FloatArray  # [chan]
+    channel_upper: FloatArray  # [chan]
     resolution: int = 32  # Should be chosen so that channel width / resolution ~ PFB kernel resolution
     convention: str = 'physical'  # Doesn't matter for the ACF
 

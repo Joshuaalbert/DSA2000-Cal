@@ -191,17 +191,18 @@ class Calibration:
                 time_idx=mp_policy.cast_to_index(visibility_coords.time_idx)
             )  # [num_row, ...]
 
-            solutions, residual, state, diagnostics = block_until_ready(
-                self._solve_jax(
-                    key=solve_key,
-                    freqs=tree_device_put(freqs_jax, mesh, ('chan',)),
-                    times=tree_device_put(times_jax, mesh, ()),
-                    init_state=last_state,  # already shard as prior output
-                    vis_data=tree_device_put(vis_data, mesh, (None, 'chan')),
-                    vis_coords=tree_device_put(visibility_coords, mesh, ()),
-                    num_iterations=num_iterations
+            with jax.profiler.trace("/tmp/profiler", create_perfetto_link=True):
+                solutions, residual, state, diagnostics = block_until_ready(
+                    self._solve_jax(
+                        key=solve_key,
+                        freqs=tree_device_put(freqs_jax, mesh, ('chan',)),
+                        times=tree_device_put(times_jax, mesh, ()),
+                        init_state=last_state,  # already shard as prior output
+                        vis_data=tree_device_put(vis_data, mesh, (None, 'chan')),
+                        vis_coords=tree_device_put(visibility_coords, mesh, ()),
+                        num_iterations=num_iterations
+                    )
                 )
-            )
 
             cadence_idx += 1
             # Update metrics
@@ -352,6 +353,7 @@ class Calibration:
         state, diagnostics = solver.solve(state)
 
         # Predict at full resolution.
+        @jax.jit
         @partial(
             multi_vmap,
             in_mapping="[c],[t],[t,r],[t,r,c]",
