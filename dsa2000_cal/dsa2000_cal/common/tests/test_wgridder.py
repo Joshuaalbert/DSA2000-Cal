@@ -1,10 +1,12 @@
 import itertools
+from functools import partial
 
 import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from dsa2000_cal.common.jax_utils import multi_vmap, convert_to_ufunc
 from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.wgridder import vis_to_image, image_to_vis
 
@@ -214,3 +216,124 @@ def test_normalisation():
     plt.show()
 
     np.testing.assert_allclose(np.max(dirty), 1., atol=2e-2)
+
+
+def test_multi_vmap():
+    @partial(
+        multi_vmap,
+        in_mapping="[a,r,3],[b,C,c],[C,Nl,Nm],[C],[C],[C],[C],[a,r,c]",
+        out_mapping="[a,b,C,~r,~c]",
+        verbose=True
+    )
+    @partial(convert_to_ufunc, tile=True)
+    def _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask):
+        return image_to_vis(
+            uvw=uvw,
+            freqs=freqs,
+            dirty=dirty,
+            pixsize_l=dl,
+            pixsize_m=dm,
+            center_l=l0,
+            center_m=m0,
+            mask=mask
+        )
+
+    a = 3
+    r = 100
+    b = 10
+    c = 4
+    C = 5
+    Nl = 512
+    Nm = 512
+
+    uvw = jnp.ones((a, r, 3))
+    freqs = 700e6 * jnp.ones((b, C, c))
+    dirty = jnp.ones((C, Nl, Nm))
+    dl = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    dm = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    l0 = 0. * jnp.ones((C,))
+    m0 = 0. * jnp.ones((C,))
+    mask = jnp.ones((a, r, c))
+
+    vis = _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask)
+    assert vis.shape == (a, b, C, r, c)
+
+    @partial(
+        multi_vmap,
+        in_mapping="[a,r,3],[b,C,c],[C,Nl,Nm],[],[],[],[],[a,r,c]",
+        out_mapping="[a,b,C,~r,~c]",
+        verbose=True
+    )
+    @partial(convert_to_ufunc, tile=True)
+    def _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask):
+        return image_to_vis(
+            uvw=uvw,
+            freqs=freqs,
+            dirty=dirty,
+            pixsize_l=dl,
+            pixsize_m=dm,
+            center_l=l0,
+            center_m=m0,
+            mask=mask
+        )
+
+    a = 3
+    r = 100
+    b = 10
+    c = 4
+    C = 5
+    Nl = 512
+    Nm = 512
+
+    uvw = jnp.ones((a, r, 3))
+    freqs = 700e6 * jnp.ones((b, C, c))
+    dirty = jnp.ones((C, Nl, Nm))
+    dl = 0.5 * np.pi / 180 / 3600. * jnp.ones(())
+    dm = 0.5 * np.pi / 180 / 3600. * jnp.ones(())
+    l0 = 0. * jnp.ones(())
+    m0 = 0. * jnp.ones(())
+    mask = jnp.ones((a, r, c))
+
+    vis = _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask)
+    assert vis.shape == (a, b, C, r, c)
+
+
+
+    @partial(
+        multi_vmap,
+        in_mapping="[a,r,3],[b,C,c=1],[C,Nl,Nm],[C],[C],[C],[C],[a,r,c=1]",
+        out_mapping="[a,b,~r,C,~c=1]",
+        verbose=True
+    )
+    @partial(convert_to_ufunc, tile=True)
+    def _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask):
+        return image_to_vis(
+            uvw=uvw,
+            freqs=freqs,
+            dirty=dirty,
+            pixsize_l=dl,
+            pixsize_m=dm,
+            center_l=l0,
+            center_m=m0,
+            mask=mask
+        )
+
+    a = 3
+    r = 100
+    b = 10
+    c = 1
+    C = 5
+    Nl = 512
+    Nm = 512
+
+    uvw = jnp.ones((a, r, 3))
+    freqs = 700e6 * jnp.ones((b, C, c))
+    dirty = jnp.ones((C, Nl, Nm))
+    dl = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    dm = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    l0 = 0. * jnp.ones((C,))
+    m0 = 0. * jnp.ones((C,))
+    mask = jnp.ones((a, r, c))
+
+    vis = _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask)
+    assert vis.shape == (a, b, r, C, c)

@@ -70,11 +70,11 @@ def build_mock_visibility_coord(rows: int, ant: int, time: int) -> VisibilityCoo
 @pytest.mark.parametrize("is_gains", [True, False])
 @pytest.mark.parametrize("full_stokes", [True, False])
 @pytest.mark.parametrize("image_has_chan", [True, False])
-def test_shapes_correctness(is_gains: bool, image_has_chan: bool, full_stokes: bool):
+@pytest.mark.parametrize("chan", [1, 4])
+def test_shapes_correctness(is_gains: bool, image_has_chan: bool, full_stokes: bool, chan: int):
     faint_predict = FITSPredict()
     Nx = 100
     Ny = 100
-    chan = 4
     time = 15
     ant = 24
     row = 1000

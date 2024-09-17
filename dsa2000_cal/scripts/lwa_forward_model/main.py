@@ -2,12 +2,18 @@ import os
 
 import numpy as np
 from astropy import coordinates as ac, units as au, time as at
+
+# export XLA_FLAGS=--xla_hlo_profile
+# export TF_CPP_MIN_LOG_LEVEL=0
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
+os.environ["XLA_FLAGS"] = "--xla_hlo_profile"
+# Set num jax devices to number of CPUs
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+
 from jax import config
 
-# Set num jax devices
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from tomographic_kernel.frames import ENU
 from dsa2000_cal.assets.content_registry import fill_registries
@@ -26,7 +32,7 @@ def main(ms_folder: str):
     else:
         array_location = array.get_array_location()
         antennas = array.get_antennas()
-        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 10 * np.arange(1) * au.s
+        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 10 * np.arange(10) * au.s
         freqs = au.Quantity([55], unit=au.MHz)
         phase_tracking = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
         meta = MeasurementSetMetaV0(
@@ -64,8 +70,11 @@ def main(ms_folder: str):
         weighting='natural',
         epsilon=1e-6,
         add_noise=True,
-        include_calibration=False,
-        include_simulation=True
+        include_calibration=True,
+        include_simulation=False,
+        inplace_subtract=True,
+        num_cal_iters=1,
+        overwrite=True
     )
     forward_model.forward(ms=ms)
 

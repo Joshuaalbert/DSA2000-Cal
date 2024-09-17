@@ -107,7 +107,7 @@ class HorizonRFIModel(AbstractProbabilisticModel):
             freqs=ms.meta.freqs,
             position_enu=solution.position_enu * au.m,
             array_location=ms.meta.array_location,
-            luminosity=solution.luminosity * (au.W / au.MHz),
+            luminosity=(solution.luminosity * (au.Jy * au.m ** 2)).to('Jy*km^2'),
             delay_acf=solution.delay_acf,
             antennas=ms.meta.antennas,
             antenna_labels=ms.meta.antenna_names,

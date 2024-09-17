@@ -346,11 +346,12 @@ def test__get_centred_insert_index():
 
 
 @pytest.mark.parametrize('regular_grid', [True, False])
-def test_interpolated_array(regular_grid: bool):
+@pytest.mark.parametrize('normalise', [True, False])
+def test_interpolated_array(regular_grid: bool, normalise: bool):
     # scalar time
     times = jnp.linspace(0, 10, 100)
     values = jnp.sin(times)
-    interp = InterpolatedArray(times, values, regular_grid=regular_grid)
+    interp = InterpolatedArray(times, values, regular_grid=regular_grid, normalise=normalise)
     assert interp(5.).shape == ()
     np.testing.assert_allclose(interp(5.), jnp.sin(5), atol=2e-3)
 
@@ -361,7 +362,7 @@ def test_interpolated_array(regular_grid: bool):
     # Now with axis = 1
     times = jnp.linspace(0, 10, 100)
     values = jnp.stack([jnp.sin(times), jnp.cos(times)], axis=0)  # [2, 100]
-    interp = InterpolatedArray(times, values, axis=1, regular_grid=regular_grid)
+    interp = InterpolatedArray(times, values, axis=1, regular_grid=regular_grid, normalise=normalise)
     assert interp(5.).shape == (2,)
     np.testing.assert_allclose(interp(5.), jnp.array([jnp.sin(5), jnp.cos(5)]), atol=2e-3)
 
@@ -371,3 +372,24 @@ def test_interpolated_array(regular_grid: bool):
                                jnp.stack([jnp.sin(jnp.array([5., 6., 7.])), jnp.cos(jnp.array([5., 6., 7.]))],
                                          axis=0),
                                atol=2e-3)
+
+
+def test_interpolated_array_normalise():
+    # compare same with and without
+    times = jnp.linspace(0, 10, 100)  # [100]
+    values = jnp.sin(times)  # [100]
+    interp = InterpolatedArray(times, values, normalise=False)
+    interp_norm = InterpolatedArray(times, values, normalise=True)
+    assert interp(5.).shape == ()
+    assert interp_norm(5.).shape == ()
+    np.testing.assert_allclose(interp(5.), interp_norm(5.), atol=1e-8)
+
+    # Find case where normalisation is needed, i.e. different that tolerance
+    times = jnp.linspace(0, 10, 100)  # [100]
+    values = jnp.sin(times) * 1e30 + 0.00000001  # [100]
+    interp = InterpolatedArray(times, values, normalise=False)
+    interp_norm = InterpolatedArray(times, values, normalise=True)
+    assert interp(5.).shape == ()
+    assert interp_norm(5.).shape == ()
+    print(interp(5.0001) - interp_norm(5.0001))
+    # assert not np.allclose(interp(5.), interp_norm(5.), atol=1e-8)

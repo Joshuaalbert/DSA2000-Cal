@@ -108,8 +108,8 @@ def test_calibration(mock_calibrator_source_models):
     calibration = Calibration(
         # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
         probabilistic_models=probabilistic_models,
-        num_iterations=1,
-        num_approx_steps=0,
+        num_iterations=2,
+        num_approx_steps=2,
         inplace_subtract=True,
         plot_folder='plots',
         solution_folder='solutions',

@@ -69,6 +69,7 @@ def _cast_floating_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
                 warnings.warn(f"Expected float type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
+            warnings.warn(f"Failed to cast {x} to {dtype}.")
             return x
 
     return jax.tree.map(conditional_cast, tree)
@@ -83,6 +84,7 @@ def _cast_complex_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
                 warnings.warn(f"Expected complex type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
+            warnings.warn(f"Failed to cast {x} to {dtype}.")
             return x
 
     return jax.tree.map(conditional_cast, tree)
@@ -97,6 +99,7 @@ def _cast_integer_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
                 warnings.warn(f"Expected integer type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
+            warnings.warn(f"Failed to cast {x} to {dtype}.")
             return x
 
     return jax.tree.map(conditional_cast, tree)
@@ -111,6 +114,7 @@ def _cast_bool_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
                 warnings.warn(f"Expected bool type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
+            warnings.warn(f"Failed to cast {x} to {dtype}.")
             return x
 
     return jax.tree.map(conditional_cast, tree)

@@ -37,6 +37,7 @@ def test_multi_step_lm():
         jax.random.PRNGKey(4), (row, chan), dtype=mp_policy.vis_dtype)
 
     def run(antenna1, antenna2, vis_per_source, data):
+
         def residuals(params):
             gains_real, gains_imag = params
             gains = mp_policy.cast_to_gain(gains_real + 1j * gains_imag)

@@ -81,7 +81,6 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
     residual_fn: Callable[[X], Y]
     num_approx_steps: int = 0
     num_iterations: int = 1
-    more_outputs_than_inputs: bool = False
 
     # Improvement threshold
     p_any_improvement: FloatArray = 0.1  # p0 > 0
@@ -233,7 +232,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
 
             return matvec
 
-        J_bare = JVPLinearOp(fn=residual_fn, more_outputs_than_inputs=self.more_outputs_than_inputs)
+        J_bare = JVPLinearOp(fn=residual_fn)
 
         output_dtypes = jax.tree.map(lambda x: x.dtype, state)
 
@@ -325,15 +324,24 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             )
             return state, diagnostic
 
-        diagnostics = []
-        for iteration in range(self.num_iterations):
+        @jax.jit
+        def single_iteration(iteration: jax.Array, state: MultiStepLevenbergMarquardtState):
+            diagnostics = []
+
             # Does one initial exact step using the current jacobian estimate, followed by inexact steps using the same
             # jacobian estimate (which is slightly cheaper).
             J = J_bare(state.x)
             for step in range(self.num_approx_steps + 1):
                 state, diagnostic = body(mp_policy.cast_to_index(iteration), mp_policy.cast_to_index(step), state, J)
                 diagnostics.append(diagnostic)
-        diagnostics = jax.tree.map(lambda *args: jnp.stack(args), *diagnostics)
+            diagnostics = jax.tree.map(lambda *args: jnp.stack(args), *diagnostics)
+            return state, diagnostics
+
+        diagnostics = []
+        for iteration in range(self.num_iterations):
+            state, diagnostic = single_iteration(mp_policy.cast_to_index(iteration), state)
+            diagnostics.append(diagnostic)
+        diagnostics = jax.tree.map(lambda *args: jnp.concatenate(args), *diagnostics)
 
         # Convert back to complex
         state = state._replace(

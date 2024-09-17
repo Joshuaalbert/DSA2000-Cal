@@ -646,6 +646,7 @@ class MeasurementSet:
             relative_time_idx: if True, the time index is relative to the start time index, default False
                 This is required if indexing gains produced per block.
             num_blocks: the number of blocks to yield at a time, default 1
+            corrs: the coherencies to translate to, default None
 
         Returns:
             a generator that yields:

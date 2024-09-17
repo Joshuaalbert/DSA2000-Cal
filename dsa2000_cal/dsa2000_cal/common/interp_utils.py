@@ -334,6 +334,7 @@ class InterpolatedArray:
     regular_grid: bool = False
     check_spacing: bool = False
     clip_out_of_bounds: bool = False
+    normalise: bool = False
 
     def __post_init__(self):
 
@@ -348,6 +349,19 @@ class InterpolatedArray:
 
         self.x, self.values = jax.tree.map(jnp.asarray, (self.x, self.values))
 
+        if self.normalise:
+            # Use mean and std of values, can help with precision when interpolating
+            self.mean = jax.tree.map(lambda y: jnp.mean(y, axis=self.axis), self.values)
+            self.std = jax.tree.map(lambda y: jnp.std(y, axis=self.axis) + jnp.asarray(1e-6, y.dtype),
+                                    self.values)
+            self.values = jax.tree.map(
+                lambda m, s, y: (y - jnp.expand_dims(m, self.axis)) / jnp.expand_dims(s, self.axis), self.mean,
+                self.std, self.values)
+            # Same for x
+            self.x_mean = jnp.mean(self.x)
+            self.x_std = jnp.std(self.x) + jnp.asarray(1e-6, self.x.dtype)
+            self.x = (self.x - self.x_mean) / self.x_std
+
     @property
     def shape(self) -> Tuple[int, ...]:
         """
@@ -355,20 +369,33 @@ class InterpolatedArray:
         """
         return jax.tree.map(lambda x: np.shape(x)[:self.axis] + np.shape(x)[self.axis + 1:], self.values)
 
-    def __call__(self, time: jax.Array) -> jax.Array:
+    def __call__(self, x: jax.Array) -> jax.Array:
         """
         Interpolate at time based on input times.
 
         Args:
-            time: time to evaluate at.
+            x: time to evaluate at.
 
         Returns:
             value at given time
         """
-        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(time, self.x, regular_grid=self.regular_grid,
-                                                                  check_spacing=self.check_spacing,
-                                                                  clip_out_of_bounds=self.clip_out_of_bounds)
-        return jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
+        if self.normalise:
+            x = (x - self.x_mean) / self.x_std
+        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
+            x=x,
+            xp=self.x,
+            regular_grid=self.regular_grid,
+            check_spacing=self.check_spacing,
+            clip_out_of_bounds=self.clip_out_of_bounds
+        )
+        values = jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
+        if self.normalise:
+            if np.size(x) > 1:
+                values = jax.tree.map(lambda m, s, y: y * jnp.expand_dims(s, self.axis) + jnp.expand_dims(m, self.axis),
+                                      self.mean, self.std, values)
+            else:
+                values = jax.tree.map(lambda m, s, y: y * s + m, self.mean, self.std, values)
+        return values
 
 
 # Define how the object is flattened (converted to a list of leaves and a context tuple)
@@ -376,8 +403,8 @@ def interpolated_array_flatten(interpolated_array: InterpolatedArray):
     # Leaves are the arrays (x, values), and auxiliary data is the rest
     return (
         [interpolated_array.x, interpolated_array.values], (
-        interpolated_array.axis, interpolated_array.regular_grid, interpolated_array.check_spacing,
-        interpolated_array.clip_out_of_bounds))
+            interpolated_array.axis, interpolated_array.regular_grid, interpolated_array.check_spacing,
+            interpolated_array.clip_out_of_bounds))
 
 
 # Define how the object is unflattened (reconstructed from leaves and context)

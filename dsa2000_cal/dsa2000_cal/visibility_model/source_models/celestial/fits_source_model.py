@@ -17,7 +17,7 @@ from dsa2000_cal.common import wgridder
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.corr_translation import stokes_I_to_linear
 from dsa2000_cal.common.interp_utils import get_centred_insert_index
-from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.jax_utils import multi_vmap, convert_to_ufunc
 from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
 from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
@@ -435,48 +435,39 @@ class FITSPredict:
         image_has_chan, full_stokes, is_gains = self.check_predict_inputs(
             model_data=model_data
         )
-        if full_stokes:
-            if image_has_chan:  # [chan, Nl, Nm, 2, 2]
-                image_mapping = "[c,Nl,Nm,p,q]"
-                out_mapping = "[...,c,p,q]"
-            else:  # [Nl, Nm, 2, 2]
+
+        if image_has_chan:  # [chan, Nl, Nm, 2, 2]
+            freq_mapping = "[C,c=1]"
+            img_coord_mapping = "[C],[C],[C],[C]"
+            freqs = model_data.freqs[:, None]
+            if full_stokes:
+                image_mapping = "[C,Nl,Nm,p,q]"
+                out_mapping = "[...,~r,C,p,q]"
+            else:
+                image_mapping = "[C,Nl,Nm]"
+                out_mapping = "[...,~r,C]"
+        else:  # [Nl, Nm, 2, 2]
+            freq_mapping = "[c]"
+            img_coord_mapping = "[],[],[],[]"
+            freqs = model_data.freqs
+            if full_stokes:
                 image_mapping = "[Nl,Nm,p,q]"
-                out_mapping = "[...,p,q]"  # frequency is the last dimension
-        else:
-            if image_has_chan:
-                image_mapping = "[c,Nl,Nm]"
-                out_mapping = "[...,c]"
+                out_mapping = "[...,~r,~c,p,q]"  # frequency is the last dimension
             else:
                 image_mapping = "[Nl,Nm]"
-                out_mapping = "[...]"  # frequency is the last dimension
-
-        if is_gains:
-
-            _t = visibility_coords.time_idx
-            _a1 = visibility_coords.antenna_1
-            _a2 = visibility_coords.antenna_2
-
-            if full_stokes:
-                g1 = model_data.gains[_t, _a1, :, :, :]
-                g2 = model_data.gains[_t, _a2, :, :, :]
-                g_mapping = "[r,c,2,2]"
-            else:
-                g1 = model_data.gains[_t, _a1, :]
-                g2 = model_data.gains[_t, _a2, :]
-                g_mapping = "[r,c]"
-        else:
-            g1 = None
-            g2 = None
-            g_mapping = "[]"
+                out_mapping = "[...,~r,~c]"  # frequency is the last dimension
 
         @partial(multi_vmap,
-                 in_mapping=f"[c],{image_mapping},[c],[c],[c],[c],[r,3]",
+                 in_mapping=f"{freq_mapping},{image_mapping},{img_coord_mapping},[r,3]",
                  out_mapping=out_mapping,
                  verbose=True)
-        def predict(freqs: jax.Array,
-                    image: jax.Array,
-                    dl: jax.Array, dm: jax.Array, l0: jax.Array, m0: jax.Array,
-                    uvw: jax.Array) -> jax.Array:
+        @partial(convert_to_ufunc, tile=True)
+        def predict(
+                freqs: jax.Array,
+                image: jax.Array,
+                dl: jax.Array, dm: jax.Array, l0: jax.Array, m0: jax.Array,
+                uvw: jax.Array
+        ) -> jax.Array:
             """
             Predict visibilities for a single frequency.
 
@@ -492,13 +483,9 @@ class FITSPredict:
             Returns:
                 vis: [num_rows [, num_freqs]]
             """
+
             if self.convention == 'engineering':
                 uvw = jnp.negative(uvw)
-
-            squeeze = False
-            if np.shape(freqs) == ():
-                freqs = freqs[None]
-                squeeze = True
 
             vis = wgridder.image_to_vis(
                 uvw=uvw,
@@ -511,24 +498,43 @@ class FITSPredict:
                 epsilon=self.epsilon
             )  # [num_rows, num_chan/1]
 
-            if squeeze:
-                vis = vis[:, 0]
+            if image_has_chan:
+                vis = vis[..., 0]  # Squeeze
 
             return mp_policy.cast_to_vis(vis)  # [num_rows, num_freqs]
 
         visibilities = predict(
-            model_data.freqs, model_data.image,
+            freqs, model_data.image,
             model_data.dl, model_data.dm,
             model_data.l0, model_data.m0,
             visibility_coords.uvw
         )  # [row, chan[, p, q]]
 
         if full_stokes:
-            vis_mapping = "[r,c,2,2]"
-            out_mapping = "[r,c,...]"
+            vis_mapping = "[r,c,p,q]"
+            out_mapping = "[r,c,~p,~q]"
         else:
             vis_mapping = "[r,c]"
             out_mapping = "[r,c]"
+
+        if is_gains:
+
+            _t = visibility_coords.time_idx
+            _a1 = visibility_coords.antenna_1
+            _a2 = visibility_coords.antenna_2
+
+            if full_stokes:
+                g1 = model_data.gains[_t, _a1, :, :, :]
+                g2 = model_data.gains[_t, _a2, :, :, :]
+                g_mapping = "[r,c,p,q]"
+            else:
+                g1 = model_data.gains[_t, _a1, :]
+                g2 = model_data.gains[_t, _a2, :]
+                g_mapping = "[r,c]"
+        else:
+            g1 = None
+            g2 = None
+            g_mapping = "[]"
 
         @partial(multi_vmap, in_mapping=f"{g_mapping},{g_mapping},{vis_mapping}", out_mapping=out_mapping, verbose=True)
         def transform(g1, g2, vis):

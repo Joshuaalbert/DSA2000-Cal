@@ -11,7 +11,7 @@ from dsa2000_cal.imaging.imagor import Imagor
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet, VisibilityData
 
 
-def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan):
+def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan, corrs):
     fill_registries()
     # Load array
     array = array_registry.get_instance(array_registry.get_match(array_name))
@@ -27,7 +27,7 @@ def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan):
         phase_tracking=phase_tracking,
         channel_width=array.get_channel_width(),
         integration_time=au.Quantity(1.5, 's'),
-        coherencies=['XX', 'XY', 'YX', 'YY'] if full_stokes else ['I'],
+        coherencies=corrs if full_stokes else corrs[:1],
         pointings=phase_tracking,
         times=obstime + 1.5 * np.arange(1) * au.s,
         freqs=au.Quantity(np.linspace(700, 2000, num_chan), unit=au.MHz),
@@ -56,8 +56,9 @@ def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan):
 
 @pytest.mark.parametrize("full_stokes", [True, False])
 @pytest.mark.parametrize("num_chan", [1, 2])
-def test_dirty_imaging(tmp_path, full_stokes, num_chan):
-    ms = build_calibrator_source_models('dsa2000W_small', tmp_path, full_stokes, num_chan)
+@pytest.mark.parametrize("corrs", [['XX', 'XY', 'YX', 'YY'], ['I', 'Q', 'U', 'V']])
+def test_dirty_imaging(tmp_path, full_stokes, num_chan, corrs):
+    ms = build_calibrator_source_models('dsa2000W_small', tmp_path, full_stokes, num_chan, corrs)
 
     imagor = Imagor(
         plot_folder='plots',
@@ -69,8 +70,9 @@ def test_dirty_imaging(tmp_path, full_stokes, num_chan):
 
 @pytest.mark.parametrize("full_stokes", [False])
 @pytest.mark.parametrize("num_chan", [40])
-def test_demo(tmp_path, full_stokes, num_chan):
-    ms = build_calibrator_source_models('dsa2000W', tmp_path, full_stokes, num_chan)
+@pytest.mark.parametrize("corrs", [['I', 'Q', 'U', 'V']])
+def test_demo(tmp_path, full_stokes, num_chan, corrs):
+    ms = build_calibrator_source_models('dsa2000W', tmp_path, full_stokes, num_chan, corrs)
 
     imagor = Imagor(
         plot_folder='plots',

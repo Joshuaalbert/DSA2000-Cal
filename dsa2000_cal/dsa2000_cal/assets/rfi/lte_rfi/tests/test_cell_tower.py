@@ -9,10 +9,6 @@ def test_lte_rfi_source_factory():
     model = MockCellTower(seed='test')
     import pylab as plt
     source_params = model.make_source_params(freqs=np.linspace(700, 800, 50) * au.MHz)
-    plt.plot(source_params.freqs, source_params.spectral_flux_density[0])
-    plt.xlabel('Frequency [MHz]')
-    plt.ylabel('Luminosity [W/Hz]')
-    plt.show()
     plt.plot(source_params.delay_acf.x, source_params.delay_acf.values[:, 0])
     plt.xlabel('Delay [s]')
     plt.ylabel('Auto-correlation function')
