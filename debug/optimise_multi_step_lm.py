@@ -65,8 +65,8 @@ def main():
             # mu_min=mu_min,
         )
         state = lm.create_initial_state(x)
-        state = lm.solve(state)
-        return state.F_norm
+        state, diagnostics = lm.solve(state)
+        return diagnostics.F_norm
 
     run = jax.jit(run)
 

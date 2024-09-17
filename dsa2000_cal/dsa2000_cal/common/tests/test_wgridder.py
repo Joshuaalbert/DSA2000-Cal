@@ -1,9 +1,12 @@
 import itertools
+from functools import partial
 
+import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from dsa2000_cal.common.jax_utils import multi_vmap, convert_to_ufunc
 from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.wgridder import vis_to_image, image_to_vis
 
@@ -55,10 +58,6 @@ def test_against_explicit(center_offset: float):
 
     vis_explicit = explicit_degridder(uvw, freqs, lmn, pixel_fluxes)
 
-    # tolerances need 64bit to be correct
-    np.testing.assert_allclose(vis.real, vis_explicit.real, atol=1e-6)
-    np.testing.assert_allclose(vis.imag, vis_explicit.imag, atol=1e-6)
-
     num_test = 100
     # Now test the gridding
     dirty_rec = vis_to_image(
@@ -78,6 +77,65 @@ def test_against_explicit(center_offset: float):
     dirty_explicit = explicit_gridder(uvw, freqs, vis, N, N, dl, dm, l0, m0)
 
     np.testing.assert_allclose(dirty_rec, dirty_explicit, atol=5e-5)
+    np.testing.assert_allclose(vis.real, vis_explicit.real, atol=1e-6)
+    np.testing.assert_allclose(vis.imag, vis_explicit.imag, atol=1e-6)
+
+
+@pytest.mark.parametrize("center_offset", [0.0, 0.1, 0.2])
+def test_spectral_predict(center_offset: float):
+    np.random.seed(42)
+    N = 512
+    num_ants = 10
+    num_freqs = 2
+
+    pixsize = 0.5 * np.pi / 180 / 3600.  # 1 arcsec ~ 4 pixels / beam, so we'll avoid aliasing
+    l0 = m0 = jnp.repeat(center_offset, num_freqs)
+    dl = dm = jnp.repeat(pixsize, num_freqs)
+    dirty = np.zeros((num_freqs, N, N), dtype=mp_policy.image_dtype)
+
+    dirty[:, N // 2, N // 2] = 1.
+    dirty[:, N // 3, N // 3] = 1.
+
+    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
+    antennas = 10e3 * np.random.normal(size=(num_ants, 3))
+    antennas[:, 2] *= 0.001
+    uvw = jnp.asarray(antennas[antenna_2] - antennas[antenna_1])
+
+    freqs = jnp.asarray([700e6, 700e6])
+
+    vis = jax.vmap(
+        lambda dirty, dl, dm, l0, m0, freqs:
+        image_to_vis(
+            uvw=uvw,
+            freqs=freqs[None],
+            dirty=dirty,
+            pixsize_l=dl,
+            pixsize_m=dm,
+            center_l=l0,
+            center_m=m0,
+            epsilon=1e-6
+        )
+    )(dirty, dl, dm, l0, m0, freqs)
+    assert np.shape(vis) == (num_freqs, len(uvw), 1)
+    vis = vis[:, :, 0].T  # [num_rows, chan]
+    assert np.all(vis[:, 0] == vis[:, 1])
+
+    dirty_rec = vis_to_image(
+        uvw=uvw,
+        freqs=freqs,
+        vis=vis,
+        npix_m=N,
+        npix_l=N,
+        pixsize_m=dm,
+        pixsize_l=dl,
+        center_m=m0,
+        center_l=l0,
+        scale_by_n=False,
+        normalise=True,
+        spectral_cube=True
+    )  # [N, N, chan]
+    assert np.shape(dirty_rec) == (N, N, num_freqs)
+    assert np.all(dirty_rec[:, :, 0] == dirty_rec[:, :, 1])
 
 
 def explicit_degridder(uvw, freqs, lmn, pixel_fluxes):
@@ -158,3 +216,124 @@ def test_normalisation():
     plt.show()
 
     np.testing.assert_allclose(np.max(dirty), 1., atol=2e-2)
+
+
+def test_multi_vmap():
+    @partial(
+        multi_vmap,
+        in_mapping="[a,r,3],[b,C,c],[C,Nl,Nm],[C],[C],[C],[C],[a,r,c]",
+        out_mapping="[a,b,C,~r,~c]",
+        verbose=True
+    )
+    @partial(convert_to_ufunc, tile=True)
+    def _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask):
+        return image_to_vis(
+            uvw=uvw,
+            freqs=freqs,
+            dirty=dirty,
+            pixsize_l=dl,
+            pixsize_m=dm,
+            center_l=l0,
+            center_m=m0,
+            mask=mask
+        )
+
+    a = 3
+    r = 100
+    b = 10
+    c = 4
+    C = 5
+    Nl = 512
+    Nm = 512
+
+    uvw = jnp.ones((a, r, 3))
+    freqs = 700e6 * jnp.ones((b, C, c))
+    dirty = jnp.ones((C, Nl, Nm))
+    dl = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    dm = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    l0 = 0. * jnp.ones((C,))
+    m0 = 0. * jnp.ones((C,))
+    mask = jnp.ones((a, r, c))
+
+    vis = _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask)
+    assert vis.shape == (a, b, C, r, c)
+
+    @partial(
+        multi_vmap,
+        in_mapping="[a,r,3],[b,C,c],[C,Nl,Nm],[],[],[],[],[a,r,c]",
+        out_mapping="[a,b,C,~r,~c]",
+        verbose=True
+    )
+    @partial(convert_to_ufunc, tile=True)
+    def _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask):
+        return image_to_vis(
+            uvw=uvw,
+            freqs=freqs,
+            dirty=dirty,
+            pixsize_l=dl,
+            pixsize_m=dm,
+            center_l=l0,
+            center_m=m0,
+            mask=mask
+        )
+
+    a = 3
+    r = 100
+    b = 10
+    c = 4
+    C = 5
+    Nl = 512
+    Nm = 512
+
+    uvw = jnp.ones((a, r, 3))
+    freqs = 700e6 * jnp.ones((b, C, c))
+    dirty = jnp.ones((C, Nl, Nm))
+    dl = 0.5 * np.pi / 180 / 3600. * jnp.ones(())
+    dm = 0.5 * np.pi / 180 / 3600. * jnp.ones(())
+    l0 = 0. * jnp.ones(())
+    m0 = 0. * jnp.ones(())
+    mask = jnp.ones((a, r, c))
+
+    vis = _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask)
+    assert vis.shape == (a, b, C, r, c)
+
+
+
+    @partial(
+        multi_vmap,
+        in_mapping="[a,r,3],[b,C,c=1],[C,Nl,Nm],[C],[C],[C],[C],[a,r,c=1]",
+        out_mapping="[a,b,~r,C,~c=1]",
+        verbose=True
+    )
+    @partial(convert_to_ufunc, tile=True)
+    def _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask):
+        return image_to_vis(
+            uvw=uvw,
+            freqs=freqs,
+            dirty=dirty,
+            pixsize_l=dl,
+            pixsize_m=dm,
+            center_l=l0,
+            center_m=m0,
+            mask=mask
+        )
+
+    a = 3
+    r = 100
+    b = 10
+    c = 1
+    C = 5
+    Nl = 512
+    Nm = 512
+
+    uvw = jnp.ones((a, r, 3))
+    freqs = 700e6 * jnp.ones((b, C, c))
+    dirty = jnp.ones((C, Nl, Nm))
+    dl = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    dm = 0.5 * np.pi / 180 / 3600. * jnp.ones((C,))
+    l0 = 0. * jnp.ones((C,))
+    m0 = 0. * jnp.ones((C,))
+    mask = jnp.ones((a, r, c))
+
+    vis = _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask)
+    assert vis.shape == (a, b, r, C, c)

@@ -1,8 +1,12 @@
+import os
+
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import numpy as np
 import pytest
+
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
@@ -21,7 +25,7 @@ from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model imp
 @pytest.fixture(scope='function')
 def mock_calibrator_source_models(tmp_path):
     fill_registries()
-    array_name = 'dsa2000W_small'
+    array_name = 'lwa'
     # Load array
     array = array_registry.get_instance(array_registry.get_match(array_name))
     array_location = array.get_array_location()
@@ -64,8 +68,8 @@ def mock_calibrator_source_models(tmp_path):
 
     point_source_model = PointSourceModel(
         freqs=ms.meta.freqs,
-        l0=[0.1] * au.dimensionless_unscaled,
-        m0=[0.1] * au.dimensionless_unscaled,
+        l0=[0] * au.dimensionless_unscaled,
+        m0=[0] * au.dimensionless_unscaled,
         A=(
               np.ones((1, len(ms.meta.freqs), 2, 2))
               if ms.is_full_stokes() else np.ones((1, len(ms.meta.freqs)))
@@ -108,8 +112,8 @@ def test_calibration(mock_calibrator_source_models):
     calibration = Calibration(
         # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
         probabilistic_models=probabilistic_models,
-        num_iterations=2,
-        num_approx_steps=2,
+        num_iterations=1,
+        num_approx_steps=5,
         inplace_subtract=True,
         plot_folder='plots',
         solution_folder='solutions',

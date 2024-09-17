@@ -7,8 +7,9 @@ import numpy as np
 import ujson
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 
 class MockModelInt(SerialisableBaseModel):
@@ -385,3 +386,35 @@ def test_interpolated_array():
     np.testing.assert_allclose(deserialised.x.values, original.x.values)
     np.testing.assert_allclose(deserialised.x.axis, original.x.axis)
     np.testing.assert_allclose(deserialised.x.regular_grid, original.x.regular_grid)
+
+
+def test_parametric_delay_acf():
+    acf = ParametricDelayACF(
+        mu=np.asarray([1.0]),
+        fwhp=np.asarray([1.0]),
+        spectral_power=np.asarray([1.0]),
+        channel_lower=np.asarray([1.0]),
+        channel_upper=np.asarray([1.0]),
+        resolution=1,
+        convention='physical'
+    )
+
+    class Model(SerialisableBaseModel):
+        acf: ParametricDelayACF
+
+    original = Model(acf=acf)
+
+    # Serialise the object to JSON
+    serialised = original.json(indent=2)
+    print(serialised)
+
+    # Deserialise the object from JSON
+    deserialised = Model.parse_raw(serialised)
+
+    np.testing.assert_allclose(deserialised.acf.mu, original.acf.mu)
+    np.testing.assert_allclose(deserialised.acf.fwhp, original.acf.fwhp)
+    np.testing.assert_allclose(deserialised.acf.spectral_power, original.acf.spectral_power)
+    np.testing.assert_allclose(deserialised.acf.channel_lower, original.acf.channel_lower)
+    np.testing.assert_allclose(deserialised.acf.channel_upper, original.acf.channel_upper)
+    np.testing.assert_allclose(deserialised.acf.resolution, original.acf.resolution)
+    assert deserialised.acf.convention == original.acf.convention

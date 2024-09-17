@@ -5,5 +5,13 @@ def test_lwa_beam():
     model = LWAArray(seed='test').get_antenna_model()
     assert model.get_amplitude().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
     assert model.get_phase().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
-    model.plot_polar_amplitude()
-    model.plot_polar_phase()
+
+    model.plot_polar_amplitude(p=0, q=0)
+    model.plot_polar_amplitude(p=0, q=1)
+    model.plot_polar_amplitude(p=1, q=0)
+    model.plot_polar_amplitude(p=1, q=1)
+
+    model.plot_polar_phase(p=0, q=0)
+    model.plot_polar_phase(p=0, q=1)
+    model.plot_polar_phase(p=1, q=0)
+    model.plot_polar_phase(p=1, q=1)

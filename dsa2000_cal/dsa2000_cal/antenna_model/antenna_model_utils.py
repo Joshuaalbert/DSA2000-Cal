@@ -210,6 +210,6 @@ def plot_beam_profile(antenna_model: AbstractAntennaModel, threshold: float = 0.
         print(f"Freq: {i}, {freq}, theta: {beam_widths[i] / 2.}")
     plt.xlabel('Theta (deg)')
     plt.ylabel('Amplitude')
-    plt.title(f"'{antenna_model.__class__.__name__}' Beam")
+    plt.title(f"'{antenna_model.__class__.__name__}' Half-width of beam")
     plt.legend()
     plt.show()

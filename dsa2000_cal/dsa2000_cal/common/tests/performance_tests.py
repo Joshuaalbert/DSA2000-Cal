@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from jax import random as random, numpy as jnp, lax
 
+from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.nearest_neighbours import ApproximateTreeNN2D
 from dsa2000_cal.common.vec_utils import kron_product, unvec, kron, vec
 
@@ -51,14 +52,14 @@ def test_performance_approx_nn_2d(n: int, k: int, m: int, average_points_per_cel
     build_tree = jax.jit(approx_tree.build_tree).lower(points).compile()
     t0 = time.time()
     tree = build_tree(points)
-    jax.block_until_ready(tree)
+    block_until_ready(tree)
     tree_build_time = time.time() - t0
 
     query = jax.jit(jax.vmap(lambda test_point: approx_tree.query(tree, test_point, k))).lower(test_points).compile()
 
     t0 = time.time()
     distances_approx, indices_approx = query(test_points)
-    jax.block_until_ready(distances_approx)
+    block_until_ready(distances_approx)
     approx_time = time.time() - t0
 
     # Brute-force method
@@ -68,7 +69,7 @@ def test_performance_approx_nn_2d(n: int, k: int, m: int, average_points_per_cel
 
     t0 = time.time()
     distances_brute, indices_brute = brute_force_nearest_neighbors_vmap(test_points)
-    jax.block_until_ready(distances_brute)
+    block_until_ready(distances_brute)
     brute_time = time.time() - t0
 
     speedup = brute_time / approx_time
@@ -109,14 +110,14 @@ def test_performance_approx_nn_usecase_2d(n: int, k: int, m: int, average_points
     build_tree = jax.jit(approx_tree.build_tree).lower(points).compile()
     t0 = time.time()
     tree = build_tree(points)
-    jax.block_until_ready(tree)
+    block_until_ready(tree)
     tree_build_time = time.time() - t0
 
     query = jax.jit(jax.vmap(lambda test_point: approx_tree.query(tree, test_point, k))).lower(test_points).compile()
 
     t0 = time.time()
     distances_approx, indices_approx = query(test_points)
-    jax.block_until_ready(distances_approx)
+    block_until_ready(distances_approx)
     approx_time = time.time() - t0
 
     print(

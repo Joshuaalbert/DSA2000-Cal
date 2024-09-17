@@ -405,7 +405,7 @@ class FarFieldDelayEngine:
         Returns:
             times_jax: [...] Time of observation, in tt scale in seconds, relative to the first time.
         """
-        return jnp.asarray((times.tt - self.ref_time.tt).sec)  # [N]
+        return mp_policy.cast_to_time(jnp.asarray((times.tt - self.ref_time.tt).sec))  # [N]
 
     def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True,
                                   convention: str = 'physical') -> VisibilityCoords:
@@ -495,7 +495,6 @@ def far_field_delay(
         [2] Klioner, S. A. (1991). General relativistic model of VLBI delay observations.
             https://www.researchgate.net/publication/253171626
     """
-    # TODO: add support to subtraction precision in 32bit
     c = quantity_to_jnp(const.c)  # m / s
     L_G = jnp.asarray(6.969290134e-10)  # 1 - d(TT) / d(TCG)
     GM_earth = quantity_to_jnp(const.GM_earth)  # m^3 / s^2
@@ -529,7 +528,7 @@ def far_field_delay(
 
     # Eq 11.7
     delta_T_grav = jnp.sum(delta_T_grav_J) + delta_T_grav_earth  # []
-    delta_T_grav *= 0.
+    # delta_T_grav *= 0.
     # Around delta_T_grav=-0.00016 m * (|baseline|/1km)
 
     # Since we perform analysis in BCRS kinematically non-rotating dynamic frame we need to convert to GCRS TT-compatible

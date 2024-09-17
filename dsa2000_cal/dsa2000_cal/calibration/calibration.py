@@ -2,25 +2,25 @@ import os
 import time as time_mod
 from dataclasses import dataclass
 from functools import partial
-from typing import Tuple, Literal, List, Any
+from typing import Tuple, List, Any
 
 import astropy.units as au
 import jax
-import jaxopt
 import numpy as np
 import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import lax
 from jax import numpy as jnp
 
-from dsa2000_cal.calibration.jaxopt.bfgs import BFGS
-from dsa2000_cal.calibration.jaxopt.lbfgs import LBFGS
-from dsa2000_cal.calibration.jaxopt.levenburg_marquardt import LevenbergMarquardt
-from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, MultiStepLevenbergMarquardtState, \
+    MultiStepLevenbergMarquardtDiagnostic
+from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
+    ProbabilisticModelInstance, combine_probabilistic_model_instances
+from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put, block_until_ready, multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
-from dsa2000_cal.types import CalibrationSolutions
+from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
 
 tfpd = tfp.distributions
 
@@ -46,7 +46,6 @@ class Calibration:
         residual_ms_folder: the folder to save residuals to.
         seed: the random seed.
         verbose: if True, print verbose output.
-        num_shards: the number of shards to use.
     """
     # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
     probabilistic_models: List[AbstractProbabilisticModel]
@@ -56,15 +55,13 @@ class Calibration:
     inplace_subtract: bool
     plot_folder: str
     solution_folder: str
+    num_approx_steps: int = 0
     validity_interval: au.Quantity | None = None
     solution_interval: au.Quantity | None = None
     residual_ms_folder: str | None = None
     seed: int = 42
     verbose: bool = False
-    num_shards: int = 1
     devices: List[jax.Device] | None = None
-
-    solver: Literal['BFGS', 'LM', 'LBFGS'] = 'LM'
 
     def __post_init__(self):
         # Create folders
@@ -93,32 +90,7 @@ class Calibration:
             the subtracted measurement set
         """
 
-        from jax.experimental import mesh_utils
-        from jax.sharding import Mesh
-        from jax.sharding import PartitionSpec
-        from jax.sharding import NamedSharding
-
-        P = PartitionSpec
-
-        # Ensure number of freqs is a multiple of the number of shards
-        if len(ms.meta.freqs) % self.num_shards != 0:
-            raise ValueError(
-                f"Number of freqs {len(ms.meta.freqs)} is not a multiple of the number of shards {self.num_shards}"
-            )
-
-        if len(jax.devices()) < self.num_shards:
-            raise ValueError(
-                f"Number of devices {len(jax.devices())} is less than the number of shards {self.num_shards}"
-            )
-
-        devices = mesh_utils.create_device_mesh(
-            mesh_shape=(self.num_shards,),
-            devices=self.devices[:self.num_shards]
-        )
-        mesh = Mesh(devices, axis_names=('chan',))
-
-        def tree_device_put(tree, sharding):
-            return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
+        mesh = create_mesh((1,), ('chan',))
 
         # Determine how many blocks to process at once, and how many blocks to apply the solution over.
         solution_interval = self.solution_interval
@@ -165,71 +137,79 @@ class Calibration:
             print("Created a new measurement set for residuals.")
 
         # Metrics
-        residual_sum = 0.
         solve_durations = []
         residual_mae = []
+        residual_rmse = []
+        errors = []
         t0 = time_mod.time()
 
         # Inputs
         freqs_jax = quantity_to_jnp(ms.meta.freqs)
 
-        # TODO: Apply UV cutoff to ignore galactic plane
         gen = ms.create_block_generator(
             vis=True, weights=True, flags=True, relative_time_idx=True,
-            num_blocks=num_blocks
+            num_blocks=num_blocks, corrs=[['XX', 'XY'], ['YX', 'YY']]
         )
         gen_response = None
-        last_params: Any | None = None
+        last_state: MultiStepLevenbergMarquardtState | None = None
         cadence_idx = 0
         key = self.key
 
         while True:
 
             # Only solve every cadence_interval
-            if cadence_idx % cadence_interval == 0:
+            do_solve = cadence_idx % cadence_interval == 0
+            if do_solve:
                 print(f"Performing solve for cadence window {cadence_idx}.")
                 num_iterations = self.num_iterations
             else:
                 print(f"Skipping solve for cadence window {cadence_idx}.")
                 num_iterations = 0
+
             key, solve_key = jax.random.split(key)
 
-            t0_inner = time_mod.time()
             # Get `num_blocks` time integrations of data
             try:
-                times, visibility_coords, data = gen.send(gen_response)
+                times, visibility_coords, vis_data = gen.send(gen_response)
             except StopIteration:
                 break
 
-            # Shard data over mesh by channel
-            times_jax = jnp.asarray((times.tt - ms.ref_time.tt).sec)  # [num_time]
-            data_dict = dict(
-                freqs=tree_device_put(freqs_jax, NamedSharding(mesh, P('chan'))),
-                times=tree_device_put(times_jax, NamedSharding(mesh, P())),
-                init_params=last_params,  # already shard as prior output
-                vis_data=tree_device_put(
-                    jax.tree.map(jnp.asarray, data),
-                    NamedSharding(mesh, P(None, 'chan'))
-                ),
-                vis_coords=tree_device_put(
-                    jax.tree.map(jnp.asarray, visibility_coords),
-                    NamedSharding(mesh, P())
-                )
-            )
+            t0_inner = time_mod.time()
 
-            gain_solutions, params, neg_log_likelihood, final_state, residual = self._solve_jax(
-                key=solve_key,
-                **data_dict,
-                num_iterations=num_iterations
-            )
-            neg_log_likelihood.block_until_ready()
+            # Prepare distributed data
+            times_jax = ms.time_to_jnp(times)  # [num_time]
+            vis_data = vis_data._replace(
+                vis=mp_policy.cast_to_vis(vis_data.vis),
+                weights=mp_policy.cast_to_weight(vis_data.weights),
+                flags=mp_policy.cast_to_flag(vis_data.flags)
+            )  # [num_row, num_chan[2,2]]
+            visibility_coords = visibility_coords._replace(
+                uvw=mp_policy.cast_to_length(visibility_coords.uvw),
+                time_obs=mp_policy.cast_to_time(visibility_coords.time_obs),
+                antenna_1=mp_policy.cast_to_index(visibility_coords.antenna_1),
+                antenna_2=mp_policy.cast_to_index(visibility_coords.antenna_2),
+                time_idx=mp_policy.cast_to_index(visibility_coords.time_idx)
+            )  # [num_row, ...]
+
+            with jax.profiler.trace("/tmp/profiler", create_perfetto_link=True):
+                solutions, residual, state, diagnostics = block_until_ready(
+                    self._solve_jax(
+                        key=solve_key,
+                        freqs=tree_device_put(freqs_jax, mesh, ('chan',)),
+                        times=tree_device_put(times_jax, mesh, ()),
+                        init_state=last_state,  # already shard as prior output
+                        vis_data=tree_device_put(vis_data, mesh, (None, 'chan')),
+                        vis_coords=tree_device_put(visibility_coords, mesh, ()),
+                        num_iterations=num_iterations
+                    )
+                )
 
             cadence_idx += 1
             # Update metrics
             t1_inner = time_mod.time()
             solve_durations.append(t1_inner - t0_inner)
-            residual_sum += np.sum(residual)
             residual_mae.append(np.mean(np.abs(residual)))
+            residual_rmse.append(np.sqrt(np.mean(np.abs(residual) ** 2)))
 
             # Store subtracted data
             # TODO: store uncertainty estimate in weights.
@@ -238,63 +218,64 @@ class Calibration:
             )
 
             # Pass forward
-            last_params = params
+            last_state = state
 
-            # Print shard layout
-            print("Last params shard layout:")
-            for param in last_params:
-                jax.debug.visualize_array_sharding(param)
-
-            if cadence_idx % cadence_interval == 0:
+            if do_solve:
                 print(
                     f"Solved {num_iterations} for cadence window {cadence_idx} in {solve_durations[-1]} seconds "
                     f"({solve_durations[-1] / num_iterations} s/iter)."
                 )
 
                 # Plot results
-                fig, axs = plt.subplots(1, 1, figsize=(6, 6), squeeze=False)
-                axs[0][0].plot(neg_log_likelihood)
-                axs[0][0].set_title(fr"Cadence window: {cadence_idx} $-\log \mathcal{{L}}$")
+                fig, axs = plt.subplots(3, 1, figsize=(6, 6), squeeze=False, sharex=True)
+                axs[0][0].plot(diagnostics.F_norm)
+                axs[0][0].set_title(fr"Cadence window: {cadence_idx} residual norm")
                 axs[0][0].set_xlabel("Solver Iteration")
-                axs[0][0].set_ylabel("Negative Log Likelihood")
+                axs[0][0].set_ylabel(r"$\|F\|_2^2 / n$")
+                axs[1][0].plot(diagnostics.delta_norm)
+                axs[1][0].set_title(fr"Cadence window: {cadence_idx} delta norm")
+                axs[1][0].set_xlabel("Solver Iteration")
+                axs[1][0].set_ylabel(r"$\|\Delta x\|_2 / n$")
+                axs[2][0].plot(diagnostics.error)
+                axs[2][0].set_title(fr"Cadence window: {cadence_idx} error")
+                axs[2][0].set_xlabel("Solver Iteration")
+                axs[2][0].set_ylabel(r"$\|J^T F\|_2 / n$")
                 fig.tight_layout()
-                fig.savefig(f"{self.plot_folder}/solver_progress_neg_log_likelihood_cadence_window_{cadence_idx}.png")
+                fig.savefig(f"{self.plot_folder}/solver_diagnostics_{cadence_idx}.png")
                 plt.close(fig)
 
                 # Save gains to files
-                for model_idx, gain_solution in enumerate(gain_solutions):
-                    # Save to file
-                    solution = CalibrationSolutions(
-                        gains=np.asarray(gain_solution),
+                for model_idx, solution in enumerate(solutions):
+                    self.probabilistic_models[model_idx].save_solution(
+                        solution=solution,
+                        file_name=os.path.join(self.solution_folder,
+                                               f"calibration_solution_m{model_idx:03d}_c{cadence_idx:03d}.json"),
                         times=times,
-                        antennas=ms.meta.antennas,
-                        antenna_labels=ms.meta.antenna_names,
-                        freqs=ms.meta.freqs,
-                        pointings=ms.meta.pointings
+                        ms=ms
                     )
-                    file_name = os.path.join(
-                        self.solution_folder, f"calibration_solution_m{model_idx:03d}_c{cadence_idx:03d}.json"
-                    )
-                    with open(file_name, "w") as fp:
-                        fp.write(solution.json(indent=2))
         # Measure total solve time.
         t1 = time_mod.time()
 
-        print(f"Completed calibration in {t1 - t0} seconds, with residual sum {residual_sum}.")
-        print(f"Residuals stored in {ms}. Solutions in {self.solution_folder}")
+        print(f"Completed calibration in {t1 - t0} seconds.")
+        print(f"Residuals stored in: {ms}. Solutions stored in: {self.solution_folder}")
 
-        fig, axs = plt.subplots(2, 1, figsize=(6, 6), sharex=True, squeeze=False)
+        fig, axs = plt.subplots(2, 1, figsize=(6, 8), sharex=True, squeeze=False)
         # Plot durations
         axs[0][0].plot(solve_durations)
         axs[0][0].set_title("Solver Durations")
         axs[0][0].set_xlabel("Chunk Index")
         axs[0][0].set_ylabel("Duration (s)")
-        # Plot final MAE
+        # Plot final MAE + rmse error bars
         axs[1][0].plot(residual_mae)
-        axs[1][0].set_title("Residual MAE")
+        axs[1][0].errorbar(
+            range(len(residual_rmse)),
+            residual_mae,
+            yerr=np.std(residual_rmse),
+            fmt='o'
+        )
+        axs[1][0].set_title("Residual MAE per iteration")
         axs[1][0].set_xlabel("Chunk Index")
         axs[1][0].set_ylabel("MAE")
-
         fig.tight_layout()
         fig.savefig(f"{self.plot_folder}/solver_durations.png")
         plt.close(fig)
@@ -306,11 +287,11 @@ class Calibration:
     def _solve_jax(self, key,
                    freqs: jax.Array,
                    times: jax.Array,
-                   init_params: jax.Array | None,
+                   init_state: MultiStepLevenbergMarquardtState | None,
                    vis_data: VisibilityData,
                    vis_coords: VisibilityCoords,
                    num_iterations: int) -> Tuple[
-        List[jax.Array], Any, jax.Array, jaxopt.OptStep, jax.Array
+        List[jax.Array], jax.Array, MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic
     ]:
         """
         Solve for the gains using the probabilistic model.
@@ -319,7 +300,7 @@ class Calibration:
             key: an optional random key to use if needed
             freqs: [num_chan] the frequencies
             times: [num_time] the times
-            init_params: [...] the initial parameters for the gains or None
+            init_state: the initial state of the solver
             vis_data: [num_row, num_chan[, 4]] the visibility data
             vis_coords: [num_row, ...] the visibility coordinates
             num_iterations: the number of iterations to run the solver for
@@ -332,6 +313,93 @@ class Calibration:
             vis_residuals: [num_row, num_chan, 4] the residuals
         """
 
+        # Construct the probabilistic model instance for calibration
+        # We average down the data to a single time integration and channel for this
+        freqs_cal, times_cal, vis_coords_cal, vis_data_cal = self.compute_average_solint_data(
+            freqs=freqs,
+            times=times,
+            vis_coords=vis_coords,
+            vis_data=vis_data
+        )
+
+        probabilistic_model_instance = self.create_probabilistic_model_instance(
+            freqs=freqs_cal,
+            times=times_cal,
+            vis_coords=vis_coords_cal,
+            vis_data=vis_data_cal
+        )
+
+        def residual_fn(params: List[Any]) -> Any:
+            vis_model, _ = probabilistic_model_instance.forward(params)  # [num_row, num_chan[, 4]]
+            vis_residuals = vis_data.vis - vis_model
+            weights = jnp.sqrt(vis_data.weights)
+            weights *= mp_policy.cast_to_weight(jnp.logical_not(vis_data.flags), quiet=True)
+            vis_residuals *= weights
+            return vis_residuals
+
+        solver = MultiStepLevenbergMarquardt(
+            residual_fn=residual_fn,
+            num_iterations=num_iterations,
+            num_approx_steps=self.num_approx_steps,
+            verbose=True
+        )
+
+        if init_state is None:
+            init_params = probabilistic_model_instance.get_init_params()
+            state = solver.create_initial_state(x0=init_params)
+        else:
+            state = solver.update_initial_state(init_state)
+
+        state, diagnostics = solver.solve(state)
+
+        # Predict at full resolution.
+        @jax.jit
+        @partial(
+            multi_vmap,
+            in_mapping="[c],[t],[t,r],[t,r,c]",
+            out_mapping="[t,...,c]",
+            verbose=True
+        )
+        def compute_residuals(freq_chunk: jax.Array,
+                              time_chunk: jax.Array,
+                              vis_coords_chunk: VisibilityCoords,
+                              vis_data_chunk: VisibilityData):
+            probabilistic_model_instance = self.create_probabilistic_model_instance(
+                freqs=freq_chunk[None],
+                times=time_chunk[None],
+                vis_coords=vis_coords_chunk,
+                vis_data=jax.tree.map(lambda x: x[:, None, ...], vis_data_chunk)  # Put channel back in
+            )
+            # Predict the model with the same parameters
+            vis_model, _ = probabilistic_model_instance.forward(state.x)  # [num_row, 1, 4]
+            vis_residuals = vis_data_chunk.vis - vis_model[:, 0, ...]
+            return vis_residuals
+
+        _, constrained_params = probabilistic_model_instance.forward(state.x)
+
+        reshape_vis_coords, reshaped_vis_data = Calibration.reshape_solint_data(
+            times=times, vis_coords=vis_coords, vis_data=vis_data
+        )
+        vis_residuals = compute_residuals(freqs, times, reshape_vis_coords, reshaped_vis_data)
+        # Stack again
+        vis_residuals = lax.reshape(vis_residuals, vis_data.vis.shape)  # [num_row, num_chan, 4]
+
+        return constrained_params, vis_residuals, state, diagnostics
+
+    def create_probabilistic_model_instance(self, freqs: jax.Array, times: jax.Array, vis_coords: VisibilityCoords,
+                                            vis_data: VisibilityData) -> ProbabilisticModelInstance:
+        """
+        Create a probabilistic model instance.
+
+        Args:
+            freqs: [num_chan] the frequencies
+            times: [num_time] the times
+            vis_coords: [num_row, ...] the visibility coordinates
+            vis_data: [num_row, num_chan[, 4]] the visibility data
+
+        Returns:
+            the probabilistic model instance
+        """
         probabilistic_model_instances = [
             probabilistic_model.create_model_instance(
                 freqs=freqs,
@@ -340,63 +408,92 @@ class Calibration:
                 vis_coords=vis_coords
             ) for probabilistic_model in self.probabilistic_models
         ]
+        return combine_probabilistic_model_instances(probabilistic_model_instances)
 
-        # Add together the probabilistic model instances into one
-        probabilistic_model_instance = probabilistic_model_instances[0]
-        for other_model in probabilistic_model_instances[1:]:
-            probabilistic_model_instance = probabilistic_model_instance + other_model
+    @staticmethod
+    def compute_average_solint_data(
+            freqs: jax.Array, times: jax.Array, vis_coords: VisibilityCoords, vis_data: VisibilityData
+    ) -> Tuple[jax.Array, jax.Array, VisibilityCoords, VisibilityData]:
+        """
+        Compute the average data over the solution interval.
 
-        if init_params is None:
-            init_params = probabilistic_model_instance.get_init_params()
+        Args:
+            freqs: [num_chan] the frequencies
+            times: [num_time] the times
+            vis_coords: [num_row, ...] the visibility coordinates
+            vis_data: [num_row, num_chan[, 4]] the visibility data
 
-        def objective_fn(params: List[jax.Array]):
-            return -probabilistic_model_instance.log_prob_joint(params)
+        Returns:
+            freqs_cal: [1] the averaged frequencies
+            times_cal: [1] the averaged times
+            vis_coords_cal: [num_row // num_time, ...] the averaged visibility coordinates
+            vis_data_cal: [num_row // num_time, num_chan[, 4]] the averaged visibility data
+        """
+        reshape_vis_coords, reshaped_vis_data = Calibration.reshape_solint_data(
+            times=times, vis_coords=vis_coords, vis_data=vis_data
+        )
 
-        def residual_fn(params: List[jax.Array]):
-            vis_model, _ = probabilistic_model_instance.forward(params)  # [num_row, num_chan, 4]
-            vis_residuals = vis_data.vis - vis_model
-            if vis_data.weights is not None:
-                vis_residuals *= jnp.sqrt(vis_data.weights)
-            if vis_data.flags is not None:
-                vis_residuals = jnp.where(vis_data.flags, 0., vis_residuals)
-            vis_residuals = lax.reshape(vis_residuals, (np.size(vis_residuals),))
-            return jnp.concatenate([jnp.real(vis_residuals), jnp.imag(vis_residuals)], axis=0)
+        vis_cal = jnp.mean(reshaped_vis_data.vis, axis=(0, 2), keepdims=True)[0]  # [num_row // num_time, 1, [, 4]]
+        # Weights are 1/var(data) so we average the reciprocal of the weights, and then take the reciprocal.
+        weights_cal = jnp.reciprocal(
+            jnp.mean(jnp.reciprocal(reshaped_vis_data.weights), axis=(0, 2), keepdims=True)[0]
+        )  # [num_row // num_time, 1, [, 4]]
+        # TODO: any/all ambiguity with flags.
+        flags_cal = jnp.any(reshaped_vis_data.flags, axis=(0, 2), keepdims=True)[0]  # [num_row // num_time, 1, [, 4]]
+        vis_data_cal = VisibilityData(
+            vis=vis_cal,
+            weights=weights_cal,
+            flags=flags_cal
+        )
 
-        if self.solver == 'LM':
-            solver = LevenbergMarquardt(
-                residual_fun=residual_fn,
-                maxiter=self.num_iterations
-            )
-        elif self.solver == 'BFGS':
-            solver = BFGS(
-                fun=objective_fn,
-                maxiter=self.num_iterations
-            )
-        elif self.solver == 'LBFGS':
-            solver = LBFGS(
-                fun=objective_fn,
-                maxiter=self.num_iterations
-            )
-        else:
-            raise ValueError(f"Solver {self.solver} not supported.")
+        # Average down the coordinates too
+        uvw_cal = jnp.mean(reshape_vis_coords.uvw, axis=0)  # [num_row // num_time, 3]
+        time_obs_cal = jnp.mean(reshape_vis_coords.time_obs, axis=0)  # [num_row // num_time]
+        antenna_1_cal = reshape_vis_coords.antenna_1[0, :]  # [num_row // num_time]
+        antenna_2_cal = reshape_vis_coords.antenna_2[0, :]  # [num_row // num_time]
+        time_idx_cal = reshape_vis_coords.time_idx[0, :]  # [num_row // num_time]
+        vis_coords_cal = VisibilityCoords(
+            uvw=uvw_cal,
+            time_obs=time_obs_cal,
+            antenna_1=antenna_1_cal,
+            antenna_2=antenna_2_cal,
+            time_idx=time_idx_cal
+        )
+        freqs_cal = jnp.mean(freqs, keepdims=True)  # [1]
+        times_cal = jnp.mean(times, keepdims=True)  # [1]
+        return freqs_cal, times_cal, vis_coords_cal, vis_data_cal
 
-        # Unroll ourself
-        def body_fn(carry, x):
-            params_flat, state = carry
-            params_flat, state = solver.update(params=params_flat, state=state)
-            return (params_flat, state), state.value
+    @staticmethod
+    def reshape_solint_data(
+            times: jax.Array, vis_coords: VisibilityCoords, vis_data: VisibilityData
+    ) -> Tuple[VisibilityCoords, VisibilityData]:
+        """
+        Reshape the data to unstacked solint data.
 
-        carry = (init_params, solver.init_state(init_params=init_params))
+        Args:
+            times: [num_time] the times
+            vis_coords: [num_row, ...] the visibility coordinates
+            vis_data: [num_row, num_chan[, 4]] the visibility data
 
-        if num_iterations > 0:
-            (params, final_state), results = lax.scan(body_fn, carry, xs=jnp.arange(num_iterations))
-        else:
-            (params, final_state) = carry
-            results = jnp.asarray([])
+        Returns:
+            vis_coords_cal: [num_row // num_time, ...] the averaged visibility coordinates
+            vis_data_cal: [num_row // num_time, num_chan[, 4]] the averaged visibility data
+        """
+        num_row = np.shape(vis_data.vis)[0]
+        num_time = len(times)
 
-        vis_model, gains = probabilistic_model_instance.forward(params)
+        def _reshape_vis_data(x):
+            return lax.reshape(
+                x, (num_time, num_row // num_time) + x.shape[1:]
+            )  # [num_time, num_row // num_time, num_chan, [ 4]]
 
-        # Subtract the model from the data
-        vis_residuals = vis_data.vis - vis_model
+        reshaped_vis_data = jax.tree.map(_reshape_vis_data, vis_data)
 
-        return gains, params, results, final_state, vis_residuals
+        def _reshape_vis_coords(x):
+            return lax.reshape(
+                x, (num_time, num_row // num_time) + x.shape[1:]
+            )  # [num_time, num_row // num_time, ...]
+
+        reshape_vis_coords = jax.tree.map(_reshape_vis_coords, vis_coords)
+
+        return reshape_vis_coords, reshaped_vis_data

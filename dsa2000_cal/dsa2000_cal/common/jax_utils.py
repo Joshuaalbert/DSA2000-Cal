@@ -1,4 +1,5 @@
 import itertools
+import os
 import re
 import time
 
@@ -10,7 +11,7 @@ import warnings
 
 from functools import partial
 
-from typing import TypeVar, Callable, Tuple, Set, List, Dict
+from typing import TypeVar, Callable, Tuple, Set, List, Dict, Union, Any
 
 import jax
 import jax.numpy as jnp
@@ -24,6 +25,8 @@ from jax.experimental.mesh_utils import create_device_mesh
 from dsa2000_cal.common.jvp_linear_op import isinstance_namedtuple
 
 V = TypeVar('V')
+
+VERBOSE_MULTI_VMAP = os.environ.get("VERBOSE_MULTI_VMAP", "0") == "1"
 
 
 def promote_pytree(func_name: str, pytree: V) -> V:
@@ -153,7 +156,7 @@ def pad_to_chunksize(py_tree: T, chunk_size: int) -> Tuple[T, Callable[[S], S]]:
         pytree with chunk dimension added, and callable to remove extra
     """
 
-    leaves = jax.tree_util.tree_leaves(py_tree)
+    leaves = jax.tree.leaves(py_tree)
 
     if len(leaves) == 0:
         raise ValueError("Leaves must be non-empty to add a chunk dim.")
@@ -260,6 +263,15 @@ C = TypeVar('C')
 
 
 def extract_shape(s):
+    """
+    Extracts the shape from a string.
+
+    Args:
+        s: string, e.g. '[n1,n2,n3]'
+
+    Returns:
+        list of dimensions, e.g. ['n1', 'n2', 'n3']
+    """
     # Define the regex pattern to match elements inside the brackets
     pattern = r'\[([^\]]+)\]'
 
@@ -288,7 +300,7 @@ def extract_shape_tuples(s):
 
 def auto_multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str],
                     scan_dims: Set[str] | None = None, compute_bound: bool = False, max_scan_dims: int | None = None,
-                    verbose: bool = False):
+                    verbose: bool = VERBOSE_MULTI_VMAP):
     """
     Finds best dims to scan over based on input and output shapes.
 
@@ -305,7 +317,7 @@ def auto_multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[s
         the mapped function with best scan dim
     """
 
-    warnings.warn("auto_multi_vmap is still experimental.")
+    warnings.warn("auto_multi_vmap is still experimental, and often fails.")
 
     if scan_dims is None:
         if isinstance(out_mapping, list):
@@ -393,15 +405,15 @@ def auto_multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[s
 
 
 def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], scan_dims: Set[str] | None = None,
-               verbose: bool = False, auto: bool = False, auto_kwargs: Dict | None = None) -> C:
+               verbose: bool = VERBOSE_MULTI_VMAP, auto: bool = False, auto_kwargs: Dict | None = None) -> C:
     """
-    A version of vmap which maps over multiple arguments.
+    A version of vmap which maps over multiple arguments according to a signature.
 
     Args:
         f: function to map over
         in_mapping: string of input shapes, e.g. "[n1,n2,n3],[n1,n3]", only left most dims need to be represented
         out_mapping: string of output shapes, e.g. "[n1,n2,n3,...]", one per output. All input variables must be
-        mentioned once. '...' means the shape of core function output. Assumes at end if not given.
+            mentioned once. '...' can be used as a placeholder, and ~ prefixes mean that the dimension is not mapped.
         scan_dims: set of dimensions to scan over
         verbose: whether to print the implied function signature
         auto: whether to automatically find best scan dims
@@ -411,17 +423,17 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
         mapped function
 
 
-    >>> def f(x, y):
-    >>>     return x + y
+    def f(x, y):
+        return x + y
 
-    >>> n1, n2, n3 = 3, 4, 5
+    n1, n2, n3 = 3, 4, 5
 
-    >>> x = jnp.ones((n1,n2,n3,2,2))
-    >>> y = jnp.ones((n1,n2,n3,2,2))
+    x = jnp.ones((n1,n2,n3,2,2))
+    y = jnp.ones((n1,n2,n3,2,2))
 
-    >>> f_multi = multi_vmap(f, in_mapping="[n1,n2,n3],[n1,n2,n3,2,2]", out_mapping="[..., n1,n2]", verbose=True)
-    >>> res = f_multi(x, y)
-    >>> assert res.shape == (n3, 2, 2) + (n1, n2) # batch shape (n3, 2, 2) and output shape (n1, n2) with transpose
+    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3],[n1,n2,n3,2,2]", out_mapping="[..., n1,n2]", verbose=True)
+    res = f_multi(x, y)
+    assert res.shape == (n3, 2, 2) + (n1, n2) # batch shape (n3, 2, 2) and output shape (n1, n2) with transpose
 
     """
 
@@ -444,96 +456,140 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
     if isinstance(out_mapping, list):
         out_mapping = ','.join(out_mapping)
 
-    input_shapes = extract_shape_tuples(in_mapping)
-    input_dims = [extract_shape(s) for s in input_shapes]
-    all_dims = set()
-    for dims in input_dims:
-        if '...' in dims:
-            raise ValueError(f"Input shapes must not contain '...', got {dims}.")
-        all_dims.update(set(dims))
-
-    output_shapes = extract_shape_tuples(out_mapping)
-    output_dims = [extract_shape(s) for s in output_shapes]
+    input_dims = [extract_shape(s) for s in extract_shape_tuples(in_mapping)]
+    output_dims = [extract_shape(s) for s in extract_shape_tuples(out_mapping)]
+    mapped_dims = []
     for dims in output_dims:
-        if '...' not in dims:  # Assume it's at the end.
+        # Put ... at the end if not present
+        if '...' not in dims:
             dims.append('...')
-        if set(dims) != set(output_dims[0]):
-            raise ValueError(f"Each output shape must contain same dimensions, got {output_dims}.")
-        # Ensure all dims contains
-        if not all_dims.union({'...'}).issuperset(set(dims)):
-            raise ValueError(f"Output shape must contain all input dims, got {dims} not all in {all_dims}.")
+        for dim in dims:
+            if dim.startswith("~") or dim == '...':
+                # Dims prefixed with ~ are not mapped
+                continue
+            if dim not in mapped_dims:
+                mapped_dims.append(dim)
+    for dims in input_dims:
+        if "..." not in dims:
+            dims.append('...')
+    # Ensure all output dims contain all the mapped dims
+    for dims in output_dims:
+        if not all(dim in dims for dim in mapped_dims):
+            raise ValueError(f"Output dims {dims} must contain all mapped dims {mapped_dims}.")
+    # Ensure all mapped dims are in all input dims
+    for dim in mapped_dims:
+        if not any(dim in in_dims for in_dims in input_dims):
+            raise ValueError(f"Mapped dim {dim} must be in some input dims {input_dims}.")
 
-    out_perm = []
+    # handle dims from left to right, for best efficiency
+    in_sig = [dims.copy() for dims in input_dims]
     out_sig = [dims.copy() for dims in output_dims]
     applicators = []
-    for dim in output_dims[0]:
-        if dim == '...':
-            continue
-        out_perm.append(dim)
-        in_axes = tuple([in_dims.index(dim) if dim in in_dims else None for in_dims in input_dims])
-        if verbose:
-            if dim in scan_dims:
-                print(f"scan({dim}, in_axes={in_axes})")
-            else:
-                print(f"vmap({dim}, in_axes={in_axes})")
-        applicators.append(partial(vmap_or_scan, in_axes=in_axes, out_axes=0, use_scan=dim in scan_dims))
+
+    def fmt_sig(dims):
+        dims = [f"[{','.join(dim)}]" for dim in dims]
+        return f"({','.join(dims)})"
+
+    if verbose:
+        print(f"=== ({f.__module__}) {f.__name__} ===")
+        print(f"In: {fmt_sig(in_sig)} Out: {fmt_sig(out_sig)}")
+
+    for dim in mapped_dims:
+        in_axes = tuple([in_dims.index(dim) if dim in in_dims else None for in_dims in in_sig])
         # Remove dim from each input if it's there
-        for in_dims in input_dims:
+        for in_dims in in_sig:
             if dim in in_dims:
                 in_dims.remove(dim)
         # Remove dim from output
         for dims in out_sig:
             dims.remove(dim)
+        if verbose:
+            if dim in scan_dims:
+                print(f"scan({dim}, in_axes={in_axes}, out_axes=0) # -> In: {fmt_sig(in_sig)} Out: {fmt_sig(out_sig)}")
+            else:
+                print(f"vmap({dim}, in_axes={in_axes}, out_axes=0)  # -> In: {fmt_sig(in_sig)} Out: {fmt_sig(out_sig)}")
+        applicators.append(partial(vmap_or_scan, in_axes=in_axes, out_axes=0, use_scan=dim in scan_dims))
 
-    out_perm.append('...')
+    post_application_output_dims = []
+    for out_dims in out_sig:
+        post_application_output_dims.append(mapped_dims + out_dims)
 
     if verbose:
-        input_sig = [f"({','.join(dims)})" for dims in input_dims]
+        input_sig = [f"({','.join(dims)})" for dims in in_sig]
         input_sig = ','.join(input_sig)
         out_sig = [f"({','.join(dims)})" for dims in out_sig]
         out_sig = ','.join(out_sig)
-
-        print(f"Implied function signature: ({f.__module__}) {f.__name__} :: {input_sig} -> {out_sig}")
+        print(f"Implied function signature :: {input_sig} -> {out_sig}")
 
     multi_f = f
     for applicator in applicators[::-1]:
         multi_f = applicator(multi_f)
 
-    def _permute_output(*args):
+    def _compute_and_permute_output(*args):
+        # Apply the function, and then permute the output
         outs = multi_f(*args)
         if isinstance_namedtuple(outs) or not isinstance(outs, tuple):
             outs = (outs,)
 
+        if len(outs) != len(output_dims):
+            raise ValueError(f"Number of outputs {len(outs)} must match output mapping {out_mapping}.")
+
+        def _apply_perm(x, in_dims, out_dims):
+            perm = _get_permutation(len(np.shape(x)), in_dims, out_dims)
+            if np.all(np.diff(perm) == 1):
+                return x
+            return lax.transpose(x, perm)
+
         res = []
-        for out, dims in zip(outs, output_dims):
-            if dims == out_perm:
-                res.append(out)
-                continue
+        for out, in_dims, out_dims in zip(outs, post_application_output_dims, output_dims):
+            res.append(jax.tree.map(lambda x: _apply_perm(x, in_dims, out_dims), out))
 
-            # Different arrangements of `dims`
-            # a) [..., n1,n2] -- ellipsis at start
-            # b) [n1, ..., n2] -- ellipsis at middle
-            # c) [n1, n2, ...] -- ellipsis at end
-
-            indices = list(range(len(np.shape(out))))
-            num_mapped_out_dims = len(dims) - 1  # remove ...
-            out_dim_map = dict(zip(out_perm[:-1], indices[:num_mapped_out_dims]))  # dim -> idx
-            ellipsis_map = indices[num_mapped_out_dims:]
-            if dims[0] == '...':  # a
-                perm = ellipsis_map + [out_dim_map[dim] for dim in dims[1:]]
-            elif dims[-1] == '...':  # c
-                perm = [out_dim_map[dim] for dim in dims[:-1]] + ellipsis_map
-            else:  # b
-                num_start_dims = dims.index('...')  # [n1, ..., n2] -> 1
-                num_end_dims = num_mapped_out_dims - num_start_dims  # [n1, ..., n2] -> 1
-                perm = [out_dim_map[dim] for dim in dims[:num_start_dims]] + ellipsis_map + [out_dim_map[dim] for dim in
-                                                                                             dims[-num_end_dims:]]
-            res.append(lax.transpose(out, perm))
         if len(res) == 1:
             return res[0]
         return tuple(res)
 
-    return _permute_output
+    return _compute_and_permute_output
+
+
+def _get_permutation(num_dims: int, in_axes: List[str], out_axes: List[str]) -> Tuple[int, ...]:
+    """
+    Get the permutation to move input axes to output axes.
+
+    Args:
+        num_dims: number of dimensions
+        in_axes: input axes
+        out_axes: output axes
+
+    Returns:
+        the permutation to move input axes to output axes
+
+    Examples:
+        _get_permutation(5, ['a', 'b', '...', 'c'], ['a', '...', 'b', 'c'])
+        (0, 2, 3, 1, 4)
+    """
+    if len(list(filter(lambda x: x != '...', in_axes))) > num_dims:
+        raise ValueError(f"Input axes {in_axes} must have {num_dims} dimensions.")
+    # Get indices
+    indices = list(range(num_dims))
+    # Assign dimensions to indices, and ellipsis to range of indices
+    ellipsis_size = num_dims - len(in_axes) + 1 if '...' in in_axes else 0  # 3, ['a', '...'] -> 2
+    dim_indices_map: Dict[str, Tuple[int, int]] = dict()  # dim -> (idx_from, idx_to)
+    idx = 0
+    for dim in in_axes:
+        if dim == '...':
+            dim_indices_map[dim] = (idx, idx + ellipsis_size)
+            idx += ellipsis_size
+        else:
+            dim_indices_map[dim] = (idx, idx + 1)
+            idx += 1
+    # Get permutation
+    perm = []
+    for dim in out_axes:
+        if dim not in dim_indices_map:
+            raise ValueError(f"Dimension {dim} not found in input axes {in_axes}.")
+        idx_from, idx_to = dim_indices_map[dim]
+        perm.extend(indices[idx_from:idx_to])
+    return tuple(perm)
 
 
 def create_mesh(shape, axis_names, devices=None):
@@ -579,3 +635,29 @@ def tree_device_put(tree: SPT, mesh: Mesh, axis_names: Tuple[str | None, ...]) -
     """
     sharding = NamedSharding(mesh, PartitionSpec(*axis_names))
     return jax.tree.map(lambda x: jax.device_put(x, sharding), tree)
+
+
+BUX = TypeVar('BUX', bound=Union[jax.Array, Any])
+
+
+def block_until_ready(x: BUX) -> BUX:
+    return jax.block_until_ready(x)
+
+
+CUF = TypeVar('CUF', bound=Callable[..., Any])
+
+
+def convert_to_ufunc(f: CUF, tile: bool = True) -> CUF:
+    f = jax.custom_batching.custom_vmap(f)
+
+    @f.def_vmap
+    def rule(axis_size, in_batched, *args):
+        axis_size = axis_size if tile else 1
+        batched_args = jax.tree.map(
+            lambda x, b: x if b else jax.lax.broadcast(x, (axis_size,)), args,
+            tuple(in_batched))
+        out = f(*batched_args)
+        out_batched = jax.tree.map(lambda _: True, out)
+        return out, out_batched
+
+    return f

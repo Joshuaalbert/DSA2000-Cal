@@ -37,7 +37,7 @@ def build_mock_point_model_data(full_stokes: bool, is_gains: bool, image_has_cha
         dl = 0.01 * jnp.ones(())
         dm = 0.01 * jnp.ones(())
     image = jnp.ones(image_shape, dtype=jnp.float32)
-    freqs = jnp.ones((chan,))
+    freqs = 700e6 * jnp.ones((chan,))
     model_data = FITSModelData(
         image=mp_policy.cast_to_image(image),
         gains=mp_policy.cast_to_gain(gains),
@@ -45,7 +45,7 @@ def build_mock_point_model_data(full_stokes: bool, is_gains: bool, image_has_cha
         dl=mp_policy.cast_to_angle(dl), dm=mp_policy.cast_to_angle(dm),
         freqs=mp_policy.cast_to_freq(freqs)
     )
-    print(model_data)
+    # print(model_data)
     return model_data
 
 
@@ -70,11 +70,11 @@ def build_mock_visibility_coord(rows: int, ant: int, time: int) -> VisibilityCoo
 @pytest.mark.parametrize("is_gains", [True, False])
 @pytest.mark.parametrize("full_stokes", [True, False])
 @pytest.mark.parametrize("image_has_chan", [True, False])
-def test_shapes_correctness(is_gains: bool, image_has_chan: bool, full_stokes: bool):
+@pytest.mark.parametrize("chan", [1, 4])
+def test_shapes_correctness(is_gains: bool, image_has_chan: bool, full_stokes: bool, chan: int):
     faint_predict = FITSPredict()
     Nx = 100
     Ny = 100
-    chan = 4
     time = 15
     ant = 24
     row = 1000

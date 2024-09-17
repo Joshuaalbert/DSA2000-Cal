@@ -3,7 +3,6 @@ import os
 from typing import List
 
 import astropy.units as au
-import jax.numpy as jnp
 from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
@@ -30,7 +29,7 @@ class DSA2000ForwardModel(BaseForwardModel):
     """
 
     # Synthetic sky model producer
-    synthetic_sky_model_producer: SyntheticSkyModelProducer
+    synthetic_sky_model_producer: SyntheticSkyModelProducer | None = None
 
     # Overridden params
     run_folder: str
@@ -56,28 +55,13 @@ class DSA2000ForwardModel(BaseForwardModel):
     simulation_seed: int = 42424242
     calibration_seed: int = 4242424242
     imaging_seed: int = 424242424242
+    overwrite: bool = False
 
     def __post_init__(self):
-        BaseForwardModel.__init__(
-            self,
-            run_folder=self.run_folder,
-            add_noise=self.add_noise,
-            include_ionosphere=self.include_ionosphere,
-            include_dish_effects=self.include_dish_effects,
-            include_simulation=self.include_simulation,
-            include_calibration=self.include_calibration,
-            dish_effect_params=self.dish_effect_params,
-            ionosphere_specification=self.ionosphere_specification,
-            num_cal_iters=self.num_cal_iters,
-            solution_interval=self.solution_interval,
-            validity_interval=self.validity_interval,
-            field_of_view=self.field_of_view, oversample_factor=self.oversample_factor,
-            weighting=self.weighting, epsilon=self.epsilon, dtype=self.dtype,
-            verbose=self.verbose, num_shards=self.num_shards,
-            ionosphere_seed=self.ionosphere_seed, dish_effects_seed=self.dish_effects_seed,
-            simulation_seed=self.simulation_seed, calibration_seed=self.calibration_seed,
-            imaging_seed=self.imaging_seed
-        )
+        if self.synthetic_sky_model_producer is None:
+            raise ValueError("synthetic_sky_model_producer must be provided")
+
+        super().__post_init__()
 
     def _build_simulation_rime_model(self,
                                      ms: MeasurementSet,

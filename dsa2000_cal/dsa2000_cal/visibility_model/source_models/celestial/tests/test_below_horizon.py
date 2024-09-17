@@ -1,6 +1,6 @@
 import numpy as np
 
-from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import elevation
+from dsa2000_cal.visibility_model.source_models.celestial.below_horizon import compute_elevation
 
 
 def test_elevation():
@@ -24,8 +24,8 @@ def test_elevation():
     )
     hour_angle = lst - source.ra
 
-    print(elevation(hour_angle.rad, lat.rad, dec.rad))
+    print(compute_elevation(hour_angle.rad, lat.rad, dec.rad))
 
     altaz = source.transform_to(AltAz(obstime=obstime, location=array_location))
     print(altaz.alt.rad)
-    np.testing.assert_allclose(elevation(hour_angle.rad, lat.rad, dec.rad), altaz.alt.rad, atol=0.01)
+    np.testing.assert_allclose(compute_elevation(hour_angle.rad, lat.rad, dec.rad), altaz.alt.rad, atol=0.01)

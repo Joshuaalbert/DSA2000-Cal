@@ -3,7 +3,7 @@ import itertools
 import time as time_mod
 import warnings
 from functools import partial
-from typing import Tuple, NamedTuple
+from typing import Tuple, NamedTuple, TypeVar, List
 
 import jax
 import numpy as np
@@ -13,18 +13,87 @@ from jax import config, numpy as jnp, lax
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import mp_policy, FloatArray, IntArray
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
+
+GM_BODIES = {
+    'sun': const.GM_sun,
+    'moon': 0.0123 * const.GM_earth,
+    'mercury': 0.0553 * const.GM_earth,
+    'venus': 0.815 * const.GM_earth,
+    'mars': 0.107 * const.GM_earth,
+    'jupiter': const.GM_jup,
+    'saturn': 95.16 * const.GM_earth,
+    'uranus': 14.54 * const.GM_earth,
+    'neptune': 17.15 * const.GM_earth
+}
+
+RADII_BODIES = {
+    'sun': const.R_sun,
+    'moon': 0.2727 * const.R_earth,
+    'mercury': 0.3829 * const.R_earth,
+    'venus': 0.9499 * const.R_earth,
+    'earth': const.R_earth,
+    'mars': 0.5320 * const.R_earth,
+    'jupiter': const.R_jup,
+    'saturn': 9.45 * const.R_earth,
+    'uranus': 4.01 * const.R_earth,
+    'neptune': 3.88 * const.R_earth
+}
+
+J2_COEFFS = {
+    'sun': 2.2e-7,
+    'moon': 2.034e-4,
+    'mercury': 6.0e-6,
+    'venus': 4.458e-6,
+    'earth': 1.08263e-3,
+    'mars': 1.960e-3,
+    'jupiter': 1.4736e-2,
+    'saturn': 1.6298e-2,
+    'uranus': 3.34343e-3,
+    'neptune': 3.411e-3
+}
+
+AT = TypeVar('AT')
+
+
+def a_reshape(x: AT, shape: Tuple[int, ...]) -> AT:
+    return np.reshape(x, shape)
+
+
+def a_transpose(x: AT, axes: Tuple[int, ...]) -> AT:
+    return np.transpose(x, axes)
+
+
+def a_stack(x: List[AT], axis: int) -> AT:
+    return np.stack(x, axis=axis)
 
 
 class VisibilityCoords(NamedTuple):
     """
     Coordinates for a single visibility.
     """
-    uvw: jax.Array | np.ndarray  # [rows, 3] the uvw coordinates
-    time_obs: jax.Array | np.ndarray  # [rows] the time relative to the reference time (observation start)
-    antenna_1: jax.Array | np.ndarray  # [rows] the first antenna
-    antenna_2: jax.Array | np.ndarray  # [rows] the second antenna
-    time_idx: jax.Array | np.ndarray  # [rows] the time index
+    uvw: FloatArray  # [rows, 3] the uvw coordinates
+    time_obs: FloatArray  # [rows] the time relative to the reference time (observation start)
+    antenna_1: IntArray  # [rows] the first antenna
+    antenna_2: IntArray  # [rows] the second antenna
+    time_idx: IntArray  # [rows] the time index
+
+
+class FarFieldDelayEngineState(NamedTuple):
+    ra0: jax.Array
+    dec0: jax.Array
+    interp_times: jax.Array # [T]
+    x_antennas_gcrs: jax.Array # [T, num_ants, 3]
+    w_antennas_gcrs: jax.Array # [T, num_ants, 3]
+    X_earth_bcrs: InterpolatedArray # [3]
+    V_earth_bcrs: InterpolatedArray # [3]
+    R_earth_bcrs: InterpolatedArray # [3]
+    X_J_bcrs: InterpolatedArray # [N, 3]
+    V_J_bcrs: InterpolatedArray # [N, 3]
+    GM_J: jax.Array # [N]
+    radii_J: jax.Array # [N]
+    J2_J: jax.Array # [N]
 
 
 @dataclasses.dataclass(eq=False)
@@ -61,33 +130,43 @@ class FarFieldDelayEngine:
     phase_center: ac.ICRS
 
     resolution: au.Quantity | None = None
+    bodies_except_earth: Tuple[str, ...] = (
+        'sun', 'moon', 'mercury', 'venus',
+        'mars', 'jupiter', 'saturn', 'uranus',
+        'neptune'
+    )
     verbose: bool = False
+
+    def _choose_resolution(self) -> au.Quantity:
+        antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
+        antennas_itrs = self.antennas.get_itrs().cartesian.xyz.T
+        max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna_2] - antennas_itrs[antenna_1], axis=-1))
+        # Select resolution to keep interpolation error below 1 mm
+        if max_baseline <= 10 * au.km:
+            return 10 * au.s
+        elif max_baseline <= 100 * au.km:
+            return 4 * au.s
+        elif max_baseline <= 1000 * au.km:
+            return 1 * au.s
+        else:
+            warnings.warn(
+                f"Max baseline is {max_baseline} > 1000 km, setting resolution to 0.1 s, "
+                f"may lead to slow ephemeris calculations."
+            )
+            return 0.1 * au.s
 
     def __post_init__(self):
         if not config.jax_enable_x64:
-            warnings.warn("jax_enable_x64 is not set, UVW computations may be inaccurate.")
+            warnings.warn("jax_enable_x64 is not set, Delay/UVW computations may be inaccurate.")
 
         if self.resolution is None:
-            # compute max baseline
-            antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
-            antennas_itrs = self.antennas.get_itrs().cartesian.xyz.T
-            max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna_2] - antennas_itrs[antenna_1], axis=-1))
-            # Select resolution to keep interpolation error below 1 mm
-            if max_baseline <= 10 * au.km:
-                self.resolution = 10 * au.s
-            elif max_baseline <= 100 * au.km:
-                self.resolution = 4 * au.s
-            elif max_baseline <= 1000 * au.km:
-                self.resolution = 1 * au.s
-            else:
-                warnings.warn(
-                    f"Max baseline is {max_baseline} > 1000 km, setting resolution to 0.1 s, "
-                    f"may lead to slow ephemeris calculations."
-                )
-                self.resolution = 0.1 * au.s
+            self.resolution = self._choose_resolution()
 
         if not self.resolution.unit.is_equivalent(au.s):
             raise ValueError(f"resolution must be in seconds got {self.resolution.unit}")
+
+        if not self.resolution.isscalar:
+            raise ValueError(f"resolution must be scalar got {self.resolution}")
 
         if len(self.antennas.shape) != 1:
             raise ValueError(f"antennas must be 1D got {self.antennas.shape}")
@@ -95,81 +174,52 @@ class FarFieldDelayEngine:
         if self.antennas.shape[0] < 2:
             raise ValueError(f"Need at least 2 antennas to form a baseline.")
 
-        bodies_except_earth = (
-            'sun', 'moon', 'mercury', 'venus',
-            'mars', 'jupiter', 'saturn', 'uranus',
-            'neptune'
-        )
-        GM_bodies = {
-            'sun': const.GM_sun,
-            'moon': 0.0123 * const.GM_earth,
-            'mercury': 0.0553 * const.GM_earth,
-            'venus': 0.815 * const.GM_earth,
-            'mars': 0.107 * const.GM_earth,
-            'jupiter': const.GM_jup,
-            'saturn': 95.16 * const.GM_earth,
-            'uranus': 14.54 * const.GM_earth,
-            'neptune': 17.15 * const.GM_earth
-        }
-        self.J2_coefficients = {
-            'sun': 2.2e-7,
-            'moon': 2.034e-4,
-            'mercury': 6.0e-6,
-            'venus': 4.458e-6,
-            'earth': 1.08263e-3,
-            'mars': 1.960e-3,
-            'jupiter': 1.4736e-2,
-            'saturn': 1.6298e-2,
-            'uranus': 3.34343e-3,
-            'neptune': 3.411e-3
-        }
-        self.radii = {
-            'sun': const.R_sun,
-            'moon': 0.2727 * const.R_earth,
-            'mercury': 0.3829 * const.R_earth,
-            'venus': 0.9499 * const.R_earth,
-            'earth': const.R_earth,
-            'mars': 0.5320 * const.R_earth,
-            'jupiter': const.R_jup,
-            'saturn': 9.45 * const.R_earth,
-            'uranus': 4.01 * const.R_earth,
-            'neptune': 3.88 * const.R_earth
-        }
-
-        self.ra0 = jnp.asarray(self.phase_center.ra.rad)
-        self.dec0 = jnp.asarray(self.phase_center.dec.rad)
         if not self.start_time.isscalar or not self.end_time.isscalar:
             raise ValueError(f"start_time and end_time must be scalar got {self.start_time} and {self.end_time}")
 
-        self.ref_time = start_time = self.start_time.tt
+        if not self.phase_center.isscalar:
+            raise ValueError(f"phase_center must be scalar got {self.phase_center}")
+
+        self.ref_time = self.start_time.tt
+
+        if self.verbose:
+            print(
+                f"Computing UVW for phase center: {self.phase_center}\n"
+                f"Number of antennas: {len(self.antennas)}\n"
+                f"Between {self.start_time} and {self.end_time} ({(self.end_time - self.start_time).sec} s)\n"
+                f"Interpolation resolution: {self.resolution}\n"
+            )
+            print(f"Gravitational effects included from:")
+            for body in sorted(self.bodies_except_earth + ('earth',)):
+                print(f"\t{body.title()}")
+
+        self.state = self.create_state()
+
+    def create_state(self) -> FarFieldDelayEngineState:
+        ra0 = mp_policy.cast_to_angle(self.phase_center.ra.rad)
+        dec0 = mp_policy.cast_to_angle(self.phase_center.dec.rad)
+
+        start_time = self.start_time.tt
         end_time = self.end_time.tt
 
+        # Pad the start and end times to include the light travel time across the Earth, so that interpolation
+        # is accurate.
         earth_light_cross_time = 2. * const.R_earth / const.c
 
         start_grid_time = start_time - earth_light_cross_time
         end_grid_time = end_time + earth_light_cross_time
 
         num_grid_times = int(np.ceil(float((end_grid_time - start_grid_time) / self.resolution))) + 1
-        num_ants = len(self.antennas)
 
         # Define the interpolation grid
-        interp_times = start_grid_time + np.arange(num_grid_times) * self.resolution  # [T]
-
-        if self.verbose:
-            print(f"Computing UVW for phase center: {self.phase_center}")
-            print(f"Number of antennas: {len(self.antennas)}")
-            print(f"Between {start_time} and {end_time} ({(end_time - start_time).sec} s)")
-            print(f"Interpolation resolution: {self.resolution}")
-            print(f"Number interpolation points: {num_grid_times}")
-            print(f"Gravitational effects included from:")
-            for body in sorted(bodies_except_earth + ('earth',)):
-                print(f"\t{body.title()}")
+        interp_times: at.Time = start_grid_time + np.arange(num_grid_times) * self.resolution  # [T]
 
         # Compute ephemeris'
         ephem_compute_t0 = time_mod.time()
 
+        num_ants = len(self.antennas)
         # Define the antennas
-        antennas_gcrs = self.antennas.reshape((1, num_ants)).get_gcrs(
+        antennas_gcrs: ac.GCRS = a_reshape(self.antennas, (1, num_ants)).get_gcrs(
             obstime=interp_times.reshape((num_grid_times, 1))
         )  # [T, num_ants]
         antennas_position_gcrs = antennas_gcrs.cartesian.xyz
@@ -191,19 +241,19 @@ class FarFieldDelayEngine:
 
         system_positions_bcrs = []
         system_velocity_bcrs = []
-        for body in bodies_except_earth:
+        for body in self.bodies_except_earth:
             body_position_bcrs, body_velocity_bcrs = ac.get_body_barycentric_posvel(
                 body=body,
                 time=interp_times
-            )  # [T, N]
-            body_position_bcrs = np.transpose(body_position_bcrs.xyz, (1, 0))  # [T, 3]
-            body_velocity_bcrs = np.transpose(body_velocity_bcrs.xyz, (1, 0))  # [T, 3]
+            )  # [T]
+            body_position_bcrs = a_transpose(body_position_bcrs.xyz, (1, 0))  # [T, 3]
+            body_velocity_bcrs = a_transpose(body_velocity_bcrs.xyz, (1, 0))  # [T, 3]
             system_positions_bcrs.append(body_position_bcrs)
             system_velocity_bcrs.append(body_velocity_bcrs)
-        system_positions_bcrs = np.stack(system_positions_bcrs, axis=1)  # [T, N, 3]
-        system_velocity_bcrs = np.stack(system_velocity_bcrs, axis=1)  # [T, N, 3]
+        system_positions_bcrs = a_stack(system_positions_bcrs, axis=1)  # [T, N, 3]
+        system_velocity_bcrs = a_stack(system_velocity_bcrs, axis=1)  # [T, N, 3]
 
-        GM_system = au.Quantity([GM_bodies[body] for body in bodies_except_earth])
+        GM_system = au.Quantity([GM_BODIES[body] for body in self.bodies_except_earth])
 
         ephem_compute_time = time_mod.time() - ephem_compute_t0
 
@@ -212,23 +262,23 @@ class FarFieldDelayEngine:
 
         # Convert to JAX
 
-        self.x_antennas_gcrs = quantity_to_jnp(
-            np.transpose(antennas_position_gcrs, (1, 2, 0))
+        x_antennas_gcrs = quantity_to_jnp(
+            a_transpose(antennas_position_gcrs, (1, 2, 0))
         )  # [T, num_ants, 3]
 
-        self.w_antennas_gcrs = quantity_to_jnp(
-            np.transpose(antennas_velocity_gcrs, (1, 2, 0))
+        w_antennas_gcrs = quantity_to_jnp(
+            a_transpose(antennas_velocity_gcrs, (1, 2, 0))
         )  # [T, num_ants, 3]
 
         X_earth_bcrs = quantity_to_jnp(
-            np.transpose(earth_position_bcrs, (1, 0))
+            a_transpose(earth_position_bcrs, (1, 0))
         )  # [T, 3]
         V_earth_bcrs = quantity_to_jnp(
-            np.transpose(earth_velocity_bcrs, (1, 0))
+            a_transpose(earth_velocity_bcrs, (1, 0))
         )  # [T, 3]
 
         R_earth_bcrs = quantity_to_jnp(
-            np.transpose(R_earth_bcrs, (1, 0))
+            a_transpose(R_earth_bcrs, (1, 0))
         )  # [T, 3]
 
         system_positions_bcrs = quantity_to_jnp(
@@ -240,41 +290,54 @@ class FarFieldDelayEngine:
 
         self.GM_J = quantity_to_jnp(GM_system)  # [N_J]
 
-        self.interp_times_jax = interp_times_jax = jnp.asarray((interp_times - self.ref_time).sec)  # [T]
+        interp_times_jax = interp_times_jax = jnp.asarray((interp_times - self.ref_time).sec)  # [T]
 
         # Create interpolation objects
-        self.X_earth_bcrs = InterpolatedArray(
+        X_earth_bcrs = InterpolatedArray(
             x=interp_times_jax,
             values=X_earth_bcrs,
             axis=0,
             regular_grid=True
         )
-        self.V_earth_bcrs = InterpolatedArray(
+        V_earth_bcrs = InterpolatedArray(
             x=interp_times_jax,
             values=V_earth_bcrs,
             axis=0,
             regular_grid=True
         )
 
-        self.R_earth_bcrs = InterpolatedArray(
+        R_earth_bcrs = InterpolatedArray(
             x=interp_times_jax,
             values=R_earth_bcrs,
             axis=0,
             regular_grid=True
         )
 
-        self.X_J_bcrs = InterpolatedArray(
+        X_J_bcrs = InterpolatedArray(
             x=interp_times_jax,
             values=system_positions_bcrs,
             axis=0,
             regular_grid=True
         )
 
-        self.V_J_bcrs = InterpolatedArray(
+        V_J_bcrs = InterpolatedArray(
             x=interp_times_jax,
             values=system_velocities_bcrs,
             axis=0,
             regular_grid=True
+        )
+
+        return FarFieldDelayEngineState(
+            ra0=ra0,
+            dec0=dec0,
+            interp_times=interp_times_jax,
+            x_antennas_gcrs=x_antennas_gcrs,
+            w_antennas_gcrs=w_antennas_gcrs,
+            X_earth_bcrs=X_earth_bcrs,
+            V_earth_bcrs=V_earth_bcrs,
+            R_earth_bcrs=R_earth_bcrs,
+            X_J_bcrs=X_J_bcrs,
+            V_J_bcrs=V_J_bcrs
         )
 
     def compute_delay_from_lm_jax(self,
@@ -306,29 +369,29 @@ class FarFieldDelayEngine:
         K_bcrs = celestial_to_cartesian(ra, dec)
 
         x_1_gcrs = InterpolatedArray(
-            x=self.interp_times_jax,
-            values=self.x_antennas_gcrs[:, i1, :],
+            x=self.state.interp_times,
+            values=self.state.x_antennas_gcrs[:, i1, :],
             axis=0,
             regular_grid=True
         )
 
         x_2_gcrs = InterpolatedArray(
-            x=self.interp_times_jax,
-            values=self.x_antennas_gcrs[:, i2, :],
+            x=self.state.interp_times,
+            values=self.state.x_antennas_gcrs[:, i2, :],
             axis=0,
             regular_grid=True
         )
 
         w_1_gcrs = InterpolatedArray(
-            x=self.interp_times_jax,
-            values=self.w_antennas_gcrs[:, i1, :],
+            x=self.state.interp_times,
+            values=self.state.w_antennas_gcrs[:, i1, :],
             axis=0,
             regular_grid=True
         )
 
         w_2_gcrs = InterpolatedArray(
-            x=self.interp_times_jax,
-            values=self.w_antennas_gcrs[:, i2, :],
+            x=self.state.interp_times,
+            values=self.state.w_antennas_gcrs[:, i2, :],
             axis=0,
             regular_grid=True
         )
@@ -340,12 +403,12 @@ class FarFieldDelayEngine:
             x_2_gcrs=x_2_gcrs,
             w_1_gcrs=w_1_gcrs,
             w_2_gcrs=w_2_gcrs,
-            X_earth_bcrs=self.X_earth_bcrs,
-            V_earth_bcrs=self.V_earth_bcrs,
-            R_earth_bcrs=self.R_earth_bcrs,
-            X_J_bcrs=self.X_J_bcrs,
-            V_J_bcrs=self.V_J_bcrs,
-            GM_J=self.GM_J
+            X_earth_bcrs=self.state.X_earth_bcrs,
+            V_earth_bcrs=self.state.V_earth_bcrs,
+            R_earth_bcrs=self.state.R_earth_bcrs,
+            X_J_bcrs=self.state.X_J_bcrs,
+            V_J_bcrs=self.state.V_J_bcrs,
+            GM_J=self.state.GM_J
         )  # s
         # Unsure why the negative sign needs to be introduced to match,
         # since delta_t=t2-t1 is time for signal to travel from 1 to 2.
@@ -398,7 +461,7 @@ class FarFieldDelayEngine:
         Returns:
             times_jax: [...] Time of observation, in tt scale in seconds, relative to the first time.
         """
-        return jnp.asarray((times.tt - self.ref_time.tt).sec)  # [N]
+        return mp_policy.cast_to_time((times.tt - self.ref_time.tt).sec)  # [N]
 
     def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True,
                                   convention: str = 'physical') -> VisibilityCoords:
@@ -554,3 +617,26 @@ def far_field_delay(
     proper_delay = (1 - L_G) * coordinate_delay_tcg
 
     return proper_delay
+
+
+def test_far_field():
+    antennas = ac.EarthLocation.from_geodetic(
+        lon=[-116.6708, -116.6718] * au.deg,
+        lat=[33.3575, 33.3575] * au.deg,
+        height=[1197.0, 1197.0] * au.m
+    )
+    engine = FarFieldDelayEngine(
+        antennas=antennas,
+        start_time=at.Time("2021-01-01T00:00:00", scale='tt'),
+        end_time=at.Time("2021-01-01T00:00:05", scale='tt'),
+        phase_center=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
+        resolution=1 * au.s,
+        verbose=True
+    )
+
+    delay = engine.compute_delay_from_lm_jax(
+        l=0.1, m=0.1,
+        t1=engine.time_to_jnp(engine.start_time),
+        i1=0, i2=1
+    )
+    print(delay)

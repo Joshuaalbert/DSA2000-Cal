@@ -2,6 +2,7 @@ import dataclasses
 import os
 import time as time_mod
 from functools import partial
+from typing import List
 
 import astropy.units as au
 import jax
@@ -17,7 +18,7 @@ from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
-from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.jax_utils import multi_vmap, block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_inv
@@ -38,12 +39,15 @@ class Imagor:
     plot_folder: str
 
     field_of_view: au.Quantity | None = None
+    baseline_min: au.Quantity = 1. * au.m
     oversample_factor: float = 5.
-    nthreads: int = 1
+    nthreads: int | None = None
     epsilon: float = 1e-4
     convention: str = 'physical'
     verbose: bool = False
     weighting: str = 'natural'
+    coherencies: List[str] | None = None
+    spectral_cube: bool = False
     seed: int = 42
 
     def __post_init__(self):
@@ -55,7 +59,8 @@ class Imagor:
         print(f"Imaging {ms}")
         # Metrics
         t0 = time_mod.time()
-        gen = ms.create_block_generator(vis=True, weights=True, flags=True)
+        gen = ms.create_block_generator(vis=True, weights=True, flags=True,
+                                        corrs=self.coherencies)
         gen_response = None
         uvw = []
         vis = []
@@ -76,7 +81,7 @@ class Imagor:
         vis = jnp.concatenate(vis, axis=0)  # [num_rows, chan, 4/1]
         weights = jnp.concatenate(weights, axis=0)  # [num_rows, chan, 4/1]
         flags = jnp.concatenate(flags, axis=0)  # [num_rows, chan, 4/1]
-        freqs = quantity_to_jnp(ms.meta.freqs)
+        freqs = quantity_to_jnp(ms.meta.freqs) # [num_chan]
 
         wavelengths = quantity_to_np(constants.c / ms.meta.freqs)
         diameter = np.min(quantity_to_np(ms.meta.antenna_diameters))
@@ -126,19 +131,20 @@ class Imagor:
         if psf:
             vis = jnp.ones_like(vis)
 
-        dirty_image = self._image_visibilties_jax(
-            uvw=uvw,
-            vis=vis,
-            weights=weights,
-            flags=flags,
-            freqs=freqs,
-            num_pixel=num_pixel,
-            dl=quantity_to_jnp(dl),
-            dm=quantity_to_jnp(dm),
-            center_l=quantity_to_jnp(center_l),
-            center_m=quantity_to_jnp(center_m)
-        )  # [4/1, Nl, Nm]
-        dirty_image.block_until_ready()
+        dirty_image = block_until_ready(
+            self._image_visibilties_jax(
+                uvw=uvw,
+                vis=vis,
+                weights=weights,
+                flags=flags,
+                freqs=freqs,
+                num_pixel=num_pixel,
+                dl=quantity_to_jnp(dl),
+                dm=quantity_to_jnp(dm),
+                center_l=quantity_to_jnp(center_l),
+                center_m=quantity_to_jnp(center_m)
+            )
+        )  # [Nl, Nm, coh]
         dirty_image = dirty_image[:, :, None, :]  # [nl, nm, 1, coh]
         t1 = time_mod.time()
         print(f"Completed imaging in {t1 - t0:.2f} seconds.")
@@ -147,12 +153,16 @@ class Imagor:
             plt.imshow(
                 np.log10(np.abs(dirty_image[..., 0, coh].T)),
                 origin='lower',
-                extent=(-num_pixel / 2 * dl, num_pixel / 2 * dl, -num_pixel / 2 * dm, num_pixel / 2 * dm)
+                extent=(-num_pixel / 2 * dl + center_l,
+                        num_pixel / 2 * dl + center_l,
+                        -num_pixel / 2 * dm + center_m,
+                        num_pixel / 2 * dm + center_m)
             )
             plt.xlabel('l [rad]')
             plt.ylabel('m [rad]')
             plt.colorbar()
-            plt.savefig(f"{self.plot_folder}/{image_name}_coh{coh}.png")
+            plt.title(f"{image_name} {ms.meta.coherencies[coh]}")
+            plt.savefig(f"{self.plot_folder}/{image_name}_{ms.meta.coherencies[coh]}.png")
             plt.show()
         image_model = ImageModel(
             phase_tracking=ms.meta.phase_tracking,
@@ -203,6 +213,11 @@ class Imagor:
         Returns:
             dirty_image: [num_pixel, num_pixel, 4/1]
         """
+
+        # Remove auto-correlations
+        baseline_length = jnp.linalg.norm(uvw, axis=-1)  # [num_rows]
+        flags = jnp.logical_or(flags, baseline_length[:, None, None] < quantity_to_jnp(
+            self.baseline_min))  # [num_rows, num_chan, coh]
 
         if self.convention == 'engineering':
             uvw = jnp.negative(uvw)
@@ -332,5 +347,3 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
 
     pb_cor_image = jax.vmap(jax.vmap(_remove))(image, beam)
     return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)
-
-

@@ -30,7 +30,7 @@ class AltAzAntennaModel(AbstractAntennaModel):
                        cmap='jet', s=1)
         fig.colorbar(c, ax=ax, label='Amplitude')
 
-        ax.set_title(f"Amplitude '{self.__class__.__name__}' Beam")
+        ax.set_title(f"Amplitude '{self.__class__.__name__}' Beam [nu={nu}, p={p}, q={q}]")
         plt.show()
 
     def plot_polar_phase(self, nu: int = 0, p: int = 0, q: int = 0):
@@ -55,5 +55,5 @@ class AltAzAntennaModel(AbstractAntennaModel):
                        vmin=-np.pi, vmax=np.pi)
         fig.colorbar(c, ax=ax, label='Phase')
 
-        ax.set_title(f"Phase '{self.__class__.__name__}' Beam")
+        ax.set_title(f"Phase '{self.__class__.__name__}' Beam [nu={nu}, p={p}, q={q}]")
         plt.show()
