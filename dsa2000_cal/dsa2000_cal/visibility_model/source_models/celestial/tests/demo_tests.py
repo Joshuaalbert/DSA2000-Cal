@@ -12,7 +12,7 @@ from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import complex_type, mp_policy
+from dsa2000_cal.common.mixed_precision_utils import complex_type, mp_policy
 from dsa2000_cal.common.wgridder import image_to_vis
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, FITSPredict

@@ -5,6 +5,7 @@ import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.types import SystemGains
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import CalibrationSolutions
 
@@ -86,7 +87,7 @@ def plot_antenna_gains(gain_obj: SystemGains | CalibrationSolutions, antenna_idx
             # 0,0 -> 0, 1,0 -> 1, 0,1 -> 2, 1,1 -> 3
             row = 2 * q + p
             axs[row][0].imshow(
-                amplitude[:, :, p, q].T,
+                dsa2000_cal.common.mixed_precision_utils.T,
                 aspect='auto',
                 origin='lower',
                 cmap='viridis',
@@ -99,7 +100,7 @@ def plot_antenna_gains(gain_obj: SystemGains | CalibrationSolutions, antenna_idx
             axs[row, 0].set_ylabel("Frequency (Hz)")
 
             axs[row][1].imshow(
-                phase[:, :, p, q].T,
+                dsa2000_cal.common.mixed_precision_utils.T,
                 aspect='auto',
                 origin='lower',
                 cmap='hsv',

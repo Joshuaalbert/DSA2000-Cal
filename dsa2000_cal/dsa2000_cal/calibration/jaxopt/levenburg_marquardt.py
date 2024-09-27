@@ -34,6 +34,8 @@ from jaxopt._src.linear_solve import solve_lu
 from jaxopt._src.linear_solve import solve_qr
 from jaxopt._src.tree_util import tree_l2_norm, tree_inf_norm
 
+import dsa2000_cal.common.mixed_precision_utils
+
 
 class LevenbergMarquardtState(NamedTuple):
     """Named tuple containing state information."""
@@ -197,7 +199,7 @@ class LevenbergMarquardt:
 
         if self.materialize_jac:
             jac = self._jac_fun(init_params, *args, **kwargs)
-            jt = jac.T
+            jt = dsa2000_cal.common.mixed_precision_utils.T
             jtj = jt @ jac
             gradient = jt @ residual
             damping_factor = self.damping_parameter * jnp.max(jnp.diag(jtj))
@@ -254,7 +256,7 @@ class LevenbergMarquardt:
             if self.materialize_jac:
                 # Calculate Jacobian and it's transpose based on the updated coeffs.
                 jac = self._jac_fun(params, *args, **kwargs)
-                jt = jac.T
+                jt = dsa2000_cal.common.mixed_precision_utils.T
                 #  J^T.J is the gauss newton approximate hessian.
                 jtj = jt @ jac
                 gradient = jt @ residual
@@ -324,7 +326,7 @@ class LevenbergMarquardt:
 
         # Calculate denominator of the gain ratio based on Eq. 6.16, "Introduction
         # to optimization and data fitting", L(0)-L(hlm)=0.5*hlm^T*(mu*hlm-g).
-        gain_ratio_denom = 0.5 * delta_params.T @ (
+        gain_ratio_denom = 0.5 * dsa2000_cal.common.mixed_precision_utils.T @ (
                 damping_factor * delta_params - gradient)
 
         # Current value of loss function F=0.5*||f||^2.
@@ -527,8 +529,8 @@ class LevenbergMarquardt:
 
     def _jtj_diag_op(self, params, *args, **kwargs):
         """Diagonal elements of J^T.J, where J is jacobian of fun at params."""
-        diag_op = lambda v: v.T @ self._jtj_op(params, v, *args, **kwargs)
-        return jax.vmap(diag_op)(jnp.eye(len(params))).T
+        diag_op = lambda v: dsa2000_cal.common.mixed_precision_utils.T @ self._jtj_op(params, v, *args, **kwargs)
+        return dsa2000_cal.common.mixed_precision_utils.T
 
     def _d2fvv_op(self, primals, tangents1, tangents2, *args, **kwargs):
         """Product with d2f.v1v2."""

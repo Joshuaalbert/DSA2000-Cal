@@ -10,13 +10,14 @@ import pylab as plt
 from astropy import constants
 from jax import numpy as jnp, lax
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.corr_translation import stokes_I_to_linear
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
@@ -521,7 +522,8 @@ class PointPredict:
         if np.shape(image) == (2, 2):  # full stokes
             if g1 is None or g1 is None:
                 return mp_policy.cast_to_vis(fringe * image)
-            return mp_policy.cast_to_vis(fringe) * mp_policy.cast_to_vis(kron_product(g1, image, g2.conj().T))
+            return mp_policy.cast_to_vis(fringe) * mp_policy.cast_to_vis(kron_product(g1, image,
+                                                                                      dsa2000_cal.common.mixed_precision_utils.T))
         elif np.shape(image) == ():
             if g1 is None or g1 is None:
                 return mp_policy.cast_to_vis(fringe * image)

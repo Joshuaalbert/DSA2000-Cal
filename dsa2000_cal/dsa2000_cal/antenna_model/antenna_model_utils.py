@@ -151,7 +151,7 @@ def get_beam_widths(amplitude: au.Quantity, theta: au.Quantity, freqs: au.Quanti
     if not freqs.unit.is_equivalent(au.Hz):
         raise ValueError(f"Expected freqs to be in Hz but got {freqs.unit}.")
 
-    circular_mean = np.mean(amplitude, axis=1)  # [theta, freq]
+    circular_mean = np.mean(amplitude**2, axis=1)  # [theta, freq]
     circular_mean /= np.max(circular_mean, axis=0, keepdims=True)
     freq_order = np.argsort(freqs)
 
@@ -206,10 +206,14 @@ def plot_beam_profile(antenna_model: AbstractAntennaModel, threshold: float = 0.
     for i, freq in enumerate(freqs):
         k = int(np.interp(beam_widths[i].value / 2., theta.value, np.arange(len(theta))))
         plt.plot(theta[:k], circular_mean[:k, i],
-                 label=freq, color=plt.get_cmap('jet_r')(norm(freq.value)))
+                 label=freq, color=plt.get_cmap('PuOr_r')(norm(freq.value)))
         print(f"Freq: {i}, {freq}, theta: {beam_widths[i] / 2.}")
     plt.xlabel('Theta (deg)')
     plt.ylabel('Amplitude')
     plt.title(f"'{antenna_model.__class__.__name__}' Half-width of beam")
-    plt.legend()
+    # Put a colorbar to the right of the plot
+    sm = plt.cm.ScalarMappable(cmap='PuOr_r', norm=norm)
+    sm.set_array([])
+    plt.colorbar(sm, label='Frequency (Hz)', ax=plt.gca())
+    # plt.legend()
     plt.show()

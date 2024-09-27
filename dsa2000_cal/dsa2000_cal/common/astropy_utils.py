@@ -1,11 +1,13 @@
 import jax.random
 import numpy as np
+import pytest
 from astropy import constants as const
 from astropy import coordinates as ac
 from astropy import units as au
 from astropy.coordinates import Angle
 from astropy.coordinates.angles import offset_by
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 
 
@@ -154,7 +156,7 @@ def mean_icrs(coords: ac.ICRS) -> ac.ICRS:
     Returns:
         the mean ITRS coordinate
     """
-    mean_coord = coords.cartesian.xyz.T.mean(axis=0)
+    mean_coord = dsa2000_cal.common.mixed_precision_utils.T.mean(axis=0)
     mean_coord /= np.linalg.norm(mean_coord)
     spherical = ac.ICRS(mean_coord, representation_type='cartesian').spherical
     return ac.ICRS(ra=spherical.lon, dec=spherical.lat)
@@ -223,3 +225,44 @@ def fraunhofer_far_field_limit(diameter: au.Quantity, freq: au.Quantity) -> au.Q
         raise ValueError("Frequency must be in Hz.")
     wavelength = const.c / freq
     return (diameter ** 2 / wavelength).to('m')
+
+
+def fibonacci_celestial_sphere(n: int) -> ac.ICRS:
+    """
+    Generates 'n' points on the surface of a sphere using the Fibonacci sphere algorithm.
+
+    Args:
+        n (int): Number of points to generate.
+
+    Returns:
+        lon (jnp.ndarray): Array of longitudes in radians.
+        lat (jnp.ndarray): Array of latitudes in radians.
+    """
+    # Golden angle in radians
+    golden_angle = np.pi * (3.0 - np.sqrt(5.0))  # Approximately 2.39996 radians
+
+    # Indices from 0 to n-1
+    indices = np.arange(n)
+
+    # Compute y coordinates (latitude component)
+    y = 1 - (2 * indices) / (n - 1)  # y ranges from 1 to -1
+
+    # Compute latitude in radians
+    lat = np.arcsin(y)
+
+    # Compute longitude in radians
+    theta = golden_angle * indices
+    lon = theta % (2 * np.pi)  # Ensure longitude is within [0, 2π)
+
+    return ac.ICRS(lon * au.rad, lat * au.rad)
+
+@pytest.mark.parametrize('n', [10, 100, 1000])
+def test_fibonacci_celestial_sphere(n:int):
+    pointings = fibonacci_celestial_sphere(n=n)
+    import pylab as plt
+    plt.scatter(pointings.ra, pointings.dec, s=1)
+    plt.show()
+
+    mean_area = (4*np.pi / n) * au.rad**2
+    print(n, mean_area.to('deg^2')) 
+

@@ -1,5 +1,6 @@
 import itertools
 import json
+import time
 
 import jax
 import numpy as np
@@ -10,6 +11,9 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from tomographic_kernel.frames import ENU
 
+import dsa2000_cal.common.mixed_precision_utils
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
 
 
@@ -202,7 +206,6 @@ def prepare_standard_test():
 
     antennas = ac.concatenate(antennas).earth_location
 
-
     antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
 
     return obstime, array_location, antennas, antenna_1, antenna_2, phase_centers
@@ -231,11 +234,12 @@ def test_standard_test_dsa2000():
         )  # [N, 3] in meters
         results[str(i)] = uvw.tolist()
 
-    with open('dsa2000_results.json', 'w') as f:
+    with open('dsa2000_jpl_results.json', 'w') as f:
         json.dump(results, f, indent=2)
 
+
 def test_compare_to_calc():
-    with open('dsa2000_results.json', 'r') as f:
+    with open('dsa2000_jpl_results.json', 'r') as f:
         results_dsa = json.load(f)
     with open('pycalc_results_noatmo.json', 'r') as f:
         results_calc = json.load(f)
@@ -243,7 +247,7 @@ def test_compare_to_calc():
     obstime, array_location, antennas, antenna_1, antenna_2, phase_centers = prepare_standard_test()
 
     antennas_gcrs = antennas.get_gcrs(obstime)
-    antennas_gcrs = antennas_gcrs.cartesian.xyz.T # [N, 3]
+    antennas_gcrs = dsa2000_cal.common.mixed_precision_utils.T  # [N, 3]
 
     baselines = antennas_gcrs[antenna_2, :] - antennas_gcrs[antenna_1, :]
     baselines_norm = np.linalg.norm(baselines, axis=1).to('m').value
@@ -258,16 +262,20 @@ def test_compare_to_calc():
         value_dsa = np.asarray(results_dsa[str(key)])
         value_dsa_norm = np.linalg.norm(value_dsa, axis=1)
         value_calc_norm = np.linalg.norm(value_calc, axis=1)
-        for i1, i2, b_norm, dsa_norm, calc_norm in zip(antenna_1, antenna_2, baselines_norm, value_dsa_norm, value_calc_norm):
+        for i1, i2, b_norm, dsa_norm, calc_norm in zip(antenna_1, antenna_2, baselines_norm, value_dsa_norm,
+                                                       value_calc_norm):
             if np.abs(dsa_norm - calc_norm) > 10:
-                print(f"alt: {alt}, phase center: {phase_center.ra} {phase_center.dec} i1: {i1} i2: {i2} Baseline: {b_norm}, DSA: {dsa_norm}, Calc: {calc_norm}")
+                print(
+                    f"alt: {alt}, phase center: {phase_center.ra} {phase_center.dec} i1: {i1} i2: {i2} Baseline: {b_norm}, DSA: {dsa_norm}, Calc: {calc_norm}")
 
         diff = (value_dsa - value_calc).flatten()
         mean_diff = np.mean(diff)
         std_diff = np.std(diff)
-        print(f"alt: {alt}, phase center: {phase_center.ra} {phase_center.dec} Mean diff: {mean_diff}, Std diff: {std_diff}")
+        print(
+            f"alt: {alt}, phase center: {phase_center.ra} {phase_center.dec} Mean diff: {mean_diff}, Std diff: {std_diff}")
 
-        b_norm = np.repeat(np.linalg.norm(baselines[antenna_2] - baselines[antenna_1], axis=1, keepdims=True), 3, axis=1).flatten().to('m').value
+        b_norm = np.repeat(np.linalg.norm(baselines[antenna_2] - baselines[antenna_1], axis=1, keepdims=True), 3,
+                           axis=1).flatten().to('m').value
         baseline_norms.extend(b_norm)
         diffs.extend((diff).tolist())
         alts.extend([alt.deg] * np.size(diff))
@@ -280,10 +288,107 @@ def test_compare_to_calc():
     plt.show()
     # Do a scatter plot of the differences with color by alt
     fig, axs = plt.subplots(1, 1, figsize=(5, 5), squeeze=True)
-    sc=axs.scatter(baseline_norms, diffs, c=alts, s=1, cmap='hsv',vmin=-90, vmax=90)
+    sc = axs.scatter(baseline_norms, diffs, c=alts, s=1, cmap='hsv', vmin=-90, vmax=90)
     fig.colorbar(sc, ax=axs, label='Alt (deg)')
     axs.set_xlabel('Baseline (m)')
     axs.set_ylabel('Diff (m)')
     axs.set_title('Difference vs Baseline')
     fig.tight_layout()
+    plt.show()
+
+
+def test_uvw_coverage():
+    # Setup test parameters
+    obstime = at.Time("2021-01-01T00:00:00", scale='utc')
+
+    fill_registries()
+    array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
+    antennas = array.get_antennas()
+    array_location = antennas[0]
+    antenna_enu_xyz = dsa2000_cal.common.mixed_precision_utils.T
+
+    mask_center = [-7.5, 0., 0.] * au.km
+    mask = np.linalg.norm(antenna_enu_xyz - mask_center, axis=1) < 1 * au.km
+    antennas = antennas[~mask]
+    antenna_enu_xyz = dsa2000_cal.common.mixed_precision_utils.T
+
+    n = len(antennas)
+    phase_center = ENU(east=0, north=0, up=1, location=array_location, obstime=obstime).transform_to(ac.ICRS())
+
+    engine = FarFieldDelayEngine(
+        antennas=antennas,
+        phase_center=phase_center,
+        start_time=obstime,
+        end_time=obstime + (10.3 * 60) * au.s,
+        verbose=True
+    )
+
+    baseline_pairs = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2)))
+    antenna_1 = baseline_pairs[:, 0]
+    antenna_2 = baseline_pairs[:, 1]
+
+    data_dict = dict(
+        times=jnp.repeat(engine.time_to_jnp(obstime)[None], len(antenna_1), axis=0),
+        antenna_1=jnp.asarray(antenna_1),
+        antenna_2=jnp.asarray(antenna_2)
+    )
+    data_dict = jax.device_put(data_dict)
+
+    t0 = time.time()
+    compute_uvw_jax = jax.jit(engine.compute_uvw_jax).lower(**data_dict).compile()
+    compile_time = time.time() - t0
+    print(f"Compilation time for n={n}: {compile_time:.4f} seconds")
+
+    uvws = []
+    for t in obstime + np.arange(0, 10.3 * 60, 60) * au.s:
+        data_dict = dict(
+            times=jnp.repeat(engine.time_to_jnp(t)[None], len(antenna_1), axis=0),
+            antenna_1=jnp.asarray(antenna_1),
+            antenna_2=jnp.asarray(antenna_2)
+        )
+        data_dict = jax.device_put(data_dict)
+        t0 = time.time()
+        uvw = jax.block_until_ready(compute_uvw_jax(**data_dict))
+        compute_time = time.time() - t0
+        print(f"Compute time for t={t}: {compute_time:.4f} seconds")
+        uvws.append(uvw)
+
+    uvws = jnp.concatenate(uvws, axis=0)
+    uvws = jnp.concatenate([uvws, -uvws], axis=0)  # Add negative uvws
+
+    import pylab as plt
+
+    plt.scatter(antenna_enu_xyz[:, 0], antenna_enu_xyz[:, 1], s=1)
+    plt.xlabel('East (m)')
+    plt.ylabel('North (m)')
+    plt.title('Antenna Locations')
+    plt.tight_layout()
+    plt.savefig('antenna_locations.png')
+    plt.show()
+
+    plt.scatter(uvws[:, 0], uvws[:, 1], s=1, alpha=0.05)
+    plt.xlabel('u (m)')
+    plt.ylabel('v (m)')
+    plt.title('UV Coverage')
+    plt.tight_layout()
+    plt.show()
+
+    # 2D hist with colorbar
+    plt.hist2d(uvws[:, 0], uvws[:, 1], bins=2048, cmap='jet')
+    plt.colorbar(label='baseline count')
+    plt.xlabel('u (m)')
+    plt.ylabel('v (m)')
+    plt.title('UV Coverage')
+    plt.tight_layout()
+    plt.savefig('uv_coverage_hist_2048bins.png')
+    plt.show()
+
+    # 2D hist with colorbar
+    plt.hist2d(uvws[:, 0], uvws[:, 1], bins=1024, cmap='jet')
+    plt.colorbar(label='baseline count')
+    plt.xlabel('u (m)')
+    plt.ylabel('v (m)')
+    plt.title('UV Coverage')
+    plt.tight_layout()
+    plt.savefig('uv_coverage_hist_1024bins.png')
     plt.show()

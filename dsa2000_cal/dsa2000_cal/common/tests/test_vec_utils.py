@@ -2,6 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.vec_utils import vec, unvec, kron_product, kron_inv
 
 
@@ -55,8 +56,8 @@ def test_kron_product_cost():
     print()
     print("a @ b @ c.T.conj")
     print("Naive a.b.c | unvec(kron(c.T, a).vec(b))")
-    a1 = jax.jit(lambda a, b, c: f(a, b, c.conj().T)).lower(a, b, c).compile().cost_analysis()[0]
-    a2 = jax.jit(lambda a, b, c: kron_product(a, b, c.conj().T)).lower(a, b, c).compile().cost_analysis()[0]
+    a1 = jax.jit(lambda a, b, c: f(a, b, dsa2000_cal.common.mixed_precision_utils.T)).lower(a, b, c).compile().cost_analysis()[0]
+    a2 = jax.jit(lambda a, b, c: kron_product(a, b, dsa2000_cal.common.mixed_precision_utils.T)).lower(a, b, c).compile().cost_analysis()[0]
     for key in ['bytes accessed', 'flops', 'utilization operand 0 {}', 'utilization operand 1 {}',
                 'utilization operand 2 {}', 'bytes accessed output {}']:
         print(key, ":", a1.get(key, None), a2.get(key, None))
@@ -64,8 +65,8 @@ def test_kron_product_cost():
     print()
     print("a @ b @ c.conj.T")
     print("Naive a.b.c | unvec(kron(c.T, a).vec(b))")
-    a1 = jax.jit(lambda a, b, c: f(a, b, c.conj().T)).lower(a, b, c).compile().cost_analysis()[0]
-    a2 = jax.jit(lambda a, b, c: kron_product(a, b, c.conj().T)).lower(a, b, c).compile().cost_analysis()[0]
+    a1 = jax.jit(lambda a, b, c: f(a, b, dsa2000_cal.common.mixed_precision_utils.T)).lower(a, b, c).compile().cost_analysis()[0]
+    a2 = jax.jit(lambda a, b, c: kron_product(a, b, dsa2000_cal.common.mixed_precision_utils.T)).lower(a, b, c).compile().cost_analysis()[0]
     for key in ['bytes accessed', 'flops', 'utilization operand 0 {}', 'utilization operand 1 {}',
                 'utilization operand 2 {}', 'bytes accessed output {}']:
         print(key, ":", a1.get(key, None), a2.get(key, None))

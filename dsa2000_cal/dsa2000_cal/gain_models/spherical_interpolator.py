@@ -8,11 +8,12 @@ from astropy import units as au, time as at
 from jax import numpy as jnp
 from jax._src.typing import SupportsDType
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.types import complex_type, mp_policy
+from dsa2000_cal.common.mixed_precision_utils import complex_type, mp_policy
 from dsa2000_cal.gain_models.gain_model import GainModel
 
 
@@ -315,7 +316,7 @@ class SphericalInterpolatorGainModel(GainModel):
         fig, axs = plt.subplots(2, 1, figsize=(8, 12), sharex=True, sharey=True, squeeze=False)
         # Plot log10(amp)
         sc = axs[0, 0].imshow(
-            np.log10(np.abs(gain_screen.T)),
+            np.log10(np.abs(dsa2000_cal.common.mixed_precision_utils.T)),
             extent=(self.lvec_jax[0], self.lvec_jax[-1], self.mvec_jax[0], self.mvec_jax[-1]),
             origin='lower',
             cmap='PuOr',
@@ -326,7 +327,7 @@ class SphericalInterpolatorGainModel(GainModel):
         axs[0, 0].set_title(f'Gridded log10(Amplitude)[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
         # Plot phase
         sc = axs[1, 0].imshow(
-            np.angle(gain_screen.T),
+            np.angle(dsa2000_cal.common.mixed_precision_utils.T),
             extent=(self.lvec_jax[0], self.lvec_jax[-1], self.mvec_jax[0], self.mvec_jax[-1]),
             origin='lower',
             cmap='hsv',

@@ -6,6 +6,7 @@ from astropy.coordinates import offset_by
 from astropy.wcs import WCS
 from tomographic_kernel.frames import ENU
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
     icrs_to_enu, enu_to_icrs, lmn_to_icrs_old
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
@@ -191,7 +192,7 @@ def test_earth_location_to_enu():
     array_location = ac.EarthLocation.of_site('vla')
     time = at.Time('2000-01-01T00:00:00', format='isot')
     enu = earth_location_to_enu(antennas, array_location, time)
-    assert np.linalg.norm(enu.cartesian.xyz.T) < 6400 * au.km
+    assert np.linalg.norm(dsa2000_cal.common.mixed_precision_utils.T) < 6400 * au.km
 
     enu_frame = ENU(location=ac.EarthLocation.of_site('vla'), obstime=time)
     n = 500
@@ -201,7 +202,7 @@ def test_earth_location_to_enu():
         up=np.random.uniform(size=(n,), low=-5, high=5) * au.km,
         frame=enu_frame
     ).transform_to(ac.ITRS).earth_location
-    enu = earth_location_to_enu(antennas, array_location, time).cartesian.xyz.T
+    enu = dsa2000_cal.common.mixed_precision_utils.T
     # print(enu)
 
     dist = np.linalg.norm(enu[:, None, :] - enu[None, :, :], axis=-1)
@@ -214,7 +215,7 @@ def test_icrs_to_enu():
     time = at.Time('2000-01-01T00:00:00', format='isot')
     enu = icrs_to_enu(sources, array_location, time)
     print(enu)
-    np.testing.assert_allclose(np.linalg.norm(enu.cartesian.xyz.T), 1.)
+    np.testing.assert_allclose(np.linalg.norm(dsa2000_cal.common.mixed_precision_utils.T), 1.)
 
     reconstruct_sources = enu_to_icrs(enu)
     print(reconstruct_sources)

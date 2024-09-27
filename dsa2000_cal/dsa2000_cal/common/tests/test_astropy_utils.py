@@ -2,6 +2,7 @@ import numpy as np
 from astropy import coordinates as ac, units as au
 from matplotlib import pyplot as plt
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.astropy_utils import random_discrete_skymodel, mean_icrs, \
     create_spherical_grid, create_spherical_earth_grid, create_random_spherical_layout
 
@@ -60,7 +61,7 @@ def test_create_spherical_earth_grid():
     plt.scatter(grid_earth.geodetic[0], grid_earth.geodetic[1], marker='o')
     # plt.scatter(center.geodetic[0], center.geodetic[1], marker='x')
     plt.show()
-    assert np.linalg.norm(grid_earth.get_itrs().cartesian.xyz.T - center.get_itrs().cartesian.xyz,
+    assert np.linalg.norm(dsa2000_cal.common.mixed_precision_utils.T - center.get_itrs().cartesian.xyz,
                           axis=-1).max() <= radius
 
     print(len(grid_earth))

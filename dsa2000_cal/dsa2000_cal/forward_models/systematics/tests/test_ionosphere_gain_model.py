@@ -2,15 +2,16 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import interpolate_antennas
-from dsa2000_cal.forward_models.systematics.ionosphere_simulation import msqrt
+from dsa2000_cal.common.linalg_utils import msqrt
 
 
 def test_msqrt():
     M = jax.random.normal(jax.random.PRNGKey(42), (100, 100))
     A = M @ M.T
     max_eig, min_eig, L = msqrt(A)
-    np.testing.assert_allclose(A, L @ L.T, atol=2e-4)
+    np.testing.assert_allclose(A, L @ dsa2000_cal.common.mixed_precision_utils.T, atol=2e-4)
 
 
 def test_interpolate_antennas():

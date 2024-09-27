@@ -11,6 +11,7 @@ from astropy import constants, units as au
 from astropy.coordinates import offset_by
 from jax import numpy as jnp, lax
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_coherencies, stokes_I_to_linear
@@ -19,7 +20,7 @@ from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
@@ -700,7 +701,7 @@ class GaussianPredict:
 
         if np.shape(image) == (2, 2):  # full stokes
             if g1 is not None and g2 is not None:
-                image = flatten_coherencies(kron_product(g1, image, g2.conj().T))  # [4]
+                image = flatten_coherencies(kron_product(g1, image, dsa2000_cal.common.mixed_precision_utils.T))  # [4]
             vis = jax.vmap(
                 lambda A: self._single_predict(
                     u, v, w,

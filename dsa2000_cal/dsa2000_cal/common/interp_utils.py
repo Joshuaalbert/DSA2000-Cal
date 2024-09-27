@@ -5,7 +5,8 @@ import jax
 import numpy as np
 from jax import lax, numpy as jnp
 
-from dsa2000_cal.common.types import mp_policy, FloatArray, Array
+from dsa2000_cal.common.types import FloatArray, Array
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 
 def optimized_interp_jax_safe(x, xp, yp):

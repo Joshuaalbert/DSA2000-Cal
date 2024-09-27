@@ -12,6 +12,7 @@ import pylab as plt
 from astropy import constants
 from jax import lax
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
@@ -19,8 +20,8 @@ from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_c
 from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.jax_utils import multi_vmap, block_until_ready
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_inv
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.gain_models.gain_model import GainModel
@@ -32,6 +33,20 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 class Imagor:
     """
     Performs imaging (without deconvolution) of visibilties using W-gridder.
+
+    Args:
+        plot_folder: the folder to save the images
+        field_of_view: the field of view in degrees
+        baseline_min: the minimum baseline length in meters, shorter baselines are flagged
+        oversample_factor: the oversampling factor, higher is more accurate but bigger image
+        nthreads: the number of threads to use, None for all
+        epsilon: the epsilon value of wgridder
+        convention: the convention to use
+        verbose: whether to print verbose output
+        weighting: the weighting scheme to use
+        coherencies: the coherencies to image, None for all
+        spectral_cube: whether to image as a spectral cube
+        seed: the random seed
     """
 
     # Imaging parameters
@@ -81,7 +96,7 @@ class Imagor:
         vis = jnp.concatenate(vis, axis=0)  # [num_rows, chan, 4/1]
         weights = jnp.concatenate(weights, axis=0)  # [num_rows, chan, 4/1]
         flags = jnp.concatenate(flags, axis=0)  # [num_rows, chan, 4/1]
-        freqs = quantity_to_jnp(ms.meta.freqs) # [num_chan]
+        freqs = quantity_to_jnp(ms.meta.freqs)  # [num_chan]
 
         wavelengths = quantity_to_np(constants.c / ms.meta.freqs)
         diameter = np.min(quantity_to_np(ms.meta.antenna_diameters))
@@ -337,11 +352,12 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
         elif np.shape(image) == (4,):
             if np.shape(beam) != (2, 2):
                 raise ValueError(f"Expected beam to be full-stokes.")
-            return flatten_coherencies(kron_inv(beam, unflatten_coherencies(image), beam.T.conj()))
+            return flatten_coherencies(
+                kron_inv(beam, unflatten_coherencies(image), dsa2000_cal.common.mixed_precision_utils.T.conj()))
         elif np.shape(image) == (2, 2):
             if np.shape(beam) != (2, 2):
                 raise ValueError(f"Expected beam to be full-stokes.")
-            return kron_inv(beam, image, beam.T.conj())
+            return kron_inv(beam, image, dsa2000_cal.common.mixed_precision_utils.T.conj())
         else:
             raise ValueError(f"Unknown image shape {np.shape(image)} and beam shape {np.shape(beam)}.")
 

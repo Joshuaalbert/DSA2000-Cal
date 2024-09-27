@@ -10,6 +10,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from scipy.ndimage import zoom
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.quantity_utils import quantity_to_np
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
@@ -129,7 +130,7 @@ def transform_to_wsclean_model(fits_file: str, output_file: str, pointing_centre
         # Apply perm. Note: because python is column-major we need to reverse the perm
         # print(perm)
 
-        data = np.transpose(hdu[0].data.T, perm).T.copy()  # [Ns, Nf, Ndec, Nra]
+        data = np.transpose(dsa2000_cal.common.mixed_precision_utils.T, perm).T.copy()  # [Ns, Nf, Ndec, Nra]
         # print(data.shape)
         Ns, Nf, Ndec, Nra = data.shape
         new_wcs.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, ref_freq_hz, 1]

@@ -14,7 +14,8 @@ __all__ = [
 ]
 
 from dsa2000_cal.common.jax_utils import convert_to_ufunc
-from dsa2000_cal.common.types import FloatArray, ComplexArray, mp_policy
+from dsa2000_cal.common.types import FloatArray, ComplexArray
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 
 # TODO: set JVP for these, which is just the operator itself.

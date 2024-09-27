@@ -5,6 +5,7 @@ import astropy.units as au
 import numpy as np
 from astropy import coordinates as ac
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.abc import AbstractAntennaModel
 from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaModel
 from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
@@ -102,7 +103,7 @@ class LWAMockArray(DSA2000WArray):
         all_antennas = array.get_antennas()
         array_centre = array.get_array_location()
         all_antennas_itrs = all_antennas.get_itrs()
-        all_antennas_itrs_xyz = all_antennas_itrs.cartesian.xyz.T
+        all_antennas_itrs_xyz = dsa2000_cal.common.mixed_precision_utils.T
         max_baseline = np.max(
             np.linalg.norm(
                 all_antennas_itrs_xyz[:, None, :] - all_antennas_itrs_xyz[None, :, :],

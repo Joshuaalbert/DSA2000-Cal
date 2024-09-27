@@ -9,7 +9,7 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.forward_models.forward_model import BaseForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams

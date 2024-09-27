@@ -6,8 +6,9 @@ import pytest
 from astropy import units as au
 from jax import numpy as jnp
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.corr_translation import linear_to_stokes
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.wgridder import image_to_vis, vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
@@ -161,9 +162,8 @@ def test_gh55_gaussian():
         theta=0. * au.rad,
         freqs=freqs * au.Hz
     )
-    dirty = g.get_flux_model(lvec=(-N / 2 + np.arange(N)) * pixsize,
-                             mvec=(-N / 2 + np.arange(N)) * pixsize)[2].T.value  # [Nl, Nm]
-    plt.imshow(dirty.T, origin='lower')
+    dirty = dsa2000_cal.common.mixed_precision_utils.T.value  # [Nl, Nm]
+    plt.imshow(dsa2000_cal.common.mixed_precision_utils.T, origin='lower')
     plt.colorbar()
     plt.show()
     np.testing.assert_allclose(np.sum(dirty), 1.)
@@ -245,7 +245,7 @@ def test_gh55_gaussian():
                interpolation='nearest', cmap='inferno')
     plt.colorbar()
     plt.show()
-    plt.imshow(dirty.T, origin='lower',
+    plt.imshow(dsa2000_cal.common.mixed_precision_utils.T, origin='lower',
                interpolation='nearest', cmap='inferno')
     plt.colorbar()
     plt.show()

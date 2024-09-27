@@ -1,7 +1,15 @@
+import os
+
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import numpy as np
+from jax import config
+
+# export XLA_FLAGS="--xla_gpu_enable_mem_tracing --xla_hlo_profile"
+
+# os.environ['XLA_FLAGS'] = '--xla_gpu_enable_mem_tracing --xla_hlo_profile'
+config.update("jax_explain_cache_misses", True)
 import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries
@@ -56,8 +64,7 @@ def mock_calibrator_source_models(tmp_path):
         except StopIteration:
             break
         gen_response = VisibilityData(
-            vis=np.ones_like(data.vis) + 1e-1 * (
-                    np.random.normal(size=data.vis.shape) + 1j * np.random.normal(size=data.vis.shape)),
+            vis=np.ones_like(data.vis) + 1e-1 * (1j * np.random.normal(size=data.vis.shape)),
             flags=np.zeros_like(data.flags),
             weights=np.ones_like(data.weights)
         )
@@ -109,7 +116,7 @@ def test_calibration(mock_calibrator_source_models):
         # models to calibrate based on. Each model gets a gain direction in the flux weighted direction.
         probabilistic_models=probabilistic_models,
         num_iterations=2,
-        num_approx_steps=2,
+        num_approx_steps=1,
         inplace_subtract=True,
         plot_folder='plots',
         solution_folder='solutions',

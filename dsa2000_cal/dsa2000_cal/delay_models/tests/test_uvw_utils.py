@@ -3,6 +3,7 @@ import pytest
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 
+import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.coord_utils import icrs_to_lmn, lmn_to_icrs
 from dsa2000_cal.delay_models.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian
 
@@ -25,7 +26,8 @@ def test_perley_icrs_from_lmn(ra, dec, ra0, dec0):
 @pytest.mark.parametrize('dec', [0, 90, -90])
 def test_celestial_to_cartesian(ra, dec):
     sources = ac.ICRS(ra * au.deg, dec * au.deg)
-    np.testing.assert_allclose(celestial_to_cartesian(sources.ra.rad, sources.dec.rad), sources.cartesian.xyz.value.T,
+    np.testing.assert_allclose(celestial_to_cartesian(sources.ra.rad, sources.dec.rad),
+                               dsa2000_cal.common.mixed_precision_utils.T,
                                atol=1e-7)
 
 

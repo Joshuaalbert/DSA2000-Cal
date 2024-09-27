@@ -9,7 +9,7 @@ from jaxns import PriorModelType, Prior
 
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
