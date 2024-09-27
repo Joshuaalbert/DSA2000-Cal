@@ -7,7 +7,6 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
@@ -85,7 +84,7 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     import pylab as plt
 
     plt.imshow(
-        dsa2000_cal.common.mixed_precision_utils.T,
+        np.abs(avg_beam[..., 0, 0]).T,
         origin='lower',
         aspect='auto',
         extent=(-0.5 * num_l * dl, 0.5 * num_l * dl, -0.5 * num_m * dm, 0.5 * num_m * dm)
@@ -97,7 +96,7 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     plt.show()
 
     plt.imshow(
-        dsa2000_cal.common.mixed_precision_utils.T,
+        np.abs(pb_cor_image[..., 0]).T,
         origin='lower',
         aspect='auto',
         extent=(-0.5 * num_l * dl, 0.5 * num_l * dl, -0.5 * num_m * dm, 0.5 * num_m * dm)
@@ -109,7 +108,7 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     plt.show()
 
     plt.imshow(
-        dsa2000_cal.common.mixed_precision_utils.T,
+        np.angle(pb_cor_image[..., 0]).T,
         origin='lower',
         aspect='auto',
         extent=(-0.5 * num_l * dl, 0.5 * num_l * dl, -0.5 * num_m * dm, 0.5 * num_m * dm)

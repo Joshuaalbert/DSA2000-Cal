@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.jax_utils import multi_vmap, convert_to_ufunc
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.wgridder import vis_to_image, image_to_vis
@@ -118,7 +117,7 @@ def test_spectral_predict(center_offset: float):
         )
     )(dirty, dl, dm, l0, m0, freqs)
     assert np.shape(vis) == (num_freqs, len(uvw), 1)
-    vis = dsa2000_cal.common.mixed_precision_utils.T  # [num_rows, chan]
+    vis = vis.T  # [num_rows, chan]
     assert np.all(vis[:, 0] == vis[:, 1])
 
     dirty_rec = vis_to_image(

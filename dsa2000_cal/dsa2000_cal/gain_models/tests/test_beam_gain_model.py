@@ -6,7 +6,6 @@ import numpy as np
 import pylab as plt
 import pytest
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
@@ -89,7 +88,7 @@ def test_beam_gain_model_factory(array_name: str):
         )):
             for j, (quantity, ylabel) in enumerate(zip([np.abs(data), np.angle(data)], ['Abs', 'Phase'])):
                 if i == 3:
-                    im = axs[i, j].imshow(dsa2000_cal.common.mixed_precision_utils.T,
+                    im = axs[i, j].imshow(quantity.T,
                                           origin='lower',
                                           extent=[lvec[0], lvec[-1], mvec[0], mvec[-1]],
                                           cmap='jet',

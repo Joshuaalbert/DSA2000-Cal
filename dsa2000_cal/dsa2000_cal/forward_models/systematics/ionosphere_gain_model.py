@@ -11,8 +11,6 @@ from astropy import units as au, coordinates as ac, time as at
 from tomographic_kernel.frames import ENU
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
-import dsa2000_cal.common.mixed_precision_utils
-from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
@@ -22,7 +20,6 @@ from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.forward_models.systematics.ionosphere_simulation import TEC_CONV, IonosphereSimulation
 from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 tfpd = tfp.distributions
 
@@ -89,6 +86,7 @@ def create_model_gains(antennas_enu: jax.Array, model_antennas_enu: jax.Array, d
     model_gains = model_gains.at[..., 0, 0].set(scalar_gain)
     model_gains = model_gains.at[..., 1, 1].set(scalar_gain)
     return model_gains
+
 
 def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
                                 model_freqs: au.Quantity,
@@ -185,7 +183,7 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
     array_location = array.get_array_location()
 
     radius = np.max(np.linalg.norm(
-        dsa2000_cal.common.mixed_precision_utils.T - array_location.get_itrs().cartesian.xyz,
+        antennas.get_itrs().cartesian.xyz.T - array_location.get_itrs().cartesian.xyz,
         axis=-1
     ))
     print(f"Array radius: {radius}")
@@ -199,7 +197,7 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
     # filter out model antennas that are too far from any actual antenna
     def keep(model_antenna: ac.EarthLocation):
         dist = np.linalg.norm(
-            model_antenna.get_itrs().cartesian.xyz - dsa2000_cal.common.mixed_precision_utils.T,
+            model_antenna.get_itrs().cartesian.xyz - antennas_itrs.cartesian.xyz.T,
             axis=-1
         )
         return np.any(dist < spatial_resolution)
@@ -210,7 +208,11 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
     model_antennas = ac.concatenate(list(map(lambda x: x.get_itrs(), model_antennas))).earth_location
 
     # Plot Antenna Layout in East North Up frame
-    model_antennas_enu = dsa2000_cal.common.mixed_precision_utils.T
+    model_antennas_enu = earth_location_to_enu(
+        antennas=model_antennas,
+        array_location=array_location,
+        time=ref_time
+    ).cartesian.xyz.T
 
     x0 = earth_location_to_enu(
         array_location,
@@ -218,7 +220,11 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
         time=ref_time
     ).cartesian.xyz
 
-    antennas_enu = dsa2000_cal.common.mixed_precision_utils.T
+    antennas_enu = earth_location_to_enu(
+        antennas=antennas,
+        array_location=array_location,
+        time=ref_time
+    ).cartesian.xyz.T
 
     fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(10, 10))
     ax[0][0].scatter(antennas_enu[:, 0].to('m'), antennas_enu[:, 1].to('m'), marker='*', c='grey', alpha=0.5,
@@ -256,8 +262,16 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
     ))
 
     model_gains = np.asarray(create_model_gains_jit(
-        antennas_enu=quantity_to_jnp(dsa2000_cal.common.mixed_precision_utils.T),
-        model_antennas_enu=quantity_to_jnp(dsa2000_cal.common.mixed_precision_utils.T),
+        antennas_enu=quantity_to_jnp(earth_location_to_enu(
+            antennas=antennas,
+            array_location=array_location,
+            time=observation_start_time
+        ).cartesian.xyz.T),
+        model_antennas_enu=quantity_to_jnp(earth_location_to_enu(
+            antennas=model_antennas,
+            array_location=array_location,
+            time=observation_start_time
+        ).cartesian.xyz.T),
         dtec=jnp.asarray(simulation_results.dtec)
     )) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, num_ant, num_model_freqs, 2, 2]
 

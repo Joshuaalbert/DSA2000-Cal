@@ -10,12 +10,11 @@ import numpy as np
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.interp_utils import InterpolatedArray, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
@@ -39,7 +38,10 @@ class GeodesicModel:
         enu_frame = ENU(location=self.array_location, obstime=self.ref_time)
         self.ra0, self.dec0 = quantity_to_jnp(self.phase_center.ra), quantity_to_jnp(self.phase_center.dec)
         self.antennas_enu = quantity_to_jnp(
-            dsa2000_cal.common.mixed_precision_utils.T
+            self.antennas.get_itrs(
+                obstime=self.ref_time,
+                location=self.array_location
+            ).transform_to(enu_frame).cartesian.xyz.T
         )  # [num_ant, 3]
 
         zenith_lmn = quantity_to_jnp(

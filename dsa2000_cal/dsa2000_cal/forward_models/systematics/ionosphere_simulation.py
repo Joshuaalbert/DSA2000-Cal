@@ -13,9 +13,8 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION, build_ion
 from tomographic_kernel.tomographic_kernel import GeodesicTuple, TomographicKernel
 from tomographic_kernel.utils import make_coord_array
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.cache_utils import check_cache
-from dsa2000_cal.common.coord_utils import earth_location_to_enu
+from dsa2000_cal.common.coord_utils import earth_location_to_enu, lmn_to_enu
 from dsa2000_cal.common.jax_utils import pad_to_chunksize, chunked_pmap
 from dsa2000_cal.common.linalg_utils import msqrt
 from dsa2000_cal.common.mixed_precision_utils import complex_type
@@ -190,7 +189,11 @@ class IonosphereSimulation:
             return cache
 
         # Plot Antenna Layout in East North Up frame
-        model_antennas_enu = dsa2000_cal.common.mixed_precision_utils.T
+        model_antennas_enu = earth_location_to_enu(
+            antennas=self.model_antennas,
+            array_location=self.array_location,
+            time=self.ref_time
+        ).cartesian.xyz.T
 
         x0 = earth_location_to_enu(
             self.array_location,
@@ -213,8 +216,17 @@ class IonosphereSimulation:
 
         enu_geodesics_data = []
         for time in self.model_times:
-            model_antennas = dsa2000_cal.common.mixed_precision_utils.T
-            model_directions = dsa2000_cal.common.mixed_precision_utils.T
+            model_antennas = earth_location_to_enu(
+                antennas=self.model_antennas,
+                array_location=self.array_location,
+                time=time
+            ).cartesian.xyz.T
+            model_directions = lmn_to_enu(
+                lmn=self.model_lmn,
+                array_location=self.array_location,
+                time=time,
+                phase_tracking=self.pointing
+            ).cartesian.xyz.T
             ref_ant = earth_location_to_enu(
                 self.ref_ant,
                 array_location=self.array_location,

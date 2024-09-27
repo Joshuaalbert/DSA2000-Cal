@@ -11,7 +11,6 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from tomographic_kernel.frames import ENU
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
@@ -247,7 +246,7 @@ def test_compare_to_calc():
     obstime, array_location, antennas, antenna_1, antenna_2, phase_centers = prepare_standard_test()
 
     antennas_gcrs = antennas.get_gcrs(obstime)
-    antennas_gcrs = dsa2000_cal.common.mixed_precision_utils.T  # [N, 3]
+    antennas_gcrs = antennas_gcrs.cartesian.xyz.T  # [N, 3]
 
     baselines = antennas_gcrs[antenna_2, :] - antennas_gcrs[antenna_1, :]
     baselines_norm = np.linalg.norm(baselines, axis=1).to('m').value
@@ -305,12 +304,12 @@ def test_uvw_coverage():
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
     antennas = array.get_antennas()
     array_location = antennas[0]
-    antenna_enu_xyz = dsa2000_cal.common.mixed_precision_utils.T
+    antenna_enu_xyz = ENU(obstime=obstime,location=array_location).cartesian.xyz.T
 
     mask_center = [-7.5, 0., 0.] * au.km
     mask = np.linalg.norm(antenna_enu_xyz - mask_center, axis=1) < 1 * au.km
     antennas = antennas[~mask]
-    antenna_enu_xyz = dsa2000_cal.common.mixed_precision_utils.T
+    antenna_enu_xyz = ENU(obstime=obstime,location=array_location).cartesian.xyz.T
 
     n = len(antennas)
     phase_center = ENU(east=0, north=0, up=1, location=array_location, obstime=obstime).transform_to(ac.ICRS())

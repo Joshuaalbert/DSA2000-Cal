@@ -7,7 +7,6 @@ import jax.numpy as jnp
 import numpy as np
 from jax import lax
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
@@ -135,7 +134,7 @@ class RIMEModel:
             def body_fn(accumulate, x):
                 g1, g2, vis = x
                 if is_full_stokes:
-                    delta = kron_product(g1, vis, dsa2000_cal.common.mixed_precision_utils.T)
+                    delta = kron_product(g1, vis, g2.conj().T)
                 else:
                     delta = g1 * vis * g2.conj()
                 delta = mp_policy.cast_to_vis(delta)

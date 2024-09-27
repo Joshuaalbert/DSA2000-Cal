@@ -12,15 +12,14 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from jax import numpy as jnp
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common import wgridder
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.corr_translation import stokes_I_to_linear
 from dsa2000_cal.common.interp_utils import get_centred_insert_index
 from dsa2000_cal.common.jax_utils import multi_vmap, convert_to_ufunc
-from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 
@@ -238,7 +237,7 @@ class FITSSourceModel(AbstractSourceModel):
                 # Reverse l axis
                 image = image[:, :, ::-1]  # [stokes, Nm, Nl]
                 # Transpose
-                image = dsa2000_cal.common.mixed_precision_utils.T  # [Nl, Nm, stokes]
+                image = image.T  # [Nl, Nm, stokes]
                 Nl, Nm, num_stokes = image.shape
                 # RA--SIN and DEC--SIN
                 if not (w0.wcs.ctype[0].strip().endswith('SIN') and w0.wcs.ctype[1].strip().endswith('SIN')):
@@ -317,13 +316,13 @@ class FITSSourceModel(AbstractSourceModel):
             flux_model = self.images[0].T  # [Nm, Nl]
         elif len(self.images[0].shape) == 3:
             _, Nl, Nm = self.images[0].shape
-            flux_model = dsa2000_cal.common.mixed_precision_utils.T  # [Nm, Nl]
+            flux_model = self.images[0][0, :, :].T  # [Nm, Nl]
         elif len(self.images[0].shape) == 4:
             Nl, Nm, _, _ = self.images[0].shape
-            flux_model = dsa2000_cal.common.mixed_precision_utils.T  # [Nm, Nl]
+            flux_model = self.images[0][:, :, 0, 0].T  # [Nm, Nl]
         elif len(self.images[0].shape) == 5:
             _, Nl, Nm, _, _ = self.images[0].shape
-            flux_model = dsa2000_cal.common.mixed_precision_utils.T  # [Nm, Nl]
+            flux_model = self.images[0][0, :, :, 0, 0].T  # [Nm, Nl]
         else:
             raise ValueError(f"Expected image shape [[chan,]Nl, Nm[, 2, 2]], got {self.images[0].shape}")
         lvec = (-0.5 * Nl + np.arange(Nl)) * self.dl[0] + self.l0[0]
@@ -541,7 +540,7 @@ class FITSPredict:
         def transform(g1, g2, vis):
 
             if full_stokes:
-                return mp_policy.cast_to_vis(kron_product(g1, vis, dsa2000_cal.common.mixed_precision_utils.T))  # [2, 2]
+                return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))  # [2, 2]
             else:
                 return mp_policy.cast_to_vis(g1 * vis * g2.conj())
 

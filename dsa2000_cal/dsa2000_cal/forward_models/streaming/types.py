@@ -10,3 +10,7 @@ class StepReturn(NamedTuple):
     vis_residual: jax.Array
     image_pb_cor: jax.Array
     image_psf: jax.Array
+
+
+class StreamState(NamedTuple):
+    ...

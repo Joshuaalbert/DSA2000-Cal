@@ -5,6 +5,7 @@ import jax
 from jax import numpy as jnp
 
 from dsa2000_cal.forward_models.streaming.abc import AbstractStreamProcess, AbstractForwardModelCore
+from dsa2000_cal.forward_models.streaming.types import StreamState
 
 
 @dataclasses.dataclass(eq=False)
@@ -18,6 +19,9 @@ class StreamProcess(AbstractStreamProcess):
     solution_interval: int
     validity_interval: int
     callbacks: List[Callable]
+
+    def create_initial_state(self, key) -> StreamState:
+        ...
 
     def stream(self):
         # Solve once per validity interval

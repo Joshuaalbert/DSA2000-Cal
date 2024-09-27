@@ -3,7 +3,6 @@ from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
@@ -138,7 +137,7 @@ def test_geodesic_model_results():
         obstime=ref_time,
         location=array_location
     )
-    source_positions_enu = quantity_to_jnp(dsa2000_cal.common.mixed_precision_utils.T)
+    source_positions_enu = quantity_to_jnp(sources.cartesian.xyz.T)
     near_field_geodesics = geodesic_model.compute_near_field_geodesics(times[0:1], source_positions_enu)
 
     np.testing.assert_allclose(

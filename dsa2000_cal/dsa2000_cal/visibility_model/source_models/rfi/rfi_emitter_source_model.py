@@ -8,7 +8,6 @@ import pylab as plt
 from astropy import constants as const, units as au
 from jax import numpy as jnp
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
@@ -342,9 +341,9 @@ class RFIEmitterPredict:
 
             if is_gains:
                 if full_stokes:
-                    visibilities = kron_product(g1, visibilities, dsa2000_cal.common.mixed_precision_utils.T)  # [2, 2]
+                    visibilities = kron_product(g1, visibilities, g2.conj().T)  # [2, 2]
                 else:
-                    visibilities = g1 * visibilities * dsa2000_cal.common.mixed_precision_utils.T  # []
+                    visibilities = g1 * visibilities * g2.cong().T  # []
 
             return mp_policy.cast_to_vis(visibilities)  # [[2,2]]
 

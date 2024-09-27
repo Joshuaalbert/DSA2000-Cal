@@ -7,7 +7,6 @@ from astropy import units as au
 from astropy.coordinates import Angle
 from astropy.coordinates.angles import offset_by
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 
 
@@ -156,7 +155,7 @@ def mean_icrs(coords: ac.ICRS) -> ac.ICRS:
     Returns:
         the mean ITRS coordinate
     """
-    mean_coord = dsa2000_cal.common.mixed_precision_utils.T.mean(axis=0)
+    mean_coord = coords.cartesian.xyz.T.mean(axis=0)
     mean_coord /= np.linalg.norm(mean_coord)
     spherical = ac.ICRS(mean_coord, representation_type='cartesian').spherical
     return ac.ICRS(ra=spherical.lon, dec=spherical.lat)
@@ -256,13 +255,13 @@ def fibonacci_celestial_sphere(n: int) -> ac.ICRS:
 
     return ac.ICRS(lon * au.rad, lat * au.rad)
 
+
 @pytest.mark.parametrize('n', [10, 100, 1000])
-def test_fibonacci_celestial_sphere(n:int):
+def test_fibonacci_celestial_sphere(n: int):
     pointings = fibonacci_celestial_sphere(n=n)
     import pylab as plt
     plt.scatter(pointings.ra, pointings.dec, s=1)
     plt.show()
 
-    mean_area = (4*np.pi / n) * au.rad**2
-    print(n, mean_area.to('deg^2')) 
-
+    mean_area = (4 * np.pi / n) * au.rad ** 2
+    print(n, mean_area.to('deg^2'))

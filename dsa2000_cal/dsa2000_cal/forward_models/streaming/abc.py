@@ -3,7 +3,7 @@ from typing import Any, List
 
 import jax
 
-from dsa2000_cal.forward_models.streaming.types import StepReturn
+from dsa2000_cal.forward_models.streaming.types import StepReturn, StreamState
 
 
 class AbstractForwardModelCore(ABC):
@@ -34,4 +34,11 @@ class AbstractStreamProcess(ABC):
         """
         Run the streaming process.
         """
+        ...
+
+
+class CoreStep(ABC):
+
+    @abstractmethod
+    def step(self):
         ...

@@ -7,12 +7,11 @@ from astropy import units as au, constants as const, time as at, coordinates as 
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry, source_model_registry, rfi_model_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import complex_type
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
@@ -303,7 +302,7 @@ def test_facet_model_fits():
 
     mvec = lvec = pixsize * (-n / 2 + np.arange(n))
 
-    plt.imshow(dsa2000_cal.common.mixed_precision_utils.T, origin='lower',
+    plt.imshow(dirty.T, origin='lower',
                extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
                cmap='inferno',
                )
@@ -414,7 +413,7 @@ def test_facet_model():
 
     mvec = lvec = pixsize * (-n / 2 + np.arange(n))
 
-    plt.imshow(dsa2000_cal.common.mixed_precision_utils.T, origin='lower',
+    plt.imshow(dirty.T, origin='lower',
                extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
                cmap='inferno',
                )
@@ -426,7 +425,7 @@ def test_facet_model_lte():
     array = array_registry.get_instance(array_registry.get_match('lwa'))
 
     antennas = array.get_antennas()
-    anteanna_xyz = dsa2000_cal.common.mixed_precision_utils.T
+    anteanna_xyz = antennas.itrs.cartesian.xyz.to('m').value.T
 
     obstimes = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:00:30'], scale='utc')
     max_baseline = np.linalg.norm(anteanna_xyz[:, None, :] - anteanna_xyz[None, :, :], axis=-1).max()

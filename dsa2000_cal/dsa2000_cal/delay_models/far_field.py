@@ -10,11 +10,10 @@ import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
 from jax import config, numpy as jnp, lax
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 
@@ -72,7 +71,7 @@ class FarFieldDelayEngine:
         if self.resolution is None:
             # compute max baseline
             antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
-            antennas_itrs = dsa2000_cal.common.mixed_precision_utils.T
+            antennas_itrs = self.antennas.get_itrs().cartesian.xyz.T
             max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna_2] - antennas_itrs[antenna_1], axis=-1))
             # Select resolution to keep interpolation error below 1 mm
             if max_baseline <= 10 * au.km:

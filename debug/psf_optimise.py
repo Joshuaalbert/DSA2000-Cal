@@ -12,7 +12,6 @@ import tensorflow_probability.substrates.jax as tfp
 from jaxns import Prior
 from tomographic_kernel.frames import ENU
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
@@ -129,7 +128,7 @@ if __name__ == '__main__':
     antennas_itrs = antennas.get_itrs(obstime=obstime, location=location)
     antennas_enu = antennas_itrs.transform_to(ENU(obstime=obstime, location=location))
 
-    antennas_enu_xyz = dsa2000_cal.common.mixed_precision_utils.T  # [n, 3]
+    antennas_enu_xyz = antennas_enu.cartesian.xyz.T  # [n, 3]
     min_east = jnp.min(antennas_enu_xyz[:, 0])
     max_east = jnp.max(antennas_enu_xyz[:, 0])
     d_east = (max_east - min_east) / 10

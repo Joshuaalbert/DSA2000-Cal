@@ -6,7 +6,6 @@ from astropy.coordinates import EarthLocation
 from astropy.units import Quantity
 from tomographic_kernel.frames import ENU
 
-import dsa2000_cal.common.mixed_precision_utils
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
@@ -82,7 +81,7 @@ def earth_location_to_uvw_approx(antennas: EarthLocation, obs_time: at.Time, pha
     antennas_uvw = antennas_gcrs.transform_to(frame_uvw)
 
     w, u, v = antennas_uvw.cartesian.xyz
-    uvw = dsa2000_cal.common.mixed_precision_utils.T
+    uvw = ac.CartesianRepresentation(u, v, w).xyz.T
     uvw = uvw.reshape(shape + (3,))
     return uvw
 
