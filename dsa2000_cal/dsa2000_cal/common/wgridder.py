@@ -194,8 +194,6 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
-    print(f"shapes: {np.shape(uvw)}, {np.shape(freqs)}, {np.shape(dirty)}, {np.shape(wgt)}, {np.shape(mask)}, "
-            f"{np.shape(pixsize_l)}, {np.shape(pixsize_m)}, {np.shape(center_l)}, {np.shape(center_m)}")
 
     uvw = np.asarray(uvw, order='C', dtype=np.float64)  # [[...],num_rows, 3]
     freqs = np.asarray(freqs, order='C', dtype=np.float64)  # [num_freqs[,1]]
