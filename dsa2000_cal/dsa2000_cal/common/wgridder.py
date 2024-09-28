@@ -54,9 +54,11 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     num_rows = np.shape(uvw)[-2]
     num_freqs = np.shape(freqs)[-1]
 
-    batch_dims = np.shape(uvw)[:-2]
+    # batch_dims = np.shape(uvw)[:-2]
 
     output_dtype = (1j * jnp.ones(1, dtype=dirty.dtype)).dtype
+
+    batch_dims = np.broadcast_shapes(np.shape(uvw)[:-2], np.shape(dirty)[:-2], np.shape(freqs)[:-1])
 
     # Define the expected shape & dtype of output.
     result_shape_dtype = jax.ShapeDtypeStruct(
@@ -192,6 +194,9 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
+    print(f"shapes: {np.shape(uvw)}, {np.shape(freqs)}, {np.shape(dirty)}, {np.shape(wgt)}, {np.shape(mask)}, "
+            f"{np.shape(pixsize_l)}, {np.shape(pixsize_m)}, {np.shape(center_l)}, {np.shape(center_m)}")
+
     uvw = np.asarray(uvw, order='C', dtype=np.float64)  # [[...],num_rows, 3]
     freqs = np.asarray(freqs, order='C', dtype=np.float64)  # [num_freqs[,1]]
     dirty = np.asarray(dirty, order='C')  # [..., num_l, num_m]
@@ -249,7 +254,6 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
             raise e
 
     batch_dims = np.broadcast_shapes(np.shape(uvw)[:-2], np.shape(dirty)[:-2], np.shape(freqs)[:-1])
-    print(np.shape(uvw)[:-2], np.shape(dirty)[:-2], batch_dims)
     all_indices = list(itertools.product(*[range(dim) for dim in batch_dims]))
     # Put dims at end so memory ordering is nice
     output_vis = np.zeros((num_rows, num_freq) + batch_dims, order='F', dtype=output_dtype)
@@ -260,7 +264,6 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     perm = list(range(len(batch_dims) + 2))
     perm.append(perm.pop(0))  # Move num_rows to the end
     perm.append(perm.pop(0))  # Move num_freqs to the end
-    print(perm)
 
     output_vis = np.transpose(output_vis, axes=tuple(perm))
 
