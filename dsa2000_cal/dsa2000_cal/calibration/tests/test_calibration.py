@@ -1,13 +1,7 @@
-import os
-
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import numpy as np
-from jax import config
-
-# export XLA_FLAGS="--xla_gpu_enable_mem_tracing --xla_hlo_profile"
-
 # os.environ['XLA_FLAGS'] = '--xla_gpu_enable_mem_tracing --xla_hlo_profile'
 # config.update("jax_explain_cache_misses", True)
 import pytest
@@ -18,12 +12,16 @@ from dsa2000_cal.calibration.calibration import Calibration
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
 from dsa2000_cal.calibration.probabilistic_models.horizon_rfi_model import HorizonRFIModel
-from dsa2000_cal.calibration.probabilistic_models.rfi_prior_models import FullyParameterisedRFIHorizonEmitter
+from dsa2000_cal.calibration.probabilistic_models.rfi_prior_models import FullyParameterisedRFIHorizonEmitter, \
+    ParametricRFIHorizonEmitter
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet, VisibilityData
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointSourceModel
 from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterPredict
+
+
+# export XLA_FLAGS="--xla_gpu_enable_mem_tracing --xla_hlo_profile"
 
 
 @pytest.fixture(scope='function')
@@ -64,7 +62,8 @@ def mock_calibrator_source_models(tmp_path):
         except StopIteration:
             break
         gen_response = VisibilityData(
-            vis=np.ones_like(data.vis) + 1e-1 * (1j * np.random.normal(size=data.vis.shape)),
+            vis=np.ones_like(data.vis) + 0.89 * (
+                        np.random.normal(size=data.vis.shape) + 1j * np.random.normal(size=data.vis.shape)),
             flags=np.zeros_like(data.flags),
             weights=np.ones_like(data.weights)
         )
@@ -102,7 +101,17 @@ def test_calibration(mock_calibrator_source_models):
             gain_prior_model=DiagonalUnconstrainedGain()
         ),
         HorizonRFIModel(
-            rfi_prior_model=FullyParameterisedRFIHorizonEmitter(
+            rfi_prior_model=FullyParameterisedRFIHorizonEmitter( # ParametricRFIHorizonEmitter
+                geodesic_model=ms.geodesic_model,
+                beam_gain_model=ms.beam_gain_model
+            ),
+            rfi_predict=RFIEmitterPredict(
+                delay_engine=ms.near_field_delay_engine,
+                convention=ms.meta.convention
+            )
+        ),
+        HorizonRFIModel(
+            rfi_prior_model=ParametricRFIHorizonEmitter(
                 geodesic_model=ms.geodesic_model,
                 beam_gain_model=ms.beam_gain_model
             ),

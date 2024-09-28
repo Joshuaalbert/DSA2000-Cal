@@ -8,8 +8,8 @@ from jax import numpy as jnp
 from jaxns import PriorModelType, Prior
 
 from dsa2000_cal.common.interp_utils import InterpolatedArray
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
@@ -42,7 +42,7 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
     geodesic_model: GeodesicModel
     beam_gain_model: BeamGainModel
     num_emitters: int = 1
-    acf_resolution: int = 10
+    acf_resolution: int = 32
     distance_min: au.Quantity = 0. * au.km
     distance_max: au.Quantity = 10. * au.km
     azimuth_min: au.Quantity = 0. * au.deg
@@ -102,6 +102,15 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
         return source_positions_enu
 
     def get_acf(self, freqs: jax.Array):
+        """
+        Define the prior for the delay ACF.
+
+        Args:
+            freqs: [num_chan] the frequencies
+
+        Returns:
+            delay_acf: generator that returns InterpolatedArray with call (delay) -> [E,chan,[2,2]]
+        """
         max_delay = 1e-5  # seconds
         delay_acf_x = jnp.linspace(0., max_delay, self.acf_resolution)
         delay_acf_x = jnp.concatenate([-delay_acf_x[::-1], delay_acf_x[1:]])
@@ -195,6 +204,15 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
         self.fwhm_high = self.channel_width
 
     def get_acf(self, freqs: jax.Array):
+        """
+        Define the prior for the delay ACF.
+
+        Args:
+            freqs: [num_chan] the frequencies
+
+        Returns:
+            delay_acf: generator that returns ParametricDelayACF with call (delay) -> [E,chan,[2,2]]
+        """
         chan_width = quantity_to_jnp(self.channel_width)
         # chan_width = freqs[1] - freqs[0]
         chan_lower = freqs - chan_width / 2
@@ -206,14 +224,14 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
                 high=quantity_to_jnp(self.mu_high) * ones
             ),
             name='mu'
-        ).parametrised()
+        ).parametrised() # [E]
         fwhp = yield Prior(
             tfpd.Uniform(
                 low=quantity_to_jnp(self.fwhm_low) * ones,
                 high=quantity_to_jnp(self.fwhm_high) * ones
             ),
             name='fwhp'
-        ).parametrised()
+        ).parametrised() # [E]
         if self.full_stokes:
             eye_diag = jnp.ones((self.num_emitters, 2), dtype=mp_policy.length_dtype)
             spectral_power = yield Prior(
@@ -222,7 +240,7 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
                     high=quantity_to_jnp(self.max_channel_power / self.channel_width, 'Jy*m^2/Hz') * eye_diag
                 ),
                 name='spectral_power'
-            ).parametrised()
+            ).parametrised() # [E, 2]
             spectral_power = jax.vmap(jnp.diag)(spectral_power)  # [E, 2, 2]
             pol_angle = yield Prior(
                 tfpd.Uniform(
@@ -231,15 +249,17 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
                 ),
                 name='pol_angle'
             ).parametrised()  # [E]
+
             # Rotate the spectral power
-            R = jnp.stack(
-                [
-                    jnp.stack([jnp.cos(pol_angle), -jnp.sin(pol_angle)], axis=-1),
-                    jnp.stack([jnp.sin(pol_angle), jnp.cos(pol_angle)], axis=-1)
-                ],
-                axis=-2
-            )
-            spectral_power = R.T @ spectral_power @ R  # [E, 2, 2]
+            def _rot_matrix(theta):
+                cos_theta = jnp.cos(theta)
+                sin_theta = jnp.sin(theta)
+                return jnp.asarray([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
+
+            R = jax.vmap(_rot_matrix)(pol_angle)  # [E, 2, 2]
+            spectral_power = jax.vmap(
+                lambda R, spectral_power: R.T @ spectral_power @ R
+            )(R, spectral_power)  # [E, 2, 2]
         else:
             spectral_power = yield Prior(
                 tfpd.Uniform(
@@ -255,6 +275,5 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
             spectral_power=spectral_power,
             channel_lower=chan_lower,
             channel_upper=chan_upper,
-            resolution=self.acf_resolution,
             convention=self.convention
         )
