@@ -86,7 +86,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
     # Improvement threshold
     p_any_improvement: FloatArray = 0.06  # p0 > 0
     p_less_newton: FloatArray = 0.88  # p2 -- less than sufficient improvement
-    p_sufficient_improvement: FloatArray = 1.  # p1 > p0
+    p_sufficient_improvement: FloatArray = 0.99  # p1 > p0
     p_more_newton: FloatArray = 1.  # p3 -- more than sufficient improvement
 
     # Damping alteration factors 0 < c_more_newton < 1 < c_less_newton
@@ -113,11 +113,11 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                                                     self.p_sufficient_improvement,
                                                     self.p_more_newton,
                                                     self.p_less_newton))) and not (
-                (0. < self.p_any_improvement)
+                (0. <= self.p_any_improvement)
                 and (self.p_any_improvement < self.p_less_newton)
                 and (self.p_less_newton < self.p_sufficient_improvement)
                 and (self.p_sufficient_improvement < self.p_more_newton)
-                and (self.p_more_newton < 1.)
+                and (self.p_more_newton <= 1.)
         ):
             raise ValueError(
                 "Improvement thresholds must satisfy 0 < p(any) < p(less) < p(sufficient) < p(more) < 1, "

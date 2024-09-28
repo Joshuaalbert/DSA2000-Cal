@@ -104,16 +104,18 @@ def test_spectral_predict(center_offset: float):
     freqs = jnp.asarray([700e6, 700e6])
 
     vis = jax.vmap(
-        lambda dirty, dl, dm, l0, m0, freqs:
-        image_to_vis(
-            uvw=uvw,
-            freqs=freqs[None],
-            dirty=dirty,
-            pixsize_l=dl,
-            pixsize_m=dm,
-            center_l=l0,
-            center_m=m0,
-            epsilon=1e-6
+        convert_to_ufunc(
+            lambda dirty, dl, dm, l0, m0, freqs:
+            image_to_vis(
+                uvw=uvw,
+                freqs=freqs[None],
+                dirty=dirty,
+                pixsize_l=dl,
+                pixsize_m=dm,
+                center_l=l0,
+                center_m=m0,
+                epsilon=1e-6
+            )
         )
     )(dirty, dl, dm, l0, m0, freqs)
     assert np.shape(vis) == (num_freqs, len(uvw), 1)
@@ -296,8 +298,6 @@ def test_multi_vmap():
 
     vis = _image_to_vis(uvw, freqs, dirty, dl, dm, l0, m0, mask)
     assert vis.shape == (a, b, C, r, c)
-
-
 
     @partial(
         multi_vmap,

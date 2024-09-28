@@ -9,7 +9,7 @@ from jax import config
 # export XLA_FLAGS="--xla_gpu_enable_mem_tracing --xla_hlo_profile"
 
 # os.environ['XLA_FLAGS'] = '--xla_gpu_enable_mem_tracing --xla_hlo_profile'
-config.update("jax_explain_cache_misses", True)
+# config.update("jax_explain_cache_misses", True)
 import pytest
 
 from dsa2000_cal.assets.content_registry import fill_registries

@@ -343,7 +343,7 @@ class RFIEmitterPredict:
                 if full_stokes:
                     visibilities = kron_product(g1, visibilities, g2.conj().T)  # [2, 2]
                 else:
-                    visibilities = g1 * visibilities * g2.cong().T  # []
+                    visibilities = g1 * visibilities * g2.conj().T  # []
 
             return mp_policy.cast_to_vis(visibilities)  # [[2,2]]
 

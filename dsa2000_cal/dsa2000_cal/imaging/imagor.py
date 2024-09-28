@@ -263,8 +263,8 @@ class Imagor:
             raise ValueError(f"Unknown weighting scheme {self.weighting}")
 
         @partial(multi_vmap,
-                 in_mapping="[r,c,p],[r,c,p],[r,c,p]",
-                 out_mapping="[...,p]",
+                 in_mapping="[r,c,coh],[r,c,coh],[r,c,coh]",
+                 out_mapping="[...,coh]",
                  verbose=True)
         def image_single_coh(vis, weights, mask):
             dirty_image = vis_to_image(

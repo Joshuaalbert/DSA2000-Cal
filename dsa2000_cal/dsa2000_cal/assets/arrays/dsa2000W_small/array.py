@@ -101,7 +101,7 @@ class DSA2000WSmallArray(DSA2000WArray):
         all_antennas = array.get_antennas()
         array_centre = array.get_array_location()
         all_antennas_itrs = all_antennas.get_itrs()
-        all_antennas_itrs_xyz = all_antennas_itrs.T
+        all_antennas_itrs_xyz = all_antennas_itrs.cartesian.xyz.T
         max_baseline = np.max(
             np.linalg.norm(
                 all_antennas_itrs_xyz[:, None, :] - all_antennas_itrs_xyz[None, :, :],

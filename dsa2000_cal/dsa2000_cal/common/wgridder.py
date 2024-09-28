@@ -1,7 +1,6 @@
 import itertools
 import os
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -13,7 +12,6 @@ __all__ = [
     'vis_to_image'
 ]
 
-from dsa2000_cal.common.jax_utils import convert_to_ufunc
 from dsa2000_cal.common.types import FloatArray, ComplexArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
@@ -250,7 +248,8 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
             print(e)
             raise e
 
-    batch_dims = np.shape(uvw)[:-2]
+    batch_dims = np.broadcast_shapes(np.shape(uvw)[:-2], np.shape(dirty)[:-2], np.shape(freqs)[:-1])
+    print(np.shape(uvw)[:-2], np.shape(dirty)[:-2], batch_dims)
     all_indices = list(itertools.product(*[range(dim) for dim in batch_dims]))
     # Put dims at end so memory ordering is nice
     output_vis = np.zeros((num_rows, num_freq) + batch_dims, order='F', dtype=output_dtype)
@@ -261,6 +260,7 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     perm = list(range(len(batch_dims) + 2))
     perm.append(perm.pop(0))  # Move num_rows to the end
     perm.append(perm.pop(0))  # Move num_freqs to the end
+    print(perm)
 
     output_vis = np.transpose(output_vis, axes=tuple(perm))
 
