@@ -1,19 +1,20 @@
 import dataclasses
+from typing import Any, List
 
-import haiku as hk
 import jax
+import numpy as np
 import tensorflow_probability.substrates.jax as tfp
+from astropy import time as at, coordinates as ac, units as au
 from jax import numpy as jnp
 from jaxns import Model
-from jaxns.framework import ops
-from jaxns.internals.constraint_bijections import quick_unit, quick_unit_inverse
 
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
     ProbabilisticModelInstance
 from dsa2000_cal.common.jax_utils import promote_pytree
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 tfpd = tfp.distributions
@@ -24,7 +25,8 @@ class GainsPerFacet(AbstractProbabilisticModel):
     rime_model: RIMEModel
     gain_prior_model: AbstractGainPriorModel
 
-    def create_model_instance(self, freqs: jax.Array,
+    def create_model_instance(self,
+                              freqs: jax.Array,
                               times: jax.Array,
                               vis_data: VisibilityData,
                               vis_coords: VisibilityCoords
@@ -33,14 +35,16 @@ class GainsPerFacet(AbstractProbabilisticModel):
             times=times
         )  # [facets]
 
-        # TODO: explore using checkpointing
+        # jax.debug.print(
+        #     '{time_idx}\n{antenna1}\n{antenna2}',
+        #     time_idx=vis_coords.time_idx,
+        #     antenna1=vis_coords.antenna_1, antenna2=vis_coords.antenna_2
+        # )
+
         vis = self.rime_model.predict_visibilities(
             model_data=model_data,
             visibility_coords=vis_coords
         )  # [num_cal, num_row, num_chan[, 2, 2]]
-
-        # vis = jax.lax.with_sharding_constraint(vis, NamedSharding(mesh, P(None, None, 'chan')))'
-        # TODO: https://jax.readthedocs.io/en/latest/notebooks/shard_map.html#fsdp-tp-with-shard-map-at-the-top-level
 
         # vis now contains the model visibilities for each calibrator
         def prior_model():
@@ -92,42 +96,48 @@ class GainsPerFacet(AbstractProbabilisticModel):
             log_likelihood=log_likelihood
         )
 
+        U = model.sample_U(jax.random.PRNGKey(0))
+        if len(U) > 0:
+            raise ValueError("This model has non-parametrised variables. Please update.")
+
         def get_init_params():
-            # Could use model.sample_W() for a random start
-            return jax.tree.map(quick_unit_inverse, model._W_placeholder())
+            return model.params
 
         def forward(params):
-            W = jax.tree.map(quick_unit, params)
-            def _forward():
-                # Use jaxns.framework.ops to transform the params into the args for likelihood
-                return ops.prepare_input(W=W, prior_model=prior_model)
-
-            return hk.transform(_forward).apply(
-                params=model.params, rng=jax.random.PRNGKey(0)
-            )
+            return model(params).prepare_input(U=U)
 
         def log_prob_joint(params):
-            W = jax.tree.map(quick_unit, params)
-            def _log_prob_joint():
-                # Use jaxns.framework.ops to compute the log prob of joint
-                log_prob_prior = ops.compute_log_prob_prior(
-                    W=W,
-                    prior_model=model.prior_model
-                )
-                log_prob_likelihood = ops.compute_log_likelihood(
-                    W=W,
-                    prior_model=model.prior_model,
-                    log_likelihood=model.log_likelihood,
-                    allow_nan=False
-                )
-                return log_prob_prior + log_prob_likelihood
-
-            return hk.transform(_log_prob_joint).apply(
-                params=model.params, rng=jax.random.PRNGKey(0)
-            )
+            return model(params).log_prob_joint(U=U, allow_nan=False)
 
         return ProbabilisticModelInstance(
             get_init_params_fn=get_init_params,
             forward_fn=forward,
             log_prob_joint_fn=log_prob_joint
         )
+
+    def save_solution(self, solution: Any, file_name: str, times: at.Time, ms: MeasurementSet):
+        solution: jax.Array = solution
+        solution = jax.tree.map(np.asarray, solution)
+        # Save to file
+        data = CalibrationSolutions(
+            gains=solution * au.dimensionless_unscaled,
+            times=times,
+            freqs=ms.meta.freqs,
+            antennas=ms.meta.antennas,
+            antenna_labels=ms.meta.antenna_names,
+            pointings=ms.meta.pointings
+        )
+        with open(file_name, "w") as fp:
+            fp.write(data.json(indent=2))
+
+
+class CalibrationSolutions(SerialisableBaseModel):
+    """
+    Calibration solutions, stored in a serialisable format.
+    """
+    times: at.Time  # [time]
+    pointings: ac.ICRS | None  # [[ant]]
+    antennas: ac.EarthLocation  # [ant]
+    antenna_labels: List[str]  # [ant]
+    freqs: au.Quantity  # [chan]
+    gains: au.Quantity  # [facet, time, ant, chan[, 2, 2]]

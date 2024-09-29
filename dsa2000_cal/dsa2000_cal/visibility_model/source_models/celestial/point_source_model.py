@@ -14,9 +14,9 @@ from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.corr_translation import stokes_I_to_linear
 from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
@@ -45,7 +45,7 @@ class PointSourceModelParams(SerialisableBaseModel):
     freqs: au.Quantity  # [num_freqs] Frequencies
     l0: au.Quantity  # [num_sources] l coordinate of the source
     m0: au.Quantity  # [num_sources] m coordinate of the source
-    A: au.Quantity  # [num_sources, num_freqs] Flex amplitude of the source
+    A: au.Quantity  # [num_sources, num_freqs[,2,2]] Flex amplitude of the source
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
@@ -250,8 +250,7 @@ class PointSourceModel(AbstractSourceModel):
         )
 
     def get_flux_model(self, lvec=None, mvec=None):
-        if self.is_full_stokes():
-            raise ValueError("Cannot plot full stokes")
+
         # Use imshow to plot the sky model evaluated over a LM grid
 
         if lvec is None or mvec is None:
@@ -273,7 +272,10 @@ class PointSourceModel(AbstractSourceModel):
             l_idx = int((self.l0[i] - lvec[0]) / dl)
             m_idx = int((self.m0[i] - mvec[0]) / dm)
             if l_idx >= 0 and l_idx < lvec.size and m_idx >= 0 and m_idx < mvec.size:
-                flux_model[m_idx, l_idx] += self.A[i, 0]
+                if self.is_full_stokes():
+                    flux_model[m_idx, l_idx] += self.A[i, 0, 0, 0]
+                else:
+                    flux_model[m_idx, l_idx] += self.A[i, 0]
         return lvec, mvec, flux_model
 
     def plot(self, save_file: str = None):
@@ -400,7 +402,6 @@ class PointPredict:
             _t = visibility_coords.time_idx
             _a1 = visibility_coords.antenna_1
             _a2 = visibility_coords.antenna_2
-
             if direction_dependent_gains:
                 if full_stokes:
                     g1 = model_data.gains[:, _t, _a1, :, :, :]

@@ -5,7 +5,8 @@ import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dsa2000_cal.types import CalibrationSolutions, SystemGains
+from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import CalibrationSolutions
+from dsa2000_cal.types import SystemGains
 
 
 def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):

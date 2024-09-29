@@ -3,9 +3,7 @@ import os
 from abc import abstractmethod, ABC
 from typing import List
 
-import jax
 from astropy import units as au
-from jax._src.typing import SupportsDType
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.calibration.calibration import Calibration
@@ -35,6 +33,7 @@ class AbstractForwardModel(ABC):
         ...
 
 
+@dataclasses.dataclass(eq=False)
 class BaseForwardModel(AbstractForwardModel):
     """
     Runs forward modelling using a sharded data structure over devices.
@@ -51,58 +50,35 @@ class BaseForwardModel(AbstractForwardModel):
         field_of_view: the field of view for imaging, default computes from dish model
         oversample_factor: the oversample factor for imaging, default 2.5
         epsilon: the epsilon for wgridder, default 1e-4
-        dtype: the dtype for imaging, default complex_type
         verbose: the verbosity for imaging, default False
     """
 
-    def __init__(self,
-                 run_folder: str,
-                 add_noise: bool,
-                 include_ionosphere: bool,
-                 include_dish_effects: bool,
-                 include_simulation: bool,
-                 include_calibration: bool,
-                 dish_effect_params: DishEffectsParams | None,
-                 ionosphere_specification: SPECIFICATION | None,
-                 num_cal_iters: int,
-                 solution_interval: au.Quantity | None,
-                 validity_interval: au.Quantity | None,
-                 field_of_view: au.Quantity | None,
-                 oversample_factor: float,
-                 weighting: str,
-                 epsilon: float,
-                 dtype: SupportsDType,
-                 verbose: bool,
-                 num_shards: int,
-                 ionosphere_seed: int,
-                 dish_effects_seed: int,
-                 simulation_seed: int,
-                 calibration_seed: int,
-                 imaging_seed: int
-                 ):
-        self.run_folder = run_folder
-        self.add_noise = add_noise
-        self.include_ionosphere = include_ionosphere
-        self.include_dish_effects = include_dish_effects
-        self.include_calibration = include_calibration
-        self.dish_effect_params = dish_effect_params
-        self.ionosphere_specification = ionosphere_specification
-        self.num_cal_iters = num_cal_iters
-        self.solution_interval = solution_interval
-        self.validity_interval = validity_interval
-        self.field_of_view = field_of_view
-        self.oversample_factor = oversample_factor
-        self.weighting = weighting
-        self.epsilon = epsilon
-        self.dtype = dtype
-        self.verbose = verbose
-        self.num_shards = num_shards
-        self.ionosphere_seed = ionosphere_seed
-        self.dish_effects_seed = dish_effects_seed
-        self.simulation_seed = simulation_seed
-        self.include_simulation = include_simulation
-        self.calibration_seed = calibration_seed
-        self.imaging_seed = imaging_seed
+    run_folder: str
+    add_noise: bool
+    include_ionosphere: bool
+    include_dish_effects: bool
+    include_simulation: bool
+    include_calibration: bool
+    dish_effect_params: DishEffectsParams | None
+    ionosphere_specification: SPECIFICATION | None
+    num_cal_iters: int
+    inplace_subtract: bool
+    solution_interval: au.Quantity | None
+    validity_interval: au.Quantity | None
+    field_of_view: au.Quantity | None
+    oversample_factor: float
+    weighting: str
+    epsilon: float
+    verbose: bool
+    num_shards: int
+    ionosphere_seed: int
+    dish_effects_seed: int
+    simulation_seed: int
+    calibration_seed: int
+    imaging_seed: int
+    overwrite: bool
+
+    def __post_init__(self):
 
         self.plot_folder = os.path.join(self.run_folder, 'plots')
         self.solution_folder = os.path.join(self.run_folder, 'solution')
@@ -141,9 +117,8 @@ class BaseForwardModel(AbstractForwardModel):
             field_of_view=self.field_of_view,
             seed=self.imaging_seed,
             oversample_factor=self.oversample_factor,
-            nthreads=len(jax.devices()),
             convention=ms.meta.convention,
-            weighting=self.weighting
+            weighting=self.weighting,
         )
 
         if self.include_dish_effects:
@@ -176,10 +151,10 @@ class BaseForwardModel(AbstractForwardModel):
             )
 
             # Image visibilities
-            imagor.image(image_name='dirty_image', ms=ms)
+            imagor.image(image_name='dirty_image', ms=ms, overwrite=self.overwrite)
 
             # Create psf
-            imagor.image(image_name='psf', ms=ms, psf=True)
+            imagor.image(image_name='psf', ms=ms, psf=True, overwrite=self.overwrite)
 
         if self.include_calibration:
             # Calibrate visibilities
@@ -190,20 +165,20 @@ class BaseForwardModel(AbstractForwardModel):
                     a_priori_horizon_gain_model=horizon_gain_model
                 ),
                 num_iterations=self.num_cal_iters,
-                inplace_subtract=False,
+                num_approx_steps=0,
+                inplace_subtract=self.inplace_subtract,
                 residual_ms_folder='residual_ms',
                 solution_interval=self.solution_interval,
                 validity_interval=self.validity_interval,
                 verbose=self.verbose,
                 seed=self.calibration_seed,
-                num_shards=self.num_shards,
                 plot_folder=os.path.join(self.plot_folder, 'calibration'),
                 solution_folder=self.solution_folder
             )
             subtracted_ms = calibration.calibrate(ms=ms)
 
             # Image subtracted visibilities
-            imagor.image(image_name='subtracted_dirty_image', ms=subtracted_ms)
+            imagor.image(image_name='subtracted_dirty_image', ms=subtracted_ms, overwrite=self.overwrite)
 
         # Tell Slack we're done
         post_completed_forward_modelling_run(

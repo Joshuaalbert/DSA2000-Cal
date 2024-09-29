@@ -9,7 +9,7 @@ from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put
 import jax
 import jax.numpy as jnp
 
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 
 def main():
@@ -65,8 +65,8 @@ def main():
             # mu_min=mu_min,
         )
         state = lm.create_initial_state(x)
-        state = lm.solve(state)
-        return state.F_norm
+        state, diagnostics = lm.solve(state)
+        return diagnostics.F_norm
 
     run = jax.jit(run)
 

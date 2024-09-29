@@ -4,7 +4,7 @@ import time
 import jax
 from jax import numpy as jnp
 
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 

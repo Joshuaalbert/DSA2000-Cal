@@ -35,6 +35,7 @@ from jaxopt._src.linear_solve import solve_qr
 from jaxopt._src.tree_util import tree_l2_norm, tree_inf_norm
 
 
+
 class LevenbergMarquardtState(NamedTuple):
     """Named tuple containing state information."""
     iter_num: int

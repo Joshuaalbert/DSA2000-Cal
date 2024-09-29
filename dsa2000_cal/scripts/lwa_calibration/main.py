@@ -70,8 +70,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
     imagor = Imagor(
         plot_folder='plots/imaging_residuals',
         field_of_view=field_of_view,
-        seed=12345,
-        nthreads=1
+        seed=12345
     )
     return imagor.image(image_name='residuals', ms=subtracted_ms)
 

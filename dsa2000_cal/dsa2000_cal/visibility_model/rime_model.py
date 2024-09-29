@@ -8,6 +8,7 @@ import numpy as np
 from jax import lax
 
 from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
@@ -105,8 +106,8 @@ class RIMEModel:
         Returns:
             vis: [num_row, num_chans[, 2, 2]] visibilities with gains applied
         """
-        g1 = gains[:, visibility_coords.antenna_1, visibility_coords.time_idx, :, ...]
-        g2 = gains[:, visibility_coords.antenna_2, visibility_coords.time_idx, :, ...]
+        g1 = gains[:, visibility_coords.time_idx, visibility_coords.antenna_1, :, ...]
+        g2 = gains[:, visibility_coords.time_idx, visibility_coords.antenna_2, :, ...]
         if len(np.shape(gains)) == 6:
             gains_mapping = "[s,r,f,2,2]"
             vis_mapping = "[s,r,f,2,2]"
@@ -136,12 +137,13 @@ class RIMEModel:
                     delta = kron_product(g1, vis, g2.conj().T)
                 else:
                     delta = g1 * vis * g2.conj()
+                delta = mp_policy.cast_to_vis(delta)
                 return accumulate + delta, ()
 
             if is_full_stokes:
-                init = jnp.zeros((2, 2), vis.dtype)
+                init = jnp.zeros((2, 2), mp_policy.vis_dtype)
             else:
-                init = jnp.zeros((), vis.dtype)
+                init = jnp.zeros((), mp_policy.vis_dtype)
             vis_accumulate, _ = lax.scan(body_fn, init, (g1, g2, vis), unroll=2)
             return vis_accumulate
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 C = TypeVar('C')
 
@@ -92,6 +93,18 @@ def deserialise_interpolated_array(obj):
     )
 
 
+def deserialise_parametric_delay_acf(obj):
+    return ParametricDelayACF(
+        mu=np.asarray(deserialise_ndarray(obj["mu"])),
+        fwhp=np.asarray(deserialise_ndarray(obj["fwhp"])),
+        spectral_power=np.asarray(deserialise_ndarray(obj["spectral_power"])),
+        channel_lower=np.asarray(deserialise_ndarray(obj["channel_lower"])),
+        channel_upper=np.asarray(deserialise_ndarray(obj["channel_upper"])),
+        resolution=obj["resolution"],
+        convention=obj["convention"]
+    )
+
+
 class SerialisableBaseModel(BaseModel):
     """
     A pydantic BaseModel that can be serialised and deserialised using pickle, working well with Ray.
@@ -154,6 +167,16 @@ class SerialisableBaseModel(BaseModel):
                 "values": np.asarray(x.values),
                 "axis": x.axis,
                 "regular_grid": x.regular_grid
+            },
+            ParametricDelayACF: lambda x: {
+                "type": 'dsa2000_cal.visibility_model.source_models.rfi_parametric_rfi_emitter.ParametricDelayACF',
+                "mu": np.asarray(x.mu),
+                "fwhp": np.asarray(x.fwhp),
+                "spectral_power": np.asarray(x.spectral_power),
+                "channel_lower": np.asarray(x.channel_lower),
+                "channel_upper": np.asarray(x.channel_upper),
+                "resolution": x.resolution,
+                "convention": x.convention
             }
         }
 
@@ -220,6 +243,12 @@ class SerialisableBaseModel(BaseModel):
             elif field.type_ is InterpolatedArray and isinstance(obj.get(name), dict) and obj[name].get(
                     "type") == 'dsa2000_cal.common.interp_utils.InterpolatedArray':
                 obj[name] = deserialise_interpolated_array(obj[name])
+                continue
+
+            # Deserialise ParametricDelayACF
+            elif field.type_ is ParametricDelayACF and isinstance(obj.get(name), dict) and obj[name].get(
+                    "type") == 'dsa2000_cal.visibility_model.source_models.rfi_parametric_rfi_emitter.ParametricDelayACF':
+                obj[name] = deserialise_parametric_delay_acf(obj[name])
                 continue
 
             # Deserialise nested models

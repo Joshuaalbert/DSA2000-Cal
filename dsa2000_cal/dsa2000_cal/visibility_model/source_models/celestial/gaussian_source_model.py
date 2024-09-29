@@ -17,9 +17,9 @@ from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_c
 from dsa2000_cal.common.ellipse_utils import ellipse_eval, Gaussian
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
@@ -414,8 +414,6 @@ class GaussianSourceModel(AbstractSourceModel):
         )
 
     def get_flux_model(self, lvec=None, mvec=None):
-        if self.is_full_stokes():
-            raise ValueError("Cannot plot full stokes.")
 
         # Use imshow to plot the sky model evaluated over a LM grid
         if lvec is None or mvec is None:
@@ -442,13 +440,19 @@ class GaussianSourceModel(AbstractSourceModel):
         pixel_area = (lvec[1] - lvec[0]) * (mvec[1] - mvec[0])
 
         for i in range(self.num_sources):
+            if self.is_full_stokes():
+                A = quantity_to_jnp(self.A[i, 0, 0, 0], 'Jy')
+            else:
+                A = quantity_to_jnp(self.A[i, 0], 'Jy')
+
             args = (
-                quantity_to_jnp(self.A[i, 0], 'Jy'),
+                A,
                 quantity_to_jnp(self.l0[i]),
                 quantity_to_jnp(self.m0[i]),
                 quantity_to_jnp(self.major[i]),
                 quantity_to_jnp(self.minor[i]),
-                quantity_to_jnp(self.theta[i]))
+                quantity_to_jnp(self.theta[i])
+            )
             flux_density += np.asarray(_gaussian_flux(*args)) * au.Jy
         return lvec, mvec, flux_density * pixel_area
 

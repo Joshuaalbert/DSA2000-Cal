@@ -2,29 +2,28 @@ import dataclasses
 from functools import partial
 from typing import NamedTuple, Tuple
 
-import astropy.units as au
 import jax
-import jax.numpy as jnp
 import numpy as np
 import pylab as plt
-from astropy import constants as const
+from astropy import constants as const, units as au
+from jax import numpy as jnp
 
 from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 
 class RFIEmitterModelData(NamedTuple):
-    freqs: jax.Array  # [num_chans]
+    freqs: jax.Array  # [chan]
     position_enu: jax.Array  # [E, 3]
-    luminosity: jax.Array  # [E, num_chans[,2,2]]
-    delay_acf: InterpolatedArray  # [E]
+    delay_acf: InterpolatedArray | ParametricDelayACF  # [E,chan,[2,2]]
     gains: jax.Array | None  # [[E,] time, ant, chan[, 2, 2]]
 
 
@@ -35,23 +34,9 @@ class RFIEmitterSourceModel(AbstractSourceModel):
     """
     params: RFIEmitterSourceModelParams
 
-    def __getitem__(self, item):
-        params = RFIEmitterSourceModelParams(
-            freqs=self.params.freqs,
-            position_enu=self.params.position_enu[item],
-            spectral_flux_density=self.params.spectral_flux_density[item],
-            delay_acf=InterpolatedArray(
-                x=mp_policy.cast_to_time(self.params.delay_acf.x),
-                values=mp_policy.cast_to_vis(self.params.delay_acf.values[item]),
-                axis=self.params.delay_acf.axis,
-                regular_grid=self.params.delay_acf.regular_grid
-            )
-        )
-        return RFIEmitterSourceModel(params)
-
     @property
     def num_emitters(self):
-        return self.params.spectral_flux_density.shape[0]
+        return self.params.delay_acf.shape[0]
 
     @staticmethod
     def from_rfi_model(rfi_model: AbstractRFIEmitterData, freqs: au.Quantity, central_freq: au.Quantity | None = None,
@@ -73,7 +58,7 @@ class RFIEmitterSourceModel(AbstractSourceModel):
         )
 
     def is_full_stokes(self) -> bool:
-        return len(self.params.spectral_flux_density.shape) == 4 and self.params.spectral_flux_density.shape[-2:] == (
+        return len(self.params.delay_acf.shape) == 4 and self.params.delay_acf.shape[-2:] == (
             2, 2)
 
     def get_model_data(self, gains: jax.Array | None) -> RFIEmitterModelData:
@@ -89,7 +74,6 @@ class RFIEmitterSourceModel(AbstractSourceModel):
         return RFIEmitterModelData(
             freqs=mp_policy.cast_to_freq(quantity_to_jnp(self.params.freqs)),
             position_enu=mp_policy.cast_to_length(quantity_to_jnp(self.params.position_enu)),
-            luminosity=mp_policy.cast_to_image(quantity_to_jnp(self.params.spectral_flux_density, 'Jy*m^2')),
             delay_acf=self.params.delay_acf,
             gains=mp_policy.cast_to_gain(gains)
         )
@@ -110,11 +94,7 @@ class RFIEmitterSourceModel(AbstractSourceModel):
         # Plot array centre at 0,0 in red
         axs[0, 0].scatter(0, 0, c='r', label='Array Centre')
         for emitter in range(self.num_emitters):
-            if self.is_full_stokes():
-                c = self.params.spectral_flux_density[emitter, freq_idx, 0, 0].to('Jy*km^2').value
-            else:
-                c = self.params.spectral_flux_density[emitter, freq_idx].to('Jy*km^2').value
-            sc = axs[0, 0].scatter(self.params.position_enu[emitter, 0], self.params.position_enu[emitter, 1], c=c,
+            sc = axs[0, 0].scatter(self.params.position_enu[emitter, 0], self.params.position_enu[emitter, 1],
                                    marker='*')
         plt.colorbar(sc, ax=axs[0, 0], label='Luminosity [Jy km^2]')
         axs[0, 0].set_xlabel('East [m]')
@@ -144,13 +124,13 @@ class RFIEmitterPredict:
             is_gains: bool
             direction_dependent_gains: bool
         """
-        full_stokes = len(model_data.luminosity.shape) == 4 and model_data.luminosity.shape[-2:] == (2, 2)
+        full_stokes = len(model_data.delay_acf.shape) == 4 and model_data.delay_acf.shape[-2:] == (2, 2)
         E, _ = np.shape(model_data.position_enu)
         num_freqs = len(model_data.freqs)
         is_gains = model_data.gains is not None
         if full_stokes:
-            if np.shape(model_data.luminosity) != (E, num_freqs, 2, 2):
-                raise ValueError(f"Luminosity must be [E, num_chans, 2, 2], got {np.shape(model_data.luminosity)}")
+            if model_data.delay_acf.shape != (E, num_freqs, 2, 2):
+                raise ValueError(f"ACF must be [E, num_chans, 2, 2], got {model_data.delay_acf.shape}")
             if is_gains:  # [[E,] time, ant, chan[, 2, 2]]
                 if np.shape(model_data.gains)[-3] != len(model_data.freqs):
                     raise ValueError(
@@ -166,8 +146,8 @@ class RFIEmitterPredict:
             else:
                 direction_dependent_gains = False
         else:
-            if np.shape(model_data.luminosity) != (E, num_freqs):
-                raise ValueError(f"Luminosity must be [E, num_chans], got {np.shape(model_data.luminosity)}")
+            if model_data.delay_acf.shape != (E, num_freqs):
+                raise ValueError(f"ACF must be [E, num_chans], got {model_data.delay_acf.shape}")
             if is_gains:  # [[E,] time, ant, chan]
                 if np.shape(model_data.gains)[-1] != len(model_data.freqs):
                     raise ValueError(
@@ -199,11 +179,13 @@ class RFIEmitterPredict:
         """
         full_stokes, is_gains, direction_dependent_gains = self.check_predict_inputs(model_data)
         if full_stokes:
-            luminosity_mapping = "[e,c,2,2]"
-            out_mapping = "[e,r,c,...]"
+            out_mapping = "[e,r,c,~p,~q]"
+            acf_values_mapping = "[x,e,c,p,q]"
+            spectral_power_mapping = "[e,p,q]"
         else:
-            luminosity_mapping = "[e,c]"
             out_mapping = "[e,r,c]"
+            acf_values_mapping = "[x,e,c]"
+            spectral_power_mapping = "[e]"
 
         if is_gains:
 
@@ -215,7 +197,7 @@ class RFIEmitterPredict:
                 if full_stokes:
                     g1 = model_data.gains[:, _t, _a1, :, :, :]
                     g2 = model_data.gains[:, _t, _a2, :, :, :]
-                    g_mapping = "[e,r,c,2,2]"
+                    g_mapping = "[e,r,c,p,q]"
                 else:
                     g1 = model_data.gains[:, _t, _a1, :]
                     g2 = model_data.gains[:, _t, _a2, :]
@@ -224,7 +206,7 @@ class RFIEmitterPredict:
                 if full_stokes:
                     g1 = model_data.gains[_t, _a1, :, :, :]
                     g2 = model_data.gains[_t, _a2, :, :, :]
-                    g_mapping = "[r,c,2,2]"
+                    g_mapping = "[r,c,p,q]"
                 else:
                     g1 = model_data.gains[_t, _a1, :]
                     g2 = model_data.gains[_t, _a2, :]
@@ -235,12 +217,12 @@ class RFIEmitterPredict:
             g_mapping = "[]"
 
         @partial(multi_vmap,
-                 in_mapping=f"[c],[r],[r],[r],[r],{g_mapping},{g_mapping},{luminosity_mapping},[e,3],[x,e]",
+                 in_mapping=f"[c],[r],[r],[r],[r],{g_mapping},{g_mapping},[e,3],{acf_values_mapping}",
                  out_mapping=out_mapping,
                  verbose=True
                  )
-        def compute_phase_from_projection_jax(freq, t1, i1, i2, w, g1, g2, luminosity, position_enu,
-                                              acf_values):
+        def compute_phase_from_projection_jax_from_interpolated_array(freq, t1, i1, i2, w, g1, g2, position_enu,
+                                                                      acf_values):
             """
             Compute the delay from the projection.
 
@@ -251,7 +233,6 @@ class RFIEmitterPredict:
                 w: w coordinate
                 g1: [] or [2,2]
                 g2: [] or [2,2]
-                luminosity: [] or [2,2]
                 position_enu: [3]
                 acf_values: [num_x]
             """
@@ -275,10 +256,70 @@ class RFIEmitterPredict:
                 values=acf_values,
                 axis=0,
                 regular_grid=model_data.delay_acf.regular_grid
-            )
+            )  # [[2,2]]
             delay_s = mp_policy.cast_to_time(delay / quantity_to_jnp(const.c))
-            delay_acf_val = delay_acf(time=delay_s)  # []
+            delay_acf_val = delay_acf(x=delay_s)  # [[2,2]]
+            return apply_delay(
+                freq, delay, w, delay_acf_val, dist10, dist20, g1, g2
+            )
 
+        @partial(
+            multi_vmap,
+            in_mapping=f"[c],[r],[r],[r],[r],{g_mapping},{g_mapping},[e,3],[e],[e],{spectral_power_mapping},[c],[c]",
+            out_mapping=out_mapping,
+            verbose=True
+        )
+        def compute_phase_from_projection_jax_from_parametric_acf(freq, t1, i1, i2, w, g1, g2, position_enu,
+                                                                  mu, fwhp, spectral_power, channel_lower,
+                                                                  channel_upper):
+            """
+            Compute the delay from the projection.
+
+            Args:
+                t1: time index
+                i1: antenna 1 index
+                i2: antenna 2 index
+                w: w coordinate
+                g1: [] or [2,2]
+                g2: [] or [2,2]
+                position_enu: [3]
+                mu: []
+                fwhp: []
+                spectral_power: [[2,2]]
+                channel_lower: []
+                channel_upper: []
+            """
+            # propagation delay
+            delay, dist20, dist10 = self.delay_engine.compute_delay_from_projection_jax(
+                a_east=position_enu[0],
+                a_north=position_enu[1],
+                a_up=position_enu[2],
+                t1=t1,
+                i1=i1,
+                i2=i2
+            )  # [], [], []
+
+            # jax.debug.print("delay={delay}", delay=delay)
+            # jax.debug.print("dist20={dist20}", dist20=dist20)
+            # jax.debug.print("dist10={dist10}", dist10)
+
+            # ACF delay -- rebuild from sharded data
+            delay_acf = ParametricDelayACF(
+                mu=mu[None],
+                fwhp=fwhp[None],
+                spectral_power=spectral_power[None],
+                channel_lower=channel_lower[None],
+                channel_upper=channel_upper[None],
+                resolution=model_data.delay_acf.resolution,
+                convention=model_data.delay_acf.convention
+            )  # [E=1,c=1,[2,2]]
+            delay_s = mp_policy.cast_to_time(delay / quantity_to_jnp(const.c))
+            delay_acf_val = delay_acf(delay_s)[0, 0]  # [[2,2]]
+            return apply_delay(
+                freq, delay, w, delay_acf_val, dist10, dist20, g1, g2
+            )
+
+        def apply_delay(freq, delay, w, delay_acf_val, dist10, dist20, g1, g2):
             wavelength = quantity_to_jnp(const.c) / freq  # []
             # delay ~ l*u + m*v + n*w
             # -2j pi delay / wavelength + 2j pi w / wavelength = -2j pi (delay - w) / wavelength
@@ -293,34 +334,47 @@ class RFIEmitterPredict:
             if self.convention == 'engineering':
                 phase = jnp.negative(phase)
 
-            if full_stokes:
-                if is_gains:
-                    luminosity = kron_product(g1, luminosity, g2.conj().T)  # [2, 2]
-                # fields decrease with 1/r, and sqrt(luminosity)
-                e_1 = jnp.sqrt(luminosity) * jnp.reciprocal(dist10)  # [2, 2]
-                e_2 = jnp.sqrt(luminosity) * jnp.reciprocal(dist20)  # [2, 2]
-                visibilities = (
-                        (e_1 * e_2) * jnp.exp(phase)
-                )  # [2, 2]
-            else:
-                if is_gains:
-                    luminosity = g1 * luminosity * g2.conj().T  # []
-                e_1 = jnp.sqrt(luminosity) * jnp.reciprocal(dist10)  # []
-                e_2 = jnp.sqrt(luminosity) * jnp.reciprocal(dist20)  # []
-                visibilities = (e_1 * e_2) * jnp.exp(phase)  # []
-            visibilities *= delay_acf_val  # []
-            return mp_policy.cast_to_vis(visibilities)  # [num_chan[,2,2]]
+            # fields decrease with 1/r
+            visibilities = (
+                    (delay_acf_val * jnp.reciprocal(dist10) * jnp.reciprocal(dist20)) * jnp.exp(phase)
+            )  # [[2, 2]]
 
-        vis = compute_phase_from_projection_jax(
-            model_data.freqs,
-            visibility_coords.time_obs,
-            visibility_coords.antenna_1,
-            visibility_coords.antenna_2,
-            visibility_coords.uvw[:, 2],
-            g1,
-            g2,
-            model_data.luminosity,
-            model_data.position_enu,
-            model_data.delay_acf.values
-        )  # [E, num_chans[,2,2]]
+            if is_gains:
+                if full_stokes:
+                    visibilities = kron_product(g1, visibilities, g2.conj().T)  # [2, 2]
+                else:
+                    visibilities = g1 * visibilities * g2.conj().T  # []
+
+            return mp_policy.cast_to_vis(visibilities)  # [[2,2]]
+
+        if isinstance(model_data.delay_acf, InterpolatedArray):
+            vis = compute_phase_from_projection_jax_from_interpolated_array(
+                model_data.freqs,
+                visibility_coords.time_obs,
+                visibility_coords.antenna_1,
+                visibility_coords.antenna_2,
+                visibility_coords.uvw[:, 2],
+                g1,
+                g2,
+                model_data.position_enu,
+                model_data.delay_acf.values
+            )  # [E, num_chans[,2,2]]
+        elif isinstance(model_data.delay_acf, ParametricDelayACF):
+            vis = compute_phase_from_projection_jax_from_parametric_acf(
+                model_data.freqs,
+                visibility_coords.time_obs,
+                visibility_coords.antenna_1,
+                visibility_coords.antenna_2,
+                visibility_coords.uvw[:, 2],
+                g1,
+                g2,
+                model_data.position_enu,
+                model_data.delay_acf.mu,
+                model_data.delay_acf.fwhp,
+                model_data.delay_acf.spectral_power,
+                model_data.delay_acf.channel_lower,
+                model_data.delay_acf.channel_upper
+            )  # [E, num_chans[,2,2]]
+        else:
+            raise ValueError(f"Invalid delay_acf type {type(model_data.delay_acf)}")
         return jnp.sum(vis, axis=0)  # [num_rows, num_chans[, 2, 2]]

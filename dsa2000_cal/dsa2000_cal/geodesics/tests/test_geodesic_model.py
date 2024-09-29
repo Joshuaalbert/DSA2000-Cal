@@ -30,10 +30,25 @@ def test_geodesic_model():
     lmn_sources = jnp.zeros((num_source, 3))
     far_field_geodesics = geodesic_model.compute_far_field_geodesic(times, lmn_sources)
     assert np.shape(far_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.all(np.isfinite(far_field_geodesics))
 
-    source_positions_enu = jnp.zeros((num_source, 3))
+    far_field_geodesics, elevation = geodesic_model.compute_far_field_geodesic(times, lmn_sources,
+                                                                               return_elevation=True)
+    assert np.shape(far_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.all(np.isfinite(far_field_geodesics))
+    assert np.shape(elevation) == (num_source, num_time, num_ant)
+    assert np.all(np.isfinite(elevation))
+
+    source_positions_enu = jnp.ones((num_source, 3))
     near_field_geodesics = geodesic_model.compute_near_field_geodesics(times, source_positions_enu)
     assert np.shape(near_field_geodesics) == (num_source, num_time, num_ant, 3)
+
+    near_field_geodesics, elevation = geodesic_model.compute_near_field_geodesics(times, source_positions_enu,
+                                                                                  return_elevation=True)
+    assert np.shape(near_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.all(np.isfinite(near_field_geodesics))
+    assert np.shape(elevation) == (num_source, num_time, num_ant)
+    assert np.all(np.isfinite(elevation))
 
     # if pointing_lmn does not have ant
     pointings = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)

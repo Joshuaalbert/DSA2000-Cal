@@ -7,6 +7,8 @@ from typing import NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 
+from dsa2000_cal.common.jax_utils import block_until_ready
+
 
 class ProblemState(NamedTuple):
     x: Any  # current solution, may be a pytree
@@ -204,7 +206,7 @@ def main():
     solve = lm.solve
 
     t0 = time.time()
-    jax.block_until_ready(solve(state))
+    block_until_ready(solve(state))
     run_time = time.time() - t0
     print(f"Run time (no JIT): {run_time}")
 
@@ -212,7 +214,7 @@ def main():
     solve = jax.jit(lm.solve).lower(state).compile()
 
     t0 = time.time()
-    jax.block_until_ready(solve(state))
+    block_until_ready(solve(state))
     run_time = time.time() - t0
     print(f"Run time (JIT): {run_time}")
 

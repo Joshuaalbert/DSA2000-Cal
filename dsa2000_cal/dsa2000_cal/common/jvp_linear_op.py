@@ -6,6 +6,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from dsa2000_cal.common.alert_utils import get_grandparent_info
+
 
 def isinstance_namedtuple(obj) -> bool:
     """
@@ -171,7 +173,9 @@ class JVPLinearOp:
 
             def _adjoint_promote_dtypes(co_tangent: jax.Array, dtype: jnp.dtype):
                 if co_tangent.dtype != dtype:
-                    warnings.warn(f"Promoting co-tangent dtype from {co_tangent.dtype} to {dtype}.")
+                    warnings.warn(
+                        f"Promoting co-tangent dtype from {co_tangent.dtype} to {dtype}, {get_grandparent_info()}."
+                    )
                 return co_tangent.astype(dtype)
 
             # v @ J
@@ -186,8 +190,8 @@ class JVPLinearOp:
                 co_tangents = co_tangents[0]
 
             if self.promote_dtypes:
-                result_type = jax.tree_map(_get_results_type, primals_out)
-                co_tangents = jax.tree_map(_adjoint_promote_dtypes, co_tangents, result_type)
+                result_type = jax.tree.map(_get_results_type, primals_out)
+                co_tangents = jax.tree.map(_adjoint_promote_dtypes, co_tangents, result_type)
 
             del primals_out
             output = f_vjp(co_tangents)
@@ -197,7 +201,7 @@ class JVPLinearOp:
 
         def _promote_dtype(primal: jax.Array, dtype: jnp.dtype):
             if primal.dtype != dtype:
-                warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}.")
+                warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}, at {get_grandparent_info()}.")
             return primal.astype(dtype)
 
         def _get_result_type(primal: jax.Array):
@@ -205,7 +209,7 @@ class JVPLinearOp:
 
         primals = self.primals
         if self.promote_dtypes:
-            result_types = jax.tree_map(_get_result_type, primals)
+            result_types = jax.tree.map(_get_result_type, primals)
             tangents = jax.tree.map(_promote_dtype, tangents, result_types)
         # We use linearised function, so that repeated applications are cheaper.
         if self.linearize:

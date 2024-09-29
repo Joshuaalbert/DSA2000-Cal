@@ -15,8 +15,7 @@ from dsa2000_cal.imaging.imagor import evaluate_beam, divide_out_beam
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 
 
-@pytest.fixture(scope='function')
-def mock_calibrator_source_models(tmp_path):
+def build_mock_calibrator_source_models(tmp_path, coherencies):
     fill_registries()
     array_name = 'lwa_mock'
     # Load array
@@ -35,7 +34,7 @@ def mock_calibrator_source_models(tmp_path):
         phase_tracking=phase_tracking,
         channel_width=array.get_channel_width(),
         integration_time=au.Quantity(1.5, 's'),
-        coherencies=['XX', 'XY', 'YX', 'YY'],
+        coherencies=coherencies,
         pointings=phase_tracking,
         times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(1) * au.s,
         freqs=au.Quantity([700], unit=au.MHz),
@@ -51,8 +50,9 @@ def mock_calibrator_source_models(tmp_path):
 
 
 @pytest.mark.parametrize("centre_offset", [0.0, 0.1, 0.2])
-def test_evaluate_beam(mock_calibrator_source_models: MeasurementSet, centre_offset: float):
-    ms = mock_calibrator_source_models
+@pytest.mark.parametrize("coherencies", [['XX', 'XY', 'YX', 'YY'], ['I', 'Q', 'U', 'V'], ['I']])
+def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
+    ms = build_mock_calibrator_source_models(tmp_path, coherencies)
     t0 = time.time()
     beam_gain_model = build_beam_gain_model(
         array_name=ms.meta.array_name,
@@ -69,12 +69,19 @@ def test_evaluate_beam(mock_calibrator_source_models: MeasurementSet, centre_off
     dm = 0.001
     center_l = center_m = centre_offset
     beam = evaluate_beam(freqs, times, beam_gain_model, geodesic_model, num_l, num_m, dl, dm, center_l, center_m)
-    assert beam.shape == (num_l, num_m, len(times), len(freqs), 2, 2)
-    assert np.all(np.isfinite(beam))
 
+    assert np.all(np.isfinite(beam))
     avg_beam = jnp.mean(beam, axis=(2, 3))
 
-    image = np.ones((num_l, num_m, 4))
+    if len(coherencies) == 1:
+        assert beam.shape == (num_l, num_m, len(times), len(freqs))
+    else:
+        assert beam.shape == (num_l, num_m, len(times), len(freqs), 2, 2)
+
+
+
+
+    image = np.ones((num_l, num_m, len(coherencies)))
     # image[::10, ::10, 0] = 1.
     # image[::10, ::10, 3] = 1.
 
@@ -83,8 +90,12 @@ def test_evaluate_beam(mock_calibrator_source_models: MeasurementSet, centre_off
     assert np.all(np.isfinite(pb_cor_image))
     import pylab as plt
 
+
+    if len(coherencies) == 4:
+        avg_beam = avg_beam[..., 0, 0]
+
     plt.imshow(
-        np.abs(avg_beam[..., 0, 0]).T,
+        np.abs(avg_beam).T,
         origin='lower',
         aspect='auto',
         extent=(-0.5 * num_l * dl, 0.5 * num_l * dl, -0.5 * num_m * dm, 0.5 * num_m * dm)

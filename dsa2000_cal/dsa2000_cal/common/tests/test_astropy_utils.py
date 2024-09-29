@@ -65,6 +65,7 @@ def test_create_spherical_earth_grid():
 
     print(len(grid_earth))
 
+
 def test_create_spherical_grid_all_sky():
     grid = create_random_spherical_layout(10000)
     plt.scatter(grid.ra.rad, grid.dec.rad, marker='o', alpha=0.1)

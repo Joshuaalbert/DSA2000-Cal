@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.spatial import KDTree
 
-from dsa2000_cal.common.types import int_type
+from dsa2000_cal.common.mixed_precision_utils import int_type
 
 
 class GridTree2D(NamedTuple):
