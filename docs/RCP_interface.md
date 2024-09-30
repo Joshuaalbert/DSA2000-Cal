@@ -3,6 +3,8 @@
 The interface between RCP internal and external system is based on the data sharing medium of direct access memory, and
 event handling via an event bus.
 
+![Interface Diagram](./rcp_external.drawio.png)
+
 # Channels
 
 | Topic               | Event Types                    |
