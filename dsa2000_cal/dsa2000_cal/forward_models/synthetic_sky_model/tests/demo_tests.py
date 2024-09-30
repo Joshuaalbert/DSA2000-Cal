@@ -32,3 +32,6 @@ def test_create_sky_model():
     a_team_sources = synthetic_sky_model_producer.create_a_team_sources(a_team_sources=['cas_a'])
     a_team_sources[0].plot(save_file='cas_a.png')
     assert len(a_team_sources) == 1
+    illustris_sources = synthetic_sky_model_producer.create_illustris_sources()
+    illustris_sources[0].plot(save_file='illustris.png')
+    assert len(illustris_sources) == 1

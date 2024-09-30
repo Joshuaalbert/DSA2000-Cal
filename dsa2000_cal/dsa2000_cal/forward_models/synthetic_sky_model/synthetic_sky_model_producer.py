@@ -194,6 +194,61 @@ class SyntheticSkyModelProducer:
             source_models.append(source_model)
         return source_models
 
+
+    def create_illustris_sources(self, key=None, illustris_sources: List[str] | None = None, full_stokes: bool = True) -> \
+            List[FITSSourceModel]:
+        """
+        Create the illustris sources as FITS models.
+
+        Args:
+            key: the random key
+            illustris_sources: the illustris sources to create
+
+        Returns:
+            sources: the illustris sources
+        """
+        fill_registries()
+        if key is None:
+            key = self.keys[3]
+        if illustris_sources is None:
+            illustris_sources = ["illustris"]
+        source_models = []
+        for source in illustris_sources:
+            source_model_asset = source_model_registry.get_instance(source_model_registry.get_match(source))
+            source_model = FITSSourceModel.from_wsclean_model(
+                wsclean_fits_files=source_model_asset.get_wsclean_fits_files(),
+                phase_tracking=self.phase_tracking, freqs=self.freqs, ignore_out_of_bounds=True,
+                full_stokes=full_stokes
+            )
+            source_models.append(source_model)
+        return source_models
+
+    def create_rfi_emitter_sources(self, key=None, rfi_sources: List[str] | None = None, full_stokes: bool = True) -> [
+        RFIEmitterSourceModel]:
+        """
+        Create RFI emitter sources inside the field.
+
+        Args:
+            key: the random key
+            rfi_sources: the LTE sources
+
+        Returns:
+            sources: a single facet model with all the RFI emitter sources
+        """
+        if key is None:
+            key = self.keys[4]
+        if rfi_sources is None:
+            rfi_sources = ["lte_cell_tower"]
+
+        fill_registries()
+        source_models = []
+        for rfi_source in rfi_sources:
+            rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match(rfi_source))
+            rfi_model_params = rfi_model.make_source_params(freqs=self.freqs, full_stokes=full_stokes)
+            source_model = RFIEmitterSourceModel(rfi_model_params)
+            source_models.append(source_model)
+        return source_models
+
     def create_rfi_emitter_sources(self, key=None, rfi_sources: List[str] | None = None, full_stokes: bool = True) -> [
         RFIEmitterSourceModel]:
         """

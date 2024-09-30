@@ -70,8 +70,8 @@ def main(ms_folder: str):
         weighting='natural',
         epsilon=1e-6,
         add_noise=True,
-        include_calibration=True,
-        include_simulation=False,
+        include_calibration=False,
+        include_simulation=True,
         inplace_subtract=True,
         num_cal_iters=1,
         overwrite=True
