@@ -178,7 +178,7 @@ class FITSSourceModel(AbstractSourceModel):
 
     @staticmethod
     def from_wsclean_model(wsclean_fits_files: List[str], phase_tracking: ac.ICRS, freqs: au.Quantity,
-                           ignore_out_of_bounds: bool = False, full_stokes: bool = True) -> 'FITSSourceModel':
+                           ignore_out_of_bounds: bool = False, full_stokes: bool = True, repoint_centre: ac.ICRS | None = None) -> 'FITSSourceModel':
         """
         Create a FitsSourceModel from a wsclean model file.
 
@@ -188,6 +188,7 @@ class FITSSourceModel(AbstractSourceModel):
             freqs: the frequencies to use
             ignore_out_of_bounds: whether to ignore out of bounds frequencies
             full_stokes: whether the images are full stokes
+            repoint_centre: the repoint centre of image if provided
             **kwargs:
 
         Returns:
@@ -266,7 +267,10 @@ class FITSSourceModel(AbstractSourceModel):
                 )
                 if stokes_coord != StokesCoord("I"):
                     raise ValueError(f"Expected Stokes I, got {stokes_coord}")
-                center_icrs = pointing_coord.transform_to(ac.ICRS)
+                if repoint_centre is None:
+                    center_icrs = pointing_coord.transform_to(ac.ICRS)
+                else:
+                    center_icrs = repoint_centre
                 lmn0 = icrs_to_lmn(center_icrs, phase_tracking)
                 l0, m0, n0 = lmn0
                 # Order is l, m, freq, stokes
