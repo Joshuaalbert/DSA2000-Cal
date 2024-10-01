@@ -17,9 +17,9 @@ from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_c
 from dsa2000_cal.common.ellipse_utils import ellipse_eval, Gaussian
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords

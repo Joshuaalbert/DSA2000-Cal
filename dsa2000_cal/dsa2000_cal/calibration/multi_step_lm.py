@@ -2,7 +2,7 @@ import dataclasses
 import os
 from typing import NamedTuple, Any, Callable, TypeVar, Generic, Union, Tuple
 
-from dsa2000_cal.common.types import IntArray, FloatArray, mp_policy
+from dsa2000_cal.common.types import IntArray, FloatArray
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
@@ -56,8 +56,9 @@ class MultiStepLevenbergMarquardtState(NamedTuple):
 
 
 class MultiStepLevenbergMarquardtDiagnostic(NamedTuple):
-    iteration: IntArray  # A single iteration is an exact step followed by inexact steps
-    step: IntArray  # An inexact step
+    iteration: IntArray  # iteration number
+    exact_step: IntArray  # A single iteration is an exact step followed by inexact steps
+    approx_step: IntArray  # An inexact step
     F_norm: FloatArray  # |F(x_k)|_2^2
     r: FloatArray  # r = (|F(x_k)|^2 - |F(x_{k+1})|^2) / (|F(x_k)|^2 - |F(x_{k+1} + J_k dx_k)|^2)
     delta_norm: FloatArray  # ||dx_k||_2 / size(dx_k)
@@ -79,23 +80,23 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             J Sci Comput 78, 531–548 (2019). https://doi.org/10.1007/s10915-018-0777-8
     """
     residual_fn: Callable[[X], Y]
-    num_approx_steps: int = 0
-    num_iterations: int = 1
+    num_approx_steps: int = 2
+    num_iterations: int = 2
 
     # Improvement threshold
-    p_any_improvement: FloatArray = 0.1  # p0 > 0
-    p_less_newton: FloatArray = 0.25  # p2 -- less than sufficient improvement
-    p_sufficient_improvement: FloatArray = 0.5  # p1 > p0
-    p_more_newton: FloatArray = 0.75  # p3 -- more than sufficient improvement
+    p_any_improvement: FloatArray = 0.06  # p0 > 0
+    p_less_newton: FloatArray = 0.88  # p2 -- less than sufficient improvement
+    p_sufficient_improvement: FloatArray = 0.99  # p1 > p0
+    p_more_newton: FloatArray = 1.  # p3 -- more than sufficient improvement
 
     # Damping alteration factors 0 < c_more_newton < 1 < c_less_newton
-    c_more_newton: FloatArray = 0.1
-    c_less_newton: FloatArray = 2.
+    c_more_newton: FloatArray = 0.16
+    c_less_newton: FloatArray = 2.78
     # Damping factor = mu1 * ||F(x)||^delta, 1 <= delta <= 2
-    delta: IntArray | FloatArray = 2
+    delta: IntArray | FloatArray = 1
     # mu1 > mu_min > 0
-    mu1: FloatArray = 1.
-    mu_min: FloatArray = 1e-3
+    mu1: FloatArray = 9.28
+    mu_min: FloatArray = 0.02
 
     verbose: bool = False
 
@@ -112,11 +113,11 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                                                     self.p_sufficient_improvement,
                                                     self.p_more_newton,
                                                     self.p_less_newton))) and not (
-                (0. < self.p_any_improvement)
+                (0. <= self.p_any_improvement)
                 and (self.p_any_improvement < self.p_less_newton)
                 and (self.p_less_newton < self.p_sufficient_improvement)
                 and (self.p_sufficient_improvement < self.p_more_newton)
-                and (self.p_more_newton < 1.)
+                and (self.p_more_newton <= 1.)
         ):
             raise ValueError(
                 "Improvement thresholds must satisfy 0 < p(any) < p(less) < p(sufficient) < p(more) < 1, "
@@ -177,6 +178,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
         """
         init_state = self.create_initial_state(state.x)
         return init_state._replace(
+            iteration=state.iteration,
             mu=state.mu,
             delta_x=state.delta_x,
             damping=init_state.damping * (state.mu / init_state.mu)
@@ -236,7 +238,8 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
 
         output_dtypes = jax.tree.map(lambda x: x.dtype, state)
 
-        def body(iteration: int, step: int, state: MultiStepLevenbergMarquardtState, J: JVPLinearOp) -> Tuple[
+        def body(exact_step: IntArray, approx_step: IntArray, state: MultiStepLevenbergMarquardtState,
+                 J: JVPLinearOp) -> Tuple[
             MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
             # d_k = -(J_k^T J_k + λ_k I)^(-1) J_k^T F(x_k)
             JTF = J.matvec(state.F, adjoint=True)
@@ -251,11 +254,21 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             # jax.debug.print("F_prop: {F_prop}, F_pushfwd: {F_pushfwd}", F_prop=F_prop, F_pushfwd=F_pushfwd)
             F_prop_norm = pytree_norm_delta(F_prop, power=2)
             F_pushfwd_norm = pytree_norm_delta(F_pushfwd, power=2)
+            predicted_reduction = state.F_norm - F_pushfwd_norm
+            actual_reduction = state.F_norm - F_prop_norm
+
             r = jnp.where(
                 state.F_norm == F_prop_norm,
                 jnp.zeros_like(state.F_norm),
-                (state.F_norm - F_prop_norm) / (state.F_norm - F_pushfwd_norm)
+                actual_reduction / predicted_reduction
             )
+
+            #
+            # r = jnp.where(
+            #     predicted_reduction > 0,
+            #     actual_reduction / predicted_reduction,
+            #     jnp.zeros_like(state.F_norm)  # or another appropriate value indicating a failed prediction
+            # )
 
             any_improvement = r >= self.p_any_improvement
             sufficient_improvement = r >= self.p_sufficient_improvement
@@ -288,7 +301,7 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             #     mu * F_norm_delta
             # )
             state = MultiStepLevenbergMarquardtState(
-                iteration=state.iteration + 1,
+                iteration=state.iteration + jnp.ones_like(state.iteration),
                 x=x,
                 delta_x=delta_x,
                 damping=damping,
@@ -304,19 +317,24 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
 
             if self.verbose:
                 jax.debug.print(
-                    "Iter: {i}, Step: {step}, r: {r}, any_improvement: {any_improvement}, "
+                    "Iter: {iteration}, Exact Step: {exact_step} Approx Step: {approx_step}, r: {r}, pred: {predicted_reduction}, act: {actual_reduction}, "
+                    "any_improvement: {any_improvement}, "
                     "sufficient_improvement: {sufficient_improvement}, more_newton: {more_newton}, "
                     "less_newton: {less_newton}:\n"
                     "\t|F|^2 -> {F_norm}, damping -> {damping}, mu -> {mu}, delta_norm -> {delta_norm}, "
                     "error -> {error}",
-                    i=iteration, step=step, r=r, any_improvement=any_improvement,
+                    iteration=state.iteration,
+                    exact_step=exact_step, approx_step=approx_step, r=r,
+                    predicted_reduction=predicted_reduction, actual_reduction=actual_reduction,
+                    any_improvement=any_improvement,
                     sufficient_improvement=sufficient_improvement,
                     more_newton=more_newton, less_newton=less_newton, F_norm=F_norm, damping=damping,
                     mu=mu, delta_norm=delta_norm, error=error
                 )
             diagnostic = MultiStepLevenbergMarquardtDiagnostic(
-                iteration=iteration,
-                step=step,
+                iteration=state.iteration,
+                exact_step=exact_step,
+                approx_step=approx_step,
                 F_norm=state.F_norm,
                 r=r,
                 delta_norm=delta_norm,
@@ -324,24 +342,31 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             )
             return state, diagnostic
 
-        @jax.jit
-        def single_iteration(iteration: jax.Array, state: MultiStepLevenbergMarquardtState):
+        def single_iteration(state: MultiStepLevenbergMarquardtState, exact_iteration: IntArray):
             diagnostics = []
 
             # Does one initial exact step using the current jacobian estimate, followed by inexact steps using the same
             # jacobian estimate (which is slightly cheaper).
             J = J_bare(state.x)
-            for step in range(self.num_approx_steps + 1):
-                state, diagnostic = body(mp_policy.cast_to_index(iteration), mp_policy.cast_to_index(step), state, J)
+            for approx_step in range(self.num_approx_steps + 1):
+                state, diagnostic = body(
+                    exact_iteration,
+                    approx_step,
+                    state,
+                    J
+                )
                 diagnostics.append(diagnostic)
             diagnostics = jax.tree.map(lambda *args: jnp.stack(args), *diagnostics)
             return state, diagnostics
 
-        diagnostics = []
-        for iteration in range(self.num_iterations):
-            state, diagnostic = single_iteration(mp_policy.cast_to_index(iteration), state)
-            diagnostics.append(diagnostic)
-        diagnostics = jax.tree.map(lambda *args: jnp.concatenate(args), *diagnostics)
+        state, diagnostics = jax.lax.scan(
+            single_iteration,
+            state,
+            xs=jnp.arange(self.num_iterations) + state.iteration
+        )
+        # diagnostic [num_iterations, num_approx_steps + 1]
+        # Stack the diagnostics for each iteration
+        diagnostics = jax.tree.map(lambda x: jnp.concatenate(jnp.unstack(x, axis=0)), diagnostics)
 
         # Convert back to complex
         state = state._replace(

@@ -12,8 +12,9 @@ from jax import config, numpy as jnp, lax
 
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import mp_policy, FloatArray, IntArray
+from dsa2000_cal.common.types import FloatArray, IntArray
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 GM_BODIES = {
@@ -83,17 +84,17 @@ class VisibilityCoords(NamedTuple):
 class FarFieldDelayEngineState(NamedTuple):
     ra0: jax.Array
     dec0: jax.Array
-    interp_times: jax.Array # [T]
-    x_antennas_gcrs: jax.Array # [T, num_ants, 3]
-    w_antennas_gcrs: jax.Array # [T, num_ants, 3]
-    X_earth_bcrs: InterpolatedArray # [3]
-    V_earth_bcrs: InterpolatedArray # [3]
-    R_earth_bcrs: InterpolatedArray # [3]
-    X_J_bcrs: InterpolatedArray # [N, 3]
-    V_J_bcrs: InterpolatedArray # [N, 3]
-    GM_J: jax.Array # [N]
-    radii_J: jax.Array # [N]
-    J2_J: jax.Array # [N]
+    interp_times: jax.Array  # [T]
+    x_antennas_gcrs: jax.Array  # [T, num_ants, 3]
+    w_antennas_gcrs: jax.Array  # [T, num_ants, 3]
+    X_earth_bcrs: InterpolatedArray  # [3]
+    V_earth_bcrs: InterpolatedArray  # [3]
+    R_earth_bcrs: InterpolatedArray  # [3]
+    X_J_bcrs: InterpolatedArray  # [N, 3]
+    V_J_bcrs: InterpolatedArray  # [N, 3]
+    GM_J: jax.Array  # [N]
+    radii_J: jax.Array  # [N]
+    J2_J: jax.Array  # [N]
 
 
 @dataclasses.dataclass(eq=False)

@@ -12,8 +12,8 @@ from jax import config, numpy as jnp, lax
 
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 
@@ -496,7 +496,7 @@ def far_field_delay(
             https://www.researchgate.net/publication/253171626
     """
     c = quantity_to_jnp(const.c)  # m / s
-    L_G = jnp.asarray(6.969290134e-10)  # 1 - d(TT) / d(TCG)
+    L_G = jnp.asarray(6.969290134e-10, mp_policy.time_dtype)  # 1 - d(TT) / d(TCG)
     GM_earth = quantity_to_jnp(const.GM_earth)  # m^3 / s^2
 
     b_gcrs = x_2_gcrs(t1) - x_1_gcrs(t1)

@@ -1,7 +1,6 @@
 import itertools
 import os
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -13,8 +12,8 @@ __all__ = [
     'vis_to_image'
 ]
 
-from dsa2000_cal.common.jax_utils import convert_to_ufunc
-from dsa2000_cal.common.types import FloatArray, ComplexArray, mp_policy
+from dsa2000_cal.common.types import FloatArray, ComplexArray
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 
 # TODO: set JVP for these, which is just the operator itself.
@@ -55,9 +54,11 @@ def dirty2vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     num_rows = np.shape(uvw)[-2]
     num_freqs = np.shape(freqs)[-1]
 
-    batch_dims = np.shape(uvw)[:-2]
+    # batch_dims = np.shape(uvw)[:-2]
 
     output_dtype = (1j * jnp.ones(1, dtype=dirty.dtype)).dtype
+
+    batch_dims = np.broadcast_shapes(np.shape(uvw)[:-2], np.shape(dirty)[:-2], np.shape(freqs)[:-1])
 
     # Define the expected shape & dtype of output.
     result_shape_dtype = jax.ShapeDtypeStruct(
@@ -193,6 +194,7 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
+
     uvw = np.asarray(uvw, order='C', dtype=np.float64)  # [[...],num_rows, 3]
     freqs = np.asarray(freqs, order='C', dtype=np.float64)  # [num_freqs[,1]]
     dirty = np.asarray(dirty, order='C')  # [..., num_l, num_m]
@@ -249,7 +251,7 @@ def _host_dirty2vis(uvw: np.ndarray, freqs: np.ndarray,
             print(e)
             raise e
 
-    batch_dims = np.shape(uvw)[:-2]
+    batch_dims = np.broadcast_shapes(np.shape(uvw)[:-2], np.shape(dirty)[:-2], np.shape(freqs)[:-1])
     all_indices = list(itertools.product(*[range(dim) for dim in batch_dims]))
     # Put dims at end so memory ordering is nice
     output_vis = np.zeros((num_rows, num_freq) + batch_dims, order='F', dtype=output_dtype)

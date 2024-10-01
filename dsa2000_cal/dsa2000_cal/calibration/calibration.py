@@ -18,7 +18,7 @@ from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import Abs
     ProbabilisticModelInstance, combine_probabilistic_model_instances
 from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put, block_until_ready, multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
 
@@ -191,18 +191,17 @@ class Calibration:
                 time_idx=mp_policy.cast_to_index(visibility_coords.time_idx)
             )  # [num_row, ...]
 
-            with jax.profiler.trace("/tmp/profiler", create_perfetto_link=True):
-                solutions, residual, state, diagnostics = block_until_ready(
-                    self._solve_jax(
-                        key=solve_key,
-                        freqs=tree_device_put(freqs_jax, mesh, ('chan',)),
-                        times=tree_device_put(times_jax, mesh, ()),
-                        init_state=last_state,  # already shard as prior output
-                        vis_data=tree_device_put(vis_data, mesh, (None, 'chan')),
-                        vis_coords=tree_device_put(visibility_coords, mesh, ()),
-                        num_iterations=num_iterations
-                    )
+            solutions, residual, state, diagnostics = block_until_ready(
+                self._solve_jax(
+                    key=solve_key,
+                    freqs=tree_device_put(freqs_jax, mesh, ('chan',)),
+                    times=tree_device_put(times_jax, mesh, ()),
+                    init_state=last_state,  # already shard as prior output
+                    vis_data=tree_device_put(vis_data, mesh, (None, 'chan')),
+                    vis_coords=tree_device_put(visibility_coords, mesh, ())
+                    , num_iterations=num_iterations
                 )
+            )
 
             cadence_idx += 1
             # Update metrics

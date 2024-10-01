@@ -211,3 +211,13 @@ class AbstractArray(ABC, BaseContent):
             antenna beam
         """
         ...
+
+    @abstractmethod
+    def integration_time(self) -> au.Quantity:
+        """
+        Get integration time (s)
+
+        Returns:
+            integration time
+        """
+        ...

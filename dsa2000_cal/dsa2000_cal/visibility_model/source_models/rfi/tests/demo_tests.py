@@ -95,7 +95,7 @@ def test_parametric_delay_acf():
                                    spectral_power=spectral_power,
                                    channel_lower=channel_lower,
                                    channel_upper=channel_upper,
-                                   convention='physical', resolution=32)
+                                   convention='physical', resolution=128)
     taus = jnp.linspace(-1e-4, 1e-4, 1000)
 
     acf_vals = jax.vmap(delay_acf)(taus)

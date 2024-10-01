@@ -2,7 +2,9 @@ from dsa2000_cal.assets.arrays.lwa.array import LWAArray
 
 
 def test_lwa_beam():
-    model = LWAArray(seed='test').get_antenna_model()
+    array = LWAArray(seed='test')
+    print(len(array.get_antennas()), array.get_system_equivalent_flux_density())
+    model = array.get_antenna_model()
     assert model.get_amplitude().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
     assert model.get_phase().shape == (len(model.get_theta()), len(model.get_phi()), len(model.get_freqs()), 2, 2)
 

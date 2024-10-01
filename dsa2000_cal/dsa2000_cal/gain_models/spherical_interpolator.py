@@ -10,9 +10,9 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, is_regular_grid
 from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.mixed_precision_utils import complex_type, mp_policy
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.types import complex_type, mp_policy
 from dsa2000_cal.gain_models.gain_model import GainModel
 
 

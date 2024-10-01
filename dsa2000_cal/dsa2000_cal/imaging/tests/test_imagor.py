@@ -69,12 +69,19 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     dm = 0.001
     center_l = center_m = centre_offset
     beam = evaluate_beam(freqs, times, beam_gain_model, geodesic_model, num_l, num_m, dl, dm, center_l, center_m)
-    assert beam.shape == (num_l, num_m, len(times), len(freqs), 2, 2)
-    assert np.all(np.isfinite(beam))
 
+    assert np.all(np.isfinite(beam))
     avg_beam = jnp.mean(beam, axis=(2, 3))
 
-    image = np.ones((num_l, num_m, 4))
+    if len(coherencies) == 1:
+        assert beam.shape == (num_l, num_m, len(times), len(freqs))
+    else:
+        assert beam.shape == (num_l, num_m, len(times), len(freqs), 2, 2)
+
+
+
+
+    image = np.ones((num_l, num_m, len(coherencies)))
     # image[::10, ::10, 0] = 1.
     # image[::10, ::10, 3] = 1.
 
@@ -83,8 +90,12 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     assert np.all(np.isfinite(pb_cor_image))
     import pylab as plt
 
+
+    if len(coherencies) == 4:
+        avg_beam = avg_beam[..., 0, 0]
+
     plt.imshow(
-        np.abs(avg_beam[..., 0, 0]).T,
+        np.abs(avg_beam).T,
         origin='lower',
         aspect='auto',
         extent=(-0.5 * num_l * dl, 0.5 * num_l * dl, -0.5 * num_m * dm, 0.5 * num_m * dm)

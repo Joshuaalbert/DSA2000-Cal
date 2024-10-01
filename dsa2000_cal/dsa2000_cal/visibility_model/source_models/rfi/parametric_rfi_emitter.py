@@ -45,6 +45,7 @@ class ParametricDelayACF:
     def get_resolution(channel_width: au.Quantity) -> int:
         if not channel_width.unit.is_equivalent("Hz"):
             raise ValueError("channel_width must be in Hz")
+        # 10 kHz is a typical PFB kernel resolution, we double sample it.
         resolution = int(2 * channel_width / (10 * au.kHz))
         return resolution
 

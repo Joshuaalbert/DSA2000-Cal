@@ -19,8 +19,8 @@ from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_c
 from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.jax_utils import multi_vmap, block_until_ready
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.types import mp_policy
 from dsa2000_cal.common.vec_utils import kron_inv
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.gain_models.gain_model import GainModel
@@ -32,6 +32,20 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 class Imagor:
     """
     Performs imaging (without deconvolution) of visibilties using W-gridder.
+
+    Args:
+        plot_folder: the folder to save the images
+        field_of_view: the field of view in degrees
+        baseline_min: the minimum baseline length in meters, shorter baselines are flagged
+        oversample_factor: the oversampling factor, higher is more accurate but bigger image
+        nthreads: the number of threads to use, None for all
+        epsilon: the epsilon value of wgridder
+        convention: the convention to use
+        verbose: whether to print verbose output
+        weighting: the weighting scheme to use
+        coherencies: the coherencies to image, None for all
+        spectral_cube: whether to image as a spectral cube
+        seed: the random seed
     """
 
     # Imaging parameters
@@ -81,7 +95,7 @@ class Imagor:
         vis = jnp.concatenate(vis, axis=0)  # [num_rows, chan, 4/1]
         weights = jnp.concatenate(weights, axis=0)  # [num_rows, chan, 4/1]
         flags = jnp.concatenate(flags, axis=0)  # [num_rows, chan, 4/1]
-        freqs = quantity_to_jnp(ms.meta.freqs) # [num_chan]
+        freqs = quantity_to_jnp(ms.meta.freqs)  # [num_chan]
 
         wavelengths = quantity_to_np(constants.c / ms.meta.freqs)
         diameter = np.min(quantity_to_np(ms.meta.antenna_diameters))
@@ -249,8 +263,8 @@ class Imagor:
             raise ValueError(f"Unknown weighting scheme {self.weighting}")
 
         @partial(multi_vmap,
-                 in_mapping="[r,c,p],[r,c,p],[r,c,p]",
-                 out_mapping="[...,p]",
+                 in_mapping="[r,c,coh],[r,c,coh],[r,c,coh]",
+                 out_mapping="[...,coh]",
                  verbose=True)
         def image_single_coh(vis, weights, mask):
             dirty_image = vis_to_image(

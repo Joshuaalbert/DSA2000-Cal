@@ -16,9 +16,10 @@ from tomographic_kernel.utils import make_coord_array
 from dsa2000_cal.common.cache_utils import check_cache
 from dsa2000_cal.common.coord_utils import earth_location_to_enu, lmn_to_enu
 from dsa2000_cal.common.jax_utils import pad_to_chunksize, chunked_pmap
+from dsa2000_cal.common.linalg_utils import msqrt
+from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import complex_type
 
 TEC_CONV: float = -8.4479745 * au.rad * au.MHz  # rad MHz / mTECU
 
@@ -353,20 +354,3 @@ class ToTFPKernel(tfp.math.psd_kernels.PositiveSemidefiniteKernel):
         )
 
         return self.tomo_kernel.cov_func(X1, X2)
-
-
-def msqrt(A):
-    """
-    Computes the matrix square-root using SVD, which is robust to poorly conditioned covariance matrices.
-    Computes, M such that M @ M.T = A
-
-    Args:
-    A: [N,N] Square matrix to take square root of.
-
-    Returns: [N,N] matrix.
-    """
-    U, s, Vh = jnp.linalg.svd(A)
-    L = U * jnp.sqrt(s)
-    max_eig = jnp.max(s)
-    min_eig = jnp.min(s)
-    return max_eig, min_eig, L

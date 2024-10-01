@@ -7,7 +7,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, convert_to_real
 from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.common.types import mp_policy
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 
 def test_multi_step_lm():
@@ -48,8 +48,8 @@ def test_multi_step_lm():
         x = (x.real, x.imag)
 
         lm = MultiStepLevenbergMarquardt(residual_fn=residuals,
-                                         num_iterations=2,
-                                         num_approx_steps=1,
+                                         num_iterations=3,
+                                         num_approx_steps=2,
                                          verbose=True)
         state = lm.create_initial_state(x)
         state, diagnostics = lm.solve(state)

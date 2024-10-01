@@ -17,6 +17,9 @@ class LWAArray(AbstractArray):
     LWA array class.
     """
 
+    def integration_time(self) -> au.Quantity:
+        return 10. * au.s
+
     def get_channel_width(self) -> au.Quantity:
         return 23913.3199056 * au.Hz
 
