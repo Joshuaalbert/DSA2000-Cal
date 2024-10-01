@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import uuid
+import warnings
 
 
 def deterministic_uuid(seed: str) -> uuid.UUID:
@@ -97,6 +98,7 @@ def sync_content():
                 last_sync = datetime.datetime.fromisoformat(last_line.strip())
                 if datetime.datetime.now() - last_sync < datetime.timedelta(days=1):
                     return
+        print("Syncing assets. This happens at most once per day, and may take a few minutes.")
 
         def remove_content_prefix(content_path):
             prefix_path = os.path.join(*content_prefix_path)
@@ -122,9 +124,9 @@ def sync_content():
                         ftp_url = f"{FMCAL_FTP_ADDRESS}{asset_root_path}/{line.strip()}"
                         cmd = ['rsync', '-a','--partial', ftp_url, f"{destination_path}/"]
                         subprocess.run(['echo'] + cmd)
-                        # completed_process = subprocess.run(cmd)
-                        # if completed_process.returncode != 0:
-                        #     warnings.warn(f"rsync failed with return code {completed_process.returncode}")
+                        completed_process = subprocess.run(cmd)
+                        if completed_process.returncode != 0:
+                            warnings.warn(f"rsync failed with return code {completed_process.returncode}")
 
         with open(cert_file, 'a') as f:
             f.write(f"{datetime.datetime.now().isoformat()}\n")
