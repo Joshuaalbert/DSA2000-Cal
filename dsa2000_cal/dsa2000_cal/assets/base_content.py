@@ -1,5 +1,8 @@
+import datetime
+import glob
 import hashlib
 import os
+import subprocess
 import sys
 import uuid
 
@@ -29,6 +32,7 @@ class BaseContent:
     """
 
     def __init__(self, *, seed: str):
+        sync_content()
         self.content_path = self._content_path()
         self.seed = seed
         self.id = str(deterministic_uuid(seed))
@@ -72,3 +76,55 @@ class BaseContent:
         if not isinstance(other, BaseContent):
             raise TypeError(f"Expected 'BaseContent' inheritor, got {type(other)}")
         return self.id < other.id
+
+
+_BASE_CONTENT_SYNC = False
+
+
+def sync_content():
+    global _BASE_CONTENT_SYNC
+    if not _BASE_CONTENT_SYNC:
+        _BASE_CONTENT_SYNC = True
+
+        content_prefix_path = os.path.split(os.path.abspath(__file__))[:-1]
+
+        cert_file = os.path.join(*content_prefix_path, '.sync_cert')
+        if os.path.exists(cert_file):
+            with open(cert_file, 'r') as f:
+                # get the last line
+                last_line = f.readlines()[-1]
+                # Parse from isot
+                last_sync = datetime.datetime.fromisoformat(last_line.strip())
+                if datetime.datetime.now() - last_sync < datetime.timedelta(days=1):
+                    return
+
+        def remove_content_prefix(content_path):
+            prefix_path = os.path.join(*content_prefix_path)
+            # remove
+            if not content_path.startswith(prefix_path):
+                raise RuntimeError("Prefix content path not found in the content path")
+            content_path = content_path[len(prefix_path):]
+            return content_path
+
+        lf_paths = glob.glob(os.path.join(*content_prefix_path, "**", ".large_files"), recursive=True)
+        FMCAL_FTP_ADDRESS = os.environ.get("FMCAL_FTP_ADDRESS", "mario:/safepool/fmcal_data")
+
+        for lf_path in lf_paths:
+            # lf_path = os.path.join(*self.content_path, ".large_files")
+            if os.path.exists(lf_path):
+                with open(lf_path, 'r') as f:
+                    for line in f:
+                        # line examples:
+                        # Tau-sources.txt
+                        # fits_models/*.fits
+                        destination_path = os.path.dirname(lf_path)
+                        asset_root_path = remove_content_prefix(destination_path)
+                        ftp_url = f"{FMCAL_FTP_ADDRESS}{asset_root_path}/{line.strip()}"
+                        cmd = ['rsync', '-a','--partial', ftp_url, f"{destination_path}/"]
+                        subprocess.run(['echo'] + cmd)
+                        # completed_process = subprocess.run(cmd)
+                        # if completed_process.returncode != 0:
+                        #     warnings.warn(f"rsync failed with return code {completed_process.returncode}")
+
+        with open(cert_file, 'a') as f:
+            f.write(f"{datetime.datetime.now().isoformat()}\n")
