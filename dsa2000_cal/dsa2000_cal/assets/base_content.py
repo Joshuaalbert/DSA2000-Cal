@@ -83,6 +83,9 @@ _BASE_CONTENT_SYNC = False
 
 
 def sync_content():
+    if os.environ.get("SKIP_CONTENT_SYNC", "0") == "1":
+        return
+
     global _BASE_CONTENT_SYNC
     if not _BASE_CONTENT_SYNC:
         _BASE_CONTENT_SYNC = True
