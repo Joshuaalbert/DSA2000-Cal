@@ -344,6 +344,7 @@ def main():
     plt.close('all')
 
     # Run
+    print('Num devices:', len(jax.devices()))
 
     problem = OptimisationProblem(num_radial_bins=len(jax.devices()) * 20 - 1, num_theta_bins=len(jax.devices()) * 20,
                                   lmax=3 * au.deg)
@@ -359,7 +360,7 @@ def main():
         x, state, diagnostics = solve(state, x0, sigma, lmn, freq, latitude)
         x_iter = x
         save_pytree(state, 'state.json')
-        with open('solution_{iteration}.json', 'w') as f:
+        with open(f'solution_{iteration}.json', 'w') as f:
             antenna_locs = ENU(
                 np.asarray(x[:, 0]) * au.m, np.asarray(x[:, 1]) * au.m, np.asarray(x[:, 2]) * au.m,
                 location=array_location, obstime=obstime
