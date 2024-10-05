@@ -23,13 +23,13 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-
-tfpd = tfp.distributions
+from dsa2000_cal.common.jax_utils import create_mesh
 
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 from typing import Tuple
-from dsa2000_cal.common.jax_utils import create_mesh
+
+tfpd = tfp.distributions
 
 
 def rotate_coords_to_dec0(antennas: jax.Array, latitude: jax.Array) -> jax.Array:
@@ -360,7 +360,12 @@ def main():
         x_iter = x
         save_pytree(state, 'state.json')
         with open('solution_{iteration}.json', 'w') as f:
-            f.write(jax.tree_util.tree_map(lambda x: x.tolist(), x))
+            antenna_locs = ENU(
+                np.asarray(x[:, 0]) * au.m, np.asarray(x[:, 1]) * au.m, np.asarray(x[:, 2]) * au.m,
+                location=array_location, obstime=obstime
+            ).transform_to(ac.ITRS(obstime=obstime, location=array_location)).cartesian.xyz.to('m').value.T
+            for row in antenna_locs:
+                f.write(f"{row[0]},{row[1]},{row[2]}\n")
 
         # Plot x0 and gradient from from x0 to x
         # fig, ax = plt.subplots(1, 1, figsize=(6, 6))
