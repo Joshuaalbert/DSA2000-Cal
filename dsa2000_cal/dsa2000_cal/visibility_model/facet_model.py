@@ -2,15 +2,12 @@ import dataclasses
 from typing import NamedTuple
 
 import jax
-import jax.numpy as jnp
-from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import complex_type
-from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, \
     FITSModelData, FITSPredict
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
@@ -36,14 +33,15 @@ class FacetModel:
     In the case that the flux is highly localised it can be used to construct calibrators for calibration.
     Otherwise, the notion of a flux-weighted direction is not of much value.
     """
-    point_source_model: PointSourceModel | None
-    gaussian_source_model: GaussianSourceModel | None
-    fits_source_model: FITSSourceModel | None
-    rfi_emitter_source_model: RFIEmitterSourceModel | None
-    gain_model: GainModel | None
     near_field_delay_engine: NearFieldDelayEngine
     far_field_delay_engine: FarFieldDelayEngine
     geodesic_model: GeodesicModel
+
+    point_source_model: PointSourceModel | None = None
+    gaussian_source_model: GaussianSourceModel | None = None
+    fits_source_model: FITSSourceModel | None = None
+    rfi_emitter_source_model: RFIEmitterSourceModel | None = None
+    gain_model: GainModel | None = None
 
     convention: str = "physical"
 
@@ -187,7 +185,7 @@ class FacetModel:
             epsilon=1e-6,
             convention=self.convention
         )
-        lte_predict = RFIEmitterPredict(
+        rfi_predict = RFIEmitterPredict(
             delay_engine=self.near_field_delay_engine,
             convention=self.convention
         )
@@ -212,7 +210,7 @@ class FacetModel:
             else:
                 vis += fits_vis
         if model_data.rfi_emitter_model_data is not None:
-            lte_vis = lte_predict.predict(model_data.rfi_emitter_model_data, visibility_coords)
+            lte_vis = rfi_predict.predict(model_data.rfi_emitter_model_data, visibility_coords)
             if vis is None:
                 vis = lte_vis
             else:

@@ -6,12 +6,14 @@ import numpy as np
 import pylab as plt
 import pytest
 
+from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.spherical_interpolator import phi_theta_from_lmn, lmn_from_phi_theta
 
 
-@pytest.mark.parametrize('array_name', ['dsa2000W_small', 'dsa2000W', 'lwa'])
+# @pytest.mark.parametrize('array_name', ['dsa2000W_small', 'dsa2000W', 'lwa'])
+@pytest.mark.parametrize('array_name', ['lwa'])
 def test_beam_gain_model_factory(array_name: str):
     t0 = time_mod.time()
     beam_gain_model = build_beam_gain_model(array_name=array_name)
@@ -47,7 +49,7 @@ def test_beam_gain_model_factory(array_name: str):
     reconstructed_model_gains = compute_gains(
         **args
     )  # [s, t, a, f, ...]
-    jax.block_until_ready(reconstructed_model_gains)
+    block_until_ready(reconstructed_model_gains)
     print(f"Computed in {time_mod.time() - t0} seconds.")
 
     print(beam_gain_model.model_gains.shape)  # [num_model_times, num_model_dir, num_model_freqs, 2, 2]

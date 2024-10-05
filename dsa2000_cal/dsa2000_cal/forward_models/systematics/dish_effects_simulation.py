@@ -16,7 +16,7 @@ from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
 
 
@@ -151,7 +151,7 @@ class DishEffectsSimulation:
     plot_folder: str
     cache_folder: str
     seed: int = 42
-    convention: Literal['physical', 'casa'] = 'physical'
+    convention: Literal['physical', 'engineering'] = 'physical'
     dtype: SupportsDType = complex_type
 
     def __post_init__(self):
@@ -420,7 +420,7 @@ class DishEffectsSimulation:
         horizon_peak_astigmatism = system_params.horizon_peak_astigmatism  # [num_ant, 1]
         surface_error = system_params.surface_error  # [num_ant, 1]
 
-        (i0, alpha0), (i1, alpha1) = get_interp_indices_and_weights(
+        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
             rel_time,
             jnp.asarray((self.model_times - self.ref_time).sec)
         )
@@ -455,7 +455,7 @@ class DishEffectsSimulation:
 
         total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [Nm, Nl, num_ant, 1]
 
-        if self.convention == 'casa':
+        if self.convention == 'engineering':
             constant = jnp.asarray(2j * jnp.pi, self.dtype)  # [num_freqs]
         elif self.convention == 'physical':
             constant = jnp.asarray(-2j * jnp.pi, self.dtype)  # [num_freqs]

@@ -44,13 +44,13 @@ class UnconstrainedGain(AbstractGainPriorModel):
                             scale=scale
                             ),
                 name='gains_real'
-            )
+            ).parametrised()
             gains_imag = yield Prior(
                 tfpd.Normal(loc=loc,
                             scale=scale
                             ),
                 name='gains_imag'
-            )
+            ).parametrised()
             gains = gains_real + 1j * gains_imag  # [num_source, num_ant, 2, 2]
             # Broadcast to shape
             gains = jnp.broadcast_to(
@@ -80,14 +80,14 @@ class DiagonalUnconstrainedGain(AbstractGainPriorModel):
                     scale=scale
                 ),
                 name='gains_real'
-            )
+            ).parametrised()
             gains_imag = yield Prior(
                 tfpd.Normal(
                     loc=loc,
                     scale=scale
                 ),
                 name='gains_imag'
-            )
+            ).parametrised()
             diag_gains = gains_real + 1j * gains_imag  # [num_source, num_ant, 2]
             gains = jax.vmap(jax.vmap(jnp.diag))(diag_gains)  # [num_source, num_ant, 2, 2]
             # Broadcast to shape
@@ -119,14 +119,14 @@ class ScalarUnconstrainedGain(AbstractGainPriorModel):
                     scale=scale
                 ),
                 name='gains_real'
-            )
+            ).parametrised()
             gains_imag = yield Prior(
                 tfpd.Normal(
                     loc=loc,
                     scale=scale
                 ),
                 name='gains_imag'
-            )
+            ).parametrised()
             gains = gains_real + 1j * gains_imag  # [num_source, num_ant]
             # Broadcast to shape
             gains = jnp.broadcast_to(

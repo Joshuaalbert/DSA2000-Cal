@@ -1,16 +1,17 @@
 import os
 
-import jax.numpy as jnp
 import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import config
 
-from dsa2000_cal.common.types import complex_type
+# Set num jax devices to number of CPUs
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
-# Set num jax devices
 config.update("jax_enable_x64", True)
 config.update('jax_threefry_partitionable', True)
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+config.update("jax_explain_cache_misses", True)
+# Some things can be written to persistent cache
+config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
 
 from tomographic_kernel.frames import ENU
 from dsa2000_cal.assets.content_registry import fill_registries
@@ -29,7 +30,7 @@ def main(ms_folder: str):
     else:
         array_location = array.get_array_location()
         antennas = array.get_antennas()
-        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 10 * np.arange(1) * au.s
+        obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 10 * np.arange(10) * au.s
         freqs = au.Quantity([55], unit=au.MHz)
         phase_tracking = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
         meta = MeasurementSetMetaV0(
@@ -38,7 +39,7 @@ def main(ms_folder: str):
             phase_tracking=phase_tracking,
             channel_width=array.get_channel_width(),
             integration_time=au.Quantity(10, 's'),
-            coherencies=['I'],
+            coherencies=['XX', 'XY', 'YX', 'YY'],
             pointings=None,
             times=obstimes,
             freqs=freqs,
@@ -64,12 +65,14 @@ def main(ms_folder: str):
         num_shards=len(ms.meta.freqs),
         oversample_factor=7.,
         field_of_view=180 * au.deg,
-        dtype=complex_type,
         weighting='natural',
         epsilon=1e-6,
         add_noise=True,
-        include_calibration=False,
-        include_simulation=True
+        include_calibration=True,
+        include_simulation=True,
+        inplace_subtract=True,
+        num_cal_iters=4,
+        overwrite=True
     )
     forward_model.forward(ms=ms)
 

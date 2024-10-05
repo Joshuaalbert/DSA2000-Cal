@@ -390,13 +390,6 @@ def _check_image_model(image_model: ImageModel):
     if image_model.image.shape[3] != len(image_model.coherencies):
         raise ValueError(f"num_coherencies must match image[3] shape, "
                          f"got {image_model.image.shape[3]} != {len(image_model.coherencies)}")
-    if image_model.coherencies not in [
-        ['XX', 'XY', 'YX', 'YY'],
-        ['I', 'Q', 'U', 'V'],
-        ['RR', 'RL', 'LR', 'LL'],
-        ['I']
-    ]:
-        raise ValueError(f"coherencies format {image_model.coherencies} is invalid.")
     # Ensure freqs are uniformly spaced
     dfreq = np.diff(image_model.freqs.to(au.Hz).value)
     if len(dfreq) > 0 and not np.allclose(dfreq, dfreq[0], atol=1e-6):

@@ -10,7 +10,7 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 
 
 def calc_baseline_noise(system_equivalent_flux_density: float | jax.Array, chan_width_hz: float | jax.Array,
-                        t_int_s: float | jax.Array) -> float:
+                        t_int_s: float | jax.Array) -> jax.Array:
     """Calculate the per visibility rms for identical antennas.
 
     Args:
@@ -23,11 +23,11 @@ def calc_baseline_noise(system_equivalent_flux_density: float | jax.Array, chan_
         float: noise standard devation per part visibility.
     """
     # The 2 is for number of polarizations.
-    return system_equivalent_flux_density / jnp.sqrt(2 * chan_width_hz * t_int_s)
+    return system_equivalent_flux_density / jnp.sqrt(chan_width_hz * t_int_s)
 
 
 def calc_image_noise(system_equivalent_flux_density: float, bandwidth_hz: float, t_int_s: float, num_antennas: int,
-                     flag_frac: float) -> float:
+                     flag_frac: float, num_pol: int = 1) -> jax.Array:
     """
     Calculate the image noise for the central pixel.
     
@@ -41,10 +41,12 @@ def calc_image_noise(system_equivalent_flux_density: float, bandwidth_hz: float,
     Returns:
         the image noise in Jy
     """
-    num_baselines = (1. - flag_frac) * num_antennas * (num_antennas - 1) / 2.
-    return calc_baseline_noise(system_equivalent_flux_density=system_equivalent_flux_density,
-                               chan_width_hz=bandwidth_hz,
-                               t_int_s=t_int_s) / jnp.sqrt(num_baselines)
+    # central pixel = (sum_b V_b cos(0)) / N_b, with V_b = 1 ==> var(central pixel) = sum_b var(V_b) / N_b
+    num_baselines = (1. - flag_frac) * num_pol * num_antennas * (num_antennas - 1) / 2.
+    return calc_baseline_noise(
+        system_equivalent_flux_density=system_equivalent_flux_density,
+        chan_width_hz=bandwidth_hz,
+        t_int_s=t_int_s) / jnp.sqrt(2 * num_baselines)  # 2 is for real component only
 
 
 def sum_and_add_noise(output_ms_file: str, input_ms_files: List[str], array: AbstractArray,

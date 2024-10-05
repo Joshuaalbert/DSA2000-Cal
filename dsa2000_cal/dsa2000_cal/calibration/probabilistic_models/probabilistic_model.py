@@ -1,14 +1,13 @@
 import dataclasses
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Tuple, Callable, List, Any
 
+import astropy.time as at
 import jax
-import tensorflow_probability.substrates.jax as tfp
 
+from dsa2000_cal.common.types import ComplexArray, FloatArray
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
-
-tfpd = tfp.distributions
+from dsa2000_cal.measurement_sets.measurement_set import VisibilityData, MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)
@@ -16,24 +15,6 @@ class ProbabilisticModelInstance:
     get_init_params_fn: Callable[[], Any]
     log_prob_joint_fn: Callable[[Any], jax.Array]
     forward_fn: Callable[[Any], Tuple[jax.Array, List[jax.Array]]]
-
-    def __sum__(self, other: 'ProbabilisticModelInstance') -> 'ProbabilisticModelInstance':
-        def get_init_params_fn() -> Tuple[Any, Any]:
-            return (self.get_init_params(), other.get_init_params())
-
-        def log_prob_joint_fn(params: List[Any]):
-            return self.log_prob_joint(params[0]) + other.log_prob_joint(params[1])
-
-        def forward_fn(params: Any):
-            vis1, gains1 = self.forward(params[0])
-            vis2, gains2 = other.forward(params[1])
-            return vis1 + vis2, gains1 + gains2
-
-        return ProbabilisticModelInstance(
-            get_init_params_fn=get_init_params_fn,
-            log_prob_joint_fn=log_prob_joint_fn,
-            forward_fn=forward_fn
-        )
 
     def get_init_params(self) -> Any:
         """
@@ -44,7 +25,7 @@ class ProbabilisticModelInstance:
         """
         return self.get_init_params_fn()
 
-    def log_prob_joint(self, params: Any) -> jax.Array:
+    def log_prob_joint(self, params: Any) -> FloatArray:
         """
         Compute the joint log probability of the gains and the data.
 
@@ -56,7 +37,7 @@ class ProbabilisticModelInstance:
         """
         return self.log_prob_joint_fn(params)
 
-    def forward(self, params: Any) -> Tuple[jax.Array, List[jax.Array]]:
+    def forward(self, params: Any) -> Tuple[ComplexArray, List[Any]]:
         """
         Forward model for the gains.
 
@@ -70,11 +51,37 @@ class ProbabilisticModelInstance:
         return self.forward_fn(params)
 
 
+def combine_probabilistic_model_instances(instances: List[ProbabilisticModelInstance]):
+    def get_init_params_fn() -> List[Any]:
+        return [instance.get_init_params() for instance in instances]
+
+    def log_prob_joint_fn(params: List[Any]):
+        log_prob_joint = [instance.log_prob_joint(param) for instance, param in zip(instances, params)]
+        return sum(log_prob_joint[1:], start=log_prob_joint[0])
+
+    def forward_fn(params: List[Any]):
+        visibilities = []
+        constrained_params = []
+        for instance, param in zip(instances, params):
+            vis, constrained_param = instance.forward(param)
+            visibilities.append(vis)
+            constrained_params.append(constrained_param)
+        vis = sum(visibilities[1:], start=visibilities[0])
+        return vis, constrained_params
+
+    return ProbabilisticModelInstance(
+        get_init_params_fn=get_init_params_fn,
+        log_prob_joint_fn=log_prob_joint_fn,
+        forward_fn=forward_fn
+    )
+
+
 class AbstractProbabilisticModel(ABC):
     """
     Represents a probabilistic model and generates instances, based on data.
     """
 
+    @abstractmethod
     def create_model_instance(self, freqs: jax.Array,
                               times: jax.Array,
                               vis_data: VisibilityData,
@@ -91,5 +98,17 @@ class AbstractProbabilisticModel(ABC):
 
         Returns:
             An instance
+        """
+        ...
+
+    @abstractmethod
+    def save_solution(self, solution: Any, file_name: str, times: at.Time, ms: MeasurementSet):
+        """
+        Save the solution to a folder.
+
+        Args:
+            solution: Any
+            file_name: str
+            times: at.Time
         """
         ...

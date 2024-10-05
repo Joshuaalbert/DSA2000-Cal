@@ -17,8 +17,11 @@ class DSA2000WArray(AbstractArray):
     DSA2000W array class.
     """
 
+    def integration_time(self) -> au.Quantity:
+        return 1.5 * au.s
+
     def get_channel_width(self) -> au.Quantity:
-        return (2000e6 * au.Hz - 700e6 * au.Hz) / 8000
+        return 1300 * au.MHz / 10000
 
     def get_array_location(self) -> ac.EarthLocation:
         return mean_itrs(self.get_antennas().get_itrs()).earth_location

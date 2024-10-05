@@ -15,7 +15,7 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, Measure
 
 def create_ms_meta(casa_ms: str, field_idx: int | None = None,
                    spectral_window_idx: int | None = None,
-                   convention: Literal['casa', 'physical'] = 'physical') -> MeasurementSetMeta:
+                   convention: Literal['engineering', 'physical'] = 'physical') -> MeasurementSetMeta:
     """
     Create a MeasurementSetMeta object from a CASA Measurement Set file.
 
@@ -141,7 +141,7 @@ def transfer_from_casa(ms_folder: str,
                        casa_ms: str,
                        field_idx: int | None = None,
                        spectral_window_idx: int | None = None,
-                       convention: Literal['casa', 'physical'] = 'physical') -> MeasurementSet:
+                       convention: Literal['engineering', 'physical'] = 'physical') -> MeasurementSet:
     """
     Transfer visibilities from the MeasurementSet to the output CASA Measurement Set.
 

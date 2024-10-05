@@ -6,7 +6,7 @@ from dsa2000_cal.common.fourier_utils import ApertureTransform, find_optimal_fft
 import numpy as np
 
 
-@pytest.mark.parametrize('convention', ['physical', 'casa'])
+@pytest.mark.parametrize('convention', ['physical', 'engineering'])
 def test_fourier_conventions(convention):
     dx = 0.1
     n = 100
@@ -33,7 +33,7 @@ def test_fourier_conventions(convention):
     # This passes for both conventions
     np.testing.assert_allclose(f_aperture, rec_f_aperture, atol=1e-4)
 
-    # If we run with 'casa' convention, the plots all have mode in centre
+    # If we run with 'engineering' convention, the plots all have mode in centre
 
     f_image = jnp.exp(-nu ** 2) + nu
 

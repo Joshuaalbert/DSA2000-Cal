@@ -1,3 +1,4 @@
+import jax
 import numpy as np
 from astropy import units as au
 
@@ -8,12 +9,9 @@ def test_lte_rfi_source_factory():
     model = MockCellTower(seed='test')
     import pylab as plt
     source_params = model.make_source_params(freqs=np.linspace(700, 800, 50) * au.MHz)
-    plt.plot(source_params.freqs, source_params.spectral_flux_density[0])
-    plt.xlabel('Frequency [MHz]')
-    plt.ylabel('Luminosity [W/Hz]')
-    plt.show()
-    plt.plot(source_params.delay_acf.x, source_params.delay_acf.values[:, 0])
+    delays = np.linspace(-1e7, 1e7, 1000)
+    print(source_params.delay_acf)
+    plt.plot(delays, jax.vmap(source_params.delay_acf)(delays)[:, 0, 0])
     plt.xlabel('Delay [s]')
     plt.ylabel('Auto-correlation function')
     plt.show()
-    assert source_params.delay_acf.regular_grid

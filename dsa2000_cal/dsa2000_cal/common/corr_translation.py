@@ -32,6 +32,16 @@ def unflatten_coherencies(coherencies: jax.Array) -> jax.Array:
 
 
 def stokes_to_linear(stokes_coherencies: jax.Array, flat_output: bool = False) -> jax.Array:
+    """
+    Convert stokes coherencies to linear coherencies.
+
+    Args:
+        stokes_coherencies: [4] array of stokes coherencies in the order [I, Q, U, V] or [[I, Q], [U, V]]
+        flat_output: if True, return the output as a flat array.
+
+    Returns:
+        [4] array of linear coherencies in the order [XX, XY, YX, YY], or [[XX, XY], [YX, YY]]
+    """
     if np.size(stokes_coherencies) != 4:
         raise ValueError("Stokes coherencies must have 4 elements.")
     if np.shape(stokes_coherencies) == (2, 2):
@@ -46,7 +56,18 @@ def stokes_to_linear(stokes_coherencies: jax.Array, flat_output: bool = False) -
         return output
     return unflatten_coherencies(output)
 
+
 def stokes_I_to_linear(stokes_I: jax.Array, flat_output: bool = False) -> jax.Array:
+    """
+    Convert stokes I to linear coherencies.
+
+    Args:
+        stokes_I: [1] array of stokes I.
+        flat_output: if True, return the output as a flat array.
+
+    Returns:
+        [4] array of linear coherencies in the order [XX, XY, YX, YY], or [[XX, XY], [YX, YY]]
+    """
     if np.size(stokes_I) != 1:
         raise ValueError("Stokes I must have 1 element.")
     I = stokes_I
@@ -61,6 +82,16 @@ def stokes_I_to_linear(stokes_I: jax.Array, flat_output: bool = False) -> jax.Ar
 
 
 def stokes_to_circular(stokes_coherencies: jax.Array, flat_output: bool = False) -> jax.Array:
+    """
+    Convert stokes coherencies to circular coherencies.
+
+    Args:
+        stokes_coherencies: [4] array of stokes coherencies in the order [I, Q, U, V] or [[I, Q], [U, V]]
+        flat_output: if True, return the output as a flat array.
+
+    Returns:
+        [4] array of circular coherencies in the order [RR, RL, LR, LL], or [[RR, RL], [LR, LL]]
+    """
     if np.size(stokes_coherencies) != 4:
         raise ValueError("Stokes coherencies must have 4 elements.")
     if np.shape(stokes_coherencies) == (2, 2):
@@ -77,6 +108,16 @@ def stokes_to_circular(stokes_coherencies: jax.Array, flat_output: bool = False)
 
 
 def linear_to_stokes(linear_coherencies: jax.Array, flat_output: bool = False) -> jax.Array:
+    """
+    Convert linear coherencies to stokes coherencies.
+
+    Args:
+        linear_coherencies: [4] array of linear coherencies in the order [XX, XY, YX, YY] or [[XX, XY], [YX, YY]]
+        flat_output: if True, return the output as a flat array.
+
+    Returns:
+        [4] array of stokes coherencies in the order [I, Q, U, V], or [[I, Q], [U, V]]
+    """
     if np.size(linear_coherencies) != 4:
         raise ValueError("Linear coherencies must have 4 elements.")
     if np.shape(linear_coherencies) == (2, 2):
@@ -93,6 +134,16 @@ def linear_to_stokes(linear_coherencies: jax.Array, flat_output: bool = False) -
 
 
 def circular_to_stokes(circular_coherencies: jax.Array, flat_output: bool = False) -> jax.Array:
+    """
+    Convert circular coherencies to stokes coherencies.
+
+    Args:
+        circular_coherencies: [4] array of circular coherencies in the order [RR, RL, LR, LL] or [[RR, RL], [LR, LL]]
+        flat_output: if True, return the output as a flat array.
+
+    Returns:
+        [4] array of stokes coherencies in the order [I, Q, U, V], or [[I, Q], [U, V]]
+    """
     if np.size(circular_coherencies) != 4:
         raise ValueError("Circular coherencies must have 4 elements.")
     if np.shape(circular_coherencies) == (2, 2):
@@ -109,55 +160,28 @@ def circular_to_stokes(circular_coherencies: jax.Array, flat_output: bool = Fals
 
 
 def linear_to_circular(linear_coherencies: jax.Array, flat_output: bool = False) -> jax.Array:
+    """
+    Convert linear coherencies to circular coherencies.
+
+    Args:
+        linear_coherencies: [4] array of linear coherencies in the order [XX, XY, YX, YY] or [[XX, XY], [YX, YY]]
+        flat_output: if True, return the output as a flat array.
+
+    Returns:
+        [4] array of circular coherencies in the order [RR, RL, LR, LL], or [[RR, RL], [LR, LL]]
+    """
     return stokes_to_circular(linear_to_stokes(linear_coherencies, flat_output=True), flat_output=flat_output)
 
 
 def circular_to_linear(circular_coherencies: jax.Array, flat_output: bool = False) -> jax.Array:
+    """
+    Convert circular coherencies to linear coherencies.
+
+    Args:
+        circular_coherencies: [4] array of circular coherencies in the order [RR, RL, LR, LL] or [[RR, RL], [LR, LL]]
+        flat_output: if True, return the output as a flat array.
+
+    Returns:
+        [4] array of linear coherencies in the order [XX, XY, YX, YY], or [[XX, XY], [YX, YY]]
+    """
     return stokes_to_linear(circular_to_stokes(circular_coherencies, flat_output=True), flat_output=flat_output)
-
-
-def test_proofs():
-    import sympy as sp
-
-    def circular_to_stokes(circular_coherencies):
-        RR, RL, LR, LL = circular_coherencies
-        I = (RR + LL)
-        Q = (RL + LR)
-        U = sp.I * (LR - RL)
-        V = (RR - LL)
-        return sp.Matrix([I, Q, U, V])
-
-    def stokes_to_circular(stokes_coherencies):
-        I, Q, U, V = stokes_coherencies
-        RR = I + V
-        RL = Q + sp.I * U
-        LR = Q - sp.I * U
-        LL = I - V
-        return sp.Matrix([RR, RL, LR, LL]) / sp.Rational(2)
-
-    def linear_to_stokes(linear_coherencies):
-        XX, XY, YX, YY = linear_coherencies
-        I = (XX + YY)
-        Q = (XX - YY)
-        U = (XY + YX)
-        V = sp.I * (YX - XY)
-        return sp.Matrix([I, Q, U, V])
-
-    def stokes_to_linear(stokes_coherencies):
-        I, Q, U, V = stokes_coherencies
-        XX = I + Q
-        XY = U + sp.I * V
-        YX = U - sp.I * V
-        YY = I - Q
-        return sp.Matrix([XX, XY, YX, YY]) / sp.Rational(2)
-
-    RR, RL, LR, LL = sp.symbols('RR RL LR LL')
-    XX, XY, YX, YY = sp.symbols('XX XY YX YY')
-    I, Q, U, V = sp.symbols('I Q U V')
-
-    # Linear stokes
-    assert stokes_to_linear(linear_to_stokes([XX, XY, YX, YY])) == sp.Matrix([XX, XY, YX, YY])
-    assert linear_to_stokes(stokes_to_linear([I, Q, U, V])) == sp.Matrix([I, Q, U, V])
-    # Circular stokes
-    assert stokes_to_circular(circular_to_stokes([RR, RL, LR, LL])) == sp.Matrix([RR, RL, LR, LL])
-    assert circular_to_stokes(stokes_to_circular([I, Q, U, V])) == sp.Matrix([I, Q, U, V])

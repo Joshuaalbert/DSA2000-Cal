@@ -1,11 +1,13 @@
 from functools import partial
+from typing import List, Tuple
 
 import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, auto_multi_vmap
+from dsa2000_cal.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, auto_multi_vmap, \
+    convert_to_ufunc, _get_permutation
 
 
 @pytest.mark.parametrize('use_scan', [True, False])
@@ -38,130 +40,164 @@ def test_extract_shape_tuples():
 
 
 def test_multi_vmap():
-    # Simple
-    def f(x, y):
-        return x + y
+    n1, n2, n3, n4, n5 = 3, 4, 5, 6, 7
 
-    n1, n2 = 3, 4
+    def run_test(in_mapping, out_mapping, in_shapes: List[Tuple[int, ...]], expected_out_shapes: List[Tuple[int, ...]]):
+        @partial(
+            multi_vmap,
+            in_mapping=in_mapping,
+            out_mapping=out_mapping,
+            verbose=True
+        )
+        def f(x, y):
+            if x is None:
+                return y
+            return x + y
 
-    x = jnp.ones((n1,))
-    y = jnp.ones((n2,))
+        x = jnp.ones(in_shapes[0]) if in_shapes[0] is not None else None
+        y = jnp.ones(in_shapes[1]) if in_shapes[1] is not None else None
+        res = f(x, y)
+        assert res.shape == expected_out_shapes[0]
 
-    f_multi = multi_vmap(f, in_mapping="[n1],[n2]", out_mapping="[n1,n2]", verbose=True)
-    res = f_multi(x, y)
+    # Test good cases
+    run_test(
+        "[n1,n2],[n1,n2]",
+        "[n1,n2]",
+        [(n1, n2), (n1, n2)],
+        [(n1, n2)]
+    )
 
-    assert res.shape == (n1, n2)
+    run_test(
+        "[n2,n1],[n1,n2]",
+        "[n1,n2]",
+        [(n2, n1), (n1, n2)],
+        [(n1, n2)]
+    )
 
-    @partial(jax.vmap, in_axes=(0, None))
-    @partial(jax.vmap, in_axes=(None, 0))
-    def f2(x, y):
-        return x + y
+    run_test(
+        "[n1,n2,n3],[n1,n2]",
+        "[n1,n2]",
+        [(n1, n2, n3), (n1, n2)],
+        [(n1, n2, n3)]
+    )
 
-    res2 = f2(x, y)
+    run_test(
+        "[n1,n2,n3],[n1,n2]",
+        "[n1,n2,~n3]",  # ~ means the dimension is not mapped
+        [(n1, n2, n3), (n1, n2)],
+        [(n1, n2, n3)]
+    )
 
-    np.testing.assert_allclose(res, res2)
+    run_test(
+        "[n3,n1,n2],[n1,n2]",
+        "[...,n1,n2]",  # ~ means the dimension is not mapped
+        [(n3, n1, n2), (n1, n2)],
+        [(n3, n1, n2)]
+    )
 
-    f_multi = multi_vmap(f, in_mapping="[n1],[n2]", out_mapping="[n2,n1]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n2, n1)
+    run_test(
+        "[n3,n1,n2],[n1,n2]",
+        "[~n3,n1,n2]",  # ~ means the dimension is not mapped
+        [(n3, n1, n2), (n1, n2)],
+        [(n3, n1, n2)]
+    )
 
-    # More complex
-    def f(x, y):
-        return x + y
+    run_test(
+        "[n3,n1,n2],[n1,n2]",
+        "[n3,n1,n2]",  # ~ means the dimension is not mapped
+        [(n3, n1, n2), (n1, n2)],
+        [(n3, n1, n2)]
+    )
 
-    with pytest.raises(ValueError, match="must contain"):
-        _ = multi_vmap(f, in_mapping="[n1,n2,n3],[n1,n3]", out_mapping="[n1,n2,n3,n4]", verbose=True)
+    # Test None value
 
-    n1, n2, n3 = 3, 4, 5
+    run_test(
+        "[],[n1,n2]",
+        "[n1,n2]",
+        [None, (n1, n2)],
+        [(n1, n2)]
+    )
 
-    x = jnp.ones((n1, n2, n3))
-    y = jnp.ones((n1, n3))
+    run_test(
+        "[n1],[n1,n2]",
+        "[n1,n2]",
+        [None, (n1, n2)],
+        [(n1, n2)]
+    )
 
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3],[n1,n3]", out_mapping="[n1,n2,n3]", verbose=True)
-    res = f_multi(x, y)
+    with pytest.raises(ValueError, match='must have at least one non-None value in in_axes'):
+        run_test(
+            "[n1],[n2]",
+            "[n1,n2]",
+            [None, (n1, n2)],
+            [(n1, n2)]
+        )
 
-    assert res.shape == (n1, n2, n3)
+    def run_test(in_mapping, out_mapping, in_shapes: List[Tuple[int, ...]], expected_out_shapes: List[Tuple[int, ...]]):
+        @partial(
+            multi_vmap,
+            in_mapping=in_mapping,
+            out_mapping=out_mapping,
+            verbose=True
+        )
+        def f(x, y):
+            if x is None:
+                return y
+            return x + y, x - y
 
-    @partial(jax.vmap, in_axes=(0, 0))
-    @partial(jax.vmap, in_axes=(0, None))
-    @partial(jax.vmap, in_axes=(0, 0))
-    def f2(x, y):
-        return x + y
+        x = jnp.ones(in_shapes[0]) if in_shapes[0] is not None else None
+        y = jnp.ones(in_shapes[1]) if in_shapes[1] is not None else None
+        res = f(x, y)
+        for i, r in enumerate(res):
+            assert r.shape == expected_out_shapes[i]
 
-    res2 = f2(x, y)
+    # Test multi output
 
-    np.testing.assert_allclose(res, res2)
+    run_test(
+        "[n1,n2],[n1,n2]",
+        "[n1,n2],[n2,n1]",
+        [(n1, n2), (n1, n2)],
+        [(n1, n2), (n2, n1)]
+    )
 
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3],[n1,n3]", out_mapping="[n1,n2]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n1, n2, n3)  # last dim is broadcasted
+    with pytest.raises(ValueError, match='must contain all mapped dims'):
+        # Outputs don't contain all mapped dims
+        run_test(
+            "[n1,n2],[n1,n2,n3]",
+            "[n1,n2],[n2,n1,n3]",
+            [(n1, n2), (n1, n2, n3)],
+            [(n1, n2), (n2, n1, n3)]
+        )
 
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3],[n1,n3]", out_mapping="[n2,n1]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n2, n1, n3)
+    with pytest.raises(ValueError, match='must be in some input dims'):
+        # Outputs don't contain all mapped dims
+        run_test(
+            "[n1,n2],[n1,n2]",
+            "[n1,n2,n3],[n2,n1,n3]",
+            [(n1, n2), (n1, n2, n3)],
+            [(n1, n2), (n2, n1, n3)]
+        )
 
-    x = jnp.ones((n1, n2, n3, 2, 2))
-    y = jnp.ones((n1, n3, 2, 2))
+    run_test(
+        "[n1,...,n2],[n1,n2]",
+        "[n1,...,n2],[n2,...,n1]",
+        [(n1, n3, n2), (n1, n2)],
+        [(n1, n3, n2), (n2, n3, n1)]
+    )
 
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,n1]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n2, n1, n3, 2, 2)
+    run_test(
+        "[n1,...,n2,n4],[n1,n2]",
+        "[n1,...,n2,~n4],[n2,...,n1,~n4]",
+        [(n1, n3, n2, n4), (n1, n2)],
+        [(n1, n3, n2, n4), (n2, n3, n1, n4)]
+    )
 
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,n1]", verbose=True,
-                         scan_dims={'n1'})
-    res = f_multi(x, y)
-    assert res.shape == (n2, n1, n3, 2, 2)
-
-    # Test putting output in other spots
-
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,n1,...]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n2, n1, n3, 2, 2)
-
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[...,n3,n2,n1]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (2, 2, n3, n2, n1)
-
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[...,n2,n1]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n3, 2, 2, n2, n1)
-
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,...,n1]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n2, n3, 2, 2, n1)
-
-    def g(x, y):
-        return x + y, x + y
-
-    f_multi = multi_vmap(g, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,n1,...],[n1,n2,...]",
-                         verbose=True)
-    res = f_multi(x, y)
-    assert res[0].shape == (n2, n1, n3, 2, 2)
-    assert res[1].shape == (n1, n2, n3, 2, 2)
-
-    f_multi = multi_vmap(g, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[n2,...,n1],[n1,...,n2]",
-                         verbose=True)
-    res = f_multi(x, y)
-    assert res[0].shape == (n2, n3, 2, 2, n1)
-    assert res[1].shape == (n1, n3, 2, 2, n2)
-
-    f_multi = multi_vmap(g, in_mapping="[n1,n2,n3,2,2],[n1,n3,2,2]", out_mapping="[...,n2,n1],[...,n1,n2]",
-                         verbose=True)
-    res = f_multi(x, y)
-    assert res[0].shape == (n3, 2, 2, n2, n1)
-    assert res[1].shape == (n3, 2, 2, n1, n2)
-
-    # Test None
-    def f(x, y):
-        if y is None:
-            return x
-        return x + y
-
-    x = jnp.ones((n1, n2, n3, 2, 2))
-    y = None
-    f_multi = multi_vmap(f, in_mapping="[n1,n2,n3,2,2],[]", out_mapping="[n2,n1,...]", verbose=True)
-    res = f_multi(x, y)
-    assert res.shape == (n2, n1, n3, 2, 2)
+    run_test(
+        "[n5,n1,...,n2,n4],[n1,n2]",
+        "[~n5,n1,...,n2,~n4],[~n5,n2,...,n1,~n4]",
+        [(n5, n1, n3, n2, n4), (n1, n2)],
+        [(n5, n1, n3, n2, n4), (n5, n2, n3, n1, n4)]
+    )
 
 
 def test_multi_vmap_scan_performance():
@@ -195,3 +231,44 @@ def test_multi_vmap_vs_vectorize():
 
     print(jax.jit(f_multi).lower(x, y).compile().cost_analysis())
     print(jax.jit(f_vec).lower(x, y).compile().cost_analysis())
+
+
+@pytest.mark.parametrize("tile", [True, False])
+def test_convert_to_ufunc(tile: bool):
+    @partial(jax.vmap, in_axes=(0, None))
+    @partial(jax.vmap, in_axes=(None, 0))
+    @partial(convert_to_ufunc, tile=tile)
+    def f(x, y):
+        def add(x, y):
+            print(x.shape, y.shape)
+            if tile:
+                assert x.shape == (4, 5)
+                assert y.shape == (4, 5)
+            else:
+                assert x.shape == (4, 1)
+                assert y.shape == (1, 5)
+            return x + y
+
+        return jax.pure_callback(add, jax.ShapeDtypeStruct(
+            shape=jnp.broadcast_shapes(x.shape, y.shape), dtype=x.dtype), x, y, vectorized=True)
+
+    x = jnp.arange(4)
+    y = jnp.arange(5)
+
+    res = f(x, y)
+
+    assert np.allclose(res, x[:, None] + y[None, :])
+
+
+def test_get_permutation():
+    assert _get_permutation(5, ['a', 'b', '...', 'c'], ['a', '...', 'b', 'c']) == (0, 2, 3, 1, 4)
+    assert _get_permutation(4, ['a', 'b', '...', 'c'], ['a', '...', 'b', 'c']) == (0, 2, 1, 3)
+    assert _get_permutation(4, ['...'], ['...']) == (0, 1, 2, 3)
+    assert _get_permutation(4, ['a', 'b', 'c', 'd'], ['d', 'c', 'b', 'a']) == (3, 2, 1, 0)
+    assert _get_permutation(4, ['a', 'b', 'c', 'd', '...'], ['d', 'c', 'b', 'a']) == (3, 2, 1, 0)
+
+    with pytest.raises(ValueError, match="must have 4 dimensions."):
+        assert _get_permutation(4, ['a', 'b', 'c', 'd', 'e'], ['d', 'c', 'b', 'a']) == (3, 2, 1, 0)
+
+    with pytest.raises(ValueError, match="Dimension e not found in input axes"):
+        _get_permutation(4, ['a', 'b', 'c', 'd'], ['d', 'c', 'b', 'a', 'e'])

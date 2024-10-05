@@ -5,7 +5,7 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import config
 
-from dsa2000_cal.common.types import complex_type
+from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.forward_models.dsa2000_forward_model import DSA2000ForwardModel
 
 # Set num jax devices

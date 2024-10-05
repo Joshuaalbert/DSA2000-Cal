@@ -11,9 +11,8 @@ from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_models.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import build_ionosphere_gain_model
-from dsa2000_cal.gain_models.beam_gain_model import beam_gain_model_factory
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, beam_gain_model_factory
 
 
 @dataclasses.dataclass(eq=False)
