@@ -229,7 +229,7 @@ def main():
     array_location = array.get_array_location()
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
 
-    problem = OptimisationProblem(num_radial_bins=len(jax.devices()) * 10 - 1, num_theta_bins=len(jax.devices()) * 10,
+    problem = OptimisationProblem(num_radial_bins=12 * 10 - 1, num_theta_bins=12 * 10,
                                   lmax=2 * au.arcmin)
 
     antennas0, lmn, freq, latitude = problem.create_data(
@@ -346,7 +346,7 @@ def main():
     # Run
     print('Num devices:', len(jax.devices()))
 
-    problem = OptimisationProblem(num_radial_bins=len(jax.devices()) * 20 - 1, num_theta_bins=len(jax.devices()) * 20,
+    problem = OptimisationProblem(num_radial_bins=12 * 20 - 1, num_theta_bins=12 * 20,
                                   lmax=3 * au.deg)
 
     antennas0, lmn, freq, latitude = problem.create_data(
@@ -389,7 +389,7 @@ def main():
         plt.savefig(f'array_solution_{iteration}.png')
         plt.close('all')
 
-    problem = OptimisationProblem(num_radial_bins=len(jax.devices()) * 10 - 1, num_theta_bins=len(jax.devices()) * 10,
+    problem = OptimisationProblem(num_radial_bins=12 * 10 - 1, num_theta_bins=12 * 10,
                                   lmax=3 * au.deg)
 
     antennas0, lmn, freq, latitude = problem.create_data(
