@@ -661,3 +661,4 @@ def convert_to_ufunc(f: CUF, tile: bool = True) -> CUF:
         return out, out_batched
 
     return f
+
