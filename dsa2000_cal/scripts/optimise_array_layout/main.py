@@ -202,7 +202,7 @@ def solve(init_state, x0, sigma, lmn, freq, latitude):
 
     solver = MultiStepLevenbergMarquardt(
         residual_fn=residuals,
-        num_iterations=1,
+        num_iterations=10,
         num_approx_steps=0,
         delta=2,
         mu1=100.,
