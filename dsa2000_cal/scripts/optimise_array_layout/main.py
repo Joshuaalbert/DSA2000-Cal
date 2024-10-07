@@ -141,7 +141,7 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     residual_fwhm = (jnp.log(fwhm_ring) - jnp.log(0.5)) / 0.02
     residual_fwhm = jnp.where(jnp.isnan(residual_fwhm), 0., residual_fwhm)
     log_sidelobe = jnp.log(sidelobes)
-    sidelobe_radii = jnp.linalg.norm(antenna_locations[1:, :, :2], axis=-1) # [Nr-1, Nt]
+    sidelobe_radii = jnp.linalg.norm(lmn[1:, :, :2], axis=-1)  # [Nr-1, Nt]
     inner_threshold = jnp.asarray(np.log(1e-3), psf.dtype)
     outer_threshold = jnp.asarray(np.log(1e-4), psf.dtype)
     r_min = sidelobe_radii[0, 0]
