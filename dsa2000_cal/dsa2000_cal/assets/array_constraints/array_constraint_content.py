@@ -33,6 +33,9 @@ class RegionSampler:
         self.gdf = self.gdf.to_crs(self.target_crs)
         self.polygon = self.gdf.union_all()
 
+    def contains(self, lon, lat):
+        return self.polygon.contains(Point(lon, lat))
+
     @property
     def name(self):
         return os.path.basename(self.source).split('.')[0]
@@ -199,7 +202,8 @@ class ArrayConstraint(ABC, BaseContent):
             (RegionSampler(os.path.join(folder, "Avoidance_Area_9_9.shp")), 20.0),
             (RegionSampler(os.path.join(folder, "Fences.shp")), 20.0),
             (RegionSampler(os.path.join(folder, "Private Property within AOI.shp")), 20.0),
-            (RegionSampler(os.path.join(folder, "Soil Data - 3_0.shp"), filter=lambda gdf: gdf[gdf['SUMMARY_TY'] == "Bedrock"]), 61.0),
+            (RegionSampler(os.path.join(folder, "Soil Data - 3_0.shp"),
+                           filter=lambda gdf: gdf[gdf['SUMMARY_TY'] == "Bedrock"]), 61.0),
             (RegionSampler(os.path.join(folder, "Spring Valley Ephemeral Streams.shp")), 20.0),
             (RegionSampler(os.path.join(folder, "Spring Valley Intermittent Streams.shp")), 20.0),
             (RegionSampler(os.path.join(folder, "Spring Valley Perennial Streams- Observed.shp")), 20.0),
@@ -235,10 +239,10 @@ def haversine(lon1, lat1, lon2, lat2):
     c = 2 * np.arcsin(np.sqrt(a))
     return c
 
+
 class ConstrainedArrayLayoutProblem:
     def get_samples(self, num_samples: int):
         pass
-
 
 
 def get_initial_samples(array_location: ac.EarthLocation, num_samples: int, seed: int | None = None):
