@@ -93,6 +93,7 @@ def sync_content():
         content_prefix_path = os.path.split(os.path.abspath(__file__))[:-1]
 
         cert_file = os.path.join(*content_prefix_path, '.sync_cert')
+        print(f"Searching for sync certificate: {cert_file}")
         if os.path.exists(cert_file):
             with open(cert_file, 'r') as f:
                 # get the last line
