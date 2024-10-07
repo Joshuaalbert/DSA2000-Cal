@@ -58,9 +58,9 @@ setup(name='dsa2000_cal',
       tests_require=[
           'pytest>=2.8',
       ],
-      package_data={
-          'dsa2000_cal': sum([get_all_subdirs('dsa2000_cal', 'assets')], [])
-      },
+      # package_data={
+      #     'dsa2000_cal': sum([get_all_subdirs('dsa2000_cal', 'assets')], [])
+      # },
       package_dir={'': './'},
       packages=find_packages('./'),
       classifiers=[

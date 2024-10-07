@@ -1,0 +1,16 @@
+include assets/source_models/mock_source/.large_files
+include assets/source_models/mock_source/fits_models/.large_files
+include assets/source_models/vir_a/.large_files
+include assets/source_models/vir_a/fits_models/.large_files
+include assets/source_models/tau_a/.large_files
+include assets/source_models/tau_a/fits_models/.large_files
+include assets/source_models/cyg_a/.large_files
+include assets/source_models/cyg_a/fits_models/.large_files
+include assets/source_models/cas_a/.large_files
+include assets/source_models/cas_a/fits_models/.large_files
+include assets/templates/.large_files
+include assets/arrays/lwa/.large_files
+include assets/arrays/dsa2000W/.large_files
+include assets/mocks/.large_files
+include assets/rfi/lte_rfi/.large_files
+include assets/array_constraints/spring_valley_31b/.large_files
