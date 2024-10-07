@@ -152,7 +152,7 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     # Only the top 10% of sidelobes are optimised at a given time.
     residual_sidelobes = jnp.where(
         log_sidelobe > threshold,
-        (log_sidelobe - threshold) / jnp.log(2.),
+        (log_sidelobe - threshold) / jnp.log(1.5),
         0.
     )
     return residual_fwhm, residual_sidelobes
@@ -481,7 +481,7 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     ax[0].set_ylabel('North [m]')
     ax[0].set_title('Prior')
     # Plot x0 and gradient from from x0 to x
-    ax[1].scatter(x0[:, 0], x0[:, 1], s=1, c='black')
+    ax[1].scatter(x0[:, 0], x0[:, 1], s=1, c='black', alpha=0.1)
     arrow_length = jnp.linalg.norm(x[:, :2] - x0[:, :2], axis=-1)
     ar = ax[1].quiver(
         x0[:, 0],
@@ -518,7 +518,8 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     residuals = psf - psf0
     thetas = np.linspace(0, 2 * np.pi, problem.num_theta_bins, endpoint=False)
     sc = ax[0].scatter(
-        lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=psf.flatten(), s=1, cmap='jet'
+        lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=psf.flatten(), s=1, cmap='jet',
+        vmin=-80, vmax=-10
     )
     plt.colorbar(sc, ax=ax[0], label='Power (dB)')
     ax[0].set_xlabel('l (proj.rad)')
@@ -553,7 +554,6 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     ax[1].set_xlabel('Radius [proj.rad]')
     ax[1].set_ylabel('Beam power (dB)')
     ax[1].set_title('PSF residuals vs Radius')
-    ax[1].set_ylim(-80, 0)
     fig.savefig(f'psf_vs_radius_solution_{iteration}.png')
     plt.close('all')
 
