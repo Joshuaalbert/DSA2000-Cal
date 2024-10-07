@@ -141,7 +141,7 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     residual_fwhm = (jnp.log(fwhm_ring) - jnp.log(0.5)) / 0.02
     residual_fwhm = jnp.where(jnp.isnan(residual_fwhm), 0., residual_fwhm)
     log_sidelobe = jnp.log(sidelobes)
-    threshold = jnp.asarray(np.log(1e-3), psf.dtype)
+    threshold = jnp.asarray(np.log(1e-4), psf.dtype)
     # stopped_log_sidelobe = jax.lax.stop_gradient(log_sidelobe)
     # residual_sidelobes = jnp.where(pos_mask, (log_sidelobe - stopped_log_sidelobe - jnp.log(0.98)) / 0.5, 0.)
     # Only the top 10% of sidelobes are optimised at a given time.
@@ -331,9 +331,8 @@ def get_uniform_ball_prior(antennas_enu: np.ndarray, obstime: at.Time, array_loc
 
 
 @partial(jax.jit)
-def solve(init_state, ball_origin, ball_radius, lmn, freq, latitude):
+def solve(ball_origin, ball_radius, lmn, freq, latitude):
     def prior_model():
-
         # Uniform ball prior
         theta = yield Prior(tfpd.Uniform(
             jnp.zeros_like(ball_radius),
@@ -376,10 +375,7 @@ def solve(init_state, ball_origin, ball_radius, lmn, freq, latitude):
         c_less_newton=1.5,
         verbose=True
     )
-    if init_state is None:
-        state = solver.create_initial_state(model.params)
-    else:
-        state = solver.update_initial_state(init_state)
+    state = solver.create_initial_state(model.params)
     state, diagnostics = solver.solve(state)
     return model(state.x).prepare_input(U)[0], state, diagnostics
 
@@ -438,13 +434,12 @@ def main():
         antennas=antennas, obstime=obstime, array_location=array_location
     )
 
-    state = None
     x_init = antennas0
     plot_solution('init', antennas, obstime, array_location, x_init,
                   *get_uniform_ball_prior(x_init, obstime, array_location))
     for iteration in range(100):
         ball_centre, ball_radius = get_uniform_ball_prior(x_init, obstime, array_location)
-        x, state, diagnostics = solve(state, ball_centre, ball_radius, lmn, freq, latitude)
+        x, state, diagnostics = solve(ball_centre, ball_radius, lmn, freq, latitude)
         x_init = x
         # Save state and solution
         save_pytree(state, 'state.json')
