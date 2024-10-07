@@ -33,6 +33,9 @@ class RegionSampler:
         self.gdf = self.gdf.to_crs(self.target_crs)
         self.polygon = self.gdf.union_all()
 
+    @property
+    def name(self):
+        return os.path.basename(self.source).split('.')[0]
 
     def _get_bbox(self, buffer_ratio=1.0):
         """Returns the bounding box of the polygon, scaled by buffer_ratio."""
@@ -133,6 +136,7 @@ class RegionSampler:
     @cached_property
     def total_area(self):
         # Total area
+        # UserWarning: Geometry is in a geographic CRS. Results from 'area' are likely incorrect. Use 'GeoSeries.to_crs()' to re-project geometries to a projected CRS before this operation.
         total_area = self.gdf.geometry.area.sum()
         return total_area
 
