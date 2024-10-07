@@ -1,58 +1,8 @@
-import pylab as plt
-import pytest
+import jax
+import numpy as np
 from jax import numpy as jnp
 
 from dsa2000_cal.common.fourier_utils import ApertureTransform, find_optimal_fft_size
-import numpy as np
-
-
-@pytest.mark.parametrize('convention', ['physical', 'engineering'])
-def test_fourier_conventions(convention):
-    dx = 0.1
-    n = 100
-    x = jnp.arange(-n, n + 1) * dx
-    nu = jnp.fft.fftshift(jnp.fft.fftfreq(2 * n + 1, dx))
-    dnu = nu[1] - nu[0]
-    f_aperture = jnp.exp(-x ** 2) + x
-
-    am = ApertureTransform(convention=convention)
-
-    f_image = am.to_image(f_aperture, axes=(0,), dx=dx)
-    plt.plot(nu,
-             jnp.abs(f_image))  # This shows the gaussian shifted with peak split up! I expected it to be in the middle
-    plt.title(convention + ': image')
-    plt.show()
-
-    rec_f_aperture = am.to_aperture(f_image, axes=(0,), dnu=dnu)
-    # These agree and the gaussian is at the centre of both plots.
-    plt.plot(x, jnp.abs(rec_f_aperture))
-    plt.plot(x, jnp.abs(f_aperture))
-    plt.title(convention + ': aperture')
-    plt.show()
-
-    # This passes for both conventions
-    np.testing.assert_allclose(f_aperture, rec_f_aperture, atol=1e-4)
-
-    # If we run with 'engineering' convention, the plots all have mode in centre
-
-    f_image = jnp.exp(-nu ** 2) + nu
-
-    f_aperture = am.to_aperture(f_image, axes=(0,), dnu=dnu)
-    plt.plot(nu,
-             jnp.abs(
-                 f_aperture))  # This shows the gaussian shifted with peak split up! I expected it to be in the middle
-    plt.title(convention + ': aperture')
-    plt.show()
-
-    rec_f_image = am.to_image(f_aperture, axes=(0,), dx=dx)
-    # These agree and the gaussian is at the centre of both plots.
-    plt.plot(x, jnp.abs(rec_f_image))
-    plt.plot(x, jnp.abs(f_image))
-    plt.title(convention + ': image')
-    plt.show()
-
-    # This passes for both conventions
-    np.testing.assert_allclose(f_image, rec_f_image, atol=1e-5)
 
 
 def test_find_next_magic_size():
@@ -68,3 +18,52 @@ def test_find_next_magic_size():
     plt.scatter(x, y)
     plt.show()
     print(sorted(set(y)))
+
+
+def test_aperture_transform():
+    a = ApertureTransform()
+
+    image = jax.random.normal(jax.random.PRNGKey(0), shape=(128, 128), dtype=jnp.float32)
+    dl = dm = 0.001
+    dx = dy = 1 / (128 * 0.001)
+
+    # Test with_shifts vs without_shifts
+    f_ap = a._to_aperture_physical(image, axes=(-2, -1), dl=dl, dm=dm)
+    f_ap_shifts = a._to_aperture_physical_with_shifts(image, axes=(-2, -1), dl=dl, dm=dm)
+    np.testing.assert_allclose(f_ap, f_ap_shifts, atol=1e-6)
+
+    f_image = a._to_image_physical(f_ap, axes=(-2, -1), dx=dx, dy=dy)
+    f_image_shifts = a._to_image_physical_with_shifts(f_ap, axes=(-2, -1), dx=dx, dy=dy)
+    np.testing.assert_allclose(f_image, f_image_shifts, atol=1e-6)
+
+
+    f_ap = a.to_aperture(image, axes=(-2, -1), dl=dl, dm=dm)
+
+    import pylab as plt
+
+    plt.imshow(jnp.abs(f_ap), interpolation='nearest')
+    plt.colorbar()
+    plt.show()
+    plt.imshow(np.angle(f_ap), interpolation='nearest')
+    plt.colorbar()
+    plt.show()
+
+    f_image = a.to_image(f_ap, axes=(-2, -1), dx=dx, dy=dy)
+    np.testing.assert_allclose(f_image, image, atol=1e-6)
+
+    plt.imshow(jnp.abs(f_image), interpolation='nearest')
+    plt.colorbar()
+    plt.show()
+    plt.imshow(np.imag(f_image), interpolation='nearest')
+    plt.colorbar()
+    plt.show()
+
+    residual = f_image - image
+    plt.imshow(jnp.abs(residual), interpolation='nearest')
+    plt.colorbar()
+    plt.show()
+    plt.imshow(np.angle(residual), interpolation='nearest')
+    plt.colorbar()
+    plt.show()
+
+
