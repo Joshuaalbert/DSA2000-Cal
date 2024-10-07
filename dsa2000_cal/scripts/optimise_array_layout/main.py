@@ -141,7 +141,12 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     residual_fwhm = (jnp.log(fwhm_ring) - jnp.log(0.5)) / 0.02
     residual_fwhm = jnp.where(jnp.isnan(residual_fwhm), 0., residual_fwhm)
     log_sidelobe = jnp.log(sidelobes)
-    threshold = jnp.asarray(np.log(1e-4), psf.dtype)
+    sidelobe_radii = jnp.linalg.norm(antenna_locations[1:, :, :2], axis=-1) # [Nr-1, Nt]
+    inner_threshold = jnp.asarray(np.log(1e-3), psf.dtype)
+    outer_threshold = jnp.asarray(np.log(1e-4), psf.dtype)
+    r_min = sidelobe_radii[0, 0]
+    r_max = sidelobe_radii[-1, 0]
+    threshold = inner_threshold + (sidelobe_radii - r_min) / (r_max - r_min) * (outer_threshold - inner_threshold)
     # stopped_log_sidelobe = jax.lax.stop_gradient(log_sidelobe)
     # residual_sidelobes = jnp.where(pos_mask, (log_sidelobe - stopped_log_sidelobe - jnp.log(0.98)) / 0.5, 0.)
     # Only the top 10% of sidelobes are optimised at a given time.
@@ -543,10 +548,12 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     ax[0].set_xlabel('Radius [proj.rad]')
     ax[0].set_ylabel('Beam power (dB)')
     ax[0].set_title('PSF vs Radius')
+    ax[0].set_ylim(-80, 0)
     ax[1].scatter(radii, residuals.flatten(), s=1)
     ax[1].set_xlabel('Radius [proj.rad]')
     ax[1].set_ylabel('Beam power (dB)')
     ax[1].set_title('PSF residuals vs Radius')
+    ax[1].set_ylim(-80, 0)
     fig.savefig(f'psf_vs_radius_solution_{iteration}.png')
     plt.close('all')
 
