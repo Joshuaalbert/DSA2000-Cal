@@ -428,8 +428,8 @@ def main():
 
     # Setup the optimisation problem
     problem = OptimisationProblem(
-        num_radial_bins=12 * 20 - 1,
-        num_theta_bins=12 * 20,
+        num_radial_bins=12 * 1 - 1,
+        num_theta_bins=12 * 1,
         lmax=3 * au.deg
     )
 
@@ -504,7 +504,7 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     ax[2].set_xlabel('UVW radial distance [m]')
     ax[2].set_ylabel('Number of pairs')
     ax[2].set_title(f'UVW radial distance histogram: {iteration}')
-    fig.savefig(f'array_solution_{iteration}.png')
+    fig.savefig(f'array_solution_{iteration}.png', dpi=300)
     plt.close('all')
 
     # row 1: Plot the PSF, vmin=-80 vmax=0
@@ -538,7 +538,7 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     ax[2].set_ylabel('Beam power')
     ax[2].set_title('FWHM')
     ax[2].legend()
-    fig.savefig(f'psf_solution_{iteration}.png')
+    fig.savefig(f'psf_solution_{iteration}.png', dpi=300)
     plt.close('all')
 
     # row 1: Plot the PSF vs radius
@@ -554,7 +554,7 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     ax[1].set_xlabel('Radius [proj.rad]')
     ax[1].set_ylabel('Beam power (dB)')
     ax[1].set_title('PSF residuals vs Radius')
-    fig.savefig(f'psf_vs_radius_solution_{iteration}.png')
+    fig.savefig(f'psf_vs_radius_solution_{iteration}.png', dpi=300)
     plt.close('all')
 
 
