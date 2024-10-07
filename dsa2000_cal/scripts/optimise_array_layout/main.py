@@ -1,7 +1,8 @@
 import os
 
+from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
+
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
-from scipy.spatial import KDTree
 
 import dataclasses
 from jaxns import Model, Prior
@@ -151,45 +152,166 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     return residual_fwhm, residual_sidelobes
 
 
-def construct_prior(x0, forbidden_points):
+def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance):
+    height = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
+    array_constraint = ArrayConstraint()
+    samples = []
+    aoi_data = array_constraint.get_area_of_interest_regions()
+    constraint_data = array_constraint.get_constraint_regions()
+    # soil_sampler, _ = constraint_data[3]
+    # # print(soil_sampler.gdf['SUMMARY_TY'].unique())
+    # # soil_sampler.info()
+    # soil_sampler.plot_region(plt.gca(), 'blue')
+    # aio_sampler, _ = aoi_data[0]
+    # aio_sampler.plot_region(plt.gca(), 'red')
+    # plt.show()
+    aoi_samplers, aoi_buffers = zip(*aoi_data)
+    constraint_samplers, constraint_buffers = zip(*constraint_data)
+    areas = np.asarray([s.total_area for s in aoi_samplers])
+    aoi_probs = areas / areas.sum()
+    c = 0
+    while len(samples) < num_samples:
+        sampler_idx = np.random.choice(len(aoi_samplers), p=aoi_probs)
+        sampler = aoi_samplers[sampler_idx]
+        buffer = aoi_buffers[sampler_idx]
+        sample_proposal = sampler.get_samples_within(1)[0]
+        # Check that it far enough from AOI perimeter
+        _, angular_dist = sampler.closest_approach_to_boundary(*sample_proposal)
+        dist = np.pi / 180. * angular_dist * height
+        if dist < buffer + additional_distance:
+            continue
+
+        # Check that it is far enough from constraint regions
+        far_enough_away = True
+        for constraint_sampler, buffer in zip(constraint_samplers, constraint_buffers):
+            _, angular_dist = constraint_sampler.closest_approach(*sample_proposal)
+            dist = np.pi / 180. * angular_dist * height
+            if dist <= buffer + additional_distance:
+                far_enough_away = False
+                break
+        if far_enough_away:
+            samples.append(sample_proposal)
+        c += 1
+    return np.asarray(samples)
+
+
+def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation,
+                      minimal_dist) -> ac.EarthLocation:
+    # Find closest constraint point
+    closest_point_dist = get_closest_point_dist(
+        locations=antennas, array_location=array_location, additional_distance=minimal_dist
+    )  # [N] in meters
+    too_close = closest_point_dist <= 0.
+    num_relocate = np.sum(too_close)
+    # sample new locations
+    new_locations = sample_aoi(
+        num_relocate, array_location, minimal_dist
+    )  # [num_relocate, 2] lon/lat in degrees
+    new_locations = ac.EarthLocation.from_geodetic(
+        lon=new_locations[:, 0] * au.deg,
+        lat=new_locations[:, 1] * au.deg,
+        height=array_location.geodetic.height
+    )  # [num_relocate]
+    new_enu = new_locations.get_itrs(
+        obstime=obstime, location=array_location
+    ).transform_to(
+        ENU(obstime=obstime, location=array_location)
+    ).cartesian.xyz.to('m').value.T  # [num_relocate, 3]
+    antennas_enu = antennas.get_itrs(
+        obstime=obstime, location=array_location
+    ).transform_to(
+        ENU(obstime=obstime, location=array_location)
+    ).cartesian.xyz.to('m').value.T  # [N, 3]
+    # Set new locations
+    antennas_enu[too_close, :] = new_enu
+    # Back to earth location
+    antennas = ENU(
+        antennas_enu[:, 0] * au.m,
+        antennas_enu[:, 1] * au.m,
+        antennas_enu[:, 2] * au.m,
+        obstime=obstime,
+        location=array_location
+    ).transform_to(ac.ITRS(obstime=obstime, location=array_location)).earth_location
+    return antennas
+
+
+def get_closest_point_dist(locations: ac.EarthLocation, array_location: ac.EarthLocation, additional_distance):
+    height = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
+    array_constraint = ArrayConstraint()
+    aoi_data = array_constraint.get_area_of_interest_regions()
+    constraint_data = array_constraint.get_constraint_regions()
+
+    aoi_samplers, aoi_buffers = zip(*aoi_data)
+    constraint_samplers, constraint_buffers = zip(*constraint_data)
+    points_lon = locations.lon.to(au.deg).value
+    points_lat = locations.lat.to(au.deg).value
+    closest_point_dist = []
+    for point in zip(points_lon, points_lat):
+        dist = np.inf
+        for aoi_sampler, buffer in zip(aoi_samplers, aoi_buffers):
+            _, angular_dist = aoi_sampler.closest_approach_to_boundary(*point)
+            dist = min(dist, np.pi / 180. * angular_dist * height - buffer - additional_distance)
+
+        for constraint_sampler, buffer in zip(constraint_samplers, constraint_buffers):
+            _, angular_dist = constraint_sampler.closest_approach(*point)
+            dist = min(dist, np.pi / 180. * angular_dist * height - buffer - additional_distance)
+        closest_point_dist.append(dist)
+
+    return np.asarray(closest_point_dist)
+
+
+def get_uniform_ball_prior(antennas_enu: np.ndarray, obstime: at.Time, array_location: ac.EarthLocation):
     """
     Construct a prior for the antenna locations
 
     Args:
-        x0: [N, 2]
-        forbidden_points: [S, 2]
+        antennas_enu: [N, 3]
+        obstime: at.Time
+        array_location: ac.EarthLocation
 
     Returns:
-        sigma: [N]
+        ball_centre: [N, 2]
+        ball_radius: [N]
     """
-    # For each point find the closest forbidden point, and compute distance using kdtree
-    tree = KDTree(forbidden_points)
-    d, _ = tree.query(x0)
-    sigma = 0.33 * d
-    return sigma
-
-
-def sample_ball(origin, radius, num_samples: int):
-    radius = radius * np.random.uniform(0, 1, num_samples) ** 0.5
-    random_direction = np.random.normal(size=(num_samples, 3))
-    random_direction[:, 2] = 0.
-    random_direction /= np.linalg.norm(random_direction, axis=-1)[:, None]
-    return origin + radius[:, None] * random_direction
-
-
-# Define constaints by 
+    # convert to earth location
+    antennas_locations = ENU(
+        antennas_enu[:, 0] * au.m,
+        antennas_enu[:, 1] * au.m,
+        antennas_enu[:, 2] * au.m,
+        obstime=obstime,
+        location=array_location
+    ).transform_to(ac.ITRS(obstime=obstime, location=array_location)).earth_location
+    # Find closest constraint point
+    ball_radius = get_closest_point_dist(
+        locations=antennas_locations,
+        array_location=array_location,
+        additional_distance=0.  # If more than specified buffer desired, increase this
+    )  # [N] in meters
+    # Construct prior
+    ball_centre = antennas_enu[:, :2]
+    return ball_centre, ball_radius
 
 
 @partial(jax.jit)
-def solve(init_state, x0, sigma, lmn, freq, latitude):
+def solve(init_state, ball_origin, ball_radius, lmn, freq, latitude):
     def prior_model():
 
-        x = yield Prior(tfpd.Normal(x0[:, :2], sigma[:, None]),
-                        'x').parametrised()
-        x = jnp.concatenate([x, jnp.zeros((x0.shape[0], 1), x.dtype)], axis=-1)
-        return x
+        # Uniform ball prior
+        direction = yield Prior(tfpd.Normal(jnp.zeros_like(ball_origin), jnp.ones_like(ball_origin)),
+                                name='direction').parametrised()
+        direction /= jnp.linalg.norm(direction, axis=-1, keepdims=True)
+
+        radius_squared = yield Prior(tfpd.Uniform(jnp.zeros_like(ball_radius), jnp.ones_like(ball_radius)),
+                                     name='radius_squared').parametrised()
+        radius = jnp.sqrt(radius_squared)
+
+        x = ball_origin + radius[:, None] * direction
+        up = jnp.zeros((np.shape(x)[0], 1), x.dtype)
+        antennas_enu = jnp.concatenate([x, up], axis=-1)  # [N, 3]
+        return antennas_enu
 
     def log_likelihood(x):
+        # unused since we use least squares
         residuals = compute_residuals(x, lmn, freq, latitude)
         return sum([-jnp.sum(jnp.square(r)) for r in jax.tree.leaves(residuals)])
 
@@ -223,212 +345,139 @@ def solve(init_state, x0, sigma, lmn, freq, latitude):
 
 
 def main():
+    np.random.seed(42)
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000_31b'))
     antennas = array.get_antennas()
     array_location = array.get_array_location()
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
 
-    problem = OptimisationProblem(num_radial_bins=12 * 10 - 1, num_theta_bins=12 * 10,
-                                  lmax=2 * au.arcmin)
+    # Shift antennas if too close to boundary, so that search priors can have non-zero radius
+    antennas = relocate_antennas(antennas, obstime, array_location, minimal_dist=10.)
 
-    antennas0, lmn, freq, latitude = problem.create_data(
-        antennas=antennas, obstime=obstime, array_location=array_location
+    # Setup the optimisation problem
+    problem = OptimisationProblem(
+        num_radial_bins=12 * 20 - 1,
+        num_theta_bins=12 * 20,
+        lmax=3 * au.deg
     )
-
-    # Plot antennas in ENU
-    antennas_enu_xyz = antennas.get_itrs(
-        obstime=obstime, location=array_location).transform_to(
-        ENU(obstime=obstime, location=array_location)).cartesian.xyz.to('m').T.value
-
-    antennas_enu_xyz_rot = rotate_coords_to_dec0(antennas_enu_xyz, latitude)
-
-    plt.scatter(antennas_enu_xyz[:, 0], antennas_enu_xyz[:, 1], s=1, c='black', label='ENU')
-    plt.scatter(antennas_enu_xyz_rot[:, 0], antennas_enu_xyz_rot[:, 1], s=1, c='red', label='DEC=0 projection')
-    plt.xlabel('East [m]')
-    plt.ylabel('North [m]')
-    plt.legend()
-    plt.title('Antenna locations')
-    plt.xlim(-10e3, 10e3)
-    plt.ylim(-10e3, 10e3)
-    plt.savefig('antennas.png')
-    plt.close('all')
-
-    # Plot UVW radial profile rotated to Dec=0 in bins of 10m
-
-    uvw_radial = np.linalg.norm(antennas_enu_xyz_rot[:, None, :2] - antennas_enu_xyz_rot[None, :, :2], axis=-1)
-    bins = np.arange(0, 20e3, 10)
-    uvw_radial_flat = uvw_radial.flatten()
-
-    plt.hist(uvw_radial_flat, bins=bins)
-    plt.xlabel('UVW radial distance [m]')
-    plt.ylabel('Number of pairs')
-    plt.title('UVW radial distance histogram')
-    plt.savefig('uvw_radial_hist.png')
-    plt.close('all')
-
-    psf0 = jax.jit(compute_psf)(antennas0, lmn, freq, latitude)  # [Nr, Nt]
-    print(psf0[0, :])  # FWHM
-    thetas = np.linspace(0, 2 * np.pi, problem.num_theta_bins, endpoint=False)
-    plt.plot(thetas, psf0[0, :], label='FWHM')
-    plt.xlabel('Theta [rad]')
-    plt.ylabel('Beam power')
-    plt.title('FWHM')
-    plt.legend()
-    plt.savefig('fwhm.png')
-    plt.close('all')
-
-    sc = plt.scatter(
-        lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=jnp.log10(psf0.flatten()), s=1, cmap='jet'
-    )
-    plt.colorbar(sc)
-    plt.xlabel('l (proj.rad)')
-    plt.ylabel('m (proj.rad)')
-    plt.title('PSF')
-    plt.close('all')
-
-    radii = np.linalg.norm(lmn[..., :2], axis=-1).flatten()
-    log_psf_radii = 10 * np.log10(psf0).flatten()
-
-    plt.scatter(radii, log_psf_radii, s=1)
-    plt.xlabel('Radius [proj.rad]')
-    plt.ylabel('Beam power (dB)')
-    plt.title('PSF vs Radius')
-    plt.savefig('psf_vs_radius.png')
-    plt.close('all')
-
-    # Setup 
-
-    x0 = np.array(antennas0.copy())
-
-    exclusion_center = np.asarray([-7000, 2000, 0.])
-    exclusion_radius = 1500
-
-    # Create forbidden samples
-    forbidden_points = sample_ball(exclusion_center, exclusion_radius, 2000)
-    # Move these antennas to another place
-    t = KDTree(forbidden_points)
-    d, _ = t.query(x0)
-    point_in_forbidden = d < 100.
-    # Choose another than is not forbidden
-    choose_prob = np.bitwise_not(point_in_forbidden) / jnp.sum(np.bitwise_not(point_in_forbidden))
-    good = np.random.choice(x0.shape[0], np.sum(point_in_forbidden), p=choose_prob, replace=True)
-    x0[point_in_forbidden, :2] = x0[good, :2] + np.random.normal(size=(good.size, 2)) * 100.
-    # For sigma make the distance to exclusion center 3 sigma, from x0
-    sigma = construct_prior(x0, forbidden_points)  # [n]
-
-    sc = plt.scatter(x0[:, 0], x0[:, 1], s=1, c='black')
-    plt.xlabel('East [m]')
-    plt.ylabel('North [m]')
-    plt.title(r'Aperture constraint')
-
-    # Draw grey circle for exclusion zone
-    circle = plt.Circle(exclusion_center, exclusion_radius, color='grey', fill=True, alpha=0.5)
-    plt.gca().add_artist(circle)
-
-    plt.savefig('aperture_constraint.png')
-    plt.subplots_adjust(right=0.8)
-    plt.close('all')
-
-    sc = plt.scatter(x0[:, 0], x0[:, 1], s=1, c=sigma, cmap='jet')
-    plt.colorbar(sc, label=r'$\sigma$ (m)')
-    plt.xlabel('East [m]')
-    plt.ylabel('North [m]')
-    plt.title(r'$x_0$ and $\sigma$')
-
-    # Draw grey circle for exclusion zone
-    circle = plt.Circle(exclusion_center, exclusion_radius, color='grey', fill=True, alpha=0.5)
-    plt.gca().add_artist(circle)
-
-    plt.savefig('x0_sigma.png')
-    plt.close('all')
-
-    # Run
-    print('Num devices:', len(jax.devices()))
-
-    problem = OptimisationProblem(num_radial_bins=12 * 20 - 1, num_theta_bins=12 * 20,
-                                  lmax=3 * au.deg)
 
     antennas0, lmn, freq, latitude = problem.create_data(
         antennas=antennas, obstime=obstime, array_location=array_location
     )
 
     state = None
-    x_iter = x0
+    x_init = antennas0
     for iteration in range(100):
-        sigma = construct_prior(x_iter, forbidden_points)
-        x, state, diagnostics = solve(state, x0, sigma, lmn, freq, latitude)
-        x_iter = x
+        ball_centre, ball_radius = get_uniform_ball_prior(x_init, obstime, array_location)
+        x, state, diagnostics = solve(state, ball_centre, ball_radius, lmn, freq, latitude)
+        x_init = x
+        # Save state and solution
         save_pytree(state, 'state.json')
         with open(f'solution_{iteration}.json', 'w') as f:
+            f.write("#X_ITRS,Y_ITRS,Z_ITRS\n")
             antenna_locs = ENU(
                 np.asarray(x[:, 0]) * au.m, np.asarray(x[:, 1]) * au.m, np.asarray(x[:, 2]) * au.m,
                 location=array_location, obstime=obstime
             ).transform_to(ac.ITRS(obstime=obstime, location=array_location)).cartesian.xyz.to('m').value.T
             for row in antenna_locs:
                 f.write(f"{row[0]},{row[1]},{row[2]}\n")
+        plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, ball_radius)
 
-        # Plot x0 and gradient from from x0 to x
-        # fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-        # plt.scatter(x0[:, 0], x0[:, 1], s=1, c=sigma, cmap='jet')
-        arrow_length = jnp.linalg.norm(x - x0, axis=-1)
-        ar = plt.quiver(x0[:, 0], x0[:, 1], x[:, 0] - x0[:, 0], x[:, 1] - x0[:, 1], arrow_length, scale=1,
-                        scale_units='xy',
-                        cmap='jet')
-        # color bar
-        plt.colorbar(ar, label='Displacement (m)')
-        # grey circle
-        circle = plt.Circle(exclusion_center, exclusion_radius, color='grey', fill=True, alpha=0.5)
-        plt.gca().add_artist(circle)
-        plt.xlabel('East [m]')
-        plt.ylabel('North [m]')
-        plt.xlim(-10e3, 10e3)
-        plt.ylim(-10e3, 10e3)
-        plt.title('Solution')
-        plt.tight_layout()
-        plt.savefig(f'array_solution_{iteration}.png')
-        plt.close('all')
 
-    problem = OptimisationProblem(num_radial_bins=12 * 10 - 1, num_theta_bins=12 * 10,
-                                  lmax=3 * au.deg)
+def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, ball_radius):
+    problem = OptimisationProblem(
+        num_radial_bins=12 * 20 - 1,
+        num_theta_bins=12 * 20,
+        lmax=3 * au.deg
+    )
 
-    antennas0, lmn, freq, latitude = problem.create_data(
+    x0, lmn, freq, latitude = problem.create_data(
         antennas=antennas, obstime=obstime, array_location=array_location
     )
 
-    psf0 = jax.jit(compute_psf)(antennas0, lmn, freq, latitude)  # [Nr, Nt]
-    psf = jax.jit(compute_psf)(x, lmn, freq, latitude)  # [Nr, Nt]
-    thetas = np.linspace(0, 2 * np.pi, problem.num_theta_bins, endpoint=False)
-    plt.plot(thetas, psf[0, :], label='FWHM')
-    plt.xlabel('Theta [rad]')
-    plt.ylabel('Beam power')
-    plt.title('FWHM')
-    plt.legend()
-    plt.savefig('fwhm.png')
-    plt.close('all')
-
-    sc = plt.scatter(
-        lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=jnp.log10(psf.flatten()), s=1, cmap='jet'
+    # row 1: Plot prior, ball centre and radius
+    # row 2: Plot the antenna locations, and their movement from x0
+    # row 3: Plot the UVW radial profile
+    fig, ax = plt.subplots(3, 1, figsize=(6, 15))
+    sc = ax[0].scatter(ball_centre[:, 0], ball_centre[:, 1], s=1, c=ball_radius, cmap='jet')
+    plt.colorbar(sc, ax=ax[0], label='Allowed movement (m)')
+    ax[0].set_xlabel('East [m]')
+    ax[0].set_ylabel('North [m]')
+    ax[0].set_title('Prior')
+    # Plot x0 and gradient from from x0 to x
+    ax[1].scatter(x0[:, 0], x0[:, 1], s=1, c='black')
+    arrow_length = jnp.linalg.norm(x - x0, axis=-1)
+    ar = ax[1].quiver(
+        x0[:, 0],
+        x0[:, 1],
+        x[:, 0] - x0[:, 0],
+        x[:, 1] - x0[:, 1],
+        arrow_length, scale=1,
+        scale_units='xy',
+        cmap='jet'
     )
-    plt.colorbar(sc)
-    plt.xlabel('l (proj.rad)')
-    plt.ylabel('m (proj.rad)')
-    plt.title('PSF')
+    # color bar
+    plt.colorbar(ar, label='Displacement (m)')
+    ax[1].set_xlabel('East [m]')
+    ax[1].set_ylabel('North [m]')
+    ax[1].set_xlim(-10e3, 10e3)
+    ax[1].set_ylim(-10e3, 10e3)
+    ax[1].set_title(f'Solution: {iteration}')
+    uvw_radial = np.linalg.norm(x[:, None, :2] - x[None, :, :2], axis=-1)
+    ax[2].hist(uvw_radial.flatten(), bins=np.arange(0, 20e3, 10))
+    ax[2].set_xlabel('UVW radial distance [m]')
+    ax[2].set_ylabel('Number of pairs')
+    ax[2].set_title(f'UVW radial distance histogram: {iteration}')
+    fig.savefig(f'array_solution_{iteration}.png')
     plt.close('all')
 
+    # row 1: Plot the PSF, vmin=-80 vmax=0
+    # row 2: Plot residuals, PSF - PSF0
+    # row 3: Plot FWHM of both
+    fig, ax = plt.subplots(3, 1, figsize=(6, 15))
+    psf0 = 10. * np.log10(jax.jit(compute_psf)(x0, lmn, freq, latitude))  # [Nr, Nt]
+    psf = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude))  # [Nr, Nt]
+    residuals = psf - psf0
+    thetas = np.linspace(0, 2 * np.pi, problem.num_theta_bins, endpoint=False)
+    sc = ax[0].scatter(
+        lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=psf.flatten(), s=1, cmap='jet',
+        vmin=-80, vmax=0
+    )
+    plt.colorbar(sc, ax=ax[0], label='Power (dB)')
+    ax[0].set_xlabel('l (proj.rad)')
+    ax[0].set_ylabel('m (proj.rad)')
+    ax[0].set_title('PSF')
+    sc = ax[1].scatter(
+        np.linalg.norm(lmn[..., :2], axis=-1).flatten(), residuals.flatten(), s=1, cmap='jet'
+    )
+    plt.colorbar(sc, ax=ax[1], label='Power (dB)')
+    ax[1].set_xlabel('l (proj.rad)')
+    ax[1].set_ylabel('m (proj.rad)')
+    ax[1].set_title('PSF residuals (smaller is better)')
+    ax[2].plot(thetas, psf0[0, :], label='FWHM0')
+    ax[2].plot(thetas, psf[0, :], label='FWHM')
+    ax[2].set_xlabel('Theta [rad]')
+    ax[2].set_ylabel('Beam power')
+    ax[2].set_title('FWHM')
+    ax[2].legend()
+    fig.savefig(f'psf_solution_{iteration}.png')
+    plt.close('all')
+
+    # row 1: Plot the PSF vs radius
+    # row 2: Plot the residuals, PSF - PSF0 vs radius
     radii = np.linalg.norm(lmn[..., :2], axis=-1).flatten()
-    log_psf_radii = 10 * np.log10(psf).flatten()
-    log_psf0_radii = 10 * np.log10(psf0).flatten()
-    log_residuals = (log_psf_radii - log_psf0_radii)
-
-    plt.scatter(radii, log_residuals, s=1)
-    plt.xlabel('Radius [proj.rad]')
-    plt.ylabel('Beam power (dB)')
-    plt.title('PSF residuals vs Radius')
-    plt.savefig('psf_residuals.png')
+    fig, ax = plt.subplots(2, 1, figsize=(6, 10), sharex=True)
+    ax[0].scatter(radii, psf.flatten(), s=1)
+    ax[0].set_xlabel('Radius [proj.rad]')
+    ax[0].set_ylabel('Beam power (dB)')
+    ax[0].set_title('PSF vs Radius')
+    ax[1].scatter(radii, residuals.flatten(), s=1)
+    ax[1].set_xlabel('Radius [proj.rad]')
+    ax[1].set_ylabel('Beam power (dB)')
+    ax[1].set_title('PSF residuals vs Radius')
+    fig.savefig(f'psf_vs_radius_solution_{iteration}.png')
     plt.close('all')
-
-    ##
 
 
 if __name__ == '__main__':
