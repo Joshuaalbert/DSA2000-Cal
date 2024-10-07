@@ -6,7 +6,6 @@ from typing import NamedTuple
 
 import jax
 from jax import numpy as jnp
-from jaxns.experimental.global_optimisation import summary
 
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.types import FloatArray
@@ -14,8 +13,7 @@ from dsa2000_cal.common.types import FloatArray
 jax.config.update("jax_explain_cache_misses", True)
 
 import tensorflow_probability.substrates.jax as tfp
-from jaxns import Prior, Model, save_pytree, load_pytree
-from jaxns.experimental import DefaultGlobalOptimisation, GlobalOptimisationTerminationCondition
+from jaxns import Prior, Model
 
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
 
@@ -47,19 +45,19 @@ class ForwardModel:
 
     @property
     def gain_shape(self):
-        return (self.source, self.ant, self.chan)
+        return (self.ant, self.chan, self.source)
 
     def create_forward_data(self):
         antenna1, antenna2 = jnp.asarray(list(itertools.combinations_with_replacement(range(self.ant), 2)),
                                          dtype=jnp.int32).T
         row = len(antenna1)
-        vis_per_source = jnp.ones((self.source, row, self.chan), jnp.complex64)
+        vis_per_source = jnp.ones((row, self.chan, self.source), jnp.complex64)
         return antenna1, antenna2, vis_per_source
 
     def forward(self, gains, antenna1, antenna2, vis_per_source):
-        g1 = gains[:, antenna1, :]  # (row, source, chan)
-        g2 = gains[:, antenna2, :]
-        vis = jnp.sum(g1 * vis_per_source * g2.conj(), axis=0)
+        g1 = gains[antenna1, :, :]  # (row,  chan, source,)
+        g2 = gains[antenna2, :, :]
+        vis = jnp.sum(g1 * vis_per_source * g2.conj(), axis=-1)  # (row, chan)
         return vis
 
 
@@ -128,7 +126,7 @@ def run_optimisation(num_iterations: int,
                      data_noise_scale: jax.Array,
                      phase_error_scale: jax.Array,
                      gain_noise_scale: jax.Array, num_search=1000):
-    forward_model = ForwardModel(ant=2048, source=1, chan=1)
+    forward_model = ForwardModel(ant=2048, source=7, chan=1)
     optimisation_problem = OptimisationProblem(
         forward_model=forward_model,
         num_iterations=num_iterations,
@@ -213,8 +211,6 @@ def run_optimisation(num_iterations: int,
 
         return U, X, log_likelihoods
 
-
-
         # # model.sanity_check(jax.random.PRNGKey(0), 5)
         # go = DefaultGlobalOptimisation(
         #     model=model
@@ -241,8 +237,6 @@ def run_optimisation(num_iterations: int,
     #
     # go_results = load_pytree('go_results.json')
     # summary(go_results)
-
-
 
 
 if __name__ == '__main__':
