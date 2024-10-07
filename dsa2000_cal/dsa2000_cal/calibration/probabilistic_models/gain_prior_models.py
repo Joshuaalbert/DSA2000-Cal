@@ -33,106 +33,118 @@ class UnconstrainedGain(AbstractGainPriorModel):
     A gain model with unconstrained complex Gaussian priors with zero mean.
     """
     gain_stddev: float = 2.
+    full_stokes: bool = True
+    dof: int = 4
 
     def build_prior_model(self, num_source: int, num_ant: int, freqs: jax.Array, times: jax.Array) -> PriorModelType:
-        loc = jnp.zeros((num_source, num_ant, 2, 2))
-        scale = jnp.full((num_source, num_ant, 2, 2), self.gain_stddev)
-
         def prior_model():
-            gains_real = yield Prior(
-                tfpd.Normal(loc=loc + 1.,
-                            scale=scale
-                            ),
-                name='gains_real'
-            ).parametrised()
-            gains_imag = yield Prior(
-                tfpd.Normal(loc=loc,
-                            scale=scale
-                            ),
-                name='gains_imag'
-            ).parametrised()
-            gains = gains_real + 1j * gains_imag  # [num_source, num_ant, 2, 2]
+            def make_gains_model(shape):
+                ones = jnp.ones(shape)
+                scale = jnp.full(shape, self.gain_stddev)
+                gains_real = yield Prior(
+                    tfpd.Normal(loc=ones,
+                                scale=scale
+                                ),
+                    name='gains_real'
+                ).parametrised()
+                gains_imag = yield Prior(
+                    tfpd.Normal(loc=ones,
+                                scale=scale
+                                ),
+                    name='gains_imag'
+                ).parametrised()
+                gains = jax.lax.complex(gains_real, gains_imag)  # [num_source, num_ant[, 2, 2]]
+                return gains
+
+            if self.full_stokes:
+                if self.dof == 1:
+                    gains = yield from make_gains_model((num_source, num_ant))
+                    # Set diag
+                    gains = jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.repeat(g, 2))))(
+                        gains)  # [num_source, num_ant, 2, 2]
+                elif self.dof == 2:
+                    gains = yield from make_gains_model((num_source, num_ant, 2))
+                    # Set diag
+                    gains = jax.vmap(jax.vmap(jnp.diag))(
+                        gains)  # [num_source, num_ant, 2, 2]
+                elif self.dof == 4:
+                    gains = yield from make_gains_model((num_source, num_ant, 2, 2))
+                else:
+                    raise ValueError(f"Unsupported dof, {self.dof}")
+            else:
+                if self.dof != 1:
+                    raise ValueError("Cannot have full_stokes=False and dof > 1")
+                gains = yield from make_gains_model((num_source, num_ant))
+
             # Broadcast to shape
             gains = jnp.broadcast_to(
                 gains[:, None, :, None, ...],
                 (num_source, len(times), num_ant, len(freqs), 2, 2)
-            )  # [num_source, num_time, num_ant, num_chan, 2, 2]
+            )  # [num_source, num_time, num_ant, num_chan[, 2, 2]]
             return gains
 
         return prior_model
 
 
 @dataclasses.dataclass(eq=False)
-class DiagonalUnconstrainedGain(AbstractGainPriorModel):
+class ScalarRiceGain(AbstractGainPriorModel):
     """
     A gain model with unconstrained complex Gaussian priors with zero mean, but only on the diagonal.
     """
-    gain_stddev: float = 2.
+    gain_stddev: float = 0.1
+    full_stokes: bool = True
+    dof: int = 4
 
     def build_prior_model(self, num_source: int, num_ant: int, freqs: jax.Array, times: jax.Array) -> PriorModelType:
-        loc = jnp.zeros((num_source, num_ant, 2))
-        scale = jnp.full((num_source, num_ant, 2), self.gain_stddev)
-
         def prior_model():
-            gains_real = yield Prior(
-                tfpd.Normal(
-                    loc=loc + 1.,
-                    scale=scale
-                ),
-                name='gains_real'
-            ).parametrised()
-            gains_imag = yield Prior(
-                tfpd.Normal(
-                    loc=loc,
-                    scale=scale
-                ),
-                name='gains_imag'
-            ).parametrised()
-            diag_gains = gains_real + 1j * gains_imag  # [num_source, num_ant, 2]
-            gains = jax.vmap(jax.vmap(jnp.diag))(diag_gains)  # [num_source, num_ant, 2, 2]
+            def make_gains_model(shape):
+                ones = jnp.ones(shape)
+                # Rice distribution for X ~ N[1, sigma^2], Y ~ U[0, sigma^2] then R^2 = X^2 + Y^2 ~ Rice(1, sigma^2)
+                # We use noncentral chi^2 distribution to generate the squared amplitude.
+                gains_amplitude_2 = yield Prior(
+                    tfpd.NoncentralChi2(
+                        noncentrality=ones / self.gain_stddev ** 2,
+                        df=2,
+                    ),
+                    name='gains_amplitude_squared'
+                ).parametrised()
+                gains_amplitude = self.gain_stddev * jnp.sqrt(gains_amplitude_2)
+                gains_phase = yield Prior(
+                    tfpd.Uniform(
+                        low=-jnp.pi * ones,
+                        high=jnp.pi * ones
+                    ),
+                    name='gains_phase'
+                ).parametrised()
+                gains = gains_amplitude * jax.lax.complex(jnp.cos(gains_phase),
+                                                          jnp.sin(gains_phase))  # [num_source, num_ant]
+                return gains
+
+            if self.full_stokes:
+                if self.dof == 1:
+                    gains = yield from make_gains_model((num_source, num_ant))
+                    # Set diag
+                    gains = jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.repeat(g, 2))))(
+                        gains)  # [num_source, num_ant, 2, 2]
+                elif self.dof == 2:
+                    gains = yield from make_gains_model((num_source, num_ant, 2))
+                    # Set diag
+                    gains = jax.vmap(jax.vmap(jnp.diag))(
+                        gains)  # [num_source, num_ant, 2, 2]
+                elif self.dof == 4:
+                    gains = yield from make_gains_model((num_source, num_ant, 2, 2))
+                else:
+                    raise ValueError(f"Unsupported dof, {self.dof}")
+            else:
+                if self.dof != 1:
+                    raise ValueError("Cannot have full_stokes=False and dof > 1")
+                gains = yield from make_gains_model((num_source, num_ant))
+
             # Broadcast to shape
             gains = jnp.broadcast_to(
                 gains[:, None, :, None, ...],
                 (num_source, len(times), num_ant, len(freqs), 2, 2)
-            )  # [num_source, num_time, num_ant, num_chan, 2, 2]
-            return gains
-
-        return prior_model
-
-
-
-@dataclasses.dataclass(eq=False)
-class ScalarUnconstrainedGain(AbstractGainPriorModel):
-    """
-    A gain model with unconstrained complex Gaussian priors with zero mean, but only on the diagonal.
-    """
-    gain_stddev: float = 2.
-
-    def build_prior_model(self, num_source: int, num_ant: int, freqs: jax.Array, times: jax.Array) -> PriorModelType:
-        loc = jnp.zeros((num_source, num_ant))
-        scale = jnp.full((num_source, num_ant), self.gain_stddev)
-
-        def prior_model():
-            gains_real = yield Prior(
-                tfpd.Normal(
-                    loc=loc + 1.,
-                    scale=scale
-                ),
-                name='gains_real'
-            ).parametrised()
-            gains_imag = yield Prior(
-                tfpd.Normal(
-                    loc=loc,
-                    scale=scale
-                ),
-                name='gains_imag'
-            ).parametrised()
-            gains = gains_real + 1j * gains_imag  # [num_source, num_ant]
-            # Broadcast to shape
-            gains = jnp.broadcast_to(
-                gains[:, None, :, None],
-                (num_source, len(times), num_ant, len(freqs))
-            )  # [num_source, num_time, num_ant, num_chan]
+            )  # [num_source, num_time, num_ant, num_chan[, 2, 2]]
             return gains
 
         return prior_model
