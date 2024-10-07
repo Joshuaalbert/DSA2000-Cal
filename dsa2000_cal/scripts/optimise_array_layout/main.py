@@ -342,7 +342,7 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         theta = yield Prior(tfpd.Uniform(
             jnp.zeros_like(ball_radius),
             2. * jnp.pi * jnp.ones_like(ball_radius)),
-            name='theta').parametrised()
+            name='theta').parametrised(random_init=True)
         direction = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
 
         # Allow going up and down, with initial point at zero
