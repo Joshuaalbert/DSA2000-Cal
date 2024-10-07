@@ -23,7 +23,10 @@ def get_all_subdirs(top: str, *dirs) -> List[str]:
     for dir, sub_dirs, files in os.walk(os.path.join(top, dir)):
         data_dir.append(dir[len(top) + 1:])
     data_dir = list(filter(lambda x: not os.path.basename(x).startswith('_'), data_dir))
-    data_dir = list(map(lambda x: os.path.join(x, '*'), data_dir))
+
+    data_dir = list(map(lambda x: os.path.join(x, '*'), data_dir)) + list(
+        map(lambda x: os.path.join(x, '.large_files'), data_dir))
+
     return data_dir
 
 
