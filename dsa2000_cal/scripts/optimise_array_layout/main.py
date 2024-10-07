@@ -341,9 +341,7 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         direction = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
 
         # Allow going up and down, with initial point at zero
-        radius_squared = yield Prior(tfpd.Uniform(-jnp.ones_like(ball_radius), jnp.ones_like(ball_radius)),
-                                     name='radius_squared').parametrised(random_init=True)
-        radius = jnp.sign(radius_squared) * jnp.sqrt(jnp.abs(radius_squared)) * ball_radius
+        radius = yield Prior(tfpd.Uniform(-ball_radius, ball_radius), name='radius').parametrised()
         x = ball_origin + radius[:, None] * direction  # [N, 2]
         up = jnp.zeros((np.shape(ball_radius)[0], 1))
         antennas_enu = jnp.concatenate([x, up], axis=-1)
