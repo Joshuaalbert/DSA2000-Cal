@@ -1,3 +1,4 @@
+import itertools
 import os
 
 from scipy.spatial import KDTree
@@ -133,7 +134,7 @@ def compute_mu_sigma_X(mu_Y, sigma_Y):
 
 
 def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
-                      freq: jax.Array, latitude: jax.Array) -> Tuple[jax.Array, jax.Array]:
+                      freq: jax.Array, latitude: jax.Array):
     psf = compute_psf(antenna_locations, lmn, freq, latitude)  # [Nr, Nt]
     fwhm_ring = psf[0, :]  # [Nt]
     sidelobes = psf[1:, :]  # [Nr-1, Nt]
@@ -155,10 +156,21 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
         (log_sidelobe - threshold) / jnp.log(1.5),
         0.
     )
-    return residual_fwhm, residual_sidelobes
+    # Also take into account zenith but only consider sidelobes
+    psf = compute_psf(antenna_locations, lmn, freq, jnp.zeros_like(latitude))  # [Nr, Nt]
+    zenith_sidelobes = psf[1:, :]  # [Nr-1, Nt]
+    log_zenith_sidelobes = jnp.log(zenith_sidelobes)
+    residual_zenith_sidelobes = jnp.where(
+        log_zenith_sidelobes > threshold,
+        (log_zenith_sidelobes - threshold) / jnp.log(1.5),
+        0.
+    )
+
+    return residual_fwhm, residual_sidelobes, residual_zenith_sidelobes
 
 
-def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance):
+def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance,
+               other_antennas: ac.EarthLocation = None, min_antenna_sep=8.):
     height = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
     array_constraint = ArrayConstraint()
     samples = []
@@ -175,6 +187,8 @@ def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distanc
     constraint_samplers, constraint_buffers = zip(*constraint_data)
     areas = np.asarray([s.total_area for s in aoi_samplers])
     aoi_probs = areas / areas.sum()
+    if other_antennas is not None:
+        other_antennas_itrs = other_antennas.get_itrs().cartesian.xyz.to('m').value.T
     c = 0
     while len(samples) < num_samples:
         sampler_idx = np.random.choice(len(aoi_samplers), p=aoi_probs)
@@ -195,6 +209,17 @@ def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distanc
             if dist <= buffer + additional_distance:
                 far_enough_away = False
                 break
+
+        if other_antennas is not None:
+            point_itrs = ac.EarthLocation.from_geodetic(
+                lon=sample_proposal[0] * au.deg,
+                lat=sample_proposal[1] * au.deg,
+                height=array_location.geodetic.height
+            ).get_itrs().cartesian.xyz.to('m').value
+            dist = np.linalg.norm(other_antennas_itrs - point_itrs, axis=-1)  # [N]
+            if np.any(dist < min_antenna_sep):
+                far_enough_away = False
+
         if far_enough_away:
             samples.append(sample_proposal)
         c += 1
@@ -202,12 +227,18 @@ def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distanc
 
 
 def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation,
-                      additional_buffer) -> ac.EarthLocation:
+                      additional_buffer, force_relocate) -> ac.EarthLocation:
     # Find closest constraint point
     closest_point_dist, closest_point_dist_including_buffer, closest_type = get_closest_point_dist(
         locations=antennas, array_location=array_location, additional_distance=additional_buffer
     )  # [N] in meters
-    too_close = closest_point_dist_including_buffer <= 0.
+    too_close = (closest_point_dist_including_buffer <= 0.) | force_relocate
+    for idx in range(len(too_close)):
+        if force_relocate[idx]:
+            closest_type[idx] = "another antenna"
+            closest_point_dist_including_buffer[idx] = 0.
+            closest_point_dist[idx] = 0.
+
     num_relocate = np.sum(too_close)
     with open('relocation.log', 'w') as f:
         s = f"Relocating {num_relocate} antennas"
@@ -280,6 +311,11 @@ def get_closest_point_dist(locations: ac.EarthLocation, array_location: ac.Earth
                 dist_including_buffer = _dist_including_buffer
                 _type = aoi_sampler.name
 
+            if not aoi_sampler.contains(*point):
+                dist = 0.
+                dist_including_buffer = 0.
+                _type = "Outside AOI"
+
         for constraint_sampler, buffer in zip(constraint_samplers, constraint_buffers):
             _, angular_dist = constraint_sampler.closest_approach(*point)
             _dist = np.pi / 180. * angular_dist * height
@@ -288,6 +324,7 @@ def get_closest_point_dist(locations: ac.EarthLocation, array_location: ac.Earth
                 dist = _dist
                 dist_including_buffer = _dist_including_buffer
                 _type = constraint_sampler.name
+
         closest_point_dist.append(dist)
         closest_point_dist_including_buffer.append(dist_including_buffer)
         closest_type.append(_type)
@@ -328,8 +365,8 @@ def get_uniform_ball_prior(antennas_enu: np.ndarray, obstime: at.Time, array_loc
     )
     dist, _ = tree.query(antennas_enu, k=2)
     dist = dist[:, 1]
-    min_sep = 5.
-    ball_radius = np.minimum(ball_radius, dist - min_sep)
+    min_sep = 8.
+    ball_radius = np.maximum(0., np.minimum(ball_radius, dist - min_sep))
     # Construct prior
     ball_centre = antennas_enu[:, :2]
     return ball_centre, ball_radius
@@ -423,7 +460,34 @@ def main():
 
     # Shift antennas if too close to boundary, so that search priors can have non-zero radius
     antennas_before = antennas
-    antennas = relocate_antennas(antennas, obstime, array_location, additional_buffer=0.)  # 10m additional buffer
+
+    antennas_before_enu = antennas_before.get_itrs(
+        obstime=obstime, location=array_location
+    ).transform_to(
+        ENU(obstime=obstime, location=array_location)
+    ).cartesian.xyz.to('m').value.T
+    tree = KDTree(antennas_before_enu)
+    dist, _ = tree.query(antennas_before_enu, k=2)
+    dist = dist[:, 1]
+    force_relocate = dist < 8.
+
+    while True:
+        relocated_antennas = relocate_antennas(antennas, obstime, array_location,
+                                               additional_buffer=0., force_relocate=force_relocate)
+        relocated_antennas_enu = relocated_antennas.get_itrs(
+            obstime=obstime, location=array_location
+        ).transform_to(
+            ENU(obstime=obstime, location=array_location)
+        ).cartesian.xyz.to('m').value.T
+        tree = KDTree(relocated_antennas_enu)
+        dist, _ = tree.query(relocated_antennas_enu, k=2)
+        dist = dist[:, 1]
+        if np.any(dist < 8.):
+            print("Some antennas are still too close to each other, retrying")
+            continue
+        break
+    antennas = relocated_antennas
+
     plot_relocated_antennas(antennas_before, antennas, obstime, array_location)
 
     # Setup the optimisation problem
@@ -499,7 +563,9 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     ax[1].set_xlim(-10e3, 10e3)
     ax[1].set_ylim(-10e3, 10e3)
     ax[1].set_title(f'Solution: {iteration}')
-    uvw_radial = np.linalg.norm(x[:, None, :2] - x[None, :, :2], axis=-1)
+    antenna1, antenna2 = np.asarray(list(itertools.combinations_with_replacement(range(x.shape[0]), 2)),
+                                    dtype=jnp.int32).T
+    uvw_radial = np.linalg.norm(x[antenna2, :2] - x[antenna1, :2], axis=-1)
     ax[2].hist(uvw_radial.flatten(), bins=np.arange(0, 20e3, 10))
     ax[2].set_xlabel('UVW radial distance [m]')
     ax[2].set_ylabel('Number of pairs')
