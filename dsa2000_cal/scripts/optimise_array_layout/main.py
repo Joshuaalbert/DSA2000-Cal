@@ -428,8 +428,8 @@ def main():
 
     # Setup the optimisation problem
     problem = OptimisationProblem(
-        num_radial_bins=12 * 1 - 1,
-        num_theta_bins=12 * 1,
+        num_radial_bins=12 * 20 - 1,
+        num_theta_bins=12 * 20,
         lmax=3 * au.deg
     )
 
@@ -519,7 +519,7 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     thetas = np.linspace(0, 2 * np.pi, problem.num_theta_bins, endpoint=False)
     sc = ax[0].scatter(
         lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=psf.flatten(), s=1, cmap='jet',
-        vmin=-80, vmax=-10
+        vmin=-70, vmax=-20
     )
     plt.colorbar(sc, ax=ax[0], label='Power (dB)')
     ax[0].set_xlabel('l (proj.rad)')
@@ -543,15 +543,15 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
 
     # row 1: Plot the PSF vs radius
     # row 2: Plot the residuals, PSF - PSF0 vs radius
-    radii = np.linalg.norm(lmn[..., :2], axis=-1).flatten()
+    radii = np.linalg.norm(lmn[..., :2], axis=-1).flatten() * 180. / np.pi
     fig, ax = plt.subplots(2, 1, figsize=(6, 10), sharex=True)
     ax[0].scatter(radii, psf.flatten(), s=1)
-    ax[0].set_xlabel('Radius [proj.rad]')
+    ax[0].set_xlabel('Radius [proj. degrees]')
     ax[0].set_ylabel('Beam power (dB)')
     ax[0].set_title('PSF vs Radius')
     ax[0].set_ylim(-80, 0)
     ax[1].scatter(radii, residuals.flatten(), s=1)
-    ax[1].set_xlabel('Radius [proj.rad]')
+    ax[1].set_xlabel('Radius [proj. degrees]')
     ax[1].set_ylabel('Beam power (dB)')
     ax[1].set_title('PSF residuals vs Radius')
     fig.savefig(f'psf_vs_radius_solution_{iteration}.png', dpi=300)
