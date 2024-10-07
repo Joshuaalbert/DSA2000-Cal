@@ -16,3 +16,5 @@ tqdm
 sympy
 ducc0==0.34.0
 imageio
+geopandas
+shapely
