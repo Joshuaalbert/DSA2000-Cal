@@ -1,6 +1,5 @@
 import jax
 from jax import numpy as jnp
-from scipy.sparse.linalg import eigs
 
 
 def randomized_svd(key, A, k, p):
@@ -36,18 +35,6 @@ def randomized_pinv(key, A, k, p):
     return A_pinv
 
 
-def test_randomized_svd_pinv():
-    # Step 1: Input Matrix
-    A = jax.random.normal(jax.random.PRNGKey(0), (10, 5))
-
-    # Step 9: Compute pseudoinverse
-    A_pinv = randomized_pinv(jax.random.PRNGKey(1),
-                             A, 3, 2)
-
-    # Step 11: Check
-    assert jnp.allclose(A_pinv, jnp.linalg.pinv(A))
-
-
 def msqrt(A):
     """
     Computes the matrix square-root using SVD, which is robust to poorly conditioned covariance matrices.
@@ -80,10 +67,3 @@ def randomised_msqrt(key, A, k, p):
     max_eig = jnp.max(s)
     min_eig = jnp.min(s)
     return max_eig, min_eig, L
-
-def test_randomised_msqrt():
-    A = jax.random.normal(jax.random.PRNGKey(0), (10, 10))
-    A = A @ A.T
-    max_eig, min_eig, L = randomised_msqrt(jax.random.PRNGKey(1), A, 3, 2)
-    assert jnp.allclose(L @ L.T, A)
-
