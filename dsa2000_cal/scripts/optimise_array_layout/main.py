@@ -224,7 +224,8 @@ def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_locati
     closest_point_dist, closest_point_dist_including_buffer, closest_type = get_closest_point_dist(
         locations=antennas, array_location=array_location, additional_distance=additional_buffer
     )  # [N] in meters
-    too_close = (closest_point_dist_including_buffer <= 0.) | force_relocate
+    too_close_to_constraint = closest_point_dist_including_buffer <= 0.
+    too_close = np.logical_or(too_close_to_constraint, force_relocate)
     for idx in range(len(too_close)):
         if force_relocate[idx]:
             closest_type[idx] = "another antenna"
@@ -248,7 +249,6 @@ def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_locati
     new_locations = sample_aoi(
         num_relocate, array_location, additional_buffer
     )  # [num_relocate]
-
     new_enu = new_locations.get_itrs(
         obstime=obstime, location=array_location
     ).transform_to(
@@ -439,11 +439,10 @@ def plot_relocated_antennas(antennas_before: ac.EarthLocation, antennas_after: a
 
 
 def main(init_config: str | None = None):
-    np.random.seed(42)
+    np.random.seed(43)  # Correlated resamples fond by keeping seed the same.
     if init_config is not None:
         coords = []
         with open(init_config, 'r') as f:
-            antennas = []
             for line in f:
                 if line.startswith("#"):
                     continue
@@ -501,8 +500,8 @@ def main(init_config: str | None = None):
 
     # Setup the optimisation problem
     problem = OptimisationProblem(
-        num_radial_bins=12 * 20 - 1,
-        num_theta_bins=12 * 20,
+        num_radial_bins=12 * 2 - 1,
+        num_theta_bins=12 * 2,
         lmax=3 * au.deg
     )
 
