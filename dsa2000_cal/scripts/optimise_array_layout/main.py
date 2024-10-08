@@ -394,8 +394,8 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         (x,) = model(params).prepare_input(U)
         return (
             compute_residuals(x, lmn, freq, latitude),
-            compute_residuals(x, lmn, lower_freq, latitude),
-            compute_residuals(x, lmn, upper_freq, latitude)
+            # compute_residuals(x, lmn, lower_freq, latitude),
+            # compute_residuals(x, lmn, upper_freq, latitude)
         )
 
     solver = MultiStepLevenbergMarquardt(
