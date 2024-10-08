@@ -145,7 +145,7 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
 
     # Make the threshold for sidelobe optimisation
     sidelobe_radii = jnp.linalg.norm(lmn[1:, :, :2], axis=-1)  # [Nr-1, Nt]
-    inner_threshold = jnp.asarray(np.log(1e-3), psf.dtype)
+    inner_threshold = jnp.asarray(np.log(5e-4), psf.dtype)
     outer_threshold = jnp.asarray(np.log(1e-4), psf.dtype)
     r_min = sidelobe_radii[0, 0]
     r_max = sidelobe_radii[-1, 0]
@@ -153,7 +153,7 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
 
     residual_sidelobes = jnp.where(
         log_sidelobe > threshold,
-        (log_sidelobe - threshold) / jnp.log(1.5),
+        (log_sidelobe - threshold) / jnp.log(2.),
         0.
     )
 
@@ -164,12 +164,12 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
         log_zenith_sidelobes = jnp.log(zenith_sidelobes)
         residual_zenith_sidelobes = jnp.where(
             log_zenith_sidelobes > threshold,
-            (log_zenith_sidelobes - threshold) / jnp.log(1.5),
+            (log_zenith_sidelobes - threshold) / jnp.log(2.),
             0.
         )
         return residual_zenith_sidelobes
 
-    delta_decs = jnp.asarray([-jnp.pi / 2., -jnp.pi / 4., jnp.pi / 4., jnp.pi / 2.])
+    delta_decs = jnp.linspace(-30. * (np.pi / 180.), 90. * (np.pi / 180.), 10)
     other_residual_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
 
     return residual_fwhm, residual_sidelobes, other_residual_sidelobes
@@ -362,6 +362,9 @@ def get_uniform_ball_prior(antennas_enu: np.ndarray, obstime: at.Time, array_loc
 
 @partial(jax.jit)
 def solve(ball_origin, ball_radius, lmn, freq, latitude):
+    lower_freq = jnp.asarray(700e6, freq.dtype)
+    upper_freq = jnp.asarray(2000e6, freq.dtype)
+
     def prior_model():
         # Uniform ball prior
         theta = yield Prior(tfpd.Uniform(
@@ -387,7 +390,11 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
 
     def residuals(params):
         (x,) = model(params).prepare_input(U)
-        return compute_residuals(x, lmn, freq, latitude)
+        return (
+            compute_residuals(x, lmn, freq, latitude),
+            compute_residuals(x, lmn, lower_freq, latitude),
+            compute_residuals(x, lmn, upper_freq, latitude)
+        )
 
     solver = MultiStepLevenbergMarquardt(
         residual_fn=residuals,
