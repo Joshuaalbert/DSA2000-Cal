@@ -667,6 +667,7 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
         ax[i].set_xlabel('Radius [proj. degrees]')
         ax[i].set_ylabel('Beam power (dB)')
         ax[i].set_title(f'PSF vs Radius at {title}')
+        ax[i].set_ylim(-70, 0)
     fig.savefig(f'psf_vs_radius_dec_solution_{iteration}.png', dpi=300)
     plt.close('all')
 
