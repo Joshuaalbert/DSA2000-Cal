@@ -169,14 +169,13 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
         )
         return residual_zenith_sidelobes
 
-    delta_decs = jnp.asarray([jnp.pi/4., -jnp.pi/4., latitude])
-    sidelobe_residuals = jax.vmap(single_dec_residuals)(delta_decs)
+    delta_decs = jnp.asarray([-jnp.pi / 2., -jnp.pi / 4., jnp.pi / 4., jnp.pi / 2.])
+    other_residual_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
+
+    return residual_fwhm, residual_sidelobes, other_residual_sidelobes
 
 
-    return residual_fwhm, residual_sidelobes, sidelobe_residuals
-
-
-def sample_aoi(num_samples, array_location: ac.EarthLocation, obstime:at.Time, additional_distance):
+def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance):
     radius = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
     array_constraint = ArrayConstraint()
     samples = []
@@ -247,7 +246,7 @@ def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_locati
 
     # sample new locations
     new_locations = sample_aoi(
-        num_relocate, array_location, obstime, additional_buffer
+        num_relocate, array_location, additional_buffer
     )  # [num_relocate]
 
     new_enu = new_locations.get_itrs(
@@ -633,18 +632,19 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     fig.savefig(f'psf_vs_radius_solution_{iteration}.png', dpi=300)
     plt.close('all')
 
-    # row 1: Plot the PSF at DEC=0
-    # row 2: Plot the PSF at DEC=+45
-    # row 3: Plot the PSF at DEC=-45
-    # row 4: Plot the PSF at DEC=zenith
+    # row 1: Plot the PSF at DEC=-90
+    # row 2: Plot the PSF at DEC=-45
+    # row 3: Plot the PSF at DEC=0
+    # row 4: Plot the PSF at DEC=+45
+    # row 5: Plot the PSF at DEC=+90
     psf = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude))  # [Nr, Nt]
-    psf_45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude + 45 * np.pi / 180.))  # [Nr, Nt]
-    psf_m45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude - 45 * np.pi / 180.))  # [Nr, Nt]
-    psf_zenith = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, 0.))  # [Nr, Nt]
-
-    fig, ax = plt.subplots(4, 1, figsize=(6, 20), sharex=True, sharey=True)
+    psf_45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude - 45 * np.pi / 180.))  # [Nr, Nt]
+    psf_m45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude + 45 * np.pi / 180.))  # [Nr, Nt]
+    psf_90 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude - 90 * np.pi / 180.))  # [Nr, Nt]
+    psf_m90 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude + 90 * np.pi / 180.))  # [Nr, Nt]
+    fig, ax = plt.subplots(5, 1, figsize=(6, 20), sharex=True, sharey=True)
     for i, (p, title) in enumerate(
-            [(psf, 'DEC=0'), (psf_45, 'DEC=+45'), (psf_m45, 'DEC=-45'), (psf_zenith, 'DEC=zenith')]):
+            [(psf_m90, 'DEC=-90'), (psf_m45, 'DEC=-45'), (psf, 'DEC=0'), (psf_45, 'DEC=+45'), (psf_90, 'DEC=+90')]):
         sc = ax[i].scatter(
             lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=p.flatten(), s=1, cmap='jet',
             vmin=-70, vmax=-20
@@ -655,14 +655,15 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
         ax[i].set_title(f'PSF at {title}')
     fig.savefig(f'psf_dec_solution_{iteration}.png', dpi=300)
 
-    # row 1: Plot the PSF vs radius at DEC=0
-    # row 2: Plot the PSF vs radius at DEC=+45
-    # row 3: Plot the PSF vs radius at DEC=-45
-    # row 4: Plot the PSF vs radius at DEC=zenith
+    # row 1: Plot the PSF vs radius at DEC=-90
+    # row 2: Plot the PSF vs radius at DEC=-45
+    # row 3: Plot the PSF vs radius at DEC=0
+    # row 4: Plot the PSF vs radius at DEC=+45
+    # row 5: Plot the PSF vs radius at DEC=+90
     radii = np.linalg.norm(lmn[..., :2], axis=-1).flatten() * 180. / np.pi
-    fig, ax = plt.subplots(4, 1, figsize=(6, 20), sharex=True)
+    fig, ax = plt.subplots(5, 1, figsize=(6, 20), sharex=True)
     for i, (p, title) in enumerate(
-            [(psf, 'DEC=0'), (psf_45, 'DEC=+45'), (psf_m45, 'DEC=-45'), (psf_zenith, 'DEC=zenith')]):
+            [(psf_m90, 'DEC=-90'), (psf_m45, 'DEC=-45'), (psf, 'DEC=0'), (psf_45, 'DEC=+45'), (psf_90, 'DEC=+90')]):
         ax[i].scatter(radii, p.flatten(), s=1)
         ax[i].set_xlabel('Radius [proj. degrees]')
         ax[i].set_ylabel('Beam power (dB)')
