@@ -500,8 +500,8 @@ def main(init_config: str | None = None):
 
     # Setup the optimisation problem
     problem = OptimisationProblem(
-        num_radial_bins=12 * 2 - 1,
-        num_theta_bins=12 * 2,
+        num_radial_bins=12 * 20 - 1,
+        num_theta_bins=12 * 20,
         lmax=3 * au.deg
     )
 
