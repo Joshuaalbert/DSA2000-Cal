@@ -4,6 +4,7 @@ import os
 from scipy.spatial import KDTree
 
 from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
+from dsa2000_cal.common.astropy_utils import mean_itrs
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
@@ -31,7 +32,6 @@ from dsa2000_cal.common.jax_utils import create_mesh
 
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
-from typing import Tuple
 
 tfpd = tfp.distributions
 
@@ -142,53 +142,50 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     residual_fwhm = (jnp.log(fwhm_ring) - jnp.log(0.5)) / 0.02
     residual_fwhm = jnp.where(jnp.isnan(residual_fwhm), 0., residual_fwhm)
     log_sidelobe = jnp.log(sidelobes)
+
+    # Make the threshold for sidelobe optimisation
     sidelobe_radii = jnp.linalg.norm(lmn[1:, :, :2], axis=-1)  # [Nr-1, Nt]
     inner_threshold = jnp.asarray(np.log(1e-3), psf.dtype)
     outer_threshold = jnp.asarray(np.log(1e-4), psf.dtype)
     r_min = sidelobe_radii[0, 0]
     r_max = sidelobe_radii[-1, 0]
     threshold = inner_threshold + (sidelobe_radii - r_min) / (r_max - r_min) * (outer_threshold - inner_threshold)
-    # stopped_log_sidelobe = jax.lax.stop_gradient(log_sidelobe)
-    # residual_sidelobes = jnp.where(pos_mask, (log_sidelobe - stopped_log_sidelobe - jnp.log(0.98)) / 0.5, 0.)
-    # Only the top 10% of sidelobes are optimised at a given time.
+
     residual_sidelobes = jnp.where(
         log_sidelobe > threshold,
         (log_sidelobe - threshold) / jnp.log(1.5),
         0.
     )
-    # Also take into account zenith but only consider sidelobes
-    psf = compute_psf(antenna_locations, lmn, freq, jnp.zeros_like(latitude))  # [Nr, Nt]
-    zenith_sidelobes = psf[1:, :]  # [Nr-1, Nt]
-    log_zenith_sidelobes = jnp.log(zenith_sidelobes)
-    residual_zenith_sidelobes = jnp.where(
-        log_zenith_sidelobes > threshold,
-        (log_zenith_sidelobes - threshold) / jnp.log(1.5),
-        0.
-    )
 
-    return residual_fwhm, residual_sidelobes, residual_zenith_sidelobes
+    def single_dec_residuals(delta_dec):
+        # Also take into account zenith but only consider sidelobes
+        psf = compute_psf(antenna_locations, lmn, freq, latitude - delta_dec)  # [Nr, Nt]
+        zenith_sidelobes = psf[1:, :]  # [Nr-1, Nt]
+        log_zenith_sidelobes = jnp.log(zenith_sidelobes)
+        residual_zenith_sidelobes = jnp.where(
+            log_zenith_sidelobes > threshold,
+            (log_zenith_sidelobes - threshold) / jnp.log(1.5),
+            0.
+        )
+        return residual_zenith_sidelobes
+
+    delta_decs = jnp.asarray([jnp.pi/4., -jnp.pi/4., latitude])
+    sidelobe_residuals = jax.vmap(single_dec_residuals)(delta_decs)
 
 
-def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance,
-               other_antennas: ac.EarthLocation = None, min_antenna_sep=8.):
-    height = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
+    return residual_fwhm, residual_sidelobes, sidelobe_residuals
+
+
+def sample_aoi(num_samples, array_location: ac.EarthLocation, obstime:at.Time, additional_distance):
+    radius = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
     array_constraint = ArrayConstraint()
     samples = []
     aoi_data = array_constraint.get_area_of_interest_regions()
     constraint_data = array_constraint.get_constraint_regions()
-    # soil_sampler, _ = constraint_data[3]
-    # # print(soil_sampler.gdf['SUMMARY_TY'].unique())
-    # # soil_sampler.info()
-    # soil_sampler.plot_region(plt.gca(), 'blue')
-    # aio_sampler, _ = aoi_data[0]
-    # aio_sampler.plot_region(plt.gca(), 'red')
-    # plt.show()
     aoi_samplers, aoi_buffers = zip(*aoi_data)
     constraint_samplers, constraint_buffers = zip(*constraint_data)
     areas = np.asarray([s.total_area for s in aoi_samplers])
     aoi_probs = areas / areas.sum()
-    if other_antennas is not None:
-        other_antennas_itrs = other_antennas.get_itrs().cartesian.xyz.to('m').value.T
     c = 0
     while len(samples) < num_samples:
         sampler_idx = np.random.choice(len(aoi_samplers), p=aoi_probs)
@@ -197,7 +194,7 @@ def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distanc
         sample_proposal = sampler.get_samples_within(1)[0]
         # Check that it far enough from AOI perimeter
         _, angular_dist = sampler.closest_approach_to_boundary(*sample_proposal)
-        dist = np.pi / 180. * angular_dist * height
+        dist = np.pi / 180. * angular_dist * radius
         if dist < buffer + additional_distance:
             continue
 
@@ -205,25 +202,21 @@ def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distanc
         far_enough_away = True
         for constraint_sampler, buffer in zip(constraint_samplers, constraint_buffers):
             _, angular_dist = constraint_sampler.closest_approach(*sample_proposal)
-            dist = np.pi / 180. * angular_dist * height
+            dist = np.pi / 180. * angular_dist * radius
             if dist <= buffer + additional_distance:
                 far_enough_away = False
                 break
 
-        if other_antennas is not None:
-            point_itrs = ac.EarthLocation.from_geodetic(
-                lon=sample_proposal[0] * au.deg,
-                lat=sample_proposal[1] * au.deg,
-                height=array_location.geodetic.height
-            ).get_itrs().cartesian.xyz.to('m').value
-            dist = np.linalg.norm(other_antennas_itrs - point_itrs, axis=-1)  # [N]
-            if np.any(dist < min_antenna_sep):
-                far_enough_away = False
-
         if far_enough_away:
             samples.append(sample_proposal)
         c += 1
-    return np.asarray(samples)
+    samples = np.asarray(samples)
+    new_locations = ac.EarthLocation.from_geodetic(
+        lon=samples[:, 0] * au.deg,
+        lat=samples[:, 1] * au.deg,
+        height=array_location.geodetic.height
+    )  # [num_relocate]
+    return new_locations
 
 
 def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation,
@@ -249,18 +242,14 @@ def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_locati
                 s = (f"Antenna {idx} (lon={antennas[idx].lon},lat={antennas[idx].lat},height={antennas[idx].height}) "
                      f"is too close {closest_point_dist[idx]:.1f}m "
                      f"({-closest_point_dist_including_buffer[idx]:.1f}m within buffer) to {closest_type[idx]}")
-                print(s)
+                # print(s)
                 f.write(f"{s}\n")
 
     # sample new locations
     new_locations = sample_aoi(
-        num_relocate, array_location, additional_buffer
-    )  # [num_relocate, 2] lon/lat in degrees
-    new_locations = ac.EarthLocation.from_geodetic(
-        lon=new_locations[:, 0] * au.deg,
-        lat=new_locations[:, 1] * au.deg,
-        height=array_location.geodetic.height
+        num_relocate, array_location, obstime, additional_buffer
     )  # [num_relocate]
+
     new_enu = new_locations.get_itrs(
         obstime=obstime, location=array_location
     ).transform_to(
@@ -285,7 +274,7 @@ def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_locati
 
 
 def get_closest_point_dist(locations: ac.EarthLocation, array_location: ac.EarthLocation, additional_distance):
-    height = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
+    radius = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
     array_constraint = ArrayConstraint()
     aoi_data = array_constraint.get_area_of_interest_regions()
     constraint_data = array_constraint.get_constraint_regions()
@@ -303,7 +292,7 @@ def get_closest_point_dist(locations: ac.EarthLocation, array_location: ac.Earth
         _type = None
         for aoi_sampler, buffer in zip(aoi_samplers, aoi_buffers):
             _, angular_dist = aoi_sampler.closest_approach_to_boundary(*point)
-            _dist = np.pi / 180. * angular_dist * height
+            _dist = np.pi / 180. * angular_dist * radius
             _dist_including_buffer = _dist - buffer - additional_distance
 
             if _dist < dist:
@@ -313,12 +302,12 @@ def get_closest_point_dist(locations: ac.EarthLocation, array_location: ac.Earth
 
             if not aoi_sampler.contains(*point):
                 dist = 0.
-                dist_including_buffer = 0.
+                dist_including_buffer = _dist - buffer - additional_distance
                 _type = "Outside AOI"
 
         for constraint_sampler, buffer in zip(constraint_samplers, constraint_buffers):
             _, angular_dist = constraint_sampler.closest_approach(*point)
-            _dist = np.pi / 180. * angular_dist * height
+            _dist = np.pi / 180. * angular_dist * radius
             _dist_including_buffer = _dist - buffer - additional_distance
             if _dist < dist:
                 dist = _dist
@@ -450,16 +439,36 @@ def plot_relocated_antennas(antennas_before: ac.EarthLocation, antennas_after: a
     plt.close('all')
 
 
-def main():
+def main(init_config: str | None = None):
     np.random.seed(42)
-    fill_registries()
-    array = array_registry.get_instance(array_registry.get_match('dsa2000_31b'))
-    antennas = array.get_antennas()
-    array_location = array.get_array_location()
+    if init_config is not None:
+        coords = []
+        with open(init_config, 'r') as f:
+            antennas = []
+            for line in f:
+                if line.startswith("#"):
+                    continue
+                x, y, z = line.strip().split(',')
+                coords.append((float(x), float(y), float(z)))
+        coords = np.asarray(coords)
+        antennas = ac.EarthLocation.from_geocentric(
+            coords[:, 0] * au.m,
+            coords[:, 1] * au.m,
+            coords[:, 2] * au.m
+        )
+        array_location = mean_itrs(antennas.get_itrs()).earth_location
+    else:
+        fill_registries()
+        array = array_registry.get_instance(array_registry.get_match('dsa2000_31b'))
+        antennas = array.get_antennas()
+        array_location = array.get_array_location()
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
 
     # Shift antennas if too close to boundary, so that search priors can have non-zero radius
     antennas_before = antennas
+
+    # Minimal allowed movement
+    init_freedom = 10.
 
     antennas_before_enu = antennas_before.get_itrs(
         obstime=obstime, location=array_location
@@ -469,11 +478,11 @@ def main():
     tree = KDTree(antennas_before_enu)
     dist, _ = tree.query(antennas_before_enu, k=2)
     dist = dist[:, 1]
-    force_relocate = dist < 8.
+    force_relocate = dist < 8. + init_freedom
 
     while True:
         relocated_antennas = relocate_antennas(antennas, obstime, array_location,
-                                               additional_buffer=0., force_relocate=force_relocate)
+                                               additional_buffer=init_freedom, force_relocate=force_relocate)
         relocated_antennas_enu = relocated_antennas.get_itrs(
             obstime=obstime, location=array_location
         ).transform_to(
@@ -482,8 +491,9 @@ def main():
         tree = KDTree(relocated_antennas_enu)
         dist, _ = tree.query(relocated_antennas_enu, k=2)
         dist = dist[:, 1]
-        if np.any(dist < 8.):
-            print("Some antennas are still too close to each other, retrying")
+        if np.any(dist < 8. + init_freedom):
+            print(f"Some {np.sum(dist < 8. + init_freedom)} antennas are still too close to each other, retrying")
+            # force_relocate = dist < 8. + init_freedom
             continue
         break
     antennas = relocated_antennas
@@ -623,6 +633,43 @@ def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, 
     fig.savefig(f'psf_vs_radius_solution_{iteration}.png', dpi=300)
     plt.close('all')
 
+    # row 1: Plot the PSF at DEC=0
+    # row 2: Plot the PSF at DEC=+45
+    # row 3: Plot the PSF at DEC=-45
+    # row 4: Plot the PSF at DEC=zenith
+    psf = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude))  # [Nr, Nt]
+    psf_45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude + 45 * np.pi / 180.))  # [Nr, Nt]
+    psf_m45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude - 45 * np.pi / 180.))  # [Nr, Nt]
+    psf_zenith = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, 0.))  # [Nr, Nt]
+
+    fig, ax = plt.subplots(4, 1, figsize=(6, 20), sharex=True, sharey=True)
+    for i, (p, title) in enumerate(
+            [(psf, 'DEC=0'), (psf_45, 'DEC=+45'), (psf_m45, 'DEC=-45'), (psf_zenith, 'DEC=zenith')]):
+        sc = ax[i].scatter(
+            lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=p.flatten(), s=1, cmap='jet',
+            vmin=-70, vmax=-20
+        )
+        plt.colorbar(sc, ax=ax[i], label='Power (dB)')
+        ax[i].set_xlabel('l (proj.rad)')
+        ax[i].set_ylabel('m (proj.rad)')
+        ax[i].set_title(f'PSF at {title}')
+    fig.savefig(f'psf_dec_solution_{iteration}.png', dpi=300)
+
+    # row 1: Plot the PSF vs radius at DEC=0
+    # row 2: Plot the PSF vs radius at DEC=+45
+    # row 3: Plot the PSF vs radius at DEC=-45
+    # row 4: Plot the PSF vs radius at DEC=zenith
+    radii = np.linalg.norm(lmn[..., :2], axis=-1).flatten() * 180. / np.pi
+    fig, ax = plt.subplots(4, 1, figsize=(6, 20), sharex=True)
+    for i, (p, title) in enumerate(
+            [(psf, 'DEC=0'), (psf_45, 'DEC=+45'), (psf_m45, 'DEC=-45'), (psf_zenith, 'DEC=zenith')]):
+        ax[i].scatter(radii, p.flatten(), s=1)
+        ax[i].set_xlabel('Radius [proj. degrees]')
+        ax[i].set_ylabel('Beam power (dB)')
+        ax[i].set_title(f'PSF vs Radius at {title}')
+    fig.savefig(f'psf_vs_radius_dec_solution_{iteration}.png', dpi=300)
+    plt.close('all')
+
 
 if __name__ == '__main__':
-    main()
+    main(init_config='init_config.txt')
