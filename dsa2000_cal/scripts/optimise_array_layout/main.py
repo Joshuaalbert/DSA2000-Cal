@@ -169,7 +169,7 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
         )
         return residual_zenith_sidelobes
 
-    delta_decs = jnp.linspace(-30. * (np.pi / 180.), 90. * (np.pi / 180.), 10)
+    delta_decs = jnp.asarray(np.asarray([-30., -16., 10., 23., 36., 50., 64., 76., 90.]) * np.pi / 180.)
     other_residual_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
 
     return residual_fwhm, residual_sidelobes, other_residual_sidelobes
