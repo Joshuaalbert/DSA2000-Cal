@@ -4,7 +4,6 @@ from typing import List
 
 import jax
 import numpy as np
-from astropy import coordinates as ac
 
 
 @dataclasses.dataclass(eq=False)
@@ -15,12 +14,7 @@ class GainModel(ABC):
     An antenna-based gain model is one where gains are indexed functions g_i:: (Freq, Source, Time) -> C^2x2
 
     The antenna positions are stored in the `antennas` attribute, and can be accessed by the methods if needed.
-
-    Args:
-        antennas: [num_ant] antenna positions
     """
-    antennas: ac.EarthLocation  # [num_ant]
-    tile_antennas: bool
 
     @abstractmethod
     def is_full_stokes(self) -> bool:
@@ -33,14 +27,14 @@ class GainModel(ABC):
         ...
 
     @abstractmethod
-    def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array) -> jax.Array:
         """
         Compute the beam gain at the given pointing direction.
 
         Args:
             freqs: [num_freqs] the frequency values
             times: [num_times] the time values
-            geodesics: [num_sources, num_time, num_ant, 3] the lmn coordinates of the source in frame of the antennas.
+            lmn_geodesic: [num_sources, num_time, num_ant, 3] the lmn coordinates of the source in frame of the antennas.
 
         Returns:
             [num_sources, num_time, num_ant, num_freq[, 2, 2]] The beam gain at the given source coordinates.
@@ -58,18 +52,22 @@ class GainModel(ABC):
         return ProductGainModel([other, self])
 
 
+@dataclasses.dataclass(eq=False)
 class ProductGainModel(GainModel):
     """
     A product of gain models.
     """
 
-    def __init__(self, gain_models: List[GainModel]):
-        self.gain_models = []
-        for gain_model in gain_models:
+    gain_models: List[GainModel]
+
+    def __post_init__(self):
+        gain_models = []
+        for gain_model in self.gain_models:
             if isinstance(gain_model, ProductGainModel):
-                self.gain_models.extend(gain_model.gain_models)
+                gain_models.extend(gain_model.gain_models)
             else:
-                self.gain_models.append(gain_model)
+                gain_models.append(gain_model)
+        self.gain_models = gain_models
         full_stokes = []
         for gain_model in self.gain_models:
             full_stokes.append(gain_model.is_full_stokes())
@@ -81,9 +79,10 @@ class ProductGainModel(GainModel):
     def is_full_stokes(self) -> bool:
         return self._is_full_stokes
 
-    def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array) -> jax.Array:
         gains = [
-            gain_model.compute_gain(freqs=freqs, times=times, geodesics=geodesics) for gain_model in self.gain_models
+            gain_model.compute_gain(freqs=freqs, times=times, lmn_geodesic=lmn_geodesic) for gain_model in
+            self.gain_models
         ]
 
         for gain in gains:
@@ -97,3 +96,22 @@ class ProductGainModel(GainModel):
         for gain in gains[1:]:
             output = output @ gain
         return output
+
+
+def product_gain_model_flatten(product_gain_model: ProductGainModel):
+    return (
+        [product_gain_model.gain_models],
+        ()
+    )
+
+
+def product_gain_model_unflatten(aux_data, children) -> ProductGainModel:
+    gain_models = children
+    return ProductGainModel(gain_models)
+
+
+jax.tree_util.register_pytree_node(
+    ProductGainModel,
+    product_gain_model_flatten,
+    product_gain_model_unflatten
+)

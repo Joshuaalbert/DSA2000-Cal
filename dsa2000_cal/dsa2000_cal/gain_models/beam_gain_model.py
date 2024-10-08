@@ -1,24 +1,28 @@
-import dataclasses
-
 import numpy as np
 from astropy import units as au, time as at
 
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel
-
-
-@dataclasses.dataclass(eq=False)
-class BeamGainModel(SphericalInterpolatorGainModel):
-    ...
+from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel, \
+    build_spherical_interpolator
 
 
 def build_beam_gain_model(
         array_name: str,
         full_stokes: bool = True,
-        model_times: at.Time | None = None,
-        **kwargs
-) -> BeamGainModel:
+        model_times: at.Time | None = None
+) -> BaseSphericalInterpolatorGainModel:
+    """
+    Build a beam gain model for an array.
+
+    Args:
+        array_name: the name of the array
+        full_stokes: whether to use full stokes
+        model_times: the times at which to compute the model
+
+    Returns:
+        A beam gain model using the spherical interpolator.
+    """
     fill_registries()
     try:
         array = array_registry.get_instance(array_registry.get_match(array_name))
@@ -60,16 +64,16 @@ def build_beam_gain_model(
         )  # [num_times, num_dir, num_freqs, 2, 2]
 
     if not full_stokes:
+        # TODO: may need to convert basis. Assume linear for now.
         gains = gains[..., 0, 0]
 
-    beam_gain_model = BeamGainModel(
+    return build_spherical_interpolator(
         antennas=antennas,
         model_freqs=model_freqs,
+        model_times=model_times,
         model_theta=model_theta,
         model_phi=model_phi,
-        model_times=model_times,
         model_gains=gains,
-        tile_antennas=True,
-        **kwargs
+        ref_time=model_times[0],
+        tile_antennas=True
     )
-    return beam_gain_model

@@ -1,14 +1,13 @@
-import matplotlib.pyplot as plt
+import numpy as np
 import numpy as np
 import pytest
 from astropy import units as au, coordinates as ac, time as at
 from jax import numpy as jnp
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.gain_models.base_spherical_interpolator import regrid_to_regular_grid, lmn_from_phi_theta, \
+    phi_theta_from_lmn, build_spherical_interpolator
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
-from dsa2000_cal.gain_models.spherical_interpolator import lmn_from_phi_theta, SphericalInterpolatorGainModel, \
-    phi_theta_from_lmn, regrid_to_regular_grid
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 
 
 def test_lmn_from_phi_theta():
@@ -77,40 +76,44 @@ def test_phi_theta_from_lmn():
     np.testing.assert_allclose([phi, theta], [np.pi, np.pi / 2.], atol=1e-7)
 
 
-@pytest.fixture(scope='function')
-def mock_setup():
+def build_mock_spherical_interpolator_gain_model(tile_antennas, full_stokes):
     num_time = 2
     num_freq = 3
     num_dir = 4
+    num_ant = 5
 
     freqs = au.Quantity(np.linspace(1000, 2000, num_freq), unit=au.MHz)
     theta = au.Quantity(np.linspace(0., 180., num_dir), unit=au.deg)
     phi = au.Quantity(np.linspace(0., 360., num_dir), unit=au.deg)
     times = at.Time.now() + np.zeros((num_time,)) * au.s
-    model_gains = au.Quantity(np.ones((num_time, num_dir, num_freq, 2, 2)), unit=au.dimensionless_unscaled)
-    antennas = ac.EarthLocation.of_site('vla').reshape((1,))
-    return freqs, theta, phi, times, model_gains, antennas
+    antennas = ac.EarthLocation.from_geocentric([0] * num_ant * au.m, [0] * num_ant * au.m, [0] * num_ant * au.m)
 
+    if full_stokes:
+        if tile_antennas:
+            model_gains = au.Quantity(np.ones((num_time, num_dir, num_freq, 2, 2)), unit=au.dimensionless_unscaled)
+        else:
+            model_gains = au.Quantity(np.ones((num_time, num_dir, num_ant, num_freq, 2, 2)),
+                                      unit=au.dimensionless_unscaled)
+    else:
+        if tile_antennas:
+            model_gains = au.Quantity(np.ones((num_time, num_dir, num_freq)), unit=au.dimensionless_unscaled)
+        else:
+            model_gains = au.Quantity(np.ones((num_time, num_dir, num_ant, num_freq)), unit=au.dimensionless_unscaled)
 
-@pytest.fixture(scope='function')
-def mock_spherical_interpolator_gain_model(mock_setup):
-    freqs, theta, phi, times, model_gains, antennas = mock_setup
-    antennas = ac.concatenate([antennas.get_itrs(), antennas.get_itrs()]).earth_location
-    model_gains = np.tile(model_gains[:, :, None, :, :, :], (1, 1, 2, 1, 1, 1))
-
-    gain_model = SphericalInterpolatorGainModel(
+    gain_model = build_spherical_interpolator(
         antennas=antennas,
         model_freqs=freqs,
         model_theta=theta,
         model_phi=phi,
         model_times=times,
+        ref_time=times[0],
         model_gains=model_gains,
-        tile_antennas=False
+        tile_antennas=tile_antennas
     )
 
     phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
 
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_tracking,
         antennas=antennas,
         array_location=antennas[0],
@@ -122,68 +125,48 @@ def mock_spherical_interpolator_gain_model(mock_setup):
     return gain_model, geodesic_model
 
 
-@pytest.fixture(scope='function')
-def mock_spherical_interpolator_gain_model_tile(mock_setup):
-    freqs, theta, phi, times, model_gains, antennas = mock_setup
+@pytest.mark.parametrize('full_stokes', [True, False])
+@pytest.mark.parametrize('tile_antennas', [True, False])
+def test_beam_gain_model_shape(full_stokes, tile_antennas):
+    mock_gain_model, geodesic_model = build_mock_spherical_interpolator_gain_model(tile_antennas=tile_antennas,
+                                                                                   full_stokes=full_stokes)
 
-    gain_model = SphericalInterpolatorGainModel(
-        antennas=antennas,
-        model_freqs=freqs,
-        model_theta=theta,
-        model_phi=phi,
-        model_times=times,
-        model_gains=model_gains,
-        tile_antennas=True
-    )
+    print(f"Tiled: {mock_gain_model.tile_antennas}")
+    # Near field source
+    freqs = mock_gain_model.model_freqs
+    num_sources = 3
+    obstimes = mock_gain_model.model_times
 
-    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
-
-    geodesic_model = GeodesicModel(
-        phase_center=phase_tracking,
-        antennas=antennas,
-        array_location=antennas[0],
-        obstimes=times,
-        ref_time=times[0],
-        pointings=None
-    )
-
-    return gain_model, geodesic_model
-
-
-def test_beam_gain_model_shape(mock_spherical_interpolator_gain_model,
-                               mock_spherical_interpolator_gain_model_tile):
-    for (mock_gain_model, geodesic_model) in [mock_spherical_interpolator_gain_model,
-                                              mock_spherical_interpolator_gain_model_tile]:
-        print(f"Tiled: {mock_gain_model.tile_antennas}")
-        # Near field source
-        array_location = mock_gain_model.antennas[0]
-        time = mock_gain_model.model_times[0]
-        freqs = mock_gain_model.model_freqs
-        num_sources = 3
-        obstimes = quantity_to_jnp((mock_gain_model.model_times - mock_gain_model.model_times[0]).sec * au.s)
-
-        for near_sources in [True, False]:
-            print(f'Near field sources: {near_sources}')
-            if near_sources:
-                geodesics = geodesic_model.compute_near_field_geodesics(
-                    times=obstimes,
-                    source_positions_enu=jnp.zeros((num_sources, 3))
-                )
-            else:
-                geodesics = geodesic_model.compute_far_field_geodesic(
-                    times=obstimes,
-                    lmn_sources=jnp.zeros((num_sources, 3))
-                )
-
-            gains = mock_gain_model.compute_gain(
-                quantity_to_jnp(mock_gain_model.model_freqs),
-                obstimes,
-                geodesics
+    for near_sources in [True, False]:
+        print(f'Near field sources: {near_sources}')
+        if near_sources:
+            geodesics = geodesic_model.compute_near_field_geodesics(
+                times=obstimes,
+                source_positions_enu=jnp.zeros((num_sources, 3))
             )
-            if mock_gain_model.is_full_stokes():
-                assert gains.shape == (num_sources, len(obstimes), len(mock_gain_model.antennas), len(freqs), 2, 2)
+        else:
+            geodesics = geodesic_model.compute_far_field_geodesic(
+                times=obstimes,
+                lmn_sources=jnp.zeros((num_sources, 3))
+            )
+
+        gains = mock_gain_model.compute_gain(
+            mock_gain_model.model_freqs,
+            obstimes,
+            geodesics
+        )
+        if full_stokes:
+            assert mock_gain_model.is_full_stokes()
+            if tile_antennas:
+                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs), 2, 2)
             else:
-                assert gains.shape == (num_sources, len(obstimes), len(mock_gain_model.antennas), len(freqs))
+                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs), 2, 2)
+        else:
+            assert not mock_gain_model.is_full_stokes()
+            if tile_antennas:
+                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs))
+            else:
+                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs))
 
 
 def test_regrid_to_regular_grid():
@@ -220,63 +203,5 @@ def test_regrid_to_regular_grid():
 @pytest.mark.parametrize('array_name', ['dsa2000W_small'])
 def test_spherical_beams(array_name):
     beam_gain_model = build_beam_gain_model(array_name=array_name, full_stokes=False)
-    select = beam_gain_model.lmn_data[:, 2] >= 0.  # Select only positive N
-    sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,
-                     c=np.log10(np.abs(beam_gain_model.model_gains[0, select, 0])))
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('log10(Amplitude)')
-    plt.show()
 
-    sc = plt.scatter(beam_gain_model.lmn_data[select, 0], beam_gain_model.lmn_data[select, 1], s=1, alpha=0.5,
-                     c=np.angle(beam_gain_model.model_gains[0, select, 0]),
-                     cmap='hsv', vmin=-np.pi, vmax=np.pi)
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('Phase')
-    plt.show()
-
-    # screens
-    l_screen, m_screen = np.meshgrid(beam_gain_model.lvec_jax, beam_gain_model.mvec_jax, indexing='ij')
-    sc = plt.scatter(l_screen.flatten(), m_screen.flatten(), s=1,
-                     c=np.log10(np.abs(beam_gain_model.model_gains_jax[0, :, :, 0].flatten())))
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('log10(Amplitude)')
-    plt.show()
-
-    sc = plt.scatter(l_screen.flatten(), m_screen.flatten(), s=1,
-                     c=np.angle(beam_gain_model.model_gains_jax[0, :, :, 0].flatten()), cmap='hsv', vmin=-np.pi,
-                     vmax=np.pi)
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('Phase')
-    plt.show()
-
-    # at data
-
-    gains_data = beam_gain_model.compute_gain(
-        freqs=quantity_to_jnp(beam_gain_model.model_freqs[0:1]),
-        times=quantity_to_jnp((beam_gain_model.model_times[0:1] - beam_gain_model.model_times[0]).sec * au.s),
-        geodesics=beam_gain_model.lmn_data[:, None, None, :]
-    )
-
-    sc = plt.scatter(beam_gain_model.lmn_data[:, 0], beam_gain_model.lmn_data[:, 1], s=1, alpha=0.5,
-                     c=np.log10(np.abs(gains_data[:, 0, 0, 0])))
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('log10(Amplitude)')
-    plt.show()
-
-    sc = plt.scatter(beam_gain_model.lmn_data[:, 0], beam_gain_model.lmn_data[:, 1], s=1, alpha=0.5,
-                     c=np.angle(gains_data[:, 0, 0, 0]), cmap='hsv', vmin=-np.pi, vmax=np.pi)
-    plt.colorbar(sc)
-    plt.xlabel('l')
-    plt.ylabel('m')
-    plt.title('Phase')
-    plt.show()
+    beam_gain_model.plot_regridded_beam()

@@ -5,14 +5,14 @@ from astropy import coordinates as ac, time as at, units as au
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel, ProductGainModel
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 
 
 class MockGainModel(GainModel):
     def __init__(self, gain):
         self.gain = gain
 
-    def compute_gain(self, freqs: jax.Array, times: jax.Array, geodesics: jax.Array) -> jax.Array:
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array) -> jax.Array:
         return self.gain
 
     def is_full_stokes(self) -> bool:
@@ -33,7 +33,7 @@ def test_product_gain_model():
 
     lmn_sources = jnp.zeros((num_sources, 3))
 
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_tracking,
         antennas=antennas,
         array_location=array_location,
@@ -46,7 +46,7 @@ def test_product_gain_model():
     freqs = jnp.linspace(0.1, 0.5, num_freq)
 
     result = product_gain_model.compute_gain(
-        freqs=freqs, times=times, geodesics=geodesic_model.compute_far_field_geodesic(times, lmn_sources)
+        freqs=freqs, times=times, lmn_geodesic=geodesic_model.compute_far_field_geodesic(times, lmn_sources)
     )
 
     expected = gain @ gain
