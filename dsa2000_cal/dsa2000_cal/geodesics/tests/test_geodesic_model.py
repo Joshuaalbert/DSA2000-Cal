@@ -4,8 +4,8 @@ from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 
 
 def test_geodesic_model():
@@ -16,7 +16,7 @@ def test_geodesic_model():
     num_source = 4
     pointings = ac.ICRS(ra=[0] * num_ant * au.deg, dec=[0] * num_ant * au.deg)
     antennas = ac.EarthLocation.from_geocentric([0] * num_ant * au.m, [0] * num_ant * au.m, [0] * num_ant * au.m)
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=pointings,
@@ -52,7 +52,7 @@ def test_geodesic_model():
 
     # if pointing_lmn does not have ant
     pointings = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=pointings,
@@ -70,7 +70,7 @@ def test_geodesic_model():
 
     # zenith pointings
     pointings = None
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=pointings,
@@ -94,7 +94,7 @@ def test_geodesic_model_results():
     array_location = antennas[0]
     ref_time = obstimes[0]
 
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=None,
@@ -102,7 +102,7 @@ def test_geodesic_model_results():
         ref_time=ref_time,
         array_location=array_location
     )
-    times = geodesic_model.time_to_jnp(obstimes)
+    times = time_to_jnp(obstimes, ref_time)
 
     sources = ENU(
         east=[0, 1, 0],
