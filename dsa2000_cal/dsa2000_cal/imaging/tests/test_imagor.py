@@ -3,15 +3,17 @@ import time
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-import jax.numpy as jnp
+import jax
 import numpy as np
 import pytest
+from jax import numpy as jnp
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
-from dsa2000_cal.imaging.imagor import evaluate_beam, divide_out_beam
+from dsa2000_cal.imaging.base_imagor import fit_beam, evaluate_beam, divide_out_beam
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMetaV0, MeasurementSet
 
 
@@ -78,9 +80,6 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     else:
         assert beam.shape == (num_l, num_m, len(times), len(freqs), 2, 2)
 
-
-
-
     image = np.ones((num_l, num_m, len(coherencies)))
     # image[::10, ::10, 0] = 1.
     # image[::10, ::10, 3] = 1.
@@ -89,7 +88,6 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     assert pb_cor_image.shape == image.shape
     assert np.all(np.isfinite(pb_cor_image))
     import pylab as plt
-
 
     if len(coherencies) == 4:
         avg_beam = avg_beam[..., 0, 0]
@@ -129,3 +127,32 @@ def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     plt.xlabel('l')
     plt.ylabel('m')
     plt.show()
+
+
+def test_fit_beam():
+    """
+    Test the fit_ellipsoid function by verifying it retrieves the correct FWHM
+    for both the major and minor axes of a synthetic ellipsoid image.
+    """
+    dl = dm = 0.01
+    n = 32
+    lvec = (-0.5 * n + jnp.arange(n)) * dl
+    mvec = (-0.5 * n + jnp.arange(n)) * dm
+    L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
+    lm = jnp.stack([L, M], axis=-1).reshape((-1, 2))
+
+    true_minor_fwhm = 5 * dl
+    true_major_fwhm = 10 * dl
+    true_posang = 1.
+
+    g = Gaussian(x0=jnp.zeros(2), minor_fwhm=true_minor_fwhm, major_fwhm=true_major_fwhm, pos_angle=true_posang,
+                 total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=true_major_fwhm, minor_fwhm=true_minor_fwhm))
+
+    psf = jax.vmap(g.compute_flux_density)(lm)
+    psf = jnp.reshape(psf, (n, n))
+    major, minor, pos_angle = fit_beam(psf, dl, dm)
+    print(major, minor, pos_angle)
+
+    assert jnp.allclose(major, true_major_fwhm, atol=0.01)
+    assert jnp.allclose(minor, true_minor_fwhm, atol=0.01)
+    assert jnp.allclose(pos_angle, true_posang, atol=0.01)
