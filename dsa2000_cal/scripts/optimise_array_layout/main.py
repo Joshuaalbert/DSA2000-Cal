@@ -226,6 +226,8 @@ def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_locati
     )  # [N] in meters
     too_close_to_constraint = closest_point_dist_including_buffer <= 0.
     too_close = np.logical_or(too_close_to_constraint, force_relocate)
+    if not np.any(too_close):
+        return antennas
     for idx in range(len(too_close)):
         if force_relocate[idx]:
             closest_type[idx] = "another antenna"
