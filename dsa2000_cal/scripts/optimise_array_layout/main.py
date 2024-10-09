@@ -145,8 +145,8 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
 
     # Make the threshold for sidelobe optimisation
     sidelobe_radii = jnp.linalg.norm(lmn[1:, :, :2], axis=-1)  # [Nr-1, Nt]
-    inner_threshold = jnp.asarray(np.log(5e-4), psf.dtype)
-    outer_threshold = jnp.asarray(np.log(1e-4), psf.dtype)
+    inner_threshold = jnp.asarray(np.log(10 ** -3), psf.dtype)
+    outer_threshold = jnp.asarray(np.log(10 ** -4), psf.dtype)
     r_min = sidelobe_radii[0, 0]
     r_max = sidelobe_radii[-1, 0]
     threshold = inner_threshold + (sidelobe_radii - r_min) / (r_max - r_min) * (outer_threshold - inner_threshold)
@@ -170,7 +170,10 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
         return residual_zenith_sidelobes
 
     delta_decs = jnp.asarray(np.asarray([-30., -16., 10., 23., 36., 50., 64., 76., 90.]) * np.pi / 180.)
-    other_residual_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
+
+    other_residual_sidelobes = [single_dec_residuals(d) for d in delta_decs]
+
+    # other_residual_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
 
     return residual_fwhm, residual_sidelobes, other_residual_sidelobes
 
@@ -394,8 +397,8 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         (x,) = model(params).prepare_input(U)
         return (
             compute_residuals(x, lmn, freq, latitude),
-            # compute_residuals(x, lmn, lower_freq, latitude),
-            # compute_residuals(x, lmn, upper_freq, latitude)
+            compute_residuals(x, lmn, lower_freq, latitude),
+            compute_residuals(x, lmn, upper_freq, latitude)
         )
 
     solver = MultiStepLevenbergMarquardt(
