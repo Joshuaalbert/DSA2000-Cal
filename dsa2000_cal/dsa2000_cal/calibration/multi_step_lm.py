@@ -135,8 +135,6 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                 "Damping alteration factors must satisfy 0 < c_more_newton < 1 < c_less_newton, "
                 f"got {self.c_more_newton}, {self.c_less_newton}"
             )
-        self._residual_fn = self.wrap_residual_fn(self.residual_fn)
-
         self.delta = jnp.asarray(self.delta, dtype=jnp.float32)
         self.mu1 = jnp.asarray(self.mu1, dtype=jnp.float32)
         self.mu_min = jnp.asarray(self.mu_min, dtype=jnp.float32)
@@ -147,8 +145,10 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
         self.c_more_newton = jnp.asarray(self.c_more_newton, dtype=jnp.float32)
         self.c_less_newton = jnp.asarray(self.c_less_newton, dtype=jnp.float32)
 
+        self._residual_fn = self.wrap_residual_fn(self.residual_fn, self.delta)
+
     @staticmethod
-    def wrap_residual_fn(residual_fn: Callable[[X], Y]) -> Callable[[X], Y]:
+    def wrap_residual_fn(residual_fn: Callable[[X], Y], delta: jax.Array) -> Callable[[X], Y]:
         """
         Wrap the residual function to handle complex outputs by treating real and imag separately.
         """
@@ -163,7 +163,11 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                     return (x.real, x.imag)
                 return x
 
-            return [jax.tree.map(_make_real, output)]
+            real_output = [jax.tree.map(_make_real, output)]
+            scale = jnp.power(sum(jax.tree.leaves(jax.tree.map(np.size, real_output))), jnp.reciprocal(delta))
+            # scale**delta = n
+            normalised_real_output = jax.tree.map(lambda x: x / scale, real_output)
+            return normalised_real_output
 
         return wrapped_residual_fn
 
