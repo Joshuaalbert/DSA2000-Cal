@@ -1,10 +1,13 @@
 import itertools
 import os
+from typing import Optional, Tuple
 
+from jaxns.framework.special_priors import SpecialPrior
 from scipy.spatial import KDTree
 
 from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
 from dsa2000_cal.common.astropy_utils import mean_itrs
+from dsa2000_cal.common.types import FloatArray
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
@@ -153,7 +156,6 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     inner_uncert = jnp.asarray(np.log(1.5), psf.dtype)
     outer_uncert = jnp.asarray(np.log(3.), psf.dtype)
     uncert = inner_uncert + (sidelobe_radii - r_min) / (r_max - r_min) * (outer_uncert - inner_uncert)
-
 
     residual_sidelobes = jnp.where(
         log_sidelobe > threshold,
@@ -369,6 +371,38 @@ def get_uniform_ball_prior(antennas_enu: np.ndarray, obstime: at.Time, array_loc
     return ball_centre, ball_radius
 
 
+class BiUnitRadiusPrior(SpecialPrior):
+    def __init__(self, *, max_radius: FloatArray, name: Optional[str] = None):
+        super(BiUnitRadiusPrior, self).__init__(name=name)
+        self.max_radius = max_radius
+
+    def _dtype(self):
+        return np.result_type(self.max_radius)
+
+    def _base_shape(self) -> Tuple[int, ...]:
+        return np.shape(self.max_radius)
+
+    def _shape(self) -> Tuple[int, ...]:
+        return jnp.shape(self.max_radius)
+
+    def _forward(self, U) -> FloatArray:
+        return self._quantile(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self._cdf(X)
+
+    def _log_prob(self, X) -> FloatArray:
+        return jnp.abs(X / self.max_radius)
+
+    def _quantile(self, U):
+        twoUm1 = U + U - 1
+        return twoUm1 * jnp.sqrt(jnp.abs(twoUm1)) * self.max_radius
+
+    def _cdf(self, Y):
+        Y = Y / self.max_radius
+        return 0.5 * jnp.sign(Y) * jnp.square(Y) + 0.5
+
+
 @partial(jax.jit)
 def solve(ball_origin, ball_radius, lmn, freq, latitude):
     lower_freq = jnp.asarray(700e6, freq.dtype)
@@ -383,7 +417,8 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         direction = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
 
         # Allow going up and down, with initial point at zero
-        radius = yield Prior(tfpd.Uniform(-ball_radius, ball_radius), name='radius').parametrised()
+        # radius = yield Prior(tfpd.Uniform(-ball_radius, ball_radius), name='radius').parametrised()
+        radius = yield BiUnitRadiusPrior(max_radius=ball_radius, name='radius').parametrised()
         x = ball_origin + radius[:, None] * direction  # [N, 2]
         up = jnp.zeros((np.shape(ball_radius)[0], 1))
         antennas_enu = jnp.concatenate([x, up], axis=-1)
