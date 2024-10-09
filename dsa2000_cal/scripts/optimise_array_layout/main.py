@@ -149,7 +149,7 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     # Make the threshold for sidelobe optimisation
     sidelobe_radii = jnp.linalg.norm(lmn[1:, :, :2], axis=-1)  # [Nr-1, Nt]
     inner_threshold = jnp.asarray(np.log(10 ** -3.), psf.dtype)
-    outer_threshold = jnp.asarray(np.log(10 ** -5.), psf.dtype)
+    outer_threshold = jnp.asarray(np.log(10 ** -4.), psf.dtype)
     r_min = sidelobe_radii[0, 0]
     r_max = sidelobe_radii[-1, 0]
     threshold = inner_threshold + (sidelobe_radii - r_min) / (r_max - r_min) * (outer_threshold - inner_threshold)
