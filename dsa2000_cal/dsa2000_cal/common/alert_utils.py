@@ -1,7 +1,6 @@
 import inspect
 import json
 import os
-import socket
 import warnings
 from datetime import datetime, timedelta
 
@@ -49,7 +48,7 @@ def post_completed_forward_modelling_run(run_dir: str, start_time: datetime, dur
         warnings.warn("No SLACK_FINISHED_RUNS_HOOK_URL set. Not posting to slack.")
         return
 
-    hostname = socket.gethostname()
+    hostname = os.uname().nodename
 
     data = {
         "run_duration": f"{duration.total_seconds()} seconds",
