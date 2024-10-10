@@ -92,6 +92,18 @@ class Gaussian:
         sigma_minor = self.minor_fwhm / fwhm
         return self.total_flux * jnp.reciprocal(sigma_major * sigma_minor * 2 * jnp.pi)
 
+    @staticmethod
+    def total_flux_from_peak( peak_flux: jax.Array, major_fwhm: jax.Array, minor_fwhm: jax.Array) -> jax.Array:
+        """
+        Calculate the total flux of the ellipse from the peak flux. The F s.t.:
+
+        total_flux = int_R^2 F * f(x) dx
+        """
+        fwhm = 2. * np.sqrt(2. * np.log(2))
+        sigma_major = major_fwhm / fwhm
+        sigma_minor = minor_fwhm / fwhm
+        return peak_flux * (sigma_major * sigma_minor * 2 * jnp.pi)
+
 
 def ellipse_rotation(pos_angle):
     return jnp.asarray([[jnp.cos(pos_angle), jnp.sin(pos_angle)], [-jnp.sin(pos_angle), jnp.cos(pos_angle)]])
