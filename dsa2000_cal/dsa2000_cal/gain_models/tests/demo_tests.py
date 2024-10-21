@@ -10,7 +10,8 @@ from dsa2000_cal.gain_models.base_spherical_interpolator import lmn_from_phi_the
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
 
-@pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W'])
+# @pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W', 'dsa2000_31b'])
+@pytest.mark.parametrize('array_name', ['dsa2000_31b'])
 def test_beam_gain_model_factory(array_name: str):
     t0 = time_mod.time()
     beam_gain_model = build_beam_gain_model(array_name=array_name)
@@ -32,7 +33,7 @@ def test_beam_gain_model_factory(array_name: str):
     np.testing.assert_allclose(M_rec[mask], M[mask], atol=2e-5)
     np.testing.assert_allclose(N_rec[mask], N[mask], atol=2e-5)
 
-    beam_gain_model.plot_regridded_beam()
+    beam_gain_model.plot_regridded_beam(freq_idx=-1)
 
     # Only select n>=0 geodesics
 

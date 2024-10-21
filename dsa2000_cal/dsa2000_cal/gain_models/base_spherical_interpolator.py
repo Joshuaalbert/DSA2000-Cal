@@ -174,14 +174,12 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         """
         if self.tile_antennas:
             if self.is_full_stokes():
-                gain_screen = self.model_gains[time_idx, :, :, freq_idx, p_idx,
-                              q_idx]  # [nl,nm]
+                gain_screen = self.model_gains[time_idx, :, :, freq_idx, p_idx, q_idx]  # [nl,nm]
             else:
                 gain_screen = self.model_gains[time_idx, :, :, freq_idx]  # [nl,nm]
         else:
             if self.is_full_stokes():
-                gain_screen = self.model_gains[time_idx, :, :, ant_idx, freq_idx, p_idx,
-                              q_idx]  # [nl,nm]
+                gain_screen = self.model_gains[time_idx, :, :, ant_idx, freq_idx, p_idx, q_idx]  # [nl,nm]
             else:
                 gain_screen = self.model_gains[time_idx, :, :, ant_idx, freq_idx]  # [nl,nm]
         fig, axs = plt.subplots(2, 1, figsize=(8, 12), sharex=True, sharey=True, squeeze=False)
@@ -310,6 +308,8 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
         near_peak = (l_eval == 0.) & (m_eval == 0.)
         value = jnp.sum(weights * model_gains[idx_k]) / jnp.sum(weights)
         value = jnp.where(near_peak, model_gains[idx0], value)
+        neg_n = l_eval ** 2 + m_eval ** 2 > 1.
+        value = jnp.where(neg_n, jnp.zeros_like(value), value)
         return value
 
     gains = regrid_model_gains(
@@ -330,7 +330,7 @@ def build_spherical_interpolator(
         model_gains: au.Quantity,  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
         ref_time: at.Time,
         tile_antennas: bool,
-        resolution:int=257
+        resolution: int = 257
 ):
     """
     Uses nearest neighbour interpolation to construct the gain model.
