@@ -1,6 +1,7 @@
 import os
 from typing import List
 
+import numpy as np
 from astropy import coordinates as ac
 from astropy import units as au
 
@@ -9,6 +10,7 @@ from dsa2000_cal.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 
 
 @array_registry(template='lwa')
@@ -22,6 +24,9 @@ class LWAArray(AbstractArray):
 
     def get_channel_width(self) -> au.Quantity:
         return 23913.3199056 * au.Hz
+
+    def get_channels(self) -> au.Quantity:
+        return au.Quantity(np.linspace(42, 88, 1920) * au.MHz)
 
     def get_array_location(self) -> ac.EarthLocation:
         return mean_itrs(self.get_antennas().get_itrs()).earth_location
@@ -60,3 +65,6 @@ class LWAArray(AbstractArray):
         return H5AntennaModelV1(
             beam_file=os.path.join(*self.content_path, 'OVRO-LWA_soil_pt.h5')
         )
+
+    def get_dish_effect_params(self) -> DishEffectsParams:
+        raise NotImplementedError("Dish effects not implemented for LWA")

@@ -7,6 +7,7 @@ from astropy.coordinates import CartesianRepresentation, ITRS
 
 from dsa2000_cal.abc import AbstractAntennaModel
 from dsa2000_cal.assets.base_content import BaseContent
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 
 
 def extract_itrs_coords(filename: str, delim=' ') -> Tuple[List[str], ac.ITRS]:
@@ -99,6 +100,16 @@ class AbstractArray(ABC, BaseContent):
 
         Returns:
             channel width
+        """
+        ...
+
+    @abstractmethod
+    def get_channels(self) -> au.Quantity:
+        """
+        Get channels.
+
+        Returns:
+            channels
         """
         ...
 
@@ -219,5 +230,15 @@ class AbstractArray(ABC, BaseContent):
 
         Returns:
             integration time
+        """
+        ...
+
+    @abstractmethod
+    def get_dish_effect_params(self) -> DishEffectsParams:
+        """
+        Get dish effects parameters.
+
+        Returns:
+            dish effects parameters
         """
         ...

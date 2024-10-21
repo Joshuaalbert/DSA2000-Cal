@@ -1,6 +1,10 @@
 import os
 
+import astropy.coordinates as ac
+import astropy.units as au
+
 from dsa2000_cal.abc import AbstractAntennaModel
+from dsa2000_cal.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
 from dsa2000_cal.assets.registries import array_registry
 
@@ -15,17 +19,14 @@ class DSA200031b(DSA2000WArray):
         return os.path.join(*self.content_path, 'antenna_config.txt')
 
     def get_antenna_model(self) -> AbstractAntennaModel:
-        return DSA2000WArray.get_antenna_model(self)
-        # return MatlabAntennaModelV1(
-        #     antenna_model_file=os.path.join(*self.content_path, 'dsa2000_antenna_model.mat'),
-        #     model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
-        # )
+        return H5AntennaModelV1(
+            angular_units=au.deg,
+            freq_units=au.GHz,
+            beam_file=os.path.join(*self.content_path, 'DSA2000-beam-wShieldSolidCylinder600mm.h5')
+        )
 
 
-if __name__ == '__main__':
-    import astropy.coordinates as ac
-    import astropy.units as au
-
+def convert_dsa2000_31b_csv_to_config():
     lats = []
     lons = []
     elevations = []

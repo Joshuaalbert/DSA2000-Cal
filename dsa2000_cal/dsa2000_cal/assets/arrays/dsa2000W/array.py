@@ -1,6 +1,7 @@
 import os
 from typing import List
 
+import numpy as np
 from astropy import coordinates as ac
 from astropy import units as au
 
@@ -9,6 +10,7 @@ from dsa2000_cal.antenna_model.matlab_amplitude_only_model import MatlabAntennaM
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 
 
 @array_registry(template='dsa2000W')
@@ -22,6 +24,9 @@ class DSA2000WArray(AbstractArray):
 
     def get_channel_width(self) -> au.Quantity:
         return 1300 * au.MHz / 10000
+
+    def get_channels(self) -> au.Quantity:
+        return au.Quantity(np.linspace(700, 2000, 10000) * au.MHz)
 
     def get_array_location(self) -> ac.EarthLocation:
         return mean_itrs(self.get_antennas().get_itrs()).earth_location
@@ -59,4 +64,20 @@ class DSA2000WArray(AbstractArray):
         return MatlabAntennaModelV1(
             antenna_model_file=os.path.join(*self.content_path, 'dsa2000_antenna_model.mat'),
             model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
+        )
+
+    def get_dish_effect_params(self) -> DishEffectsParams:
+        # Could provide in terms of zenike polynomial coefficients
+        return DishEffectsParams(
+            # dish parameters
+            dish_diameter=self.get_antenna_diameter(),
+            focal_length=self.get_focal_length(),
+            elevation_pointing_error_stddev=2. * au.arcmin,
+            cross_elevation_pointing_error_stddev=2. * au.arcmin,
+            axial_focus_error_stddev=3. * au.mm,
+            elevation_feed_offset_stddev=3. * au.mm,
+            cross_elevation_feed_offset_stddev=3. * au.mm,
+            horizon_peak_astigmatism_stddev=5. * au.mm,
+            surface_error_mean=3. * au.mm,
+            surface_error_stddev=1. * au.mm,
         )
