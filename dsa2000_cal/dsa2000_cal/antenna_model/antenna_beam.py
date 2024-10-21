@@ -15,8 +15,7 @@ class AltAzAntennaModel(AbstractAntennaModel):
         print(f"Min, Max: {np.min(amplitude)}, {np.max(amplitude)}")
 
         # Create a 2D meshgrid of theta and phi values
-        Theta, Phi = np.meshgrid(self.get_theta(), self.get_phi(),
-                                 indexing='ij')
+        Theta, Phi = np.meshgrid(self.get_theta(), self.get_phi(), indexing='ij')
 
         # Use scatter plot
 
@@ -26,7 +25,8 @@ class AltAzAntennaModel(AbstractAntennaModel):
 
         # Plot the data
         fig, ax = plt.subplots(1, 1)
-        c = ax.scatter(x.flatten(), y.flatten(), c=amplitude.flatten(),
+        c = ax.scatter(x.flatten(), y.flatten(),
+                       c=amplitude.flatten(),
                        cmap='jet', s=1)
         fig.colorbar(c, ax=ax, label='Amplitude')
 
@@ -39,8 +39,11 @@ class AltAzAntennaModel(AbstractAntennaModel):
         print(f"Min, Max: {np.min(phase)}, {np.max(phase)}")
 
         # Create a 2D meshgrid of theta and phi values
-        Theta, Phi = np.meshgrid(self.get_theta(), self.get_phi(),
-                                 indexing='ij')
+        Theta, Phi = np.meshgrid(
+            self.get_theta(),
+            self.get_phi(),
+            indexing='ij'
+        )
 
         # Use scatter plot
 
