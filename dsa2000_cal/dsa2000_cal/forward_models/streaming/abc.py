@@ -1,44 +1,40 @@
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any, TypeVar, Generic, Tuple
 
 import jax
 
-from dsa2000_cal.forward_models.streaming.types import StepReturn, StreamState
+StateType = TypeVar('StateType')
+OutputType = TypeVar('OutputType')
+KeepType = TypeVar('KeepType')
 
 
-class AbstractForwardModelCore(ABC):
+class AbstractCoreStep(ABC, Generic[StateType, OutputType, KeepType]):
+
+    def __hash__(self):
+        return hash(self.name)
+
+    @property
+    def name(self):
+        return self.__class__.__name__
+
+    @property
+    def state_name(self):
+        return f"{self.name}State"
+
+    @property
+    def output_name(self):
+        return f"{self.name}Output"
 
     @abstractmethod
-    def step(self, key: jax.Array, times: jax.Array, init_params: List[jax.Array] | None,
-             solver_state: Any | None, num_calibration_iters: int) -> StepReturn:
+    def step(self, primals: Tuple[Any, ...]) -> Tuple[OutputType, KeepType]:
         """
-        Kernel that defines a single step of forward model.
+        Run a single step of the streaming process.
 
         Args:
-            key: PRNGkey for reproducibility
-            times: the times simulated at this step, must be a solution interval worth
-            init_params: last cal params
-            solver_state: last solver state
-            num_calibration_iters: number of calibration iterations to run, 0 means no calibration on this step
+            primals: the primals for the current step, a tuple of args from predecessor steps.
 
         Returns:
-            StepReturn: the return values of the step
+            output: the output of the streaming process
+            keep: what is keep from each step
         """
-        ...
-
-
-class AbstractStreamProcess(ABC):
-
-    @abstractmethod
-    def stream(self):
-        """
-        Run the streaming process.
-        """
-        ...
-
-
-class CoreStep(ABC):
-
-    @abstractmethod
-    def step(self):
         ...
