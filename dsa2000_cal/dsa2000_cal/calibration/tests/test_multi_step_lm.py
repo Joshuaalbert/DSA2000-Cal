@@ -20,10 +20,15 @@ def test_multi_step_lm():
                                                                      (source, ant, chan))
     )
     antenna1, antenna2 = jnp.asarray(list(itertools.combinations_with_replacement(range(ant), 2)),
-                                       dtype=mp_policy.index_dtype).T
+                                     dtype=mp_policy.index_dtype).T
     row = len(antenna1)
 
-    vis_per_source = jnp.ones((source, row, chan), mp_policy.vis_dtype)
+    vis_per_source = mp_policy.vis_dtype(
+        jax.lax.complex(
+            jnp.ones((source, row, chan)),
+            0.1 * jax.random.normal(jax.random.PRNGKey(1142), (source, row, chan))
+        )
+    )
 
     def forward(gains, antenna1, antenna2, vis_per_source):
         g1 = gains[:, antenna1, :]  # (row, source, chan)
@@ -37,7 +42,6 @@ def test_multi_step_lm():
         jax.random.PRNGKey(4), (row, chan), dtype=mp_policy.vis_dtype)
 
     def run(antenna1, antenna2, vis_per_source, data):
-
         def residuals(params):
             gains_real, gains_imag = params
             gains = mp_policy.cast_to_gain(gains_real + 1j * gains_imag)
