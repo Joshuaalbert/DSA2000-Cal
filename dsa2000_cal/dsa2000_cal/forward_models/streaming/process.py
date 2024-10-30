@@ -269,7 +269,7 @@ def process_start(
     start_time = current_utc()
     run_key, init_key = jax.random.split(key, 2)
     print("Initialising...")
-    with MemoryLogger(log_file='init_memory_log.log', interval=0.5, kill_threshold=30 * 2 ** 10):
+    with MemoryLogger(log_file='init_memory_log.log', interval=0.5, kill_threshold=None):
         init = block_until_ready(execute_dag_transformed.init(init_key))
 
         print("Running...")
