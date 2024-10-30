@@ -1,6 +1,5 @@
 import jax.random
 import numpy as np
-import pytest
 from astropy import constants as const
 from astropy import coordinates as ac
 from astropy import units as au
@@ -18,8 +17,78 @@ def create_random_spherical_layout(num_sources: int, key=None) -> ac.ICRS:
     return lmn_to_icrs(lmn=lmn * au.dimensionless_unscaled, phase_tracking=ac.ICRS(ra=0 * au.deg, dec=90 * au.deg))
 
 
-def create_spherical_grid(pointing: ac.ICRS, angular_radius: au.Quantity, dr: au.Quantity,
+def choose_dr(field_of_view: au.Quantity, total_n: int) -> au.Quantity:
+    """
+    Choose the dr for a given field of view and total number of sources.
+    Approximate number of sources result.
+
+    Args:
+        field_of_view:
+        total_n:
+
+    Returns:
+        the sky spacing
+    """
+    possible_n = [1, 7, 19, 37, 62, 93, 130, 173, 223, 279, 341, 410, 485,
+                  566, 653, 747, 847, 953, 1066, 1185]
+    if total_n == 1:
+        return field_of_view
+    dr = 0.5 * field_of_view / np.arange(1, total_n + 1)
+    N = np.floor(0.5 * field_of_view / dr)
+    num_n = [1 + np.sum(np.floor(2 * np.pi * np.arange(1, n + 1))) for n in N]
+    if total_n not in possible_n:
+        print(f"total_n {total_n} not exactly achievable. Will be rounded to nearest achievable value "
+              f"This is based on a uniform dithering of the sky. Possible values are {possible_n}.")
+    return au.Quantity(np.interp(total_n, num_n, dr))
+
+
+def create_spherical_grid(pointing: ac.ICRS, angular_radius: au.Quantity, num_shells: int,
                           sky_rotation: au.Quantity | None = None) -> ac.ICRS:
+    """
+    Create a spherical grid around a given coordinate with evenly spaced shells.
+
+    Parameters:
+    center_coord (SkyCoord): The central ICRS coordinate.
+    angular_width (float): The radius, in degrees.
+    dr (float): The angular distance between shells, in degrees.
+    sky_rotation (float): The rotation of the grid in the plane of the sky, in degrees.
+
+    Returns:
+        the coordinates forming the spherical grid.
+    """
+
+    if not angular_radius.unit.is_equivalent(au.deg):
+        raise ValueError("Angular width and dr must be in angluar units.")
+
+    if num_shells == 1:
+        return pointing[None]
+
+    dr = angular_radius / (num_shells - 1)
+
+    ra = pointing.ra
+    dec = pointing.dec
+
+    grid_ra = [ra]
+    grid_dec = [dec]
+
+    for i in range(1, 1 + num_shells):
+        ri = i * dr  # Radius of the shell
+        ni = int(2 * np.pi * i)  # Number of points in the shell, ensuring even spacing
+        for j in range(ni):
+            angle_offset = j * 2 * np.pi / ni
+            if sky_rotation is not None:
+                angle_offset += sky_rotation
+
+            shell_ra, shell_dec = offset_by(ra, dec, angle_offset, ri)
+
+            grid_ra.append(shell_ra)
+            grid_dec.append(shell_dec)
+
+    return ac.ICRS(ra=au.Quantity(grid_ra), dec=au.Quantity(grid_dec))
+
+
+def create_spherical_grid_old(pointing: ac.ICRS, angular_radius: au.Quantity, dr: au.Quantity,
+                              sky_rotation: au.Quantity | None = None) -> ac.ICRS:
     """
     Create a spherical grid around a given coordinate with evenly spaced shells.
 
@@ -42,7 +111,7 @@ def create_spherical_grid(pointing: ac.ICRS, angular_radius: au.Quantity, dr: au
 
     for i in range(1, num_shells + 1):
         ri = i * dr  # Radius of the shell
-        ni = int(2 * np.pi * ri / dr)  # Number of points in the shell, ensuring even spacing
+        ni = int(2 * np.pi * i)  # Number of points in the shell, ensuring even spacing
 
         # Create even distribution of points on the shell
 
@@ -68,14 +137,6 @@ def create_mosaic_tiling(theta_row: au.Quantity = 1.8 * au.deg, theta_hex: au.Qu
     ra = np.arange(0, 360, theta_hex.to(au.deg).value) * au.deg
     ra, dec = np.meshgrid(ra, dec, indexing='ij')
     return ac.ICRS(ra.flatten(), dec.flatten())
-
-
-def test_create_mosaic_tiling():
-    tiling_coords = create_mosaic_tiling()
-    print(tiling_coords.size)
-    import pylab as plt
-    plt.scatter(tiling_coords.ra, tiling_coords.dec, s=1)
-    plt.show()
 
 
 def create_spherical_earth_grid(center: ac.EarthLocation, radius: au.Quantity, dr: au.Quantity) -> ac.EarthLocation:
@@ -254,14 +315,3 @@ def fibonacci_celestial_sphere(n: int) -> ac.ICRS:
     lon = theta % (2 * np.pi)  # Ensure longitude is within [0, 2π)
 
     return ac.ICRS(lon * au.rad, lat * au.rad)
-
-
-@pytest.mark.parametrize('n', [10, 100, 1000])
-def test_fibonacci_celestial_sphere(n: int):
-    pointings = fibonacci_celestial_sphere(n=n)
-    import pylab as plt
-    plt.scatter(pointings.ra, pointings.dec, s=1)
-    plt.show()
-
-    mean_area = (4 * np.pi / n) * au.rad ** 2
-    print(n, mean_area.to('deg^2'))

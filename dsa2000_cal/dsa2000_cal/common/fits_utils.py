@@ -471,7 +471,7 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     w = wcs.WCS(naxis=4)  # 4D image [l, m, freq, coherency]
     w.wcs.ctype = ["RA--SIN", "DEC-SIN", "FREQ", "STOKES"]
     if (np.shape(image_model.image)[0] % 2 == 1) or (np.shape(image_model.image)[1] % 2 == 1):
-        raise ValueError("Image must have an even number of pixels in the direction")
+        raise ValueError("Image must have an even number of pixels in each direction")
     w.wcs.crpix = [image_model.image.shape[0] / 2 + 1, image_model.image.shape[1] / 2 + 1, 1, 1]
     dfreq = image_model.bandwidth / len(image_model.freqs)
     w.wcs.cdelt = [

@@ -28,6 +28,8 @@ def quantity_to_np(q: au.Quantity, decompose_unit: au.Unit | str | None = None,
             dtype = mp_policy.length_dtype
         elif q.unit.is_equivalent('s'):
             dtype = mp_policy.time_dtype
+        elif q.unit.is_equivalent('m/s'):
+            dtype = mp_policy.length_dtype
         elif q.unit.is_equivalent('Hz'):
             dtype = mp_policy.freq_dtype
         elif q.unit.is_equivalent('deg'):

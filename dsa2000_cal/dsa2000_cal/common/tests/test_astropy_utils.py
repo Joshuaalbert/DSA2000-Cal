@@ -1,9 +1,11 @@
 import numpy as np
+import pytest
 from astropy import coordinates as ac, units as au
 from matplotlib import pyplot as plt
 
 from dsa2000_cal.common.astropy_utils import random_discrete_skymodel, mean_icrs, \
-    create_spherical_grid, create_spherical_earth_grid, create_random_spherical_layout
+    create_spherical_grid_old, create_spherical_earth_grid, create_random_spherical_layout, create_mosaic_tiling, \
+    fibonacci_celestial_sphere
 
 
 def test_random_discrete_skymodel():
@@ -35,7 +37,7 @@ def test_create_spherical_grid():
     pointing = ac.ICRS(ra=10 * au.deg, dec=0 * au.deg)
     angular_width = 1 * au.deg
     dr = 0.1 * au.deg
-    grid = create_spherical_grid(pointing, angular_width, dr)
+    grid = create_spherical_grid_old(pointing, angular_width, dr)
     plt.scatter(grid.ra.rad, grid.dec.rad, marker='o')
     plt.show()
 
@@ -46,7 +48,7 @@ def test_create_spherical_grid():
     pointing = ac.ICRS(ra=10 * au.deg, dec=0 * au.deg)
     angular_width = 0 * au.deg
     dr = 0.1 * au.deg
-    grid = create_spherical_grid(pointing, angular_width, dr)
+    grid = create_spherical_grid_old(pointing, angular_width, dr)
     assert not grid.isscalar
     assert len(grid) == 1
 
@@ -72,3 +74,22 @@ def test_create_spherical_grid_all_sky():
     plt.show()
 
     assert len(grid) == 10000
+
+
+def test_create_mosaic_tiling():
+    tiling_coords = create_mosaic_tiling()
+    print(tiling_coords.size)
+    import pylab as plt
+    plt.scatter(tiling_coords.ra, tiling_coords.dec, s=1)
+    plt.show()
+
+
+@pytest.mark.parametrize('n', [10, 100, 1000])
+def test_fibonacci_celestial_sphere(n: int):
+    pointings = fibonacci_celestial_sphere(n=n)
+    import pylab as plt
+    plt.scatter(pointings.ra, pointings.dec, s=1)
+    plt.show()
+
+    mean_area = (4 * np.pi / n) * au.rad ** 2
+    print(n, mean_area.to('deg^2'))
