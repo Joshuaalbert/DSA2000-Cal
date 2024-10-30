@@ -1,14 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar, Generic, Tuple
 
-import jax
-
-StateType = TypeVar('StateType')
 OutputType = TypeVar('OutputType')
 KeepType = TypeVar('KeepType')
 
 
-class AbstractCoreStep(ABC, Generic[StateType, OutputType, KeepType]):
+class AbstractCoreStep(ABC, Generic[OutputType, KeepType]):
 
     def __hash__(self):
         return hash(self.name)
@@ -24,6 +21,10 @@ class AbstractCoreStep(ABC, Generic[StateType, OutputType, KeepType]):
     @property
     def output_name(self):
         return f"{self.name}Output"
+
+    @property
+    def keep_name(self):
+        return f"{self.name}Keep"
 
     @abstractmethod
     def step(self, primals: Tuple[Any, ...]) -> Tuple[OutputType, KeepType]:
