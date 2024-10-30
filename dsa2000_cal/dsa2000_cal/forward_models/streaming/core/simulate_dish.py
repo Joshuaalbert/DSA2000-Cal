@@ -6,6 +6,7 @@ import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pylab as plt
 from astropy import constants
 
 import dsa2000_cal.common.context as ctx
@@ -73,7 +74,13 @@ class SimulateDishOutput(NamedTuple):
 
 
 @dataclasses.dataclass(eq=False)
-class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, None]):
+class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
+    """
+    Simulate the dish.
+
+    X = M
+    -Y = L
+    """
     freqs: au.Quantity
     num_antennas: int
     static_beam: bool
@@ -104,6 +111,52 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
             dl=dl,
             dm=dm
         )  # [num_model_times, lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
+
+        # use callback to plot the aperture model
+        def plot_aperture_model(beam_aperture: jax.Array, dl, dm):
+            def _plot_aperture_model(beam_aperture: jax.Array, dl, dm):
+                output = os.path.join(self.plot_folder, 'aperture_model.png')
+                if os.path.exists(output):
+                    return np.asarray(False)
+                beam_aperture = beam_aperture[0]  # [lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
+                length = len(np.shape(beam_aperture))
+                select = [slice(None)] * 2 + [0] * (length - 2)
+                beam_aperture = beam_aperture[tuple(select)]  # [lres, mres]
+                # L=-Y, M=X
+                beam_aperture = beam_aperture[::-1, :]  # [lres, mres]
+                fig, axs = plt.subplots(2, 1, sharex=True, sharey=True)
+                # plot amp and phase over X Y
+                dy = 1. / (dl * np.shape(beam_aperture)[0])
+                ymin = -0.5 * np.shape(beam_aperture)[0] * dy
+                ymax = ymin + np.shape(beam_aperture)[0] * dy
+                dx = 1. / (dm * np.shape(beam_aperture)[1])
+                xmin = -0.5 * np.shape(beam_aperture)[1] * dx
+                xmax = xmin + np.shape(beam_aperture)[1] * dx
+                extent = [xmin, xmax, ymin, ymax]
+                axs[0].imshow(np.abs(beam_aperture).T, extent=extent,
+                              origin='lower', aspect='auto',
+                              interpolation='nearest')
+                axs[0].set_title('Amplitude')
+                axs[0].set_ylabel('X [wavelengths]')
+                axs[0].set_xlabel('Y [wavelengths]')
+                axs[1].imshow(np.angle(beam_aperture).T, extent=extent,
+                              origin='lower', aspect='auto',
+                              interpolation='nearest')
+                axs[1].set_title('Phase')
+                axs[1].set_ylabel('X [wavelengths]')
+                axs[1].set_xlabel('Y [wavelengths]')
+                plt.savefig(output)
+                plt.close(fig)
+                return np.asarray(True)
+
+            return jax.experimental.io_callback(
+                _plot_aperture_model,
+                jax.ShapeDtypeStruct((), jnp.bool_), beam_aperture, dl, dm,
+                ordered=False
+            )
+
+        plot_aperture_model(beam_aperture, dl, dm)
+
         return mp_policy.cast_to_vis(beam_aperture)
 
     def get_state(self, beam_model: BaseSphericalInterpolatorGainModel) -> SimulateDishState:
@@ -129,11 +182,12 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
 
         dl = beam_model.lvec[1] - beam_model.lvec[0]
         dm = beam_model.mvec[1] - beam_model.mvec[0]
-        dx = 1. / (dl * n)  # units of wavelength
-        dy = 1. / (dm * n)  # units of wavelength
+        dx = 1. / (dm * n)  # units of wavelength
+        dy = 1. / (dl * n)  # units of wavelength
         xvec = (-0.5 * n + jnp.arange(n)) * dx
         yvec = (-0.5 * n + jnp.arange(n)) * dy
-        X, Y = jnp.meshgrid(xvec, yvec, indexing='ij')
+        yvec = -yvec  # L = -Y
+        Y, X = jnp.meshgrid(yvec, xvec, indexing='ij')
 
         dish_effect_params = ctx.get_parameter(
             'dish_effect_params',
@@ -243,10 +297,9 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
             axial_focus_error=axial_focus_error
         )
 
-    def step(self, primals: Tuple[SetupObservationOutput, SimulateBeamOutput]) -> Tuple[
-        SimulateDishState, SimulateDishOutput, None]:
+    def step(self, primals: Tuple[SetupObservationOutput, SimulateBeamOutput]) -> Tuple[SimulateDishOutput, None]:
         (setup_observation_output, simulate_beam_output,) = primals
-        state = self.get_state(beam_model=simulate_beam_output.beam_model)
+        state = ctx.get_state('state', init=lambda: self.get_state(beam_model=simulate_beam_output.beam_model))
 
         if not self.static_beam:
             # recompute aperture beam model
@@ -267,6 +320,12 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
             elevation_rad=elevation_rad,
             dish_effect_params=state.dish_effect_params,
             full_stokes=simulate_beam_output.beam_model.full_stokes,
+            X=state.X,
+            Y=state.Y,
+            model_wavelengths=state.model_wavelengths,
+            num_times=setup_observation_output.times.size,
+            num_antennas=self.num_antennas,
+            static_system_params=state.static_system_params
         )  # [num_model_times, lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
 
         model_gains_image = self.compute_dish_image(
@@ -285,7 +344,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
             full_stokes=simulate_beam_output.beam_model.full_stokes
         )
 
-        return state, SimulateDishOutput(gain_model=gain_model), None
+        return SimulateDishOutput(gain_model=gain_model), None
 
     def compute_dish_image(self, model_gains_aperture: jax.Array, dx: FloatArray, dy: FloatArray) -> jax.Array:
         """
@@ -299,7 +358,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
         """
         am = ApertureTransform(convention=self.convention)
         model_gains_image = am.to_image(
-            f_aperture=model_gains_aperture, axes=(1, 2), dx=dx, dy=dy
+            f_aperture=model_gains_aperture, axes=(1, 2), dx=dy, dy=dx  # l and m switched
         )  # [num_model_times, lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
         return model_gains_image
 
@@ -344,11 +403,11 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
         dish_diameter = dish_effect_params.dish_diameter  # []
         R = 0.5 * dish_diameter  # []
 
-        X = X[None, :, :, None, None] * model_wavelengths  # [1, Nm, Nl, 1, num_model_freqs]
-        Y = Y[None, :, :, None, None] * model_wavelengths  # [1, Nm, Nl, 1, num_model_freqs]
+        X = X[None, :, :, None, None] * model_wavelengths  # [1, lres, mres, 1, num_model_freqs]
+        Y = Y[None, :, :, None, None] * model_wavelengths  # [1, lres, mres, 1, num_model_freqs]
         r = jnp.sqrt(X ** 2 + Y ** 2)
-        diameter_mask = r <= R  # [1, Nm, Nl, 1, num_model_freqs]
-        focal_ratio = r / focal_length  # [1, Nm, Nl, num_model_freqs, 1]
+        diameter_mask = r <= R  # [1, lres, mres, 1, num_model_freqs]
+        focal_ratio = r / focal_length  # [1, lres, mres, num_model_freqs, 1]
 
         elevation_point_error = dynamic_system_params.elevation_point_error[:, None, None, :,
                                 None]  # [num_times, 1, 1, num_ant, 1]
@@ -383,26 +442,26 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishState, SimulateDishOutput, N
         peak_astigmatism = horizon_peak_astigmatism * cos_elevation
         astigmatism_error = peak_astigmatism * (r / R) ** 2 * cos_2phi
 
-        total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [num_times, Nm, Nl, num_ant, num_model_freqs]
+        total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [num_times, lres, mres, num_ant, num_model_freqs]
 
         if self.convention == 'engineering':
             phase = (2 * jnp.pi) * (
-                    total_path_length_error / model_wavelengths)  # [num_times, Nm, Nl, num_ant, num_model_freqs]
+                    total_path_length_error / model_wavelengths)  # [num_times, lres, mres, num_ant, num_model_freqs]
         elif self.convention == 'physical':
             phase = (-2 * jnp.pi) * (
-                    total_path_length_error / model_wavelengths)  # [num_times, Nm, Nl, num_ant, num_model_freqs]
+                    total_path_length_error / model_wavelengths)  # [num_times, lres, mres, num_ant, num_model_freqs]
         else:
             raise ValueError(f"Unknown convention {self.convention}")
 
         # Multiple in aperature
         aperture_field = mp_policy.cast_to_vis(jax.lax.complex(jnp.cos(phase), jnp.sin(phase)))  #
         if full_stokes:
-            diameter_mask = diameter_mask[..., None, None]  # [1, Nm, Nl, 1, num_model_freqs, 1, 1]
-            aperture_field = aperture_field[..., None, None]  # [num_times, Nm, Nl, num_ant, num_model_freqs, 1, 1]
+            diameter_mask = diameter_mask[..., None, None]  # [1, lres, mres, 1, num_model_freqs, 1, 1]
+            aperture_field = aperture_field[..., None, None]  # [num_times, lres, mres, num_ant, num_model_freqs, 1, 1]
         # Zeros outside the dish
         model_gains_aperture = jnp.where(
             diameter_mask,
             aperture_field * beam_aperture,
             jnp.zeros((), mp_policy.vis_dtype)
-        )  # [num_times, Nm, Nl, num_ant, num_model_freqs[, 2, 2]]
+        )  # [num_model_times, lres, mres, [num_ant, ] num_model_freqs[, 2, 2]]
         return model_gains_aperture
