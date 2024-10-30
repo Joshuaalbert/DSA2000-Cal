@@ -4,7 +4,7 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.context import wrap_random, get_parameter, get_state, global_context, transform_with_state, \
-    next_rng_key
+    next_rng_key, scope
 
 
 def test_context():
@@ -45,3 +45,24 @@ def test_context():
         _ = get_state("reg_loss", init=jnp.ones((1, 2)))
     with pytest.raises(ValueError, match="No context available."):
         next_rng_key()
+
+
+def test_scope():
+    def f():
+        x = get_parameter("x", init=jnp.ones(()))
+        x_state = get_state("X", init=jnp.ones(()))
+        with scope('a'):
+            y = get_parameter("y", init=jnp.ones(()))
+            with scope('b'):
+                z = get_parameter("z", init=jnp.ones(()))
+                return x + y + z
+
+    transformed_fn = transform_with_state(f)
+    init = transformed_fn.init(jax.random.PRNGKey(42))
+    print(init)
+    assert '.x' in init.params.keys()
+    assert '.X' in init.states.keys()
+    assert 'a.y' in init.params.keys()
+    assert 'a.b.z' in init.params.keys()
+    output = transformed_fn.apply(init.params, init.states, jax.random.PRNGKey(42))
+    print(output)
