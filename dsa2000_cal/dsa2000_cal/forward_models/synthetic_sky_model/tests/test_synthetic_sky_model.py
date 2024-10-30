@@ -1,8 +1,7 @@
 import pytest
 from astropy import units as au, coordinates as ac
 
-from dsa2000_cal.common.astropy_utils import create_spherical_grid
-from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer import choose_dr
+from dsa2000_cal.common.astropy_utils import create_spherical_grid_old, choose_dr
 
 
 @pytest.mark.parametrize('total_n, expected_n', [
@@ -15,7 +14,7 @@ from dsa2000_cal.forward_models.synthetic_sky_model.synthetic_sky_model_producer
 def test_choose_dr(total_n, expected_n):
     field_of_view = 4 * au.deg
     dr = choose_dr(field_of_view=field_of_view, total_n=total_n)
-    sources = create_spherical_grid(
+    sources = create_spherical_grid_old(
         pointing=ac.ICRS(15 * au.deg, 0 * au.deg),
         angular_radius=0.5 * field_of_view,
         dr=dr,

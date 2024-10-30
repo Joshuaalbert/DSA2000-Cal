@@ -15,6 +15,7 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
@@ -227,7 +228,7 @@ def test_facet_model_fits():
     ref_time = obstimes[0]
     freqs = au.Quantity([50, 60], 'MHz')
 
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=phase_center,
@@ -320,7 +321,7 @@ def test_facet_model():
     ref_time = obstimes[0]
     freqs = au.Quantity([50, 60], 'MHz')
 
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=None,
@@ -443,7 +444,7 @@ def test_facet_model_lte():
 
     phase_center = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
 
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=None,
@@ -563,7 +564,7 @@ def test_rime_model_correct_shapes():
     ref_time = obstimes[0]
     freqs = au.Quantity([50, 55, 60], 'MHz')
 
-    geodesic_model = GeodesicModel(
+    geodesic_model = build_geodesic_model(
         phase_center=phase_center,
         obstimes=obstimes,
         pointings=None,

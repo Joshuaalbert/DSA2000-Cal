@@ -13,13 +13,14 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_spherical_earth_grid
+from dsa2000_cal.common.astropy_utils import create_spherical_grid_old, create_spherical_earth_grid
 from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_lmn
 from dsa2000_cal.common.interp_utils import convolved_interp
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.forward_models.systematics.ionosphere_simulation import TEC_CONV, IonosphereSimulation
-from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
+from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel
+from dsa2000_cal.gain_models.base_spherical_interpolator import phi_theta_from_lmn
 
 tfpd = tfp.distributions
 
@@ -141,7 +142,7 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
     angular_resolution = (spatial_resolution / nominal_height) * au.rad
     print(f"Angular resolution: {angular_resolution.to(au.arcmin)}")
 
-    model_directions = create_spherical_grid(
+    model_directions = create_spherical_grid_old(
         pointing=pointing,
         angular_radius=0.5 * field_of_view,
         dr=angular_resolution

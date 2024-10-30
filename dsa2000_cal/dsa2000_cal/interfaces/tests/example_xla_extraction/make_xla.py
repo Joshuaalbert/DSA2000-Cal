@@ -12,3 +12,5 @@ if __name__ == '__main__':
 
     with open("example.hlo", "w") as file:
         file.write(hlo_text)
+
+    print(hlo_text)

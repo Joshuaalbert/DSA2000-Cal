@@ -14,10 +14,10 @@ from tomographic_kernel.frames import ENU
 from dsa2000_cal.common.cache_utils import check_cache
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
+from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.mixed_precision_utils import complex_type
-from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
+from dsa2000_cal.gain_models.gain_model import GainModel
 
 
 def assert_congruent_unit(x: au.Quantity, unit: au.Unit):
@@ -146,7 +146,7 @@ class DishEffectsSimulation:
     dish_effect_params: DishEffectsParams
 
     # Beam model
-    beam_gain_model: BeamGainModel
+    beam_gain_model: GainModel
 
     plot_folder: str
     cache_folder: str
@@ -314,7 +314,7 @@ class DishEffectsSimulation:
         am = ApertureTransform(convention=self.convention)
         dnu = quantity_to_jnp(self.dl * self.dm / self.aperture_sampling_interval ** 2)
         beam_model_gains_aperture = am.to_aperture(
-            f_image=beam_model_gains_image, axes=(0, 1), dnu=dnu
+            f_image=beam_model_gains_image, axes=(0, 1), dldm=dnu
         )  # [Nm, Nl, num_ant, num_model_freq, 2, 2]
         return beam_model_gains_aperture
 
@@ -331,7 +331,7 @@ class DishEffectsSimulation:
         am = ApertureTransform(convention=self.convention)
         dx = quantity_to_jnp(self.dx * self.dy)
         model_gains_image = am.to_image(
-            f_aperture=model_gains_aperture, axes=(0, 1), dx=dx
+            f_aperture=model_gains_aperture, axes=(0, 1), dxdy=dx
         )  # [Nm, Nl, num_ant, num_freq[, 2, 2]]
         return model_gains_image
 

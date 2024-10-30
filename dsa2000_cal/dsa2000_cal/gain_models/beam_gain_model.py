@@ -20,6 +20,7 @@ def build_beam_gain_model(
         array_name: the name of the array
         full_stokes: whether to use full stokes
         model_times: the times at which to compute the model
+        freqs: the frequencies at which to compute the model, which allows filtering the model frequencies
 
     Returns:
         A beam gain model using the spherical interpolator.
@@ -73,7 +74,6 @@ def build_beam_gain_model(
         i0 = np.minimum(np.searchsorted(model_freqs, freqs), len(model_freqs) - 1)
         i1 = np.minimum(i0 + 1, len(model_freqs) - 1)
         select_idxs = np.unique(np.concatenate([i0, i1]))
-        model_freqs = model_freqs[select_idxs]
         model_freqs = model_freqs[select_idxs]  # [num_freqs]
         gains = gains[:, :, select_idxs, ...] # [num_times, num_dir, num_freqs, 2, 2]
 

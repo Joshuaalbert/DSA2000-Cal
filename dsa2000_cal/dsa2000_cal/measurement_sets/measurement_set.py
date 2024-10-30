@@ -17,12 +17,14 @@ from pydantic import Field
 
 from dsa2000_cal.adapter.utils import translate_corrs
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
-from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel, build_beam_gain_model
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
 
 
 class MeasurementSetMetaV0(SerialisableBaseModel):
@@ -369,14 +371,14 @@ class MeasurementSet:
         )
 
     @cached_property
-    def geodesic_model(self) -> GeodesicModel:
+    def geodesic_model(self) -> BaseGeodesicModel:
         """
         Get the geodesic model for the measurement set.
 
         Returns:
             the geodesic model
         """
-        return GeodesicModel(
+        return build_geodesic_model(
             antennas=self.meta.antennas,
             array_location=self.meta.array_location,
             phase_center=self.meta.phase_tracking,
@@ -386,7 +388,7 @@ class MeasurementSet:
         )
 
     @cached_property
-    def beam_gain_model(self) -> BeamGainModel:
+    def beam_gain_model(self) -> GainModel:
         """
         Get the beam gain model for the measurement set.
 
@@ -825,7 +827,7 @@ def _put_non_unique(h5_array, unique_indices, values, axis=0, _already_unique: b
     h5_array[index_tuple] = values[index_tuple]
 
 
-def beam_gain_model_factory(ms: MeasurementSet) -> BeamGainModel:
+def beam_gain_model_factory(ms: MeasurementSet) -> BaseSphericalInterpolatorGainModel:
     if ms.meta.static_beam:
         model_times = at.Time([ms.meta.times.tt.mean()])
     else:

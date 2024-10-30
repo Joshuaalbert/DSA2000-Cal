@@ -8,7 +8,7 @@ import numpy as np
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, rfi_model_registry
-from dsa2000_cal.common.astropy_utils import create_spherical_grid, create_random_spherical_layout
+from dsa2000_cal.common.astropy_utils import create_spherical_grid_old, create_random_spherical_layout, choose_dr
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
@@ -89,7 +89,7 @@ class SyntheticSkyModelProducer:
         shrink_factor = 0.75  # Shrink the field of view to avoid sources at the edge
         dr_bright = choose_dr(field_of_view=self.field_of_view, total_n=num_sources)
         bright_rotation = float(jax.random.uniform(key, (), minval=0, maxval=60)) * au.deg
-        bright_sources = create_spherical_grid(
+        bright_sources = create_spherical_grid_old(
             pointing=self.phase_tracking,
             angular_radius=0.5 * self.field_of_view * shrink_factor,
             dr=dr_bright,
@@ -137,7 +137,7 @@ class SyntheticSkyModelProducer:
 
         dr_faint = choose_dr(field_of_view=self.field_of_view, total_n=num_sources)
         faint_rotation = float(jax.random.uniform(key1, (), minval=0, maxval=60)) * au.deg
-        faint_sources = create_spherical_grid(
+        faint_sources = create_spherical_grid_old(
             pointing=self.phase_tracking,
             angular_radius=0.5 * self.field_of_view * shrink_factor,
             dr=dr_faint,
@@ -186,10 +186,17 @@ class SyntheticSkyModelProducer:
         source_models = []
         for source in a_team_sources:
             source_model_asset = source_model_registry.get_instance(source_model_registry.get_match(source))
+            # To repoint th image
+            # new_centre = ac.ICRS(
+            #     *offset_by(self.phase_tracking.ra, self.phase_tracking.dec,
+            #                posang=np.random.uniform(0., 360.) * au.deg,
+            #                distance=np.random.uniform(0.5, 1.) * au.deg)
+            # )
             source_model = FITSSourceModel.from_wsclean_model(
                 wsclean_fits_files=source_model_asset.get_wsclean_fits_files(),
                 phase_tracking=self.phase_tracking, freqs=self.freqs, ignore_out_of_bounds=True,
-                full_stokes=full_stokes
+                full_stokes=full_stokes,
+                # repoint_centre=new_centre
             )
             source_models.append(source_model)
         return source_models
@@ -221,26 +228,3 @@ class SyntheticSkyModelProducer:
         return source_models
 
 
-def choose_dr(field_of_view: au.Quantity, total_n: int) -> au.Quantity:
-    """
-    Choose the dr for a given field of view and total number of sources.
-    Approximate number of sources result.
-
-    Args:
-        field_of_view:
-        total_n:
-
-    Returns:
-        the sky spacing
-    """
-    possible_n = [1, 7, 19, 37, 62, 93, 130, 173, 223, 279, 341, 410, 485,
-                  566, 653, 747, 847, 953, 1066, 1185]
-    if total_n == 1:
-        return field_of_view
-    dr = 0.5 * field_of_view / np.arange(1, total_n + 1)
-    N = np.floor(0.5 * field_of_view / dr)
-    num_n = [1 + np.sum(np.floor(2 * np.pi * np.arange(1, n + 1))) for n in N]
-    if total_n not in possible_n:
-        print(f"total_n {total_n} not exactly achievable. Will be rounded to nearest achievable value "
-              f"This is based on a uniform dithering of the sky. Possible values are {possible_n}.")
-    return au.Quantity(np.interp(total_n, num_n, dr))

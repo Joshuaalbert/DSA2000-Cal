@@ -10,8 +10,8 @@ from jaxns import PriorModelType, Prior
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterModelData
 
@@ -39,8 +39,8 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
     """
     A RFI model with fully parameterised spectral and spatial properties.
     """
-    geodesic_model: GeodesicModel
-    beam_gain_model: BeamGainModel
+    geodesic_model: BaseGeodesicModel
+    beam_gain_model: GainModel
     num_emitters: int = 1
     acf_resolution: int = 32
     distance_min: au.Quantity = 0. * au.km
@@ -174,7 +174,7 @@ class FullyParameterisedRFIHorizonEmitter(AbstractRFIPriorModel):
             gains = self.beam_gain_model.compute_gain(
                 freqs=freqs,
                 times=times,
-                geodesics=geodesics
+                lmn_geodesic=geodesics
             )
             return RFIEmitterModelData(
                 freqs=freqs,
@@ -224,14 +224,14 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
                 high=quantity_to_jnp(self.mu_high) * ones
             ),
             name='mu'
-        ).parametrised() # [E]
+        ).parametrised()  # [E]
         fwhp = yield Prior(
             tfpd.Uniform(
                 low=quantity_to_jnp(self.fwhm_low) * ones,
                 high=quantity_to_jnp(self.fwhm_high) * ones
             ),
             name='fwhp'
-        ).parametrised() # [E]
+        ).parametrised()  # [E]
         if self.full_stokes:
             eye_diag = jnp.ones((self.num_emitters, 2), dtype=mp_policy.length_dtype)
             spectral_power = yield Prior(
@@ -240,7 +240,7 @@ class ParametricRFIHorizonEmitter(FullyParameterisedRFIHorizonEmitter):
                     high=quantity_to_jnp(self.max_channel_power / self.channel_width, 'Jy*m^2/Hz') * eye_diag
                 ),
                 name='spectral_power'
-            ).parametrised() # [E, 2]
+            ).parametrised()  # [E, 2]
             spectral_power = jax.vmap(jnp.diag)(spectral_power)  # [E, 2, 2]
             pol_angle = yield Prior(
                 tfpd.Uniform(

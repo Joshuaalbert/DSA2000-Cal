@@ -2,7 +2,6 @@ import dataclasses
 import os.path
 from typing import Literal
 
-import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as au, coordinates as ac
@@ -11,8 +10,8 @@ from jax._src.typing import SupportsDType
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
-from dsa2000_cal.gain_models.beam_gain_model import BeamGainModel
-from dsa2000_cal.gain_models.spherical_interpolator import SphericalInterpolatorGainModel, phi_theta_from_lmn
+from dsa2000_cal.gain_models.base_spherical_interpolator import phi_theta_from_lmn
+from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
 
 
@@ -22,7 +21,7 @@ class DishEffectsGainModel(SphericalInterpolatorGainModel):
 
 
 def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
-                                    beam_gain_model: BeamGainModel,
+                                    beam_gain_model: GainModel,
                                     dish_effect_params: DishEffectsParams,
                                     plot_folder: str, cache_folder: str, seed: int = 42,
                                     convention: Literal['physical', 'engineering'] = 'physical',
@@ -69,7 +68,7 @@ def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
         tile_antennas=False
     )
 
-    geodesic_model = GeodesicModel()
+    geodesic_model = build_geodesic_model()
 
     # Plot the image plane effects
     for elevation in [45, 90] * au.deg:
@@ -77,7 +76,6 @@ def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
                                   location=simulation_results.antennas[0],
                                   obstime=dish_effects_simulation.ref_time).transform_to(ac.ICRS())
         sources = lmn_to_icrs(dish_effects_simulation.model_lmn, phase_tracking=phase_tracking)
-
 
         gain = dish_effects_gain_model.compute_gain(freqs=dish_effects_simulation.model_freqs[:1], sources=sources,
                                                     array_location=simulation_results.antennas[0],

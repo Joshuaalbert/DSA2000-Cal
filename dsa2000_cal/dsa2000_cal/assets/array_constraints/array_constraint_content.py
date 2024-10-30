@@ -3,8 +3,6 @@ from abc import ABC
 from functools import cached_property
 from typing import Tuple, List, Callable
 
-import astropy.coordinates as ac
-import astropy.units as au
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -238,63 +236,3 @@ def haversine(lon1, lat1, lon2, lat2):
     a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
     c = 2 * np.arcsin(np.sqrt(a))
     return c
-
-
-class ConstrainedArrayLayoutProblem:
-    def get_samples(self, num_samples: int):
-        pass
-
-
-def get_initial_samples(array_location: ac.EarthLocation, num_samples: int, seed: int | None = None):
-    height = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
-    if seed is not None:
-        np.random.seed(seed)
-    array_constraint = ArrayConstraint()
-    samples = []
-    aoi_data = array_constraint.get_area_of_interest_regions()
-    constraint_data = array_constraint.get_constraint_regions()
-    soil_sampler, _ = constraint_data[3]
-    # print(soil_sampler.gdf['SUMMARY_TY'].unique())
-    # soil_sampler.info()
-    soil_sampler.plot_region(plt.gca(), 'blue')
-    aio_sampler, _ = aoi_data[0]
-    aio_sampler.plot_region(plt.gca(), 'red')
-    plt.show()
-    aoi_samplers, aoi_buffers = zip(*aoi_data)
-    constraint_samplers, constraint_buffers = zip(*constraint_data)
-    areas = np.asarray([s.total_area for s in aoi_samplers])
-    aoi_probs = areas / areas.sum()
-    c = 0
-    while len(samples) < num_samples:
-        sampler_idx = np.random.choice(len(aoi_samplers), p=aoi_probs)
-        sampler = aoi_samplers[sampler_idx]
-        buffer = aoi_buffers[sampler_idx]
-        sample_proposal = sampler.get_samples_within(1)[0]
-        # Check that it far enough from AOI perimeter
-        _, angular_dist = sampler.closest_approach_to_boundary(*sample_proposal)
-        dist = np.pi / 180. * angular_dist * height
-        if dist < buffer:
-            continue
-
-        # Check that it is far enough from constraint regions
-        far_enough_away = True
-        for constraint_sampler, buffer in zip(constraint_samplers, constraint_buffers):
-            _, angular_dist = constraint_sampler.closest_approach(*sample_proposal)
-            dist = np.pi / 180. * angular_dist * height
-            # print(dist)
-            if dist <= buffer:
-                # constraint_sampler.info()
-                far_enough_away = False
-                break
-        if far_enough_away:
-            samples.append(sample_proposal)
-        c += 1
-        # if c > 100:
-        #     break
-    return np.asarray(samples)
-
-
-def test_array_constraint():
-    samples = get_initial_samples(ac.EarthLocation.of_site('vla'), 2048, seed=0)
-    plt.scatter(samples[:, 0], samples[:, 1])
-    plt.show()

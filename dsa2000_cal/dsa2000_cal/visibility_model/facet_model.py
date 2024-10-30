@@ -7,7 +7,7 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, \
     FITSModelData, FITSPredict
 from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
@@ -35,7 +35,7 @@ class FacetModel:
     """
     near_field_delay_engine: NearFieldDelayEngine
     far_field_delay_engine: FarFieldDelayEngine
-    geodesic_model: GeodesicModel
+    geodesic_model: BaseGeodesicModel
 
     point_source_model: PointSourceModel | None = None
     gaussian_source_model: GaussianSourceModel | None = None
@@ -105,7 +105,7 @@ class FacetModel:
                 )  # [num_sources, num_times, num_ant, 3]
                 freqs = quantity_to_jnp(self.point_source_model.freqs)
                 gains = self.gain_model.compute_gain(times=times,
-                                                     geodesics=geodesics,
+                                                     lmn_geodesic=geodesics,
                                                      freqs=freqs
                                                      )  # [[num_sources,] time, ant, chan[, 2, 2]]
             point_model_data = self.point_source_model.get_model_data(gains)
@@ -118,7 +118,7 @@ class FacetModel:
                     lmn_sources=lmn_sources
                 )  # [num_sources, num_times, num_ant, 3]
                 freqs = quantity_to_jnp(self.gaussian_source_model.freqs)
-                gains = self.gain_model.compute_gain(times=times, geodesics=geodesics,
+                gains = self.gain_model.compute_gain(times=times, lmn_geodesic=geodesics,
                                                      freqs=freqs)
             gaussian_model_data = self.gaussian_source_model.get_model_data(
                 gains)  # [[source,] time, ant, chan[, 2, 2]]
@@ -132,7 +132,7 @@ class FacetModel:
                 )  # [num_sources=1, num_times, num_ant, 3]
                 freqs = quantity_to_jnp(self.fits_source_model.freqs)
                 gains = self.gain_model.compute_gain(times=times,
-                                                     geodesics=geodesics,
+                                                     lmn_geodesic=geodesics,
                                                      freqs=freqs)  # [num_sources=1, time, ant, chan[, 2, 2]]
                 gains = gains[0]  # [time, ant, chan[, 2, 2]]
             fits_model_data = self.fits_source_model.get_model_data(gains)
@@ -148,7 +148,7 @@ class FacetModel:
                 freqs = quantity_to_jnp(self.rfi_emitter_source_model.params.freqs)
                 gains = self.gain_model.compute_gain(
                     times=times,
-                    geodesics=geodesics,
+                    lmn_geodesic=geodesics,
                     freqs=freqs
                 )
                 # jax.debug.print("gains={gains}", gains=gains)

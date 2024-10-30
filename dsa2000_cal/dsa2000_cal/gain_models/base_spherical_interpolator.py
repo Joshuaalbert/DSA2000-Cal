@@ -215,8 +215,9 @@ class BaseSphericalInterpolatorGainModel(GainModel):
 
         if save_fig is not None:
             plt.savefig(save_fig)
-
-        plt.show()
+            plt.close(fig)
+        else:
+            plt.show()
 
 
 def base_spherical_interpolator_gain_model_flatten(
