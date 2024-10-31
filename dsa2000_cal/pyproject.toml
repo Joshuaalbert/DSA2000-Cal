@@ -25,6 +25,8 @@ urls = { "Homepage" = "https://github.com/joshuaalbert/dsa2000-cal" }
 notebooks = []  # Placeholders; extras will load from setup.py
 
 [tool.setuptools]
-package-dir = "src"
-packages = ["dsa2000_cal"]
 include-package-data = true
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
