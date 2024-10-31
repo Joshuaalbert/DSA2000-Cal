@@ -1,1 +1,1 @@
-recursive-include dsa2000_cal *.large_files
+recursive-include src *.large_files
