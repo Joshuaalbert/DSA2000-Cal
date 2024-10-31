@@ -129,7 +129,7 @@ def main():
 
     print(f"x={x}, y={y}")
 
-    verify_fits('~/git/DSA2000-Cal/dsa2000_cal/dsa2000_cal/assets/source_models/cas_a/Cas-MFS-model.fits')
+    verify_fits('/src/dsa2000_cal/assets/source_models/cas_a/Cas-MFS-model.fits')
 
 
 if __name__ == '__main__':

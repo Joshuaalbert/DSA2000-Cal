@@ -5,7 +5,7 @@ from jax import config
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import UnconstrainedGain
-from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
+from src.dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.imaging.imagor import Imagor
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
@@ -14,9 +14,9 @@ config.update('jax_threefry_partitionable', True)
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 import numpy as np
 from dsa2000_cal.calibration.calibration import Calibration
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
+from src.dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from src.dsa2000_cal.assets import fill_registries
+from src.dsa2000_cal.assets import array_registry
 
 import astropy.units as au
 

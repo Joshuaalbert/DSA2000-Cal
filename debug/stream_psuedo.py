@@ -7,7 +7,7 @@ from jax import lax
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.imaging.imagor import Imagor
-from dsa2000_cal.measurement_sets.measurement_set import VisibilityData
+from src.dsa2000_cal.measurement_sets import VisibilityData
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 
