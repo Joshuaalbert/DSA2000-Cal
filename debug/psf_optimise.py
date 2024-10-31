@@ -10,8 +10,8 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.assets import fill_registries
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
 

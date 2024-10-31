@@ -6,8 +6,8 @@ import pylab as plt
 from astropy import units as au
 from scipy.io import loadmat
 
-from dsa2000_cal.assets import rfi_model_registry
-from dsa2000_cal.assets import RFIEmitterSourceModelParams, AbstractRFIEmitterData
+from dsa2000_cal.assets.registries import rfi_model_registry
+from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.astropy_utils import fraunhofer_far_field_limit
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 

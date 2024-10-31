@@ -6,7 +6,7 @@ import astropy.coordinates as ac
 import numpy as np
 import pylab as plt
 
-from dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet
 
 
 def main(ms_folder: str):

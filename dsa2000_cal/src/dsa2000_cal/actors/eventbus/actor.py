@@ -9,9 +9,9 @@ from ray.actor import exit_actor
 from ray.serve._private.utils import get_head_node_id
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from dsa2000_cal.actors import AbstractEventBus
-from dsa2000_cal.actors import EventBusServer
-from dsa2000_cal.actors import NAMESPACE
+from dsa2000_cal.actors.eventbus.abc import AbstractEventBus
+from dsa2000_cal.actors.eventbus.websocket_server import EventBusServer
+from dsa2000_cal.actors.namespace import NAMESPACE
 from dsa2000_cal.common.ray_utils import get_or_create_event_loop, LogErrors
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 

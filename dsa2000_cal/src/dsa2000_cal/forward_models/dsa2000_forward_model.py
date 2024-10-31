@@ -14,7 +14,7 @@ from dsa2000_cal.forward_models.forward_model import BaseForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 

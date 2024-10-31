@@ -4,11 +4,11 @@ import astropy.units as au
 import numpy as np
 import pytest
 
-from dsa2000_cal.assets import fill_registries
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
-from dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0, MeasurementSet
 
 
 @pytest.fixture(scope='function')

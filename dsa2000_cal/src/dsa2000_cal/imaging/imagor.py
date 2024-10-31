@@ -12,7 +12,7 @@ from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.imaging.base_imagor import BaseImagor, fit_beam
-from dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)

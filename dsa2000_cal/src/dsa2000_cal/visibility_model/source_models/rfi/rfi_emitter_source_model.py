@@ -9,7 +9,7 @@ from astropy import constants as const, units as au
 from jax import numpy as jnp
 
 from dsa2000_cal.abc import AbstractSourceModel
-from dsa2000_cal.assets import RFIEmitterSourceModelParams, AbstractRFIEmitterData
+from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp

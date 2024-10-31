@@ -6,11 +6,11 @@ import pytest
 from astropy import time as at, coordinates as ac, units as au
 
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
-from dsa2000_cal.assets import fill_registries
-from dsa2000_cal.assets import array_registry, source_model_registry
-from dsa2000_cal.assets import LWACellTower
-from dsa2000_cal.assets import CygASourceModel
-from dsa2000_cal.assets import get_lm_coords_image
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry, source_model_registry
+from dsa2000_cal.assets.rfi.lte_rfi.lwa_cell_tower import LWACellTower
+from dsa2000_cal.assets.source_models.cyg_a.source_model import CygASourceModel
+from dsa2000_cal.assets.tests.test_source_models import get_lm_coords_image
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
 
 

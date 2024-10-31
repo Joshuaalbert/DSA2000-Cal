@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 from pyrap import tables as pt
 
-from dsa2000_cal.assets import AbstractArray
+from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 
 

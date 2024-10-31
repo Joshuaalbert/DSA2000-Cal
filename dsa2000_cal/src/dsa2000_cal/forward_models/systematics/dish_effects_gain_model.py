@@ -14,10 +14,6 @@ from dsa2000_cal.gain_models.base_spherical_interpolator import phi_theta_from_l
 from dsa2000_cal.gain_models.gain_model import GainModel
 
 
-@dataclasses.dataclass(eq=False)
-class DishEffectsGainModel(SphericalInterpolatorGainModel):
-    ...
-
 
 def dish_effects_gain_model_factory(pointings: ac.ICRS | None,
                                     beam_gain_model: GainModel,

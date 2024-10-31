@@ -6,8 +6,8 @@ import pytest
 from astropy import units as au, time as at
 from jax import numpy as jnp
 
-from dsa2000_cal.assets import fill_registries
-from dsa2000_cal.assets import array_registry, rfi_model_registry
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry, rfi_model_registry
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine

@@ -9,7 +9,7 @@ import pyrap.tables as pt
 
 from dsa2000_cal.adapter.utils import CASA_CORR_TYPES
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.measurement_sets import MeasurementSet, MeasurementSetMeta, MeasurementSetMetaV0, \
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, MeasurementSetMeta, MeasurementSetMetaV0, \
     VisibilityData
 
 

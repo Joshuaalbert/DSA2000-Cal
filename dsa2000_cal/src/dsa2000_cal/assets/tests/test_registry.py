@@ -1,6 +1,6 @@
 import pytest
 
-from dsa2000_cal.assets import match_func, sort_key_func
+from dsa2000_cal.assets.registries import match_func, sort_key_func
 
 
 @pytest.mark.parametrize('match_pattern,template,overlap', [

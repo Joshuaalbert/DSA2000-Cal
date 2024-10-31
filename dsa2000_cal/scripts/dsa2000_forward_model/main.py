@@ -13,10 +13,10 @@ config.update('jax_threefry_partitionable', True)
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from tomographic_kernel.frames import ENU
-from dsa2000_cal.assets import fill_registries
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
-from dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0, MeasurementSet
 
 
 def main(ms_folder: str):

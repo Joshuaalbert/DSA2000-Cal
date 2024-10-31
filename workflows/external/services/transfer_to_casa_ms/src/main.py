@@ -1,7 +1,7 @@
 import os
 
 from dsa2000_cal.adapter.to_casa_ms import transfer_to_casa
-from dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet
 
 
 def main(input_ms, output_ms):

@@ -8,14 +8,14 @@ import pytest
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
-from dsa2000_cal.assets import fill_registries
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.calibration.calibration import Calibration
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
 from dsa2000_cal.calibration.probabilistic_models.horizon_rfi_model import HorizonRFIModel
 from dsa2000_cal.calibration.probabilistic_models.rfi_prior_models import FullyParameterisedRFIHorizonEmitter
-from dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet, VisibilityData
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0, MeasurementSet, VisibilityData
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointSourceModel

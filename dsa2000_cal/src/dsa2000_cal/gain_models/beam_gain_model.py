@@ -1,8 +1,8 @@
 import numpy as np
 from astropy import units as au, time as at
 
-from dsa2000_cal.assets import fill_registries, NoMatchFound
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel, \
     build_spherical_interpolator
 

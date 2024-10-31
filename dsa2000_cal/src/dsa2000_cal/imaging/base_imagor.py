@@ -10,8 +10,8 @@ from astropy import constants
 from jax import lax
 
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
-from dsa2000_cal.assets import fill_registries, NoMatchFound
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
 from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_cal.common.ellipse_utils import Gaussian
@@ -24,7 +24,7 @@ from dsa2000_cal.common.vec_utils import kron_inv
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)

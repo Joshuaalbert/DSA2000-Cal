@@ -20,7 +20,7 @@ from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put, block_unt
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  VisibilityData, MeasurementSet
 
 tfpd = tfp.distributions
 

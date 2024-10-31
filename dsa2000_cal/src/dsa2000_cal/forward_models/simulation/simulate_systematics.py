@@ -7,12 +7,12 @@ import numpy as np
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_models.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.forward_models.systematics.ionosphere_gain_model import build_ionosphere_gain_model
 from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.measurement_sets import MeasurementSet, beam_gain_model_factory
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, beam_gain_model_factory
 
 
 @dataclasses.dataclass(eq=False)

@@ -1,9 +1,9 @@
 import re
 from typing import List
 
-from dsa2000_cal.assets import AbstractArray
-from dsa2000_cal.assets import ContentRegistry, ContentMap, AbstractContentFactory, SetKwargsFactory
-from dsa2000_cal.assets import AbstractRFIEmitterData
+from dsa2000_cal.assets.arrays.array import AbstractArray
+from dsa2000_cal.assets.content_registry import ContentRegistry, ContentMap, AbstractContentFactory, SetKwargsFactory
+from dsa2000_cal.assets.rfi.rfi_emitter_model import AbstractRFIEmitterData
 from dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel
 
 

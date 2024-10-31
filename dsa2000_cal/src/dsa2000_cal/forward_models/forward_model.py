@@ -15,7 +15,7 @@ from dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateV
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.imaging.imagor import Imagor
-from dsa2000_cal.measurement_sets import MeasurementSet, beam_gain_model_factory
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, beam_gain_model_factory
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 

@@ -7,7 +7,7 @@ import jax
 
 from dsa2000_cal.common.types import ComplexArray, FloatArray
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  VisibilityData, MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)

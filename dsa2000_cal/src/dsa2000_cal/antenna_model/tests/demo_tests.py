@@ -4,8 +4,8 @@ import pytest
 
 from dsa2000_cal.antenna_model.antenna_model_utils import bore_sight_coords_to_pixel_coords, pixel_coords_to_bore_sight_coords, \
     plot_beam_profile, get_dish_model_beam_widths
-from dsa2000_cal.assets import fill_registries
-from dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry
 
 
 def _test_bore_sight_coords_to_pixel_coords():
