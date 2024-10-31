@@ -1,7 +1,7 @@
 pydantic<2.0.0
 numpy<2
 ujson
-astropy>=6.1
+astropy>=6.1.0
 h5parm
 tables
 jax>=0.4.25

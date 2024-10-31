@@ -1,6 +1,29 @@
+# pyproject.toml
+
 [build-system]
-requires = [
-    "setuptools>=61.0",
-    "wheel"
-]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "dsa2000_cal"
+version = "1.0.0"
+description = "DSA2000 calibration and forward modelling code"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache Software License" }
+authors = [{ name = "Joshua G. Albert", email = "albert@strw.leidenuniv.nl" }]
+keywords = ["calibration", "radio", "DSA2000", "modelling"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent"
+]
+urls = { "Homepage" = "https://github.com/joshuaalbert/dsa2000-cal" }
+
+[project.optional-dependencies]
+# Define the extras here; they will be loaded dynamically from setup.py
+notebooks = []  # Placeholders; extras will load from setup.py
+
+[tool.setuptools]
+packages = ["dsa2000_cal"]
+include-package-data = true
