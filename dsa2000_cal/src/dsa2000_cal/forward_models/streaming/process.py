@@ -270,11 +270,13 @@ def process_start(
     run_key, init_key = jax.random.split(key, 2)
     print("Initialising...")
     with MemoryLogger(log_file='init_memory_log.log', interval=0.5, kill_threshold=None):
-        init = block_until_ready(execute_dag_transformed.init(init_key))
+        # run init on CPU
+        init_jit_cpu = jax.jit(execute_dag_transformed.init, backend='cpu')
+        init = block_until_ready(init_jit_cpu(init_key))
 
         print("Running...")
         final_keep = block_until_ready(
-            run_process(run_key, init.params, init.states)
+            run_process(run_key, init.params, init.states, num_steps=1)
         )
     end_time = current_utc()
     run_time = (end_time - start_time).total_seconds()
