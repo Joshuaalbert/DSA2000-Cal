@@ -6,6 +6,7 @@ import jax
 from dsa2000_cal.common.ray_utils import get_free_port
 
 # Set num jax devices to number of CPUs
+os.environ['CUDA_VISIBLE_DEVICES'] = ""
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 jax.config.update('jax_threefry_partitionable', True)
 
