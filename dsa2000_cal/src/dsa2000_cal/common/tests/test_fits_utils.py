@@ -6,8 +6,8 @@ from astropy import io, time as at, coordinates as ac, units as au
 from astropy.io import fits
 from astropy.wcs import WCS
 
-from src.dsa2000_cal.assets import MockData
-from src.dsa2000_cal.common.fits_utils import transform_to_wsclean_model, down_sample_fits, prepare_gain_fits, haversine, \
+from dsa2000_cal.assets import MockData
+from dsa2000_cal.common.fits_utils import transform_to_wsclean_model, down_sample_fits, prepare_gain_fits, haversine, \
     nearest_neighbors_sphere, ImageModel, save_image_to_fits
 
 

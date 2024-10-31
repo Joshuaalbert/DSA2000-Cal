@@ -8,9 +8,9 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.corr_translation import linear_to_stokes
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from src.dsa2000_cal.common.wgridder import image_to_vis, vis_to_image
+from dsa2000_cal.common.wgridder import image_to_vis, vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
     GaussianPredict, GaussianModelData, GaussianSourceModel
 
 

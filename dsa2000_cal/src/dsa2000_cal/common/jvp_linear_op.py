@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from src.dsa2000_cal.common.alert_utils import get_grandparent_info
+from dsa2000_cal.common.alert_utils import get_grandparent_info
 
 
 def isinstance_namedtuple(obj) -> bool:

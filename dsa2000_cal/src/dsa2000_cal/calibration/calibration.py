@@ -12,7 +12,7 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import lax
 from jax import numpy as jnp
 
-from src.dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, MultiStepLevenbergMarquardtState, \
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, MultiStepLevenbergMarquardtState, \
     MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel, \
     ProbabilisticModelInstance, combine_probabilistic_model_instances
@@ -20,7 +20,7 @@ from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put, block_unt
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
+from dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
 
 tfpd = tfp.distributions
 

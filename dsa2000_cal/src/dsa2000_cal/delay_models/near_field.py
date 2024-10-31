@@ -10,7 +10,7 @@ from astropy import coordinates as ac, time as at, units as au, constants as con
 from jax import config, numpy as jnp
 from tomographic_kernel.frames import ENU
 
-from src.dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.uvw_utils import norm

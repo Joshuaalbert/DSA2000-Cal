@@ -8,14 +8,14 @@ import jax
 from jax import numpy as jnp
 
 from dsa2000_cal.common.jax_utils import block_until_ready
-from src.dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.types import FloatArray
 
 jax.config.update("jax_explain_cache_misses", True)
 
 import tensorflow_probability.substrates.jax as tfp
 from jaxns import Prior, Model
 
-from src.dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
 
 tfpd = tfp.distributions
 

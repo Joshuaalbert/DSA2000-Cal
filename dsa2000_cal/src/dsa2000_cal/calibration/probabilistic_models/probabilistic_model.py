@@ -5,9 +5,9 @@ from typing import Tuple, Callable, List, Any
 import astropy.time as at
 import jax
 
-from src.dsa2000_cal.common.types import ComplexArray, FloatArray
+from dsa2000_cal.common.types import ComplexArray, FloatArray
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
+from dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)

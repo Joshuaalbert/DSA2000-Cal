@@ -7,7 +7,7 @@ import pytest
 
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.gain_models.base_spherical_interpolator import lmn_from_phi_theta, phi_theta_from_lmn
-from src.dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
 
 def test_pytree_serialisation():

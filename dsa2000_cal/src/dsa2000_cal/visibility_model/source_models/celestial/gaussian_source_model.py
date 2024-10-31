@@ -11,7 +11,7 @@ from astropy import constants, units as au
 from astropy.coordinates import offset_by
 from jax import numpy as jnp, lax
 
-from src.dsa2000_cal.abc import AbstractSourceModel
+from dsa2000_cal.abc import AbstractSourceModel
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_coherencies, stokes_I_to_linear
 from dsa2000_cal.common.ellipse_utils import ellipse_eval, Gaussian
@@ -21,7 +21,7 @@ from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
-from src.dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
+from dsa2000_cal.common.wsclean_util import parse_and_process_wsclean_source_line
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 
 

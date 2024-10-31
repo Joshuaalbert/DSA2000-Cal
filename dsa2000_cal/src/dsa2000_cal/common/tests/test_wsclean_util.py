@@ -1,7 +1,7 @@
 import numpy as np
 from astropy import units as au, coordinates as ac
 
-from src.dsa2000_cal.common.wsclean_util import parse_wsclean_source_line, parse_and_process_wsclean_source_line, \
+from dsa2000_cal.common.wsclean_util import parse_wsclean_source_line, parse_and_process_wsclean_source_line, \
     parse_coordinates_bbs
 
 

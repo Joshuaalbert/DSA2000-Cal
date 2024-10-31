@@ -7,7 +7,7 @@ from pyrap import tables as pt
 
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.adapter.to_casa_ms import create_makems_config
-from src.dsa2000_cal.measurement_sets import MeasurementSetMetaV0
+from dsa2000_cal.measurement_sets import MeasurementSetMetaV0
 
 
 def test_transfer_from_casa(tmp_path):

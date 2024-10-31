@@ -12,11 +12,11 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from jax import numpy as jnp
 
-from src.dsa2000_cal.abc import AbstractSourceModel
-from src.dsa2000_cal.common import wgridder
+from dsa2000_cal.abc import AbstractSourceModel
+from dsa2000_cal.common import wgridder
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.corr_translation import stokes_I_to_linear
-from src.dsa2000_cal.common.interp_utils import get_centred_insert_index
+from dsa2000_cal.common.interp_utils import get_centred_insert_index
 from dsa2000_cal.common.jax_utils import multi_vmap, convert_to_ufunc
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_np, quantity_to_jnp

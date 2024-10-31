@@ -2,7 +2,7 @@ import logging
 import os
 import subprocess
 
-from src.dsa2000_cal.common.fits_utils import write_diagonal_a_term_correction_file
+from dsa2000_cal.common.fits_utils import write_diagonal_a_term_correction_file
 from dsa2000_cal.models.run_config import RunConfig
 
 logger = logging.getLogger(__name__)

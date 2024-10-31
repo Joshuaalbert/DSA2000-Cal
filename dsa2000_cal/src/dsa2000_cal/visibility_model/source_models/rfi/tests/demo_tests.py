@@ -4,13 +4,13 @@ import pytest
 from astropy import units as au, time as at
 from jax import numpy as jnp
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import rfi_model_registry, array_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import rfi_model_registry, array_registry
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
-from src.dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
-from src.dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
+from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
     RFIEmitterSourceModel, RFIEmitterPredict
 
 

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from dsa2000_cal.common.ad_utils import build_hvp, tree_dot, tree_norm
-from src.dsa2000_cal.common.types import IntArray, FloatArray
+from dsa2000_cal.common.types import IntArray, FloatArray
 
 X = TypeVar('X', bound=Union[jax.Array, Any])
 

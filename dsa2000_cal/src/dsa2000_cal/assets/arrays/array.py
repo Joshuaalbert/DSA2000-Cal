@@ -5,8 +5,8 @@ import astropy.coordinates as ac
 import astropy.units as au
 from astropy.coordinates import CartesianRepresentation, ITRS
 
-from src.dsa2000_cal.abc import AbstractAntennaModel
-from src.dsa2000_cal.assets.base_content import BaseContent
+from dsa2000_cal.abc import AbstractAntennaModel
+from dsa2000_cal.assets.base_content import BaseContent
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 
 

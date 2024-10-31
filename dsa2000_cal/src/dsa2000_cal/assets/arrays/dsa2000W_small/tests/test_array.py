@@ -1,6 +1,6 @@
 import astropy.coordinates as ac
 
-from src.dsa2000_cal.assets.arrays.dsa2000W_small.array import DSA2000WSmallArray
+from dsa2000_cal.assets.arrays.dsa2000W_small.array import DSA2000WSmallArray
 
 
 def test_beam():

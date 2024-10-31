@@ -12,7 +12,7 @@ __all__ = [
     'vis_to_image'
 ]
 
-from src.dsa2000_cal.common.types import FloatArray, ComplexArray
+from dsa2000_cal.common.types import FloatArray, ComplexArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 

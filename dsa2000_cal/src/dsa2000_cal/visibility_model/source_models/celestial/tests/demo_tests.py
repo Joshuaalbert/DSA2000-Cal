@@ -7,16 +7,16 @@ import pytest
 from astropy import time as at, coordinates as ac, units as au, constants as const
 from jax import numpy as jnp
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import source_model_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import source_model_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import complex_type, mp_policy
-from src.dsa2000_cal.common.wgridder import image_to_vis
+from dsa2000_cal.common.wgridder import image_to_vis
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, FITSPredict
-from src.dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianModelData, \
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, FITSPredict
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianModelData, \
     GaussianPredict, GaussianSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointSourceModel
 

@@ -1,7 +1,7 @@
 from astropy import coordinates as ac, units as au
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
 
 
 def test_create_sky_model():

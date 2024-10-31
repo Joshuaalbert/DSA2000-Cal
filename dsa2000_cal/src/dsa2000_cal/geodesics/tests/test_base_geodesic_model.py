@@ -1,7 +1,7 @@
 import jax
 import numpy as np
 
-from src.dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 

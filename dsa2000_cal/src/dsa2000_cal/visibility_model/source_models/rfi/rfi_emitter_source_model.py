@@ -8,16 +8,16 @@ import pylab as plt
 from astropy import constants as const, units as au
 from jax import numpy as jnp
 
-from src.dsa2000_cal.abc import AbstractSourceModel
-from src.dsa2000_cal.assets import RFIEmitterSourceModelParams, AbstractRFIEmitterData
-from src.dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.abc import AbstractSourceModel
+from dsa2000_cal.assets import RFIEmitterSourceModelParams, AbstractRFIEmitterData
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
-from src.dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
+from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 
 class RFIEmitterModelData(NamedTuple):

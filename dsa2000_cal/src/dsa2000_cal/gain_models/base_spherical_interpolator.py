@@ -7,12 +7,12 @@ from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
 
-from src.dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from src.dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.gain_models.gain_model import GainModel
 
 
 @dataclasses.dataclass(eq=False)

@@ -5,7 +5,7 @@ import jax
 import numpy as np
 from jax import lax, numpy as jnp
 
-from src.dsa2000_cal.common.types import FloatArray, Array
+from dsa2000_cal.common.types import FloatArray, Array
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 

@@ -1,4 +1,4 @@
-from src.dsa2000_cal.assets import DSA2000WArray
+from dsa2000_cal.assets import DSA2000WArray
 
 
 def test_dsa_beam():

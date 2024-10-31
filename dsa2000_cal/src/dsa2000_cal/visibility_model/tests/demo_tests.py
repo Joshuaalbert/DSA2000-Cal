@@ -7,23 +7,23 @@ from astropy import units as au, constants as const, time as at, coordinates as 
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry, source_model_registry, rfi_model_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry, source_model_registry, rfi_model_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from src.dsa2000_cal.common.wgridder import vis_to_image
+from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
-from src.dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
-from src.dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianModelData, \
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianModelData, \
     GaussianPredict, GaussianSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointModelData, PointPredict, \
     PointSourceModel
-from src.dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterSourceModel
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterSourceModel
 
 
 def test_facet_model_gaussian():

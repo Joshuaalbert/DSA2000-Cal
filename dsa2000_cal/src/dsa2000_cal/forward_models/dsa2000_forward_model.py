@@ -11,10 +11,10 @@ from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import G
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
 from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.forward_models.forward_model import BaseForwardModel
-from src.dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
+from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
-from src.dsa2000_cal.gain_models.gain_model import GainModel
-from src.dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.measurement_sets import MeasurementSet
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 

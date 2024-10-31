@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from astropy import units as au
 
-from src.dsa2000_cal.assets import MockCellTower
+from dsa2000_cal.assets import MockCellTower
 
 
 def test_lte_rfi_source_factory():

@@ -5,9 +5,9 @@ import numpy as np
 import pylab as plt
 import pytest
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry
-from src.dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry
+from dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)

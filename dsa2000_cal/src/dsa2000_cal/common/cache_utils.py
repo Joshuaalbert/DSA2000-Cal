@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from astropy import units as au, time as at, coordinates as ac
 
-from src.dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 

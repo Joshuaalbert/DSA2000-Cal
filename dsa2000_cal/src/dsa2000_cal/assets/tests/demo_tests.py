@@ -6,12 +6,12 @@ import pytest
 from astropy import time as at, coordinates as ac, units as au
 
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry, source_model_registry
-from src.dsa2000_cal.assets import LWACellTower
-from src.dsa2000_cal.assets import CygASourceModel
-from src.dsa2000_cal.assets import get_lm_coords_image
-from src.dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry, source_model_registry
+from dsa2000_cal.assets import LWACellTower
+from dsa2000_cal.assets import CygASourceModel
+from dsa2000_cal.assets import get_lm_coords_image
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
 
 
 @pytest.mark.parametrize('array_name', ['dsa2000W_small', 'dsa2000W', 'lwa'])

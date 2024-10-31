@@ -1,6 +1,6 @@
 import os
 
-from src.dsa2000_cal.assets.base_content import BaseContent
+from dsa2000_cal.assets.base_content import BaseContent
 
 
 class MockData(BaseContent):

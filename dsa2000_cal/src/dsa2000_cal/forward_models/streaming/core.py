@@ -10,7 +10,7 @@ from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEn
 from dsa2000_cal.forward_models.streaming.abc import AbstractForwardModelCore
 from dsa2000_cal.forward_models.streaming.types import StepReturn
 from dsa2000_cal.imaging.imagor import Imagor
-from src.dsa2000_cal.measurement_sets import VisibilityData
+from dsa2000_cal.measurement_sets import VisibilityData
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 

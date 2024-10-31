@@ -8,7 +8,7 @@ import astropy.units as au
 import dsa2000_cal.common.context as ctx
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-from src.dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
 
 class SimulateBeamState(NamedTuple):

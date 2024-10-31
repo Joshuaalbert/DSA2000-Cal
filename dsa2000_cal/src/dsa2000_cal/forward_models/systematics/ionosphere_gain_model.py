@@ -11,11 +11,11 @@ from astropy import units as au, coordinates as ac, time as at
 from tomographic_kernel.frames import ENU
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
-from src.dsa2000_cal.assets import fill_registries, NoMatchFound
-from src.dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets import fill_registries, NoMatchFound
+from dsa2000_cal.assets import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid_old, create_spherical_earth_grid
 from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_lmn
-from src.dsa2000_cal.common.interp_utils import convolved_interp
+from dsa2000_cal.common.interp_utils import convolved_interp
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.forward_models.systematics.ionosphere_simulation import TEC_CONV, IonosphereSimulation

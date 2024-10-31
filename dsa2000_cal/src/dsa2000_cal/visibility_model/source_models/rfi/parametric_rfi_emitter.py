@@ -5,8 +5,8 @@ import numpy as np
 from astropy import units as au
 from jax import numpy as jnp
 
-from src.dsa2000_cal.common.interp_utils import left_broadcast_multiply
-from src.dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.interp_utils import left_broadcast_multiply
+from dsa2000_cal.common.types import FloatArray
 
 
 @dataclasses.dataclass(eq=False)

@@ -14,7 +14,7 @@ from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import Abs
 from dsa2000_cal.common.jax_utils import promote_pytree
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
+from dsa2000_cal.measurement_sets import VisibilityData, MeasurementSet
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 tfpd = tfp.distributions

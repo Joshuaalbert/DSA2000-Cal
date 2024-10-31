@@ -5,7 +5,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.mixed_precision_utils import complex_type, mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSPredict, FITSModelData
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSPredict, FITSModelData
 
 
 def build_mock_point_model_data(full_stokes: bool, is_gains: bool, image_has_chan: bool, Nx: int, Ny: int, chan: int,

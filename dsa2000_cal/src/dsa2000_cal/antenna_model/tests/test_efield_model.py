@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.dsa2000_cal.antenna_model.h5_efield_model import convert_spherical_e_field_to_cartesian
+from dsa2000_cal.antenna_model.h5_efield_model import convert_spherical_e_field_to_cartesian
 
 
 def test_convert_spherical_e_field_to_cartesian():

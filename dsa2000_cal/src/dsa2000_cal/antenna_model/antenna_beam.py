@@ -1,7 +1,7 @@
 import numpy as np
 import pylab as plt
 
-from src.dsa2000_cal.abc import AbstractAntennaModel
+from dsa2000_cal.abc import AbstractAntennaModel
 
 
 class AltAzAntennaModel(AbstractAntennaModel):

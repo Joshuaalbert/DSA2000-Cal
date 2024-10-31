@@ -6,8 +6,8 @@ from functools import cached_property
 from types import ModuleType
 from typing import List, Dict, Callable, Any, TypeVar, Protocol, Type, Generic, Union
 
-from src.dsa2000_cal import assets
-from src.dsa2000_cal.assets.base_content import BaseContent
+from dsa2000_cal import assets
+from dsa2000_cal.assets.base_content import BaseContent
 
 __all__ = [
     'fill_registries',

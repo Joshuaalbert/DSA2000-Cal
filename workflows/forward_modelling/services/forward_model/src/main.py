@@ -4,12 +4,12 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import config
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry
 from dsa2000_cal.forward_models.dsa2000_forward_model import DSA2000ForwardModel
-from src.dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
+from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
-from src.dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
 
 # Set num jax devices
 config.update("jax_enable_x64", True)

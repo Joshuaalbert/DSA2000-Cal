@@ -2,8 +2,8 @@ import glob
 import os
 from typing import List
 
-from src.dsa2000_cal.assets import source_model_registry
-from src.dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel
+from dsa2000_cal.assets import source_model_registry
+from dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel
 
 
 @source_model_registry(template='mock')

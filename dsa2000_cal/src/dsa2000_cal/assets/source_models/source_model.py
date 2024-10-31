@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from src.dsa2000_cal.assets.base_content import BaseContent
+from dsa2000_cal.assets.base_content import BaseContent
 
 
 class AbstractWSCleanSourceModel(ABC, BaseContent):

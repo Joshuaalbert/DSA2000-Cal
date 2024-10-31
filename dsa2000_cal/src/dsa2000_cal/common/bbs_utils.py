@@ -7,7 +7,7 @@ from astropy import units as au
 from pydantic import Field
 
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from src.dsa2000_cal.common.wsclean_util import parse_coordinates_bbs
+from dsa2000_cal.common.wsclean_util import parse_coordinates_bbs
 
 
 class SourceModel(SerialisableBaseModel):

@@ -12,7 +12,7 @@ from dsa2000_cal.common.corr_translation import flatten_coherencies
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.measurement_sets import MeasurementSet, VisibilityData
+from dsa2000_cal.measurement_sets import MeasurementSet, VisibilityData
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 

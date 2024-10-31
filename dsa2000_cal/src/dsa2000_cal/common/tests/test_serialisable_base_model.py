@@ -7,9 +7,9 @@ import numpy as np
 import ujson
 from tomographic_kernel.frames import ENU
 
-from src.dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from src.dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
+from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 
 class MockModelInt(SerialisableBaseModel):

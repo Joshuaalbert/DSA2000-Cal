@@ -13,11 +13,11 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.cache_utils import check_cache
 from dsa2000_cal.common.fourier_utils import ApertureTransform
-from src.dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.mixed_precision_utils import complex_type
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from src.dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.gain_models.gain_model import GainModel
 
 
 def assert_congruent_unit(x: au.Quantity, unit: au.Unit):

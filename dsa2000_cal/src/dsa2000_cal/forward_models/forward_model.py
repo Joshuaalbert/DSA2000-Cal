@@ -8,14 +8,14 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.calibration.calibration import Calibration
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
-from src.dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
+from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
-from src.dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
-from src.dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateVisibilities
+from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
+from dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateVisibilities
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
-from src.dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.imaging.imagor import Imagor
-from src.dsa2000_cal.measurement_sets import MeasurementSet, beam_gain_model_factory
+from dsa2000_cal.measurement_sets import MeasurementSet, beam_gain_model_factory
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
 
 

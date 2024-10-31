@@ -6,15 +6,15 @@ import astropy.units as au
 import jax
 import numpy as np
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import source_model_registry, rfi_model_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import source_model_registry, rfi_model_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid_old, create_random_spherical_layout, choose_dr
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from src.dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
-from src.dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
     GaussianSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointSourceModel
-from src.dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
     RFIEmitterSourceModel
 
 

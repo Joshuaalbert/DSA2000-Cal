@@ -10,11 +10,11 @@ import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
 from jax import config, numpy as jnp, lax
 
-from src.dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from src.dsa2000_cal.common.types import FloatArray, IntArray
+from dsa2000_cal.common.types import FloatArray, IntArray
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 GM_BODIES = {

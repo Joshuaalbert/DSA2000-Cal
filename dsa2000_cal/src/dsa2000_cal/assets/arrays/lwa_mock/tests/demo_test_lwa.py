@@ -1,4 +1,4 @@
-from src.dsa2000_cal.assets import LWAArray
+from dsa2000_cal.assets import LWAArray
 
 
 def test_lwa_beam():

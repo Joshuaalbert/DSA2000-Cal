@@ -5,9 +5,9 @@ from typing import Optional, Tuple
 from jaxns.framework.special_priors import SpecialPrior
 from scipy.spatial import KDTree
 
-from src.dsa2000_cal.assets.array_constraints import ArrayConstraint
+from dsa2000_cal.assets.array_constraints import ArrayConstraint
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from src.dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.types import FloatArray
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
@@ -18,7 +18,7 @@ import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import jax
-from src.dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
 from jaxns import save_pytree
 import jax.numpy as jnp
 import numpy as np
@@ -27,8 +27,8 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from tomographic_kernel.frames import ENU
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.jax_utils import create_mesh

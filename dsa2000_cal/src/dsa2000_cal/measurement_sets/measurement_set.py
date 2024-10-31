@@ -15,15 +15,15 @@ import tables as tb
 from astropy import time as at
 from pydantic import Field
 
-from src.dsa2000_cal.adapter.utils import translate_corrs
-from src.dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
+from dsa2000_cal.adapter.utils import translate_corrs
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-from src.dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
-from src.dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
 
 

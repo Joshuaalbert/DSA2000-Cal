@@ -5,7 +5,7 @@ from typing import Tuple
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
-from src.dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, MultiStepLevenbergMarquardtState, \
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, MultiStepLevenbergMarquardtState, \
     MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put, block_until_ready
 

@@ -8,11 +8,11 @@ import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 
-from src.dsa2000_cal.common.fits_utils import ImageModel
+from dsa2000_cal.common.fits_utils import ImageModel
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.imaging.base_imagor import BaseImagor, fit_beam
-from src.dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.measurement_sets import MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)

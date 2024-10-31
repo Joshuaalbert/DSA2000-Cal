@@ -8,7 +8,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.jax_utils import multi_vmap, convert_to_ufunc
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from src.dsa2000_cal.common.wgridder import vis_to_image, image_to_vis
+from dsa2000_cal.common.wgridder import vis_to_image, image_to_vis
 
 
 @pytest.mark.parametrize("center_offset", [0.0, 0.1, 0.2])

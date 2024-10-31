@@ -13,9 +13,9 @@ import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from src.dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.types import FloatArray
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
-from src.dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationOutput
+from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationOutput
 from dsa2000_cal.forward_models.streaming.core.simulate_beam import SimulateBeamOutput
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel

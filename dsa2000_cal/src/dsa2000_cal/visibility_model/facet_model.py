@@ -6,15 +6,15 @@ import jax
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
-from src.dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
-from src.dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, \
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, \
     FITSModelData, FITSPredict
-from src.dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
     GaussianSourceModel, GaussianModelData, GaussianPredict
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import \
     PointSourceModel, PointModelData, PointPredict
-from src.dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
     RFIEmitterSourceModel, RFIEmitterModelData, \
     RFIEmitterPredict
 

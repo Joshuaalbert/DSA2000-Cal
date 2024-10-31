@@ -14,11 +14,11 @@ config.update("jax_explain_cache_misses", True)
 config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
 
 from tomographic_kernel.frames import ENU
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry
 from dsa2000_cal.forward_models.lwa_forward_model import LWAForwardModel
-from src.dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
-from src.dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
+from dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet
 
 
 def main(ms_folder: str):

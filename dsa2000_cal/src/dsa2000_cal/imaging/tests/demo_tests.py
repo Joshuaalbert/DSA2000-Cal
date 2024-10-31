@@ -5,10 +5,10 @@ import numpy as np
 import pytest
 from tomographic_kernel.frames import ENU
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry
 from dsa2000_cal.imaging.imagor import Imagor
-from src.dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet, VisibilityData
+from dsa2000_cal.measurement_sets import MeasurementSetMetaV0, MeasurementSet, VisibilityData
 
 
 def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan, corrs):

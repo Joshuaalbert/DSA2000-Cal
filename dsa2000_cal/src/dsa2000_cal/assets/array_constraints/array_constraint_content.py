@@ -10,7 +10,7 @@ from numpy.random import uniform
 from shapely.geometry import Point
 from shapely.ops import nearest_points
 
-from src.dsa2000_cal.assets.base_content import BaseContent
+from dsa2000_cal.assets.base_content import BaseContent
 
 
 class RegionSampler:

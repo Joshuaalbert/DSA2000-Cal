@@ -8,12 +8,12 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import source_model_registry
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import source_model_registry
 from dsa2000_cal.common.mixed_precision_utils import complex_type, mp_policy
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from src.dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, FITSPredict
-from src.dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianPredict, \
+from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, FITSPredict
+from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import GaussianPredict, \
     GaussianModelData
 from dsa2000_cal.visibility_model.source_models.celestial.point_source_model import PointPredict, PointModelData
 

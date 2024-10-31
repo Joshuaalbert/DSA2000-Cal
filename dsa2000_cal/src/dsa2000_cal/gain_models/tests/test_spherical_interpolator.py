@@ -5,7 +5,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.gain_models.base_spherical_interpolator import regrid_to_regular_grid, lmn_from_phi_theta, \
     phi_theta_from_lmn, build_spherical_interpolator
-from src.dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 
 

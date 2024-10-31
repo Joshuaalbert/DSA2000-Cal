@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from src.dsa2000_cal.common.types import FloatArray, IntArray, BoolArray
+from dsa2000_cal.common.types import FloatArray, IntArray, BoolArray
 from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
 from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep

@@ -8,17 +8,17 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import DiagonalUnconstrainedGain, \
     ScalarUnconstrainedGain
 from dsa2000_cal.calibration.probabilistic_models.gains_per_facet_model import GainsPerFacet
-from src.dsa2000_cal.calibration.probabilistic_models.horizon_rfi_model import HorizonRFIModel
+from dsa2000_cal.calibration.probabilistic_models.horizon_rfi_model import HorizonRFIModel
 from dsa2000_cal.calibration.probabilistic_models.probabilistic_model import AbstractProbabilisticModel
 from dsa2000_cal.calibration.probabilistic_models.rfi_prior_models import FullyParameterisedRFIHorizonEmitter
 from dsa2000_cal.forward_models.forward_model import BaseForwardModel
-from src.dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
+from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
-from src.dsa2000_cal.gain_models.gain_model import GainModel
-from src.dsa2000_cal.measurement_sets import MeasurementSet
+from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.measurement_sets import MeasurementSet
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
-from src.dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterPredict
+from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import RFIEmitterPredict
 
 
 @dataclasses.dataclass(eq=False)

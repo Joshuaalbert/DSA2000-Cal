@@ -11,14 +11,14 @@ import numpy as np
 from tomographic_kernel.frames import ENU
 
 import dsa2000_cal.common.context as ctx
-from src.dsa2000_cal.assets import fill_registries
-from src.dsa2000_cal.assets import array_registry
-from src.dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
+from dsa2000_cal.assets import fill_registries
+from dsa2000_cal.assets import array_registry
+from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import MemoryLogger
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
-from src.dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationStep
+from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationStep
 from dsa2000_cal.forward_models.streaming.core.simulate_beam import SimulateBeamStep
 from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishStep
 
