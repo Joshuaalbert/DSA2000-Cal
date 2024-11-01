@@ -143,7 +143,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
                 axs[0].set_ylabel('X [wavelengths]')
                 axs[0].set_xlabel('Y [wavelengths]')
                 axs[1].imshow(np.angle(beam_aperture).T, extent=extent,
-                              origin='lower', aspect='auto',
+                              origin='lower', aspect='auto', cmap='hsv',
                               interpolation='nearest')
                 axs[1].set_title('Phase')
                 axs[1].set_ylabel('X [wavelengths]')
@@ -438,9 +438,6 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         cos_elevation = jnp.cos(elevation_rad)  # [num_model_times, 1, 1, num_ant, 1]
         peak_astigmatism = horizon_peak_astigmatism * cos_elevation
         astigmatism_error = peak_astigmatism * (r / R) ** 2 * cos_2phi
-
-        print(np.shape(pointing_error), np.shape(feed_shift_error), np.shape(astigmatism_error),
-              np.shape(surface_error))
 
         total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [num_model_times, lres, mres, num_ant, num_model_freqs]
 

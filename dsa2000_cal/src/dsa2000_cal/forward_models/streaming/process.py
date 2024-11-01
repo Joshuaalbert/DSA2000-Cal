@@ -248,7 +248,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     # dag[calibrate_step] = (average_step, dd_average_step)  # <--- return solutions
     # dag[subtract_step] = (calibrate_step, dd_predict_step)
     # dag[image_step] = (subtract_step, flag_step, simulate_beam_step)  # <-- return state
-    def execute_dag() -> Dict[AbstractCoreStep, Any]:
+    def execute_dag() -> Dict[str, Any]:
         # Traverse DAG instead of hardcoding
         step_outputs = dict()
         step_keeps = dict()
@@ -273,7 +273,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
             with ctx.scope(step.name):
                 step_output, step_keep = step.step(primals=step_primals)
             step_outputs[step] = step_output
-            step_keeps[step] = step_keep
+            step_keeps[step.name] = step_keep
             done.add(step)
         return step_keeps
 

@@ -60,6 +60,10 @@ class BaseGeodesicModel:
             if self.lmn_pointings.shape != (num_ant, 3):
                 raise ValueError(f"lmn_pointings must have shape [num_ant, 3], got {self.lmn_pointings.shape}")
 
+    @property
+    def num_antennas(self) -> int:
+        return np.shape(self.antennas_enu)[0]
+
     def compute_far_field_geodesic(self, times: FloatArray, lmn_sources: FloatArray,
                                    antenna_indices: IntArray | None = None,
                                    return_elevation: bool = False) -> Union[FloatArray, Tuple[FloatArray, IntArray]]:
