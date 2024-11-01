@@ -832,8 +832,4 @@ def beam_gain_model_factory(ms: MeasurementSet) -> BaseSphericalInterpolatorGain
         model_times = at.Time([ms.meta.times.tt.mean()])
     else:
         model_times = at.Time([ms.meta.times.tt.min(), ms.meta.times.tt.max()])
-    return build_beam_gain_model(
-        array_name=ms.meta.array_name,
-        model_times=model_times,
-        full_stokes=ms.is_full_stokes()
-    )
+    return build_beam_gain_model(array_name=ms.meta.array_name, times=model_times, full_stokes=ms.is_full_stokes())

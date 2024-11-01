@@ -17,13 +17,30 @@ from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import MemoryLogger
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationStep
 from dsa2000_cal.forward_models.streaming.core.simulate_beam import SimulateBeamStep
 from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishStep
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
 
 
-def get_process_local_params(process_id: int, array_name: str):
+class ProcessLocalParams(SerialisableBaseModel):
+    freqs: au.Quantity
+    channel_width: au.Quantity
+    antennas: ac.EarthLocation
+    array_location: ac.EarthLocation
+    pointings: ac.ICRS
+    phase_center: ac.ICRS
+    ref_time: at.Time
+    obstimes: at.Time
+    solution_interval: au.Quantity
+    validity_interval: au.Quantity
+    integration_interval: au.Quantity
+    dish_effects_params: DishEffectsParams
+
+
+def get_process_local_params(process_id: int, array_name: str) -> ProcessLocalParams:
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match(array_name))
     chan_per_process = 40
@@ -43,7 +60,20 @@ def get_process_local_params(process_id: int, array_name: str):
     phase_center = pointing = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
 
     dish_effects_params = array.get_dish_effect_params()
-    return freqs, channel_width, antennas, array_location, pointing, phase_center, ref_time, obstimes, solution_interval, validity_interval, integration_interval, dish_effects_params
+    return ProcessLocalParams(
+        freqs=freqs,
+        channel_width=channel_width,
+        antennas=antennas,
+        array_location=array_location,
+        pointings=pointing,
+        phase_center=phase_center,
+        ref_time=ref_time,
+        obstimes=obstimes,
+        solution_interval=solution_interval,
+        validity_interval=validity_interval,
+        integration_interval=integration_interval,
+        dish_effects_params=dish_effects_params
+    )
 
 
 def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn):
@@ -109,73 +139,72 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     Returns:
         a function that executes the DAG and returns the per-step keeps.
     """
-    (
-        freqs, channel_width, antennas, array_location, pointings, phase_center, ref_time, obstimes, solution_interval,
-        validity_interval, integration_interval, dish_effects_params
-    ) = get_process_local_params(
+    process_local_params = get_process_local_params(
         process_id=process_id,
         array_name=array_name
     )
+    with open(os.path.join(plot_folder, "process_local_params.json"), "w") as f:
+        f.write(process_local_params.json(indent=2))
     plot_folder = os.path.join(plot_folder, f"process_{process_id}")
     # Check the units of each process parameter
-    if not freqs.unit.is_equivalent("Hz"):
+    if not process_local_params.freqs.unit.is_equivalent("Hz"):
         raise ValueError("freqs must be in Hz")
-    if not integration_interval.unit.is_equivalent("s"):
+    if not process_local_params.integration_interval.unit.is_equivalent("s"):
         raise ValueError("integration_interval must be in seconds")
-    if not channel_width.unit.is_equivalent("Hz"):
+    if not process_local_params.channel_width.unit.is_equivalent("Hz"):
         raise ValueError("channel_width must be in Hz")
-    if solution_interval % integration_interval != 0:
+    if process_local_params.solution_interval % process_local_params.integration_interval != 0:
         raise ValueError("solution_interval must be a multiple of integration_interval")
-    if validity_interval % solution_interval != 0:
+    if process_local_params.validity_interval % process_local_params.solution_interval != 0:
         raise ValueError("validity_interval must be a multiple of solution_interval")
-    total_duration = len(obstimes) * integration_interval
-    if total_duration % solution_interval != 0:
+    total_duration = len(process_local_params.obstimes) * process_local_params.integration_interval
+    if total_duration % process_local_params.solution_interval != 0:
         raise ValueError("obstimes must be a multiple of solution_interval")
-    total_bandwidth = len(freqs) * channel_width
-    num_steps = int(total_duration / solution_interval)
-    num_antennas = len(antennas)
+    total_bandwidth = len(process_local_params.freqs) * process_local_params.channel_width
+    num_steps = int(total_duration / process_local_params.solution_interval)
+    num_antennas = len(process_local_params.antennas)
     print(
         f"Streaming Forward Model:\n"
         f"- array: {array_name}\n"
         f"- num steps: {num_steps}\n"
         f"- observation duration: {total_duration}\n"
         f"- bandwidth: {total_bandwidth}\n"
-        f"- spectral window: {freqs.min()} - {freqs.max()}\n"
-        f"- num channels: {len(freqs)}\n"
-        f"- integration interval: {integration_interval}\n"
-        f"- solution interval: {solution_interval}\n"
-        f"- validity interval: {validity_interval}\n"
-        f"- channel width: {channel_width}\n"
-        f"- array location: {array_location.geodetic}\n"
-        f"- phase center: {phase_center}\n"
-        f"- ref time: {ref_time}\n"
+        f"- spectral window: {process_local_params.freqs.min()} - {process_local_params.freqs.max()}\n"
+        f"- num channels: {len(process_local_params.freqs)}\n"
+        f"- integration interval: {process_local_params.integration_interval}\n"
+        f"- solution interval: {process_local_params.solution_interval}\n"
+        f"- validity interval: {process_local_params.validity_interval}\n"
+        f"- channel width: {process_local_params.channel_width}\n"
+        f"- array location: {process_local_params.array_location.geodetic}\n"
+        f"- phase center: {process_local_params.phase_center}\n"
+        f"- ref time: {process_local_params.ref_time}\n"
         f"- antennas: {num_antennas}\n"
         f"- plot folder: {plot_folder}"
     )
     setup_observation_step = SetupObservationStep(
-        freqs=freqs,
-        antennas=antennas,
-        array_location=array_location,
-        phase_center=phase_center,
-        obstimes=obstimes,
-        ref_time=ref_time,
-        pointings=pointings,
+        freqs=process_local_params.freqs,
+        antennas=process_local_params.antennas,
+        array_location=process_local_params.array_location,
+        phase_center=process_local_params.phase_center,
+        obstimes=process_local_params.obstimes,
+        ref_time=process_local_params.ref_time,
+        pointings=process_local_params.pointings,
         plot_folder=os.path.join(plot_folder, "setup_observation"),
-        solution_interval=solution_interval,
-        validity_interval=validity_interval,
-        integration_interval=integration_interval
+        solution_interval=process_local_params.solution_interval,
+        validity_interval=process_local_params.validity_interval,
+        integration_interval=process_local_params.integration_interval
     )
     simulate_beam_step = SimulateBeamStep(
         array_name=array_name,
         full_stokes=full_stokes,
-        model_times=at.Time([obstimes[0], obstimes[-1]]),
-        freqs=freqs,
+        times=process_local_params.obstimes,
+        ref_time=process_local_params.ref_time,
+        freqs=process_local_params.freqs,
         plot_folder=os.path.join(plot_folder, "simulate_beam")
     )
     simulate_dish_step = SimulateDishStep(
         static_beam=True,
-        dish_effects_params=dish_effects_params,
-        freqs=freqs,
+        dish_effects_params=process_local_params.dish_effects_params,
         convention="physical",
         num_antennas=num_antennas,
         plot_folder=os.path.join(plot_folder, "simulate_dish")
@@ -204,7 +233,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     # DAG
     dag: Dict[AbstractCoreStep, Tuple[AbstractCoreStep, ...]] = dict()  # step -> primals
     dag[setup_observation_step] = ()
-    dag[simulate_beam_step] = ()
+    dag[simulate_beam_step] = (setup_observation_step,)
     dag[simulate_dish_step] = (setup_observation_step, simulate_beam_step)
 
     # dag[simulate_ionosphere_step] = (simulate_dish_step,)
@@ -255,7 +284,8 @@ def process_start(
         key,
         array_name: str,
         full_stokes: bool,
-        plot_folder: str
+        plot_folder: str,
+        max_memory_MB: int | None = None
 ):
     execute_dag = build_process_core_dag(process_id, array_name, full_stokes, plot_folder)
 
@@ -269,7 +299,8 @@ def process_start(
     start_time = current_utc()
     run_key, init_key = jax.random.split(key, 2)
     print("Initialising...")
-    with MemoryLogger(log_file='init_memory_log.log', interval=0.5, kill_threshold=None):
+    with MemoryLogger(log_file=os.path.join(plot_folder, 'memory_usage.log'), interval=0.5,
+                      kill_threshold=max_memory_MB):
         init = block_until_ready(execute_dag_transformed.init(init_key))
 
         print("Running...")

@@ -56,11 +56,8 @@ def build_mock_calibrator_source_models(tmp_path, coherencies):
 def test_evaluate_beam(tmp_path, coherencies, centre_offset: float):
     ms = build_mock_calibrator_source_models(tmp_path, coherencies)
     t0 = time.time()
-    beam_gain_model = build_beam_gain_model(
-        array_name=ms.meta.array_name,
-        full_stokes=ms.is_full_stokes(),
-        model_times=ms.meta.times
-    )
+    beam_gain_model = build_beam_gain_model(array_name=ms.meta.array_name, times=ms.meta.times,
+                                            full_stokes=ms.is_full_stokes())
     print(f"Built in {time.time() - t0} seconds.")
     freqs = quantity_to_jnp(ms.meta.freqs)
     times = ms.time_to_jnp(ms.meta.times)

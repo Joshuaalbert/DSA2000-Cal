@@ -132,9 +132,9 @@ def test_beam_gain_model_shape(full_stokes, tile_antennas):
 
     print(f"Tiled: {mock_gain_model.tile_antennas}")
     # Near field source
-    freqs = mock_gain_model.model_freqs
+    freqs = mock_gain_model.freqs
     num_sources = 3
-    obstimes = mock_gain_model.model_times
+    obstimes = mock_gain_model.times
 
     for near_sources in [True, False]:
         print(f'Near field sources: {near_sources}')
@@ -150,7 +150,7 @@ def test_beam_gain_model_shape(full_stokes, tile_antennas):
             )
 
         gains = mock_gain_model.compute_gain(
-            mock_gain_model.model_freqs,
+            mock_gain_model.freqs,
             obstimes,
             geodesics
         )
