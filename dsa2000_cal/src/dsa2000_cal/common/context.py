@@ -48,6 +48,27 @@ class ScopedDict(dict):
         return super().__contains__(f"{self.scope_prefix}.{item}")
 
 
+# Add as pytree type
+
+def scoped_dict_flatten(scoped_dict: ScopedDict):
+    return (
+        [scoped_dict.copy()],
+        (scoped_dict.scopes,)
+    )
+
+
+def scoped_dict_unflatten(aux_data, children):
+    (scoped_dict,), (scopes,) = children
+    scoped_dict.scopes = scopes
+    return scoped_dict
+
+
+jax.tree_util.register_pytree_node(
+    ScopedDict,
+    scoped_dict_flatten,
+    scoped_dict_unflatten
+)
+
 MutableParams = Dict[str, jax.Array]
 ImmutableParams = Dict[str, jax.Array]
 
