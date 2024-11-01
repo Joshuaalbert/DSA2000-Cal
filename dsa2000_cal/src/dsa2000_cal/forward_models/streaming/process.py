@@ -77,7 +77,7 @@ def get_process_local_params(process_id: int, array_name: str) -> ProcessLocalPa
 
 
 def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn):
-    @partial(jax.jit, static_argnames=['num_steps'], donate_argnums=(0, 1, 2))
+
     def run_process(key, params: ctx.ImmutableParams, init_states: ctx.MutableParams, num_steps: int):
         class Carry(NamedTuple):
             states: ctx.MutableParams
@@ -293,7 +293,8 @@ def process_start(
     execute_dag_transformed = ctx.transform_with_state(execute_dag)
     run_process = build_process_scan(execute_dag_transformed)
 
-    run_process_jit = jax.jit(run_process, static_argnames=['num_steps'])(execute_dag_transformed)
+    run_process_jit = jax.jit(run_process,
+                              static_argnames=['num_steps'], donate_argnums=(0, 1, 2))(execute_dag_transformed)
 
     # Run the process
     hostname = os.uname().nodename
