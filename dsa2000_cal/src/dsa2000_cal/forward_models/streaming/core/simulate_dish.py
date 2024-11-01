@@ -317,7 +317,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
             return_elevation=True
         )  # [num_sources, num_time, num_ant]
         elevation_rad = elevation_rad[0, :, :]  # [num_time, num_ant]
-        print(jnp.shape(elevation_rad))
+        elevation_rad = jnp.mean(elevation_rad, axis=0)  # [num_ant]
         model_gains_aperture = self.compute_dish_aperture(
             beam_aperture=state.beam_aperture,
             elevation_rad=elevation_rad,
@@ -377,7 +377,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
 
         Args:
             beam_aperture: [num_model_times, lres, mres, num_ant/1, num_model_freqs[, 2, 2]]
-            elevation_rad: [num_time, num_ant] the elevation
+            elevation_rad: [num_ant] the elevation
             X: [lres, mres] x position in units of wavelength
             Y: [lres, mres] y position in units of wavelength
             model_wavelengths: [num_model_freqs] the model wavelengths
@@ -389,11 +389,11 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
             [num_model_times, lres, mres, num_ant, num_model_freqs, 2, 2]
         """
 
-        num_times = np.shape(beam_aperture)[0]
+        num_model_times = np.shape(beam_aperture)[0]
         dynamic_system_params = self._get_dynamic_system_params(
             dish_effect_params=dish_effect_params,
             num_antennas=self.num_antennas,
-            num_times=num_times
+            num_times=num_model_times
         )
 
         focal_length = dish_effect_params.focal_length
@@ -407,11 +407,11 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         focal_ratio = r / focal_length  # [1, lres, mres, 1, num_model_freqs]
 
         elevation_point_error = dynamic_system_params.elevation_point_error[:, None, None, :,
-                                None]  # [num_times, 1, 1, num_ant, 1]
+                                None]  # [num_model_times, 1, 1, num_ant, 1]
         cross_elevation_point_error = dynamic_system_params.cross_elevation_point_error[:, None, None, :,
-                                      None]  # [num_times, 1, 1, num_ant, 1]
+                                      None]  # [num_model_times, 1, 1, num_ant, 1]
         axial_focus_error = dynamic_system_params.axial_focus_error[:, None, None, :,
-                            None]  # [num_times, 1, 1, num_ant, 1]
+                            None]  # [num_model_times, 1, 1, num_ant, 1]
         elevation_feed_offset = static_system_params.elevation_feed_offset[None, None, None, :,
                                 None]  # [1, 1, 1, num_ant, 1]
         cross_elevation_feed_offset = static_system_params.cross_elevation_feed_offset[None, None, None, :,
@@ -419,7 +419,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         horizon_peak_astigmatism = static_system_params.horizon_peak_astigmatism[None, None, None, :,
                                    None]  # [1, 1, 1, num_ant, 1]
         surface_error = static_system_params.surface_error[None, None, None, :, None]  # [1, 1, 1, num_ant, 1]
-        elevation_rad = elevation_rad[:, None, None, :, None]  # [num_times, 1, 1, num_ant, 1]
+        elevation_rad = elevation_rad[None, None, None, :, None]  # [1, 1, 1, num_ant, 1]
 
         pointing_error = elevation_point_error * X - cross_elevation_point_error * Y
 
@@ -435,20 +435,21 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
                 - cross_elevation_feed_offset * sin_theta_p * sin_phi
         )
         cos_2phi = 2. * cos_phi ** 2 - 1.
-        cos_elevation = jnp.cos(elevation_rad)  # [num_times, 1, 1, num_ant, 1]
+        cos_elevation = jnp.cos(elevation_rad)  # [num_model_times, 1, 1, num_ant, 1]
         peak_astigmatism = horizon_peak_astigmatism * cos_elevation
         astigmatism_error = peak_astigmatism * (r / R) ** 2 * cos_2phi
 
-        print(np.shape(pointing_error), np.shape(feed_shift_error), np.shape(astigmatism_error), np.shape(surface_error))
+        print(np.shape(pointing_error), np.shape(feed_shift_error), np.shape(astigmatism_error),
+              np.shape(surface_error))
 
-        total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [num_times, lres, mres, num_ant, num_model_freqs]
+        total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [num_model_times, lres, mres, num_ant, num_model_freqs]
 
         if self.convention == 'engineering':
             phase = (2 * jnp.pi) * (
-                    total_path_length_error / model_wavelengths)  # [num_times, lres, mres, num_ant, num_model_freqs]
+                    total_path_length_error / model_wavelengths)  # [num_model_times, lres, mres, num_ant, num_model_freqs]
         elif self.convention == 'physical':
             phase = (-2 * jnp.pi) * (
-                    total_path_length_error / model_wavelengths)  # [num_times, lres, mres, num_ant, num_model_freqs]
+                    total_path_length_error / model_wavelengths)  # [num_model_times, lres, mres, num_ant, num_model_freqs]
         else:
             raise ValueError(f"Unknown convention {self.convention}")
 
@@ -456,7 +457,8 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         aperture_field = mp_policy.cast_to_vis(jax.lax.complex(jnp.cos(phase), jnp.sin(phase)))  #
         if full_stokes:
             diameter_mask = diameter_mask[..., None, None]  # [1, lres, mres, 1, num_model_freqs, 1, 1]
-            aperture_field = aperture_field[..., None, None]  # [num_times, lres, mres, num_ant, num_model_freqs, 1, 1]
+            aperture_field = aperture_field[
+                ..., None, None]  # [num_model_times, lres, mres, num_ant, num_model_freqs, 1, 1]
         # Zeros outside the dish
         model_gains_aperture = jnp.where(
             diameter_mask,
