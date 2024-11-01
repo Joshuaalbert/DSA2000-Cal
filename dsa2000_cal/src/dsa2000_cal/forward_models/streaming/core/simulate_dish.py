@@ -246,7 +246,6 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         Args:
             dish_effect_params: the dish effect parameters
             num_antennas: the number of antennas
-            num_times: the number of times
 
         Returns:
             the system parameters for the dish
@@ -318,6 +317,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
             return_elevation=True
         )  # [num_sources, num_time, num_ant]
         elevation_rad = elevation_rad[0, :, :]  # [num_time, num_ant]
+        print(jnp.shape(elevation_rad))
         model_gains_aperture = self.compute_dish_aperture(
             beam_aperture=state.beam_aperture,
             elevation_rad=elevation_rad,
@@ -404,7 +404,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         Y = Y[None, :, :, None, None] * model_wavelengths  # [1, lres, mres, 1, num_model_freqs]
         r = jnp.sqrt(X ** 2 + Y ** 2)
         diameter_mask = r <= R  # [1, lres, mres, 1, num_model_freqs]
-        focal_ratio = r / focal_length  # [1, lres, mres, num_model_freqs, 1]
+        focal_ratio = r / focal_length  # [1, lres, mres, 1, num_model_freqs]
 
         elevation_point_error = dynamic_system_params.elevation_point_error[:, None, None, :,
                                 None]  # [num_times, 1, 1, num_ant, 1]
@@ -439,6 +439,8 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         peak_astigmatism = horizon_peak_astigmatism * cos_elevation
         astigmatism_error = peak_astigmatism * (r / R) ** 2 * cos_2phi
 
+        print(np.shape(pointing_error), np.shape(feed_shift_error), np.shape(astigmatism_error), np.shape(surface_error))
+
         total_path_length_error = pointing_error + feed_shift_error + astigmatism_error + surface_error  # [num_times, lres, mres, num_ant, num_model_freqs]
 
         if self.convention == 'engineering':
@@ -460,5 +462,5 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
             diameter_mask,
             aperture_field * beam_aperture,
             jnp.zeros((), mp_policy.vis_dtype)
-        )  # [num_model_times, lres, mres, num_ant, num_model_freqs, 2, 2]
+        )  # [num_model_times, lres, mres, num_ant, num_model_freqs[, 2, 2]]
         return model_gains_aperture
