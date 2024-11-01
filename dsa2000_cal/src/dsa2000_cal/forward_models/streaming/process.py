@@ -143,9 +143,10 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
         process_id=process_id,
         array_name=array_name
     )
+    plot_folder = os.path.join(plot_folder, f"process_{process_id}")
+    os.makedirs(plot_folder, exist_ok=True)
     with open(os.path.join(plot_folder, "process_local_params.json"), "w") as f:
         f.write(process_local_params.json(indent=2))
-    plot_folder = os.path.join(plot_folder, f"process_{process_id}")
     # Check the units of each process parameter
     if not process_local_params.freqs.unit.is_equivalent("Hz"):
         raise ValueError("freqs must be in Hz")
