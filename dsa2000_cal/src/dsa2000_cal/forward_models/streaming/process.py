@@ -291,25 +291,42 @@ def process_start(
     execute_dag = build_process_core_dag(process_id, array_name, full_stokes, plot_folder)
 
     execute_dag_transformed = ctx.transform_with_state(execute_dag)
+    run_process = build_process_scan(execute_dag_transformed)
 
-    run_process = build_process_for(execute_dag_transformed)
+    run_process_jit = jax.jit(run_process, static_argnames=['num_steps'])(execute_dag_transformed)
 
     # Run the process
     hostname = os.uname().nodename
     print(f"Running on {hostname}")
     start_time = current_utc()
     run_key, init_key = jax.random.split(key, 2)
-    print("Initialising...")
     with MemoryLogger(log_file=os.path.join(plot_folder, 'memory_usage.log'), interval=0.5,
                       kill_threshold=max_memory_MB):
+        print("Initialising...")
+
+        init_start_time = current_utc()
         init = block_until_ready(execute_dag_transformed.init(init_key))
+        init_end_time = current_utc()
+
+        print("Compiling...")
+        compile_start_time = current_utc()
+        run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states, num_steps=1).compile()
+        compile_end_time = current_utc()
 
         print("Running...")
+        run_start_time = current_utc()
         final_keep = block_until_ready(
-            run_process(run_key, init.params, init.states, num_steps=1)
+            run_process_jit_compiled(run_key, init.params, init.states, num_steps=1)
         )
+        run_end_time = current_utc()
     end_time = current_utc()
-    run_time = (end_time - start_time).total_seconds()
+    total_run_time = (end_time - start_time).total_seconds()
+    init_time = (init_end_time - init_start_time).total_seconds()
+    compile_time = (compile_end_time - compile_start_time).total_seconds()
+    run_time = (run_end_time - run_start_time).total_seconds()
+    print(f"Total run time: {total_run_time:.2f}s")
+    print(f"Initialisation time: {init_time:.2f}s")
+    print(f"Compilation time: {compile_time:.2f}s")
     print(f"Run time: {run_time:.2f}s")
 
     # Tell Slack we're done
