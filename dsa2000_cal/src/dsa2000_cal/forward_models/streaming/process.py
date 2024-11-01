@@ -293,8 +293,7 @@ def process_start(
     execute_dag_transformed = ctx.transform_with_state(execute_dag)
     run_process = build_process_scan(execute_dag_transformed)
 
-    run_process_jit = jax.jit(run_process,
-                              static_argnames=['num_steps'], donate_argnums=(0, 1, 2))(execute_dag_transformed)
+    run_process_jit = jax.jit(run_process, static_argnames=['num_steps'], donate_argnums=(0, 1, 2))
 
     # Run the process
     hostname = os.uname().nodename
