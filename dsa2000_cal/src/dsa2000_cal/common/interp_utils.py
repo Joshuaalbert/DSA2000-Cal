@@ -402,7 +402,8 @@ class InterpolatedArray(Generic[VT]):
 
         def _assert_shape(x):
             if np.shape(x)[self.axis] != np.size(self.x):
-                raise ValueError(f"Input values must have x length {np.shape(self.x)} on `axis` dimension ({self.axis}), got value shape {np.shape(x)}.")
+                raise ValueError(f"Input values must have size x {np.shape(self.x)} on `axis` dimension ({self.axis}), got value shape {np.shape(x)}. "
+                                 f"{np.shape(x)[self.axis]} != {np.size(self.x)}")
 
         jax.tree.map(_assert_shape, self.values)
 
