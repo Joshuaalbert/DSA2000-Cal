@@ -4,7 +4,7 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.context import wrap_random, get_parameter, get_state, global_context, transform_with_state, \
-    next_rng_key, scope
+    next_rng_key, scope, ScopedDict
 
 
 def test_context():
@@ -66,3 +66,13 @@ def test_scope():
     assert 'a.b.z' in init.params.keys()
     output = transformed_fn.apply(init.params, init.states, jax.random.PRNGKey(42))
     print(output)
+
+
+def test_scope_dict_flatten():
+    sd = ScopedDict()
+    sd.push_scope("scope")
+    sd["key"] = 1
+    leaves, treedef = jax.tree_util.tree_flatten(sd)
+    sd2 = jax.tree_util.tree_unflatten(treedef, leaves)
+    assert sd2["key"] == 1
+    assert sd2.scopes == ["scope"]

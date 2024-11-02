@@ -24,10 +24,9 @@ class ScopedDict:
     prefixes all keys with a given scope {scope}.{key}
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.scopes: List[str] = []
-        self.dict = dict()
+    def __init__(self, _dict=None, _scopes=None):
+        self.scopes: List[str] = _scopes or []
+        self.dict = _dict or dict()
 
     def push_scope(self, scope):
         self.scopes.append(scope)
@@ -72,17 +71,16 @@ class ScopedDict:
 def scoped_dict_flatten(scoped_dict: ScopedDict):
     return (
         [
-            scoped_dict
+            scoped_dict.dict
         ],
         (scoped_dict.scopes,)
     )
 
 
 def scoped_dict_unflatten(aux_data, children):
-    [scoped_dict] = children
-    (scopes,) = aux_data
-    scoped_dict.scopes = scopes
-    return scoped_dict
+    [_dict] = children
+    (_scopes,) = aux_data
+    return ScopedDict(_dict=_dict, _scopes=_scopes)
 
 
 jax.tree_util.register_pytree_node(
