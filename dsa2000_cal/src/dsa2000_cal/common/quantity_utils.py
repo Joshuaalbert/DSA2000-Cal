@@ -51,7 +51,7 @@ def quantity_to_np(q: au.Quantity, decompose_unit: au.Unit | str | None = None,
     return np.asarray(q.value, dtype=dtype)
 
 
-def quantity_to_jnp(q: au.Quantity, decompose_unit: au.Unit | str | None = None,
+def quantity_to_jnp(q: au.Quantity | np.ndarray, decompose_unit: au.Unit | str | None = None,
                     dtype: SupportsDType | str | None = None) -> jax.Array:
     """
     Convert an astropy quantity to a jax numpy array.

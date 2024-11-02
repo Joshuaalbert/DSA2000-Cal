@@ -9,7 +9,10 @@ from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx
-from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
+from dsa2000_cal.common.quantity_utils import time_to_jnp
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 
 
 def test_far_field_delay_engine():
@@ -33,11 +36,12 @@ def test_far_field_delay_engine():
 
     phase_center = ENU(east=1, north=0, up=0, location=array_location, obstime=time).transform_to(ac.ICRS())
 
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         phase_center=phase_center,
         antennas=antennas,
         start_time=time,
         end_time=time,
+        ref_time=time,
         verbose=True,
         # resolution=0.01 * au.s
     )
@@ -45,7 +49,7 @@ def test_far_field_delay_engine():
     delay = engine.compute_delay_from_lm_jax(
         l=jnp.asarray(0.),
         m=jnp.asarray(0.),
-        t1=engine.time_to_jnp(time),
+        t1=time_to_jnp(time, time),
         i1=jnp.asarray(0),
         i2=jnp.asarray(1),
     )
@@ -74,15 +78,16 @@ def test_compute_uvw(with_autocorr):
 
     phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=times[0]).transform_to(ac.ICRS())
 
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         antennas=antennas,
         phase_center=phase_centre,
         start_time=times[0],
         end_time=times[-1],
+        ref_time=times[0],
         verbose=True
     )
     visibilitiy_coords = engine.compute_visibility_coords(
-        times=engine.time_to_jnp(times),
+        times=time_to_jnp(times, times[0]),
         with_autocorr=with_autocorr,
         convention='physical'
     )
@@ -105,7 +110,7 @@ def test_compute_uvw(with_autocorr):
         np.testing.assert_allclose(uvw_other[0, 0, 0], 10 * au.km, atol=1 * au.m)
     np.testing.assert_allclose(uvw, uvw_other, atol=0.9 * au.m)
 
-    print(engine.compute_uvw_jax(engine.time_to_jnp(times), jnp.asarray([0]), jnp.asarray([1]),
+    print(engine.compute_uvw_jax(time_to_jnp(times, times[0]), jnp.asarray([0]), jnp.asarray([1]),
                                  convention='physical'))
 
 
@@ -135,29 +140,31 @@ def test_resolution_error(baseline: au.Quantity):
 
     phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=start_time).transform_to(ac.ICRS())
 
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         antennas=antennas,
         phase_center=phase_centre,
         start_time=start_time,
         end_time=end_time,
+        ref_time=start_time,
         verbose=True,
         resolution=0.1 * au.s
     )
     vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
-        times=engine.time_to_jnp(times),
+        times=time_to_jnp(times, times[0]),
         with_autocorr=False
     )
     uvw0 = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
 
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         antennas=antennas,
         phase_center=phase_centre,
         start_time=start_time,
         end_time=end_time,
+        ref_time=start_time,
         verbose=True
     )
     vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
-        times=engine.time_to_jnp(times),
+        times=time_to_jnp(times, times[0]),
         with_autocorr=False
     )
     uvw = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
@@ -171,16 +178,17 @@ def test_resolution_error(baseline: au.Quantity):
     fig, axs = plt.subplots(2, 1, figsize=(5, 10), sharex=True, squeeze=False)
 
     for resolution in [5 * au.s, 10 * au.s, 50 * au.s, 100 * au.s, 200 * au.s]:
-        engine = FarFieldDelayEngine(
+        engine = build_far_field_delay_engine(
             antennas=antennas,
             phase_center=phase_centre,
             start_time=start_time,
             end_time=end_time,
+            ref_time=start_time,
             verbose=True,
             resolution=resolution
         )
         vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
-            times=engine.time_to_jnp(times),
+            times=time_to_jnp(times, times[0]),
             with_autocorr=False
         )
         uvw = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m

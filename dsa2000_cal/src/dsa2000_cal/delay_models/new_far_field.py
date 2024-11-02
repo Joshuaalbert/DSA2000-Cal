@@ -13,8 +13,9 @@ from jax import config, numpy as jnp, lax
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_cal.common.types import FloatArray, IntArray
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 GM_BODIES = {
@@ -452,18 +453,6 @@ class FarFieldDelayEngine:
         """
         return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
 
-    def time_to_jnp(self, times: at.Time) -> jax.Array:
-        """
-        Make the times relative to the first time, in seconds in tt scale.
-
-        Args:
-            times: [...] Time of observation.
-
-        Returns:
-            times_jax: [...] Time of observation, in tt scale in seconds, relative to the first time.
-        """
-        return mp_policy.cast_to_time((times.tt - self.ref_time.tt).sec)  # [N]
-
     def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True,
                                   convention: str = 'physical') -> VisibilityCoords:
         """
@@ -626,10 +615,11 @@ def test_far_field():
         lat=[33.3575, 33.3575] * au.deg,
         height=[1197.0, 1197.0] * au.m
     )
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         antennas=antennas,
         start_time=at.Time("2021-01-01T00:00:00", scale='tt'),
         end_time=at.Time("2021-01-01T00:00:05", scale='tt'),
+        ref_time=at.Time("2021-01-01T00:00:00", scale='tt'),
         phase_center=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
         resolution=1 * au.s,
         verbose=True
@@ -637,7 +627,7 @@ def test_far_field():
 
     delay = engine.compute_delay_from_lm_jax(
         l=0.1, m=0.1,
-        t1=engine.time_to_jnp(engine.start_time),
+        t1=time_to_jnp(engine.start_time, engine.start_time),
         i1=0, i2=1
     )
     print(delay)

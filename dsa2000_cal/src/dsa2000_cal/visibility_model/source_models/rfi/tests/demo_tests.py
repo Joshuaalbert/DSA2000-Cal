@@ -8,7 +8,7 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import rfi_model_registry, array_registry
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
     RFIEmitterSourceModel, RFIEmitterPredict
@@ -32,10 +32,11 @@ def test_rfi_emitter_predict(is_gains: bool, direction_dependent_gains: bool, fu
     time = at.Time('2021-01-01T00:00:00', scale='utc')
 
     antennas = array.get_antennas()
-    delay_engine = NearFieldDelayEngine(
+    delay_engine = build_near_field_delay_engine(
         antennas=antennas,
         start_time=time,
-        end_time=time
+        end_time=time,
+        ref_time=time
     )
     predict = RFIEmitterPredict(delay_engine=delay_engine)
     ant = len(antennas)

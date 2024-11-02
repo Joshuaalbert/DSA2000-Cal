@@ -4,8 +4,9 @@ from typing import NamedTuple
 import jax
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
-from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSSourceModel, \
@@ -33,8 +34,8 @@ class FacetModel:
     In the case that the flux is highly localised it can be used to construct calibrators for calibration.
     Otherwise, the notion of a flux-weighted direction is not of much value.
     """
-    near_field_delay_engine: NearFieldDelayEngine
-    far_field_delay_engine: FarFieldDelayEngine
+    near_field_delay_engine: build_near_field_delay_engine
+    far_field_delay_engine: BaseFarFieldDelayEngine
     geodesic_model: BaseGeodesicModel
 
     point_source_model: PointSourceModel | None = None

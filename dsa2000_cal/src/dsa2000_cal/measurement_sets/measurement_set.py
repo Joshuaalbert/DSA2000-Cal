@@ -18,9 +18,12 @@ from pydantic import Field
 from dsa2000_cal.adapter.utils import translate_corrs
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import time_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine, VisibilityCoords
-from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.gain_model import GainModel
@@ -298,7 +301,7 @@ class MeasurementSet:
         Get the reference time of the measurement set.
         """
         # Casa convention is to use the first time as the reference time, also for FITS
-        return self.meta.times[0].tt
+        return min(self.meta.times).tt
 
     def time_to_jnp(self, times: at.Time) -> jax.Array:
         """
@@ -310,7 +313,7 @@ class MeasurementSet:
         Returns:
             the times in TT seconds since ref time
         """
-        return mp_policy.cast_to_time((times.tt - self.ref_time).sec)
+        return time_to_jnp(times, self.ref_time)
 
     def is_full_stokes(self) -> bool:
         """
@@ -340,33 +343,35 @@ class MeasurementSet:
         return MeasurementSet(ms_folder=ms_folder)
 
     @cached_property
-    def far_field_delay_engine(self) -> FarFieldDelayEngine:
+    def far_field_delay_engine(self) -> BaseFarFieldDelayEngine:
         """
         Get the far field delay engine for the measurement set.
 
         Returns:
             the far field delay engine
         """
-        return FarFieldDelayEngine(
+        return build_far_field_delay_engine(
             antennas=self.meta.antennas,
             phase_center=self.meta.phase_tracking,
             start_time=self.meta.times[0],
             end_time=self.meta.times[-1],
+            ref_time=self.ref_time,
             verbose=True
         )
 
     @cached_property
-    def near_field_delay_engine(self) -> NearFieldDelayEngine:
+    def near_field_delay_engine(self) -> build_near_field_delay_engine:
         """
         Get the near field delay engine for the measurement set.
 
         Returns:
             the near field delay engine
         """
-        return NearFieldDelayEngine(
+        return build_near_field_delay_engine(
             antennas=self.meta.antennas,
             start_time=self.meta.times[0],
             end_time=self.meta.times[-1],
+            ref_time=self.ref_time,
             verbose=True
         )
 
@@ -439,11 +444,12 @@ class MeasurementSet:
             f.create_array("/", "weights", atom=tb.Float16Atom(), shape=(num_rows, num_freqs, len(meta.coherencies)))
             f.create_array("/", "flags", atom=tb.BoolAtom(), shape=(num_rows, num_freqs, len(meta.coherencies)))
 
-        engine = FarFieldDelayEngine(
+        engine = build_far_field_delay_engine(
             antennas=meta.antennas,
             phase_center=meta.phase_tracking,
             start_time=meta.times[0],
             end_time=meta.times[-1],
+            ref_time=meta.times[0],
             verbose=True
         )
 
@@ -468,7 +474,7 @@ class MeasurementSet:
 
             # Don't use interpolation, so precise.
             uvw = compute_uvw_jax(
-                times=jnp.repeat(engine.time_to_jnp(time)[None], len(antenna_1), axis=0),
+                times=jnp.repeat(time_to_jnp(time, meta.times[0])[None], len(antenna_1), axis=0),
                 antenna_1=jnp.asarray(antenna_1),
                 antenna_2=jnp.asarray(antenna_2)
             )  # [num_baselines, 3]

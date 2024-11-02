@@ -1,12 +1,12 @@
 import dataclasses
-from typing import Tuple, Any
+from typing import Tuple, TypeVar, Generic
 
 import jax
 import numpy as np
 from jax import lax, numpy as jnp
 
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.types import FloatArray, Array
+from dsa2000_cal.common.types import FloatArray, Array, ComplexArray
 
 
 def optimized_interp_jax_safe(x, xp, yp):
@@ -109,6 +109,7 @@ def multilinear_interp_2d(x, y, xp, yp, z):
 
     return z_interp
 
+
 def canonicalise_axis(axis, shape_len):
     if isinstance(axis, int):
         # Convert single integer axis to positive if negative
@@ -116,6 +117,7 @@ def canonicalise_axis(axis, shape_len):
     else:
         # Convert each axis in a tuple to positive if negative
         return tuple(ax if ax >= 0 else ax + shape_len for ax in axis)
+
 
 def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, alpha1: jax.Array, axis: int = 0):
     """
@@ -343,10 +345,38 @@ def get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray,
     return insert_idx
 
 
+VT = TypeVar('VT')
+
+
+def field_dunder(binary_op, self: 'InterpolatedArray',
+                 other: FloatArray | ComplexArray | 'InterpolatedArray') -> 'InterpolatedArray':
+    if isinstance(other, InterpolatedArray):
+        if other.axis != self.axis:
+            raise ValueError("InterpolatedArrays must have the same axis.")
+        # assumes x values are the same, only check shapes though
+        if np.shape(other.x) != np.shape(self.x):
+            raise ValueError("InterpolatedArrays must have the same x values. Only shape checks performed.")
+        if np.shape(other.values) != np.shape(self.values):
+            raise ValueError("InterpolatedArrays must have the same shape. Broadcast not supported.")
+        values_sum = jax.tree_map(lambda x, y: binary_op(x, y), self.values, other.values)
+        return InterpolatedArray(
+            self.x, values_sum, axis=self.axis, regular_grid=self.regular_grid,
+            check_spacing=self.check_spacing, clip_out_of_bounds=self.clip_out_of_bounds,
+            normalise=self.normalise, auto_reorder=self.auto_reorder
+        )
+    else:
+        values = jax.tree.map(lambda x: binary_op(x, other), self.values)
+        return InterpolatedArray(
+            self.x, values, axis=self.axis, regular_grid=self.regular_grid,
+            check_spacing=self.check_spacing, clip_out_of_bounds=self.clip_out_of_bounds,
+            normalise=self.normalise, auto_reorder=self.auto_reorder
+        )
+
+
 @dataclasses.dataclass(eq=False)
-class InterpolatedArray:
+class InterpolatedArray(Generic[VT]):
     x: FloatArray  # [N]
-    values: jax.Array | Any  # pytree with per leaf [..., N, ...] `axis` has N elements
+    values: VT  # pytree with per leaf [..., N, ...] `axis` has N elements
 
     axis: int = 0
     regular_grid: bool = False
@@ -378,16 +408,29 @@ class InterpolatedArray:
 
         if self.normalise:
             # Use mean and std of values, can help with precision when interpolating
-            self.mean = jax.tree.map(lambda y: jnp.mean(y, axis=self.axis), self.values)
-            self.std = jax.tree.map(lambda y: jnp.std(y, axis=self.axis) + jnp.asarray(1e-6, y.dtype),
-                                    self.values)
-            self.values = jax.tree.map(
-                lambda m, s, y: (y - jnp.expand_dims(m, self.axis)) / jnp.expand_dims(s, self.axis), self.mean,
-                self.std, self.values)
+            self.values_mean = jax.tree.map(lambda y: jnp.mean(y, axis=self.axis), self.values)
+            self.values_std = jax.tree.map(lambda y: jnp.std(y, axis=self.axis) + jnp.asarray(1e-6, y.dtype),
+                                           self.values)
+            self.values_norm = jax.tree.map(
+                lambda m, s, y: (y - jnp.expand_dims(m, self.axis)) / jnp.expand_dims(s, self.axis), self.values_mean,
+                self.values_std, self.values)
             # Same for x
             self.x_mean = jnp.mean(self.x)
             self.x_std = jnp.std(self.x) + jnp.asarray(1e-6, self.x.dtype)
-            self.x = (self.x - self.x_mean) / self.x_std
+            self.x_norm = (self.x - self.x_mean) / self.x_std
+
+    # Define dunder methods for field operations
+    def __add__(self, other):
+        return field_dunder(jnp.add, self, other)
+
+    def __sub__(self, other):
+        return field_dunder(jnp.subtract, self, other)
+
+    def __mul__(self, other):
+        return field_dunder(jnp.multiply, self, other)
+
+    def __truediv__(self, other):
+        return field_dunder(jnp.true_divide, self, other)
 
     @property
     def shape(self) -> Tuple[int, ...]:
@@ -430,7 +473,7 @@ class InterpolatedArray:
             normalise=self.normalise, auto_reorder=self.auto_reorder
         )
 
-    def __call__(self, x: jax.Array) -> jax.Array:
+    def __call__(self, x: FloatArray) -> VT:
         """
         Interpolate at time based on input times.
 
@@ -442,21 +485,56 @@ class InterpolatedArray:
         """
         if self.normalise:
             x = (x - self.x_mean) / self.x_std
-        (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
-            x=x,
-            xp=self.x,
-            regular_grid=self.regular_grid,
-            check_spacing=self.check_spacing,
-            clip_out_of_bounds=self.clip_out_of_bounds
-        )
-        values = jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
-        if self.normalise:
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
+                x=x,
+                xp=self.x_norm,
+                regular_grid=self.regular_grid,
+                check_spacing=self.check_spacing,
+                clip_out_of_bounds=self.clip_out_of_bounds
+            )
+            values = jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values_norm)
             if np.size(x) > 1:
                 values = jax.tree.map(lambda m, s, y: y * jnp.expand_dims(s, self.axis) + jnp.expand_dims(m, self.axis),
-                                      self.mean, self.std, values)
+                                      self.values_mean, self.values_std, values)
             else:
-                values = jax.tree.map(lambda m, s, y: y * s + m, self.mean, self.std, values)
-        return values
+                values = jax.tree.map(lambda m, s, y: y * s + m, self.values_mean, self.values_std, values)
+            return values
+        else:
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
+                x=x,
+                xp=self.x,
+                regular_grid=self.regular_grid,
+                check_spacing=self.check_spacing,
+                clip_out_of_bounds=self.clip_out_of_bounds
+            )
+            values = jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
+            return values
+
+
+def test_interpolated_array_dunders():
+    x = np.linspace(0, 10, 100)
+    y = np.sin(x)
+    z = np.cos(x)
+    ia1 = InterpolatedArray(x, y)
+    ia2 = InterpolatedArray(x, z)
+    # Test addition, subtraction, multiplication, and division on InterpolatedArray
+    ia3 = ia1 + ia2
+    np.testing.assert_allclose(ia3(x), y + z)
+    ia3 = ia1 - ia2
+    np.testing.assert_allclose(ia3(x), y - z)
+    ia3 = ia1 * ia2
+    np.testing.assert_allclose(ia3(x), y * z)
+    ia3 = ia1 / ia2
+    np.testing.assert_allclose(ia3(x), y / z)
+    # Test addition, subtraction, multiplication, and division on InterpolatedArray with scalar
+    ia3 = ia1 + 1
+    np.testing.assert_allclose(ia3(x), y + 1)
+    ia3 = ia1 - 1
+    np.testing.assert_allclose(ia3(x), y - 1)
+    ia3 = ia1 * 2
+    np.testing.assert_allclose(ia3(x), y * 2)
+    ia3 = ia1 / 2
+    np.testing.assert_allclose(ia3(x), y / 2)
 
 
 # Define how the object is flattened (converted to a list of leaves and a context tuple)

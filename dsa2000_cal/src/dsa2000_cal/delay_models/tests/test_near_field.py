@@ -4,7 +4,8 @@ import pytest
 from astropy import coordinates as ac, units as au, time as at
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.common.quantity_utils import time_to_jnp
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 
 
 
@@ -33,10 +34,11 @@ def test_near_field():
     np.testing.assert_allclose(np.linalg.norm(np.diff(antennas.get_itrs().cartesian.xyz, axis=-1), axis=0), 1 * au.km,
                                atol=1e-3 * au.m)
 
-    engine = NearFieldDelayEngine(
+    engine = build_near_field_delay_engine(
         antennas=antennas,
         start_time=time,
         end_time=time,
+        ref_time=time,
         verbose=True,
         # resolution=0.01 * au.s
     )
@@ -55,16 +57,16 @@ def test_near_field():
 
     delay, dist2, dist1 = engine.compute_delay_from_emitter_jax(
         emitter,
-        engine.time_to_jnp(time),
+        time_to_jnp(time, time),
         jnp.asarray(0),
         jnp.asarray(1),
     )
 
-    delay_proj, dist2_proj, dist1_proj = engine.compute_delay_from_projection_jax(
-        jnp.asarray(10e3),
-        jnp.asarray(0.),
-        jnp.asarray(0.),
-        engine.time_to_jnp(time),
+    delay_proj, dist2_proj, dist1_proj = engine.compute_delay(
+    engine.construct_x_0_gcrs_from_projection(jnp.asarray(10e3),
+                                              jnp.asarray(0.),
+                                              jnp.asarray(0.)),
+        time_to_jnp(time, time),
         jnp.asarray(0),
         jnp.asarray(1)
     )  # delay is dist to travel from 1 to 0
@@ -93,16 +95,17 @@ def test_near_field():
         emitter = emitter.transform_to(ac.ITRS(obstime=time, location=array_location)).earth_location
         delay, dist2_proj, dist1_proj = engine.compute_delay_from_emitter_jax(
             emitter,
-            engine.time_to_jnp(time),
+            time_to_jnp(time, time),
             jnp.asarray(0),
             jnp.asarray(1)
         )
         assert np.shape(delay) == (n,)
-        delay_proj, _, _ = engine.compute_delay_from_projection_jax(
+        delay_proj, _, _ = engine.compute_delay(
+            engine.construct_x_0_gcrs_from_projection(
             jnp.asarray([10.] * n),
             jnp.asarray([0.] * n),
-            jnp.asarray([0.] * n),
-            engine.time_to_jnp(time),
+            jnp.asarray([0.] * n)),
+            time_to_jnp(time, time),
             jnp.asarray(0),
             jnp.asarray(1)
         )

@@ -11,8 +11,10 @@ import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import FloatArray, IntArray, BoolArray
-from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
-from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel, build_geodesic_model
 
@@ -22,8 +24,8 @@ class SetupObservationState(NamedTuple):
     times: FloatArray
     solution_idx: IntArray
     geodesic_model: BaseGeodesicModel
-    far_field_delay_engine: FarFieldDelayEngine
-    near_field_delay_engine: NearFieldDelayEngine
+    far_field_delay_engine: BaseFarFieldDelayEngine
+    near_field_delay_engine: build_near_field_delay_engine
 
 
 class SetupObservationOutput(NamedTuple):
@@ -31,8 +33,8 @@ class SetupObservationOutput(NamedTuple):
     times: FloatArray
     do_solve: BoolArray
     geodesic_model: BaseGeodesicModel
-    far_field_delay_engine: FarFieldDelayEngine
-    near_field_delay_engine: NearFieldDelayEngine
+    far_field_delay_engine: BaseFarFieldDelayEngine
+    near_field_delay_engine: build_near_field_delay_engine
 
 
 @dataclasses.dataclass(eq=False)
@@ -67,19 +69,21 @@ class SetupObservationStep(AbstractCoreStep[SetupObservationOutput, None]):
         # TODO: make pytrees
         far_field_delay_engine = ctx.get_parameter(
             'far_field_delay_engine',
-            init=lambda: FarFieldDelayEngine(
+            init=lambda: build_far_field_delay_engine(
                 antennas=self.antennas,
                 start_time=self.obstimes[0],
                 end_time=self.obstimes[-1],
+                ref_time=self.ref_time,
                 phase_center=self.phase_center
             )
         )
         near_field_delay_engine = ctx.get_parameter(
             'near_field_delay_engine',
-            init=lambda: NearFieldDelayEngine(
+            init=lambda: build_near_field_delay_engine(
                 antennas=self.antennas,
                 start_time=self.obstimes[0],
-                end_time=self.obstimes[-1]
+                end_time=self.obstimes[-1],
+                ref_time=self.obstimes[0]
             )
         )
         freqs = ctx.get_parameter('freqs', init=lambda: self.freqs)

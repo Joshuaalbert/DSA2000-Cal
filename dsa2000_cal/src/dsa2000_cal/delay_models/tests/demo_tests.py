@@ -13,7 +13,10 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
+from dsa2000_cal.common.quantity_utils import time_to_jnp
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 
 
 @pytest.mark.parametrize('time', [at.Time("2024-01-01T00:00:00", scale='utc'),
@@ -41,15 +44,16 @@ def test_aberated_plane_of_sky(time: at.Time, baseline: au.Quantity):
 
     phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=time).transform_to(ac.ICRS())
 
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         antennas=antennas,
         phase_center=phase_centre,
         start_time=time,
         end_time=time,
+        ref_time=time,
         verbose=True
     )
     uvw = engine.compute_uvw_jax(
-        times=engine.time_to_jnp(time[None]),
+        times=time_to_jnp(time[None], time),
         antenna_1=jnp.asarray([0]),
         antenna_2=jnp.asarray([1])
     )
@@ -64,7 +68,7 @@ def test_aberated_plane_of_sky(time: at.Time, baseline: au.Quantity):
     tau_exact = jax.vmap(
         lambda l, m: engine.compute_delay_from_lm_jax(
             l=l, m=m,
-            t1=engine.time_to_jnp(time),
+            t1=time_to_jnp(time, time),
             i1=jnp.asarray(0),
             i2=jnp.asarray(1))
     )(L.ravel(), M.ravel()).reshape(L.shape)
@@ -218,14 +222,15 @@ def test_standard_test_dsa2000():
     results = {}
 
     for i, phase_center in enumerate(phase_centers):
-        far_field_engine = FarFieldDelayEngine(
+        far_field_engine = build_far_field_delay_engine(
             antennas=antennas,
             phase_center=phase_center,
             start_time=obstime,
             end_time=obstime,
+            ref_time=obstime,
             verbose=True
         )
-        times = jnp.repeat(far_field_engine.time_to_jnp(obstime), len(antenna_1))
+        times = jnp.repeat(time_to_jnp(obstime, obstime), len(antenna_1))
         uvw = far_field_engine.compute_uvw_jax(
             times=times,
             antenna_1=antenna_1,
@@ -314,11 +319,12 @@ def test_uvw_coverage():
     n = len(antennas)
     phase_center = ENU(east=0, north=0, up=1, location=array_location, obstime=obstime).transform_to(ac.ICRS())
 
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         antennas=antennas,
         phase_center=phase_center,
         start_time=obstime,
         end_time=obstime + (10.3 * 60) * au.s,
+        ref_time=obstime,
         verbose=True
     )
 
@@ -327,7 +333,7 @@ def test_uvw_coverage():
     antenna_2 = baseline_pairs[:, 1]
 
     data_dict = dict(
-        times=jnp.repeat(engine.time_to_jnp(obstime)[None], len(antenna_1), axis=0),
+        times=jnp.repeat(time_to_jnp(obstime, obstime)[None], len(antenna_1), axis=0),
         antenna_1=jnp.asarray(antenna_1),
         antenna_2=jnp.asarray(antenna_2)
     )
@@ -341,7 +347,7 @@ def test_uvw_coverage():
     uvws = []
     for t in obstime + np.arange(0, 10.3 * 60, 60) * au.s:
         data_dict = dict(
-            times=jnp.repeat(engine.time_to_jnp(t)[None], len(antenna_1), axis=0),
+            times=jnp.repeat(time_to_jnp(t, obstime)[None], len(antenna_1), axis=0),
             antenna_1=jnp.asarray(antenna_1),
             antenna_2=jnp.asarray(antenna_2)
         )

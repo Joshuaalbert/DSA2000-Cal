@@ -13,7 +13,8 @@ from tomographic_kernel.frames import ENU
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.delay_models.far_field import FarFieldDelayEngine
+from dsa2000_cal.common.quantity_utils import time_to_jnp
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 
 
 def compute_mu_sigma_X(mu_Y, sigma_Y):
@@ -75,12 +76,14 @@ if __name__ == '__main__':
     n = len(antennas)
     location = antennas[0]
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
+    ref_time = obstime
 
     phase_tracking = ENU(0, 0, 1, obstime=obstime, location=location).transform_to(ac.ICRS())
-    engine = FarFieldDelayEngine(
+    engine = build_far_field_delay_engine(
         antennas=antennas,
         start_time=obstime,
         end_time=obstime + (10.3 * 60) * au.s,
+        ref_time=ref_time,
         phase_center=phase_tracking,
         resolution=60 * au.s,
         verbose=True
@@ -93,7 +96,7 @@ if __name__ == '__main__':
     f_jit = jax.jit(engine.compute_uvw_jax)
     uv = []
     for t in times:
-        _times = jnp.repeat(engine.time_to_jnp(t)[None], len(antenna1))
+        _times = jnp.repeat(time_to_jnp(t, ref_time)[None], len(antenna1))
         uvw = f_jit(
             _times,
             antenna1,
@@ -140,7 +143,7 @@ if __name__ == '__main__':
     plt.title('Initial antenna locations')
     plt.show()
 
-    plt.scatter(uv[:,0], uv[:, 1],
+    plt.scatter(uv[:, 0], uv[:, 1],
                 c='black', s=1)
     plt.xlabel('East [m]')
     plt.ylabel('North [m]')

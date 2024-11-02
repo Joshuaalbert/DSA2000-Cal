@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, NamedTuple
 
 import jax
 import numpy as np
@@ -41,3 +41,12 @@ IntArray.__doc__ = "Type annotation for JAX array-like objects, with int scalar 
 BoolArray.__doc__ = "Type annotation for JAX array-like objects, with bool scalar types."
 
 
+class VisibilityCoords(NamedTuple):
+    """
+    Coordinates for a single visibility.
+    """
+    uvw: FloatArray  # [rows, 3] the uvw coordinates
+    time_obs: FloatArray  # [rows] the time relative to the reference time (observation start)
+    antenna_1: IntArray  # [rows] the first antenna
+    antenna_2: IntArray  # [rows] the second antenna
+    time_idx: IntArray  # [rows] the time index

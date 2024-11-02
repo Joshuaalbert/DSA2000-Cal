@@ -10,9 +10,9 @@ from jax import lax
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
-from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
-from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
-from dsa2000_cal.geodesics.geodesic_model import GeodesicModel
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.visibility_model.facet_model import FacetModel, FacetModelData
 
 
@@ -26,8 +26,8 @@ class RIMEModel:
             raise ValueError("At least one source model must be provided.")
 
         # Assumes all source models have the same engines
-        self.near_field_delay_engine: NearFieldDelayEngine = self.facet_models[0].near_field_delay_engine
-        self.far_field_delay_engine: FarFieldDelayEngine = self.facet_models[0].far_field_delay_engine
+        self.near_field_delay_engine: build_near_field_delay_engine = self.facet_models[0].near_field_delay_engine
+        self.far_field_delay_engine: BaseFarFieldDelayEngine = self.facet_models[0].far_field_delay_engine
         self.geodesic_model: GeodesicModel = self.facet_models[0].geodesic_model
         self.convention = self.facet_models[0].convention
 

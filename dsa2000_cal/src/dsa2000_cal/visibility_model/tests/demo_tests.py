@@ -11,10 +11,13 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry, source_model_registry, rfi_model_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.mixed_precision_utils import complex_type
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_cal.common.wgridder import vis_to_image
-from dsa2000_cal.delay_models.far_field import VisibilityCoords, FarFieldDelayEngine
-from dsa2000_cal.delay_models.near_field import NearFieldDelayEngine
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+from dsa2000_cal.common.types import VisibilityCoords
+
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.visibility_model.facet_model import FacetModel
 from dsa2000_cal.visibility_model.rime_model import RIMEModel
@@ -243,16 +246,18 @@ def test_facet_model_fits():
                                                            phase_tracking=phase_center, freqs=freqs,
                                                            full_stokes=False)
 
-    near_field_delay_engine = NearFieldDelayEngine(
+    near_field_delay_engine = build_near_field_delay_engine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         verbose=True
     )
-    far_field_delay_engine = FarFieldDelayEngine(
+    far_field_delay_engine = build_far_field_delay_engine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         phase_center=phase_center,
         verbose=True
     )
@@ -268,12 +273,12 @@ def test_facet_model_fits():
         gain_model=None
     )
 
-    facet_model_data = jax.jit(facet_model.get_model_data)(geodesic_model.time_to_jnp(obstimes))
+    facet_model_data = jax.jit(facet_model.get_model_data)(time_to_jnp(obstimes, obstimes[0]))
 
     print(facet_model_data)
 
     visibility_coords = far_field_delay_engine.compute_visibility_coords(
-        times=geodesic_model.time_to_jnp(obstimes), with_autocorr=True)
+        times=time_to_jnp(obstimes, obstimes[0]), with_autocorr=True)
 
     print(visibility_coords)
     plt.plot(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1], 'o')
@@ -355,16 +360,18 @@ def test_facet_model():
         True
     )
 
-    near_field_delay_engine = NearFieldDelayEngine(
+    near_field_delay_engine = build_near_field_delay_engine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         verbose=True
     )
-    far_field_delay_engine = FarFieldDelayEngine(
+    far_field_delay_engine = build_far_field_delay_engine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         phase_center=phase_center,
         verbose=True
     )
@@ -382,12 +389,12 @@ def test_facet_model():
 
     print(facet_model)
 
-    facet_model_data = facet_model.get_model_data(geodesic_model.time_to_jnp(obstimes))
+    facet_model_data = facet_model.get_model_data(time_to_jnp(obstimes obstimes[0]))
 
     print(facet_model_data)
 
     visibility_coords = far_field_delay_engine.compute_visibility_coords(
-        times=geodesic_model.time_to_jnp(obstimes), with_autocorr=False)
+        times=time_to_jnp(obstimes, obstimes[0]), with_autocorr=False)
 
     print(visibility_coords)
 
@@ -459,16 +466,18 @@ def test_facet_model_lte():
         full_stokes=False
     )
 
-    near_field_delay_engine = NearFieldDelayEngine(
+    near_field_delay_engine = build_near_field_delay_engine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         verbose=True
     )
-    far_field_delay_engine = FarFieldDelayEngine(
+    far_field_delay_engine = BaseFarFieldDelayEngine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         phase_center=phase_center,
         verbose=True
     )
@@ -484,10 +493,10 @@ def test_facet_model_lte():
         gain_model=None
     )
 
-    facet_model_data = facet_model.get_model_data(geodesic_model.time_to_jnp(obstimes))
+    facet_model_data = facet_model.get_model_data(time_to_jnp(obstimes, obstimes[0]))
 
     visibility_coords = far_field_delay_engine.compute_visibility_coords(
-        times=geodesic_model.time_to_jnp(obstimes), with_autocorr=True)
+        times=time_to_jnp(obstimes,obstimes[0]), with_autocorr=True)
 
     vis = facet_model.predict(model_data=facet_model_data, visibility_coords=visibility_coords)
 
@@ -597,16 +606,18 @@ def test_rime_model_correct_shapes():
         freqs
     )
 
-    near_field_delay_engine = NearFieldDelayEngine(
+    near_field_delay_engine = build_near_field_delay_engine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         verbose=True
     )
-    far_field_delay_engine = FarFieldDelayEngine(
+    far_field_delay_engine = build_far_field_delay_engine(
         antennas=antennas,
         start_time=obstimes[0],
         end_time=obstimes[-1],
+        ref_time=obstimes[0],
         phase_center=phase_center,
         verbose=True
     )
@@ -622,10 +633,10 @@ def test_rime_model_correct_shapes():
         gain_model=None
     )
 
-    facet_model_data = facet_model.get_model_data(geodesic_model.time_to_jnp(obstimes))
+    facet_model_data = facet_model.get_model_data(time_to_jnp(obstimes, obstimes[0]))
 
     visibility_coords = far_field_delay_engine.compute_visibility_coords(
-        times=geodesic_model.time_to_jnp(obstimes), with_autocorr=False)
+        times=time_to_jnp(obstimes, obstimes[0]), with_autocorr=False)
 
     rime_model = RIMEModel(
         facet_models=[facet_model, facet_model, facet_model]
@@ -636,7 +647,7 @@ def test_rime_model_correct_shapes():
                                           visibility_coords=visibility_coords)
 
     _vis, _visibility_coords = rime_model.predict_facets_model_visibilities(
-        times=geodesic_model.time_to_jnp(obstimes),
+        times=time_to_jnp(obstimes, obstimes[0]),
         with_autocorr=False
     )
 
