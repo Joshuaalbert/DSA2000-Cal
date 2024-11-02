@@ -41,6 +41,9 @@ class ScopedDict:
     def to_dict(self):
         return self.dict
 
+    def __repr__(self):
+        return f"ScopedDict(scopes={repr(self.scopes)}, dict={repr(self.dict)})"
+
     def __getitem__(self, item):
         return self.dict[f"{self.scope_prefix}.{item}"]
 

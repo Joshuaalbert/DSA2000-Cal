@@ -417,6 +417,10 @@ def test_interpolated_array(regular_grid: bool, normalise: bool, value_shape: tu
     if auto_reorder:
         np.testing.assert_allclose(interp.values, jnp.moveaxis(values, axis, -1))
 
+    leaves, treedef = jax.tree.flatten(interp)
+    pytree = jax.tree.unflatten(treedef, leaves)
+    np.testing.assert_allclose(pytree.values, interp.values)
+
 
 def test_interpolated_array_dunders():
     x = np.linspace(0, 10, 100)

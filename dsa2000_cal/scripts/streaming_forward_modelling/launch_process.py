@@ -1,5 +1,6 @@
 import datetime
 import os
+import sys
 import warnings
 
 import jax
@@ -9,6 +10,8 @@ from dsa2000_cal.common.ray_utils import get_free_port
 # Set num jax devices to number of CPUs
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 jax.config.update('jax_threefry_partitionable', True)
+
+sys.tracebacklimit = 15  # Increase as needed; -1 to suppress tracebacks
 
 
 # jax.config.update("jax_explain_cache_misses", True)
