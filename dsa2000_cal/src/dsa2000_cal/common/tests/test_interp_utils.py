@@ -233,9 +233,9 @@ def test_apply_interp(regular_grid):
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
     np.testing.assert_allclose(apply_interp(xp, i0, alpha0, i1, alpha1), x, atol=1e-6)
 
-    x = jnp.linspace(-0.1, 1.1, 10)
+    x = jnp.linspace(-0.1, 1.1, 15)
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
-    assert apply_interp(jnp.zeros((4, 5, 10, 6)), i0, alpha0, i1, alpha1, axis=2).shape == (4, 5, 10, 6)
+    assert apply_interp(jnp.zeros((4, 5, 10, 6)), i0, alpha0, i1, alpha1, axis=2).shape == (4, 5, 15, 6)
 
     x = 0.
     (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
@@ -247,6 +247,16 @@ def test_apply_interp(regular_grid):
     )
     # [{'bytes accessed': 1440.0, 'utilization1{}': 2.0, 'bytes accessed0{}': 960.0, 'bytes accessedout{}': 480.0, 'bytes accessed1{}': 960.0}]
     # [{'bytes accessed1{}': 960.0,  'utilization1{}': 2.0, 'bytes accessedout{}': 480.0, 'bytes accessed0{}': 960.0, 'bytes accessed': 1440.0}]
+
+    # Test with axis=-1
+    x = jnp.linspace(-0.1, 1.1, 15)
+    (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(x, xp, regular_grid=regular_grid)
+    assert apply_interp(jnp.zeros((4, 5, 6, 10)), i0, alpha0, i1, alpha1, axis=3).shape == (4, 5, 6, 15)
+    assert apply_interp(jnp.zeros((4, 5, 6, 10)), i0, alpha0, i1, alpha1, axis=-1).shape == (4, 5, 6, 15)
+    np.testing.assert_allclose(
+        apply_interp(jnp.zeros((4, 5, 6, 10)), i0, alpha0, i1, alpha1, axis=-1),
+        apply_interp(jnp.zeros((4, 5, 6, 10)), i0, alpha0, i1, alpha1, axis=3),
+    )
 
 
 def test_regular_grid():
@@ -393,3 +403,32 @@ def test_interpolated_array_normalise():
     assert interp_norm(5.).shape == ()
     print(interp(5.0001) - interp_norm(5.0001))
     # assert not np.allclose(interp(5.), interp_norm(5.), atol=1e-8)
+
+
+def test_interoplated_array_getitem():
+    x = np.linspace(0, 1, 10)
+    shape = (10, 5, 6)
+    values = np.random.rand(*shape)
+    interp = InterpolatedArray(x, values, axis=0, auto_reorder=False)
+    assert interp.shape == (5, 6)
+
+    interp_slice = interp[0]
+    assert interp_slice.shape == (6,)
+    np.testing.assert_allclose(interp_slice.values, values[:, 0, :])
+
+    # for axis = -1
+    shape = (5, 6, 10)
+    values = np.random.rand(*shape)
+    interp = InterpolatedArray(x, values, axis=-1)
+    assert interp.shape == (5, 6)
+
+    interp_slice = interp[0]
+    assert interp_slice.shape == (6,)
+    np.testing.assert_allclose(interp_slice.values, values[0, :, :])
+
+def test_interpolated_array_auto_reorder():
+    x = np.linspace(0, 1, 10)
+    values = np.random.rand(10, 5, 6)
+    interp = InterpolatedArray(x, values, axis=0, auto_reorder=True)
+    assert interp.shape == (5, 6)
+    np.testing.assert_allclose(interp.values, np.moveaxis(values, 0, -1))

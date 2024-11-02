@@ -1,12 +1,12 @@
 import dataclasses
-from typing import Tuple
+from typing import Tuple, Any
 
 import jax
 import numpy as np
 from jax import lax, numpy as jnp
 
-from dsa2000_cal.common.types import FloatArray, Array
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.types import FloatArray, Array
 
 
 def optimized_interp_jax_safe(x, xp, yp):
@@ -109,6 +109,13 @@ def multilinear_interp_2d(x, y, xp, yp, z):
 
     return z_interp
 
+def canonicalise_axis(axis, shape_len):
+    if isinstance(axis, int):
+        # Convert single integer axis to positive if negative
+        return axis if axis >= 0 else axis + shape_len
+    else:
+        # Convert each axis in a tuple to positive if negative
+        return tuple(ax if ax >= 0 else ax + shape_len for ax in axis)
 
 def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, alpha1: jax.Array, axis: int = 0):
     """
@@ -125,6 +132,7 @@ def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, 
     Returns:
         [N] or scalar interpolated along axis
     """
+    axis = canonicalise_axis(axis, len(np.shape(x)))
 
     def take(i):
         num_dims = len(np.shape(x))
@@ -291,6 +299,15 @@ def batched_convolved_interp(x, y, z, k=3, mode='euclidean', unroll=1):
     return z_interp_batched
 
 
+def canonicalize_axis(axis, shape_len):
+    if isinstance(axis, int):
+        # Convert single integer axis to positive if negative
+        return axis if axis >= 0 else axis + shape_len
+    else:
+        # Convert each axis in a tuple to positive if negative
+        return tuple(ax if ax >= 0 else ax + shape_len for ax in axis)
+
+
 def get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray,
                              ignore_out_of_bounds: bool = False) -> np.ndarray:
     """
@@ -328,16 +345,25 @@ def get_centred_insert_index(insert_value: np.ndarray, grid_centres: np.ndarray,
 
 @dataclasses.dataclass(eq=False)
 class InterpolatedArray:
-    x: jax.Array  # [N]
-    values: jax.Array  # [..., N, ...] `axis` has N elements
+    x: FloatArray  # [N]
+    values: jax.Array | Any  # pytree with per leaf [..., N, ...] `axis` has N elements
 
     axis: int = 0
     regular_grid: bool = False
     check_spacing: bool = False
     clip_out_of_bounds: bool = False
     normalise: bool = False
+    auto_reorder: bool = True
 
     def __post_init__(self):
+        num_dims = len(np.shape(self.values))
+        if self.axis == num_dims - 1:
+            self.axis = -1  # Prefer it like this for getitem
+
+        if self.auto_reorder and self.axis != -1:
+            # Move axis to the last dimension
+            self.values = jax.tree.map(lambda x: jnp.moveaxis(x, self.axis, -1), self.values)
+            self.axis = -1
 
         if len(np.shape(self.x)) != 1:
             raise ValueError(f"x must be 1D, got {np.shape(self.x)}.")
@@ -368,7 +394,41 @@ class InterpolatedArray:
         """
         Shape of returned value.
         """
-        return jax.tree.map(lambda x: np.shape(x)[:self.axis] + np.shape(x)[self.axis + 1:], self.values)
+
+        def _shape(x):
+            axis = self.axis
+            shape = np.shape(x)
+            if axis is None:
+                # Mean over all elements, resulting in a scalar (empty shape)
+                return ()
+
+            # Canonicalize the axis to ensure all are positive
+            axis = canonicalize_axis(axis, len(shape))
+
+            if isinstance(axis, int):
+                # Remove the single axis
+                return shape[:axis] + shape[axis + 1:]
+            else:
+                # Handle multiple axes, remove each specified dimension
+                return tuple(dim for i, dim in enumerate(shape) if i not in axis)
+
+        return jax.tree.map(_shape, self.values)
+
+    def __getitem__(self, item) -> 'InterpolatedArray':
+        # index the values (accounting for `axis`)
+
+        if self.axis == 0:
+            values = jax.tree_map(lambda x: x[:, item], self.values)
+        elif self.axis == -1:
+            values = jax.tree_map(lambda x: x[item], self.values)
+        else:
+            raise NotImplementedError("Slicing only supported for axis 0 or -1.")
+
+        return InterpolatedArray(
+            self.x, values, axis=self.axis, regular_grid=self.regular_grid,
+            check_spacing=self.check_spacing, clip_out_of_bounds=self.clip_out_of_bounds,
+            normalise=self.normalise, auto_reorder=self.auto_reorder
+        )
 
     def __call__(self, x: jax.Array) -> jax.Array:
         """
@@ -405,15 +465,16 @@ def interpolated_array_flatten(interpolated_array: InterpolatedArray):
     return (
         [interpolated_array.x, interpolated_array.values], (
             interpolated_array.axis, interpolated_array.regular_grid, interpolated_array.check_spacing,
-            interpolated_array.clip_out_of_bounds))
+            interpolated_array.clip_out_of_bounds, interpolated_array.normalise, interpolated_array.auto_reorder))
 
 
 # Define how the object is unflattened (reconstructed from leaves and context)
 def interpolated_array_unflatten(aux_data, children):
     x, values = children
-    axis, regular_grid, check_spacing, clip_out_of_bounds = aux_data
+    axis, regular_grid, check_spacing, clip_out_of_bounds, normalise, auto_reorder = aux_data
     return InterpolatedArray(x, values, axis=axis, regular_grid=regular_grid, check_spacing=check_spacing,
-                             clip_out_of_bounds=clip_out_of_bounds)
+                             clip_out_of_bounds=clip_out_of_bounds,
+                             normalise=normalise, auto_reorder=auto_reorder)
 
 
 # Register the custom pytree
