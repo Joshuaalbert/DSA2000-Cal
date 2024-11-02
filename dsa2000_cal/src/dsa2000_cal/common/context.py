@@ -19,7 +19,7 @@ __all__ = [
 ]
 
 
-class ScopedDict(dict):
+class ScopedDict:
     """
     prefixes all keys with a given scope {scope}.{key}
     """
@@ -27,6 +27,7 @@ class ScopedDict(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.scopes: List[str] = []
+        self.dict = dict()
 
     def push_scope(self, scope):
         self.scopes.append(scope)
@@ -38,14 +39,32 @@ class ScopedDict(dict):
     def scope_prefix(self):
         return '.'.join(self.scopes)
 
+    def to_dict(self):
+        return self.dict
+
     def __getitem__(self, item):
-        return super().__getitem__(f"{self.scope_prefix}.{item}")
+        return self.dict[f"{self.scope_prefix}.{item}"]
 
     def __setitem__(self, key, value):
-        return super().__setitem__(f"{self.scope_prefix}.{key}", value)
+        self.dict[f"{self.scope_prefix}.{key}"] = value
 
     def __contains__(self, item):
-        return super().__contains__(f"{self.scope_prefix}.{item}")
+        return f"{self.scope_prefix}.{item}" in self.dict
+
+    def __iter__(self):
+        return iter(self.dict)
+
+    def __len__(self):
+        return len(self.dict)
+
+    def keys(self):
+        return self.dict.keys()
+
+    def values(self):
+        return self.dict.values()
+
+    def items(self):
+        return self.dict.items()
 
 
 # Add as pytree type
@@ -60,7 +79,7 @@ def scoped_dict_flatten(scoped_dict: ScopedDict):
 
 
 def scoped_dict_unflatten(aux_data, children):
-    (scoped_dict,) = children
+    [scoped_dict] = children
     (scopes,) = aux_data
     scoped_dict.scopes = scopes
     return scoped_dict
