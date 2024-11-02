@@ -1,7 +1,11 @@
+import timeit
+
 import astropy.time as at
 import astropy.units as au
+import jax
 import jax.random
 import numpy as np
+import pylab as plt
 import pytest
 from jax import numpy as jnp
 
@@ -357,78 +361,198 @@ def test__get_centred_insert_index():
 
 @pytest.mark.parametrize('regular_grid', [True, False])
 @pytest.mark.parametrize('normalise', [True, False])
-def test_interpolated_array(regular_grid: bool, normalise: bool):
+@pytest.mark.parametrize('value_shape', [(10,), (10, 20), (1,)])
+@pytest.mark.parametrize('axis', [0, -1])
+@pytest.mark.parametrize('auto_reorder', [True, False])
+@pytest.mark.parametrize('value_dtype', [np.float32, np.int32])
+def test_interpolated_array(regular_grid: bool, normalise: bool, value_shape: tuple, axis: int, auto_reorder: bool,
+                            value_dtype):
+    print(f"Testing with regular_grid={regular_grid}, normalise={normalise}, value_shape={value_shape}, axis={axis}, "
+          f"auto_reorder={auto_reorder}")
     # scalar time
-    times = jnp.linspace(0, 10, 100)
-    values = jnp.sin(times)
-    interp = InterpolatedArray(times, values, regular_grid=regular_grid, normalise=normalise)
-    assert interp(5.).shape == ()
-    np.testing.assert_allclose(interp(5.), jnp.sin(5), atol=2e-3)
+    xp = jnp.linspace(0, 10, value_shape[axis])
+    values = jnp.arange(np.prod(value_shape)).astype(value_dtype).reshape(value_shape)
 
-    # vector time
-    assert interp(jnp.array([5., 6.])).shape == (2,)
-    np.testing.assert_allclose(interp(jnp.array([5., 6.])), jnp.sin(jnp.array([5., 6.])), atol=2e-3)
+    interp = InterpolatedArray(
+        xp, values, regular_grid=regular_grid, normalise=normalise, axis=axis, auto_reorder=auto_reorder
+    )
 
-    # Now with axis = 1
-    times = jnp.linspace(0, 10, 100)
-    values = jnp.stack([jnp.sin(times), jnp.cos(times)], axis=0)  # [2, 100]
-    interp = InterpolatedArray(times, values, axis=1, regular_grid=regular_grid, normalise=normalise)
-    assert interp(5.).shape == (2,)
-    np.testing.assert_allclose(interp(5.), jnp.array([jnp.sin(5), jnp.cos(5)]), atol=2e-3)
+    if axis == 0:
+        assert interp.shape == value_shape[1:]
+    elif axis == -1:
+        assert interp.shape == value_shape[:-1]
+    else:
+        raise ValueError('Invalid axis')
 
-    # Vector
-    assert interp(jnp.array([5., 6., 7.])).shape == (2, 3)
-    np.testing.assert_allclose(interp(jnp.array([5., 6., 7.])),
-                               jnp.stack([jnp.sin(jnp.array([5., 6., 7.])), jnp.cos(jnp.array([5., 6., 7.]))],
-                                         axis=0),
-                               atol=2e-3)
-
-
-def test_interpolated_array_normalise():
-    # compare same with and without
-    times = jnp.linspace(0, 10, 100)  # [100]
-    values = jnp.sin(times)  # [100]
-    interp = InterpolatedArray(times, values, normalise=False)
-    interp_norm = InterpolatedArray(times, values, normalise=True)
-    assert interp(5.).shape == ()
-    assert interp_norm(5.).shape == ()
-    np.testing.assert_allclose(interp(5.), interp_norm(5.), atol=1e-8)
-
-    # Find case where normalisation is needed, i.e. different that tolerance
-    times = jnp.linspace(0, 10, 100)  # [100]
-    values = jnp.sin(times) * 1e30 + 0.00000001  # [100]
-    interp = InterpolatedArray(times, values, normalise=False)
-    interp_norm = InterpolatedArray(times, values, normalise=True)
-    assert interp(5.).shape == ()
-    assert interp_norm(5.).shape == ()
-    print(interp(5.0001) - interp_norm(5.0001))
-    # assert not np.allclose(interp(5.), interp_norm(5.), atol=1e-8)
+    x = 0.
+    if axis == 0:
+        y_expected = values[0, ...]
+    elif axis == -1:
+        y_expected = values[..., 0]
+    else:
+        raise ValueError('Invalid axis')
+    assert interp(x).shape == interp.shape
+    np.testing.assert_allclose(interp(x), y_expected, atol=1e-6)
 
 
-def test_interoplated_array_getitem():
-    x = np.linspace(0, 1, 10)
-    shape = (10, 5, 6)
-    values = np.random.rand(*shape)
-    interp = InterpolatedArray(x, values, axis=0, auto_reorder=False)
-    assert interp.shape == (5, 6)
+    x = jnp.asarray([xp[0], xp[-1]])
+    if axis == 0:
+        y_expected = values[jnp.asarray([0, -1]), ...]
+    elif axis == -1:
+        y_expected = jnp.moveaxis(values[..., jnp.asarray([0, -1])], -1, 0)
+    else:
+        raise ValueError('Invalid axis')
 
-    interp_slice = interp[0]
-    assert interp_slice.shape == (6,)
-    np.testing.assert_allclose(interp_slice.values, values[:, 0, :])
+    assert interp(x).shape == (2,) + interp.shape
+    np.testing.assert_allclose(interp(x), y_expected, atol=1e-6)
 
-    # for axis = -1
-    shape = (5, 6, 10)
-    values = np.random.rand(*shape)
-    interp = InterpolatedArray(x, values, axis=-1)
-    assert interp.shape == (5, 6)
+    assert interp[None].shape == (1,) + interp.shape
+    assert interp[..., None].shape == interp.shape + (1,)
+    if interp.shape != ():
+        assert interp[0].shape == interp.shape[1:]
+        assert interp[..., 0].shape == interp.shape[:-1]
+        assert interp[jnp.asarray([0, 0])].shape == (2,) + interp.shape[1:]
+        assert interp[..., jnp.asarray([0, 0])].shape == interp.shape[:-1] + (2,)
 
-    interp_slice = interp[0]
-    assert interp_slice.shape == (6,)
-    np.testing.assert_allclose(interp_slice.values, values[0, :, :])
+    if auto_reorder:
+        np.testing.assert_allclose(interp.values, jnp.moveaxis(values, axis, -1))
 
-def test_interpolated_array_auto_reorder():
-    x = np.linspace(0, 1, 10)
-    values = np.random.rand(10, 5, 6)
-    interp = InterpolatedArray(x, values, axis=0, auto_reorder=True)
-    assert interp.shape == (5, 6)
-    np.testing.assert_allclose(interp.values, np.moveaxis(values, 0, -1))
+
+def test_interpolated_array_dunders():
+    x = np.linspace(0, 10, 100)
+    y = np.sin(x)
+    z = np.cos(x)
+    ia1 = InterpolatedArray(x, y)
+    ia2 = InterpolatedArray(x, z)
+    # Test addition, subtraction, multiplication, and division on InterpolatedArray
+    ia3 = ia1 + ia2
+    np.testing.assert_allclose(ia3(x), y + z)
+    ia3 = ia1 - ia2
+    np.testing.assert_allclose(ia3(x), y - z)
+    ia3 = ia1 * ia2
+    np.testing.assert_allclose(ia3(x), y * z)
+    ia3 = ia1 / ia2
+    np.testing.assert_allclose(ia3(x), y / z)
+    # Test addition, subtraction, multiplication, and division on InterpolatedArray with scalar
+    ia3 = ia1 + 1
+    np.testing.assert_allclose(ia3(x), y + 1)
+    ia3 = ia1 - 1
+    np.testing.assert_allclose(ia3(x), y - 1)
+    ia3 = ia1 * 2
+    np.testing.assert_allclose(ia3(x), y * 2)
+    ia3 = ia1 / 2
+    np.testing.assert_allclose(ia3(x), y / 2)
+
+
+def test_compare_interpolation_methods():
+    # They give the same performance, so choose eaiest to read
+    batch_sizes, shape_sizes, num_runs = [1024], [32, 64], 5
+
+    # Store the timing results
+    option1_times = []
+    option2_times = []
+    option1_minus_option2_times = []
+
+    for batch_size in batch_sizes:
+        for shape_size in shape_sizes:
+            # Generate random data
+            shape = (shape_size, shape_size, shape_size)  # Example 3D shape
+            x = jnp.array(np.random.rand(*shape))
+
+            # Generate indices and interpolation weights
+            i0 = jnp.array(np.random.randint(0, shape[-1] - 1, size=(batch_size,)))
+            i1 = i0 + 1  # Ensure i1 is valid
+            alpha0 = jnp.array(np.random.rand(batch_size))
+            alpha1 = 1 - alpha0  # Ensure weights sum to 1
+
+            # Option 1: Interpolation along last axis, then moveaxis
+            def option1(x, i0, i1, alpha0, alpha1):
+                result = jnp.moveaxis(alpha0 * x[..., i0] + alpha1 * x[..., i1], -1, 0)
+                return result
+
+            # Option 2: Use jax.vmap to vectorize interpolation
+            def option2(x, i0, i1, alpha0, alpha1):
+                interpolate_single = lambda i0, i1, alpha0, alpha1: alpha0 * x[..., i0] + alpha1 * x[..., i1]
+                interpolate_vectorized = jax.vmap(interpolate_single)
+                result = interpolate_vectorized(i0, i1, alpha0, alpha1)
+                return result
+
+            # JIT compile the functions
+            option1_compiled = jax.jit(option1)
+            option2_compiled = jax.jit(option2)
+
+            # Warm-up runs
+            option1_compiled(x, i0, i1, alpha0, alpha1).block_until_ready()
+            option2_compiled(x, i0, i1, alpha0, alpha1).block_until_ready()
+
+            # Measure execution time for Option 1
+            time1 = timeit.timeit(lambda: option1_compiled(x, i0, i1, alpha0, alpha1).block_until_ready(),
+                                  number=num_runs)
+            option1_avg_time = time1 / num_runs
+            option1_times.append((batch_size, shape_size, option1_avg_time))
+
+            # Measure execution time for Option 2
+            time2 = timeit.timeit(lambda: option2_compiled(x, i0, i1, alpha0, alpha1).block_until_ready(),
+                                  number=num_runs)
+            option2_avg_time = time2 / num_runs
+            option2_times.append((batch_size, shape_size, option2_avg_time))
+
+            option1_minus_option2_times.append((batch_size, shape_size, option1_avg_time - option2_avg_time))
+
+            print(
+                f"Batch size: {batch_size}, Shape size: {shape_size} | Option 1 Time: {option1_avg_time:.6f}s, Option 2 Time: {option2_avg_time:.6f}s")
+
+    # Convert timing results to numpy arrays for plotting
+    option1_times = np.array(option1_times)
+    option2_times = np.array(option2_times)
+    option1_minus_option2_times = np.array(option1_minus_option2_times)
+
+    # Plotting the results
+    plt.figure(figsize=(12, 6))
+
+    # Plot for Option 1
+    plt.subplot(1, 2, 1)
+    plt.title('Option 1: Interpolation with moveaxis')
+    for batch_size in batch_sizes:
+        times = option1_times[option1_times[:, 0] == batch_size]
+        plt.plot(times[:, 1], times[:, 2], label=f'Batch size {batch_size}')
+    plt.xlabel('Shape size')
+    plt.ylabel('Average Execution Time (s)')
+    plt.legend()
+
+    # Plot for Option 2
+    plt.subplot(1, 2, 2)
+    plt.title('Option 2: Interpolation with jax.vmap')
+    for batch_size in batch_sizes:
+        times = option2_times[option2_times[:, 0] == batch_size]
+        plt.plot(times[:, 1], times[:, 2], label=f'Batch size {batch_size}')
+    plt.xlabel('Shape size')
+    plt.ylabel('Average Execution Time (s)')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    # Comparison plot
+    plt.figure(figsize=(8, 6))
+    plt.title('Option 1 vs Option 2 Execution Time')
+    for batch_size in batch_sizes:
+        times1 = option1_times[option1_times[:, 0] == batch_size]
+        times2 = option2_times[option2_times[:, 0] == batch_size]
+        plt.plot(times1[:, 1], times1[:, 2], label=f'Option 1 - Batch {batch_size}')
+        plt.plot(times2[:, 1], times2[:, 2], '--', label=f'Option 2 - Batch {batch_size}')
+    plt.xlabel('Shape size')
+    plt.ylabel('Average Execution Time (s)')
+    plt.legend()
+    plt.show()
+
+    # Comparison plot
+    plt.figure(figsize=(8, 6))
+    plt.title('Option 1 - Option 2 Execution Time (>0 ==> Option 1 is slower)')
+    for batch_size in batch_sizes:
+        times = option1_minus_option2_times[option1_minus_option2_times[:, 0] == batch_size]
+        plt.plot(times[:, 1], times[:, 2], label=f'Batch {batch_size}')
+    plt.xlabel('Shape size')
+    plt.ylabel('Average Execution Time (s)')
+    plt.legend()
+    plt.show()

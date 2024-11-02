@@ -137,10 +137,10 @@ def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, 
     axis = canonicalise_axis(axis, len(np.shape(x)))
 
     def take(i):
+        # return jnp.take(x, i, axis=axis)
         num_dims = len(np.shape(x))
         # [0] [1] [2 3 4], num_dims=5, axis=1
         slices = [slice(None)] * axis + [i] + [slice(None)] * (num_dims - axis - 1)
-        # return jnp.take(x, i, axis=axis)
         return x[tuple(slices)]
 
     return left_broadcast_multiply(take(i0), alpha0.astype(x), axis=axis) + left_broadcast_multiply(
@@ -397,6 +397,8 @@ class InterpolatedArray(Generic[VT]):
 
         if len(np.shape(self.x)) != 1:
             raise ValueError(f"x must be 1D, got {np.shape(self.x)}.")
+        if np.size(self.x) == 0:
+            raise ValueError("x must be non-empty")
 
         def _assert_shape(x):
             if np.shape(x)[self.axis] != np.size(self.x):
@@ -406,17 +408,27 @@ class InterpolatedArray(Generic[VT]):
 
         self.x, self.values = jax.tree.map(jnp.asarray, (self.x, self.values))
 
+        def _promote_to_weakest_floating(x):
+            x_dtype = jnp.result_type(x)
+            if jnp.issubdtype(x_dtype, jnp.floating) or jnp.issubdtype(x_dtype, jnp.complexfloating):
+                return x
+            common_weak_floating = jnp.promote_types(jnp.float32, x_dtype)
+            return x.astype(common_weak_floating)
+
+        self.values = jax.tree.map(_promote_to_weakest_floating, self.values)
+
         if self.normalise:
             # Use mean and std of values, can help with precision when interpolating
-            self.values_mean = jax.tree.map(lambda y: jnp.mean(y, axis=self.axis), self.values)
-            self.values_std = jax.tree.map(lambda y: jnp.std(y, axis=self.axis) + jnp.asarray(1e-6, y.dtype),
+            self.values_mean = jax.tree.map(lambda y: jnp.nanmean(y, axis=self.axis), self.values)
+            self.values_std = jax.tree.map(lambda y: jnp.nanstd(y, axis=self.axis) + jnp.asarray(1e-6, y.dtype),
                                            self.values)
             self.values_norm = jax.tree.map(
                 lambda m, s, y: (y - jnp.expand_dims(m, self.axis)) / jnp.expand_dims(s, self.axis), self.values_mean,
                 self.values_std, self.values)
             # Same for x
-            self.x_mean = jnp.mean(self.x)
-            self.x_std = jnp.std(self.x) + jnp.asarray(1e-6, self.x.dtype)
+            self.x_mean = jnp.nanmean(self.x)
+            self.x_std = jnp.nanstd(self.x) + jnp.asarray(1e-6, self.x.dtype)
+
             self.x_norm = (self.x - self.x_mean) / self.x_std
 
     # Define dunder methods for field operations
@@ -458,14 +470,7 @@ class InterpolatedArray(Generic[VT]):
         return jax.tree.map(_shape, self.values)
 
     def __getitem__(self, item) -> 'InterpolatedArray':
-        # index the values (accounting for `axis`)
-
-        if self.axis == 0:
-            values = jax.tree_map(lambda x: x[:, item], self.values)
-        elif self.axis == -1:
-            values = jax.tree_map(lambda x: x[item], self.values)
-        else:
-            raise NotImplementedError("Slicing only supported for axis 0 or -1.")
+        values = jax.vmap(lambda x: x[item], in_axes=self.axis, out_axes=self.axis)(self.values)
 
         return InterpolatedArray(
             self.x, values, axis=self.axis, regular_grid=self.regular_grid,
@@ -478,11 +483,18 @@ class InterpolatedArray(Generic[VT]):
         Interpolate at time based on input times.
 
         Args:
-            x: time to evaluate at.
+            x: [...] time to evaluate at.
 
         Returns:
-            value at given time
+            values at given time with shape [...] + shape, i.e. the batch shape of x is always at the front of the
+                resulting shape.
         """
+        x_size = np.size(x)
+        x_shape = np.shape(x)
+        vec = x_shape != ()
+        if vec:
+            x = jax.lax.reshape(x, (x_size,))
+
         if self.normalise:
             x = (x - self.x_mean) / self.x_std
             (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
@@ -498,7 +510,6 @@ class InterpolatedArray(Generic[VT]):
                                       self.values_mean, self.values_std, values)
             else:
                 values = jax.tree.map(lambda m, s, y: y * s + m, self.values_mean, self.values_std, values)
-            return values
         else:
             (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
                 x=x,
@@ -508,33 +519,12 @@ class InterpolatedArray(Generic[VT]):
                 clip_out_of_bounds=self.clip_out_of_bounds
             )
             values = jax.tree.map(lambda x: apply_interp(x, i0, alpha0, i1, alpha1, axis=self.axis), self.values)
-            return values
-
-
-def test_interpolated_array_dunders():
-    x = np.linspace(0, 10, 100)
-    y = np.sin(x)
-    z = np.cos(x)
-    ia1 = InterpolatedArray(x, y)
-    ia2 = InterpolatedArray(x, z)
-    # Test addition, subtraction, multiplication, and division on InterpolatedArray
-    ia3 = ia1 + ia2
-    np.testing.assert_allclose(ia3(x), y + z)
-    ia3 = ia1 - ia2
-    np.testing.assert_allclose(ia3(x), y - z)
-    ia3 = ia1 * ia2
-    np.testing.assert_allclose(ia3(x), y * z)
-    ia3 = ia1 / ia2
-    np.testing.assert_allclose(ia3(x), y / z)
-    # Test addition, subtraction, multiplication, and division on InterpolatedArray with scalar
-    ia3 = ia1 + 1
-    np.testing.assert_allclose(ia3(x), y + 1)
-    ia3 = ia1 - 1
-    np.testing.assert_allclose(ia3(x), y - 1)
-    ia3 = ia1 * 2
-    np.testing.assert_allclose(ia3(x), y * 2)
-    ia3 = ia1 / 2
-    np.testing.assert_allclose(ia3(x), y / 2)
+        # Ensure the batch shape is at the front, and the shape is correct
+        if vec:
+            if self.axis != 0:
+                values = jax.tree.map(lambda x: jnp.moveaxis(x, self.axis, 0), values)
+            values = jax.tree.map(lambda x: jax.lax.reshape(x, x_shape + np.shape(x)[1:]), values)
+        return values
 
 
 # Define how the object is flattened (converted to a list of leaves and a context tuple)

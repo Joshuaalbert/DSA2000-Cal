@@ -39,8 +39,8 @@ class BaseGeodesicModel:
     ra0: FloatArray  # []
     dec0: FloatArray  # []
     antennas_enu: FloatArray  # [num_ant, 3]
-    lmn_zenith: InterpolatedArray  # [3]
-    lmn_pointings: InterpolatedArray  # [[num_ant,] 3]
+    lmn_zenith: InterpolatedArray  # (t) -> [3]
+    lmn_pointings: InterpolatedArray  # (t) -> [[num_ant,] 3]
     tile_antennas: bool
 
     def __post_init__(self):
@@ -114,7 +114,7 @@ class BaseGeodesicModel:
             out_mapping=out_mapping,
             verbose=True
         )
-        def create_geodesics(time: jax.Array, antennas_enu, lmn_pointing, lmn_source) -> Union[
+        def compute_far_field_geodesics(time: jax.Array, antennas_enu, lmn_pointing, lmn_source) -> Union[
             jax.Array, Tuple[jax.Array, jax.Array]]:
             # Note: antennas_enu arg is necessary for multi_vmap to work correctly, even though it's not used.
             # Get RA/DEC of pointings wrt phase centre
@@ -155,7 +155,8 @@ class BaseGeodesicModel:
                 return lmn, elevation
             return lmn
 
-        return create_geodesics(times, antennas_enu, lmn_pointing, lmn_sources)  # [num_sources, num_time, num_ant, 3]
+        return compute_far_field_geodesics(times, antennas_enu, lmn_pointing,
+                                           lmn_sources)  # [num_sources, num_time, num_ant, 3]
 
     def compute_near_field_geodesics(self, times: FloatArray, source_positions_enu: FloatArray,
                                      antenna_indices: IntArray | None = None,
@@ -209,8 +210,9 @@ class BaseGeodesicModel:
             out_mapping=out_mapping,
             verbose=True
         )
-        def create_geodesics(time: jax.Array, lmn_pointing: jax.Array, antennas_enu: jax.Array,
-                             source_position_enu: jax.Array) -> Union[jax.Array, Tuple[jax.Array, jax.Array]]:
+        def compute_near_field_geodesics(time: jax.Array, lmn_pointing: jax.Array, antennas_enu: jax.Array,
+                                         source_position_enu: jax.Array) -> Union[
+            jax.Array, Tuple[jax.Array, jax.Array]]:
             # Get the directions of sources from each antenna to each source
             direction_enu = source_position_enu - antennas_enu  # [3]
             norm = jnp.linalg.norm(direction_enu, axis=-1, keepdims=True)
@@ -256,7 +258,7 @@ class BaseGeodesicModel:
 
             return lmn
 
-        return create_geodesics(
+        return compute_near_field_geodesics(
             times, lmn_pointing, antennas_enu, source_positions_enu
         )  # [num_sources, num_time, num_ant, 3]
 
