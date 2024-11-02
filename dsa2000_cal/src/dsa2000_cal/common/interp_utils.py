@@ -402,7 +402,7 @@ class InterpolatedArray(Generic[VT]):
 
         def _assert_shape(x):
             if np.shape(x)[self.axis] != np.size(self.x):
-                raise ValueError(f"Input values must have x length ({np.shape(x)}) on `axis` dimension ({self.axis}), got value shape {np.shape(x)}.")
+                raise ValueError(f"Input values must have x length {np.shape(self.x)} on `axis` dimension ({self.axis}), got value shape {np.shape(x)}.")
 
         jax.tree.map(_assert_shape, self.values)
 
@@ -533,14 +533,15 @@ def interpolated_array_flatten(interpolated_array: InterpolatedArray):
     return (
         [interpolated_array.x, interpolated_array.values], (
             interpolated_array.axis, interpolated_array.regular_grid, interpolated_array.check_spacing,
-            interpolated_array.clip_out_of_bounds, interpolated_array.normalise, interpolated_array.auto_reorder))
+            interpolated_array.clip_out_of_bounds, interpolated_array.normalise, interpolated_array.auto_reorder)
+    )
 
 
 # Define how the object is unflattened (reconstructed from leaves and context)
 def interpolated_array_unflatten(aux_data, children):
     x, values = children
     axis, regular_grid, check_spacing, clip_out_of_bounds, normalise, auto_reorder = aux_data
-    return InterpolatedArray(x, values, axis=axis, regular_grid=regular_grid, check_spacing=check_spacing,
+    return InterpolatedArray(x=x, values=values, axis=axis, regular_grid=regular_grid, check_spacing=check_spacing,
                              clip_out_of_bounds=clip_out_of_bounds,
                              normalise=normalise, auto_reorder=auto_reorder)
 
