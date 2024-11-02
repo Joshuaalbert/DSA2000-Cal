@@ -402,6 +402,11 @@ class InterpolatedArray(Generic[VT]):
 
         def _assert_shape(x):
             if np.shape(x)[self.axis] != np.size(self.x):
+                print(f"type(x)={type(x)}")
+                print(f"np.shape(x)={np.shape(x)}")
+                print(f"type(self.x)={type(self.x)}")
+                print(f"np.size(self.x)={np.size(self.x)}")
+                print(f"np.shape(self.x)={np.shape(self.x)}")
                 raise ValueError(f"Input values must have size x {np.shape(self.x)} on `axis` dimension ({self.axis}), got value shape {np.shape(x)}. "
                                  f"{np.shape(x)[self.axis]} != {np.size(self.x)}")
 
