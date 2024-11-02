@@ -52,13 +52,16 @@ class ScopedDict(dict):
 
 def scoped_dict_flatten(scoped_dict: ScopedDict):
     return (
-        [scoped_dict.copy()],
+        [
+            scoped_dict
+        ],
         (scoped_dict.scopes,)
     )
 
 
 def scoped_dict_unflatten(aux_data, children):
-    (scoped_dict,), (scopes,) = children
+    (scoped_dict,) = children
+    (scopes,) = aux_data
     scoped_dict.scopes = scopes
     return scoped_dict
 
