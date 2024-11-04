@@ -1,5 +1,4 @@
 import os
-from functools import partial
 from typing import Dict, Tuple, NamedTuple, Any
 
 import astropy.coordinates as ac
@@ -76,9 +75,8 @@ def get_process_local_params(process_id: int, array_name: str) -> ProcessLocalPa
     )
 
 
-def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn):
-
-    def run_process(key, params: ctx.ImmutableParams, init_states: ctx.MutableParams, num_steps: int):
+def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn, num_steps: int):
+    def run_process(key, params: ctx.ImmutableParams, init_states: ctx.MutableParams):
         class Carry(NamedTuple):
             states: ctx.MutableParams
 
@@ -100,8 +98,8 @@ def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn):
     return run_process
 
 
-def build_process_for(execute_dag_transformed: ctx.TransformedWithStateFn):
-    def run_process(key, params: ctx.ImmutableParams, init_states: ctx.MutableParams, num_steps: int):
+def build_process_for(execute_dag_transformed: ctx.TransformedWithStateFn, num_steps: int):
+    def run_process(key, params: ctx.ImmutableParams, init_states: ctx.MutableParams):
         class Carry(NamedTuple):
             states: ctx.MutableParams
 
@@ -291,9 +289,9 @@ def process_start(
     execute_dag = build_process_core_dag(process_id, array_name, full_stokes, plot_folder)
 
     execute_dag_transformed = ctx.transform_with_state(execute_dag)
-    run_process = build_process_scan(execute_dag_transformed)
+    run_process = build_process_scan(execute_dag_transformed, num_steps=1)
 
-    run_process_jit = jax.jit(run_process, static_argnames=['num_steps'], donate_argnums=(0, 1, 2))
+    run_process_jit = jax.jit(run_process, donate_argnums=(0, 1, 2))
 
     # Run the process
     hostname = os.uname().nodename
@@ -310,13 +308,13 @@ def process_start(
 
         print("Compiling...")
         compile_start_time = current_utc()
-        run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states, num_steps=1).compile()
+        run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states).compile()
         compile_end_time = current_utc()
 
         print("Running...")
         run_start_time = current_utc()
         final_keep = block_until_ready(
-            run_process_jit_compiled(run_key, init.params, init.states, num_steps=1)
+            run_process_jit_compiled(run_key, init.params, init.states)
         )
         run_end_time = current_utc()
     end_time = current_utc()
