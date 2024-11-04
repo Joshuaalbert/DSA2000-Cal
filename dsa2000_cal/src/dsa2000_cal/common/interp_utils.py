@@ -409,8 +409,6 @@ class InterpolatedArray(Generic[VT]):
 
         jax.tree.map(_assert_shape, self.values)
 
-        self.x, self.values = jax.tree.map(jnp.asarray, (self.x, self.values))
-
         def _promote_to_weakest_floating(x):
             x_dtype = jnp.result_type(x)
             if jnp.issubdtype(x_dtype, jnp.floating) or jnp.issubdtype(x_dtype, jnp.complexfloating):
