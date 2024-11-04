@@ -42,8 +42,11 @@ class BaseGeodesicModel:
     lmn_zenith: InterpolatedArray  # (t) -> [3]
     lmn_pointings: InterpolatedArray  # (t) -> [[num_ant,] 3]
     tile_antennas: bool
+    skip_post_init: bool = False
 
     def __post_init__(self):
+        if self.skip_post_init:
+            return
         if len(np.shape(self.ra0)) != 0:
             raise ValueError(f"ra0 must have shape [], got {np.shape(self.ra0)}")
         if len(np.shape(self.dec0)) != 0:
@@ -280,7 +283,8 @@ def base_geodesic_model_flatten(base_geodesic_model: BaseGeodesicModel):
 def base_geodesic_model_unflatten(aux_data, children):
     ra0, dec0, antennas_enu, lmn_zenith, lmn_pointings = children
     (tile_antennas,) = aux_data
-    return BaseGeodesicModel(ra0, dec0, antennas_enu, lmn_zenith, lmn_pointings, tile_antennas=tile_antennas)
+    return BaseGeodesicModel(ra0, dec0, antennas_enu, lmn_zenith, lmn_pointings, tile_antennas=tile_antennas,
+                             skip_post_init=True)
 
 
 jax.tree_util.register_pytree_node(

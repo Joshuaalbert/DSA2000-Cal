@@ -18,8 +18,11 @@ class ParametricDelayACF:
     channel_upper: FloatArray  # [chan]
     resolution: int = 32  # Should be chosen so that channel width / resolution ~ PFB kernel resolution
     convention: str = 'physical'  # Doesn't matter for the ACF
+    skip_post_init: bool = False
 
     def __post_init__(self):
+        if self.skip_post_init:
+            return
         if len(np.shape(self.mu)) != 1:
             raise ValueError(f"mu must be 1D, got {np.shape(self.mu)}")
 
@@ -97,7 +100,8 @@ def parametric_delay_acf_unflatten(aux_data, children):
     mu, fwhp, spectral_power, channel_lower, channel_upper = children
     return ParametricDelayACF(mu=mu, fwhp=fwhp, spectral_power=spectral_power,
                               channel_lower=channel_lower, channel_upper=channel_upper,
-                              resolution=resolution, convention=convention)
+                              resolution=resolution, convention=convention,
+                              skip_post_init=True)
 
 
 # Register the custom pytree

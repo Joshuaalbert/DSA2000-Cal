@@ -59,8 +59,11 @@ class ProductGainModel(GainModel):
     """
 
     gain_models: List[GainModel]
+    skip_post_init: bool = False
 
     def __post_init__(self):
+        if self.skip_post_init:
+            return
         gain_models = []
         for gain_model in self.gain_models:
             if isinstance(gain_model, ProductGainModel):
@@ -107,7 +110,7 @@ def product_gain_model_flatten(product_gain_model: ProductGainModel):
 
 def product_gain_model_unflatten(aux_data, children) -> ProductGainModel:
     gain_models = children
-    return ProductGainModel(gain_models)
+    return ProductGainModel(gain_models, skip_post_init=True)
 
 
 jax.tree_util.register_pytree_node(

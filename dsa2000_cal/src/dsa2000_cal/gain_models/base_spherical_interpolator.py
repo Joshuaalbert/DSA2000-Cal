@@ -36,8 +36,11 @@ class BaseSphericalInterpolatorGainModel(GainModel):
     model_gains: jax.Array  # [num_model_times, lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
     tile_antennas: bool
     full_stokes: bool
+    skip_post_init: bool = False
 
     def __post_init__(self):
+        if self.skip_post_init:
+            return
         num_model_freqs = np.shape(self.model_freqs)[0]
         num_model_times = np.shape(self.model_times)[0]
         lres = np.shape(self.lvec)[0]
@@ -239,7 +242,8 @@ def base_spherical_interpolator_gain_model_unflatten(aux_data, children) -> Base
     model_freqs, model_times, lvec, mvec, model_gains = children
     tile_antennas, full_stokes = aux_data
     return BaseSphericalInterpolatorGainModel(
-        model_freqs, model_times, lvec, mvec, model_gains, tile_antennas, full_stokes
+        model_freqs, model_times, lvec, mvec, model_gains, tile_antennas, full_stokes,
+        skip_post_init=True
     )
 
 
