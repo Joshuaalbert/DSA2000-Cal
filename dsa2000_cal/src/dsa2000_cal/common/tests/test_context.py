@@ -64,7 +64,7 @@ def test_scope():
     assert '.X' in init.states.keys()
     assert 'a.y' in init.params.keys()
     assert 'a.b.z' in init.params.keys()
-    output = transformed_fn.apply(init.params, init.states, jax.random.PRNGKey(42))
+    output = jax.jit(transformed_fn.apply)(init.params, init.states, jax.random.PRNGKey(42))
     print(output)
 
 
