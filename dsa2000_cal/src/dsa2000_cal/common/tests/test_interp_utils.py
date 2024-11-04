@@ -421,6 +421,17 @@ def test_interpolated_array(regular_grid: bool, normalise: bool, value_shape: tu
     pytree = jax.tree.unflatten(treedef, leaves)
     np.testing.assert_allclose(pytree.values, interp.values)
 
+    @jax.jit
+    def f(ia: InterpolatedArray):
+        return ia(ia.x)
+
+    x = np.linspace(0, 1, 10)
+    y = np.random.rand(10, 3)
+    axis = 0
+    ia = InterpolatedArray(x, y, axis=axis, regular_grid=regular_grid, normalise=normalise, auto_reorder=auto_reorder)
+    f_jit = f.lower(ia).compile()
+    np.testing.assert_allclose(f_jit(ia), ia(ia.x))
+
 
 def test_interpolated_array_dunders():
     x = np.linspace(0, 10, 100)

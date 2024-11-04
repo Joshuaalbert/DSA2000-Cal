@@ -143,8 +143,8 @@ def apply_interp(x: jax.Array, i0: jax.Array, alpha0: jax.Array, i1: jax.Array, 
         slices = [slice(None)] * axis + [i] + [slice(None)] * (num_dims - axis - 1)
         return x[tuple(slices)]
 
-    return left_broadcast_multiply(take(i0), alpha0.astype(x), axis=axis) + left_broadcast_multiply(
-        take(i1), alpha1.astype(x), axis=axis)
+    return left_broadcast_multiply(take(i0), alpha0.astype(jnp.result_type(x)), axis=axis) + left_broadcast_multiply(
+        take(i1), alpha1.astype(jnp.result_type(x)), axis=axis)
 
 
 def left_broadcast_multiply(x, y, axis: int = 0):
@@ -384,8 +384,12 @@ class InterpolatedArray(Generic[VT]):
     clip_out_of_bounds: bool = False
     normalise: bool = False
     auto_reorder: bool = True
+    skip_post_init: bool = False
 
     def __post_init__(self):
+        if self.skip_post_init:
+            return
+
         num_dims = len(np.shape(self.values))
         if self.axis == num_dims - 1:
             self.axis = -1  # Prefer it like this for getitem
@@ -531,8 +535,16 @@ class InterpolatedArray(Generic[VT]):
 # Define how the object is flattened (converted to a list of leaves and a context tuple)
 def interpolated_array_flatten(interpolated_array: InterpolatedArray):
     # Leaves are the arrays (x, values), and auxiliary data is the rest
+    extra = dict()
+    if interpolated_array.normalise:
+        extra['values_mean'] = interpolated_array.values_mean
+        extra['values_std'] = interpolated_array.values_std
+        extra['x_mean'] = interpolated_array.x_mean
+        extra['x_std'] = interpolated_array.x_std
+        extra['values_norm'] = interpolated_array.values_norm
+        extra['x_norm'] = interpolated_array.x_norm
     return (
-        [interpolated_array.x, interpolated_array.values], (
+        [interpolated_array.x, interpolated_array.values, extra], (
             interpolated_array.axis, interpolated_array.regular_grid, interpolated_array.check_spacing,
             interpolated_array.clip_out_of_bounds, interpolated_array.normalise, interpolated_array.auto_reorder)
     )
@@ -540,11 +552,15 @@ def interpolated_array_flatten(interpolated_array: InterpolatedArray):
 
 # Define how the object is unflattened (reconstructed from leaves and context)
 def interpolated_array_unflatten(aux_data, children):
-    x, values = children
+    x, values, extra = children
     axis, regular_grid, check_spacing, clip_out_of_bounds, normalise, auto_reorder = aux_data
-    return InterpolatedArray(x=x, values=values, axis=axis, regular_grid=regular_grid, check_spacing=check_spacing,
-                             clip_out_of_bounds=clip_out_of_bounds,
-                             normalise=normalise, auto_reorder=auto_reorder)
+    output = InterpolatedArray(x=x, values=values, axis=axis, regular_grid=regular_grid, check_spacing=check_spacing,
+                               clip_out_of_bounds=clip_out_of_bounds,
+                               normalise=normalise, auto_reorder=auto_reorder,
+                               skip_post_init=True)
+    for key, value in extra.items():
+        setattr(output, key, value)
+    return output
 
 
 # Register the custom pytree
