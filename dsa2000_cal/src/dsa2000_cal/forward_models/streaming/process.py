@@ -85,7 +85,6 @@ def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn, num_
 
         def body(carry: Carry, x: XType):
             apply_return = execute_dag_transformed.apply(params, carry.states, x.key)
-            print(apply_return)
             return Carry(states=apply_return.states), apply_return.fn_val
 
         carry, keep = jax.lax.scan(
