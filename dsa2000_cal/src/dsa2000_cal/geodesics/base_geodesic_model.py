@@ -15,7 +15,7 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import FloatArray, IntArray
+from dsa2000_cal.common.array_types import FloatArray, IntArray
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
@@ -67,6 +67,45 @@ class BaseGeodesicModel:
     def num_antennas(self) -> int:
         return np.shape(self.antennas_enu)[0]
 
+    def compute_far_field_lmn(self, ra: FloatArray, dec: FloatArray, time: FloatArray | None = None,
+                              return_elevation: bool = False
+                              ) -> Union[FloatArray, Tuple[FloatArray, FloatArray]]:
+        """
+        Compute the LMN of the given RA/DEC sources relative to the phase center.
+        This is not necessarily relative to pointing centre.
+
+        Args:
+            ra: [...] the RA of the sources in radians.
+            dec: [...] the DEC of the sources in radians.
+            time: the time in TT, since start of observation.
+            return_elevation: if True, return the elevation of the source wrt the antenna.
+
+        Returns:
+            lmn: [..., 3] the LMN of the sources relative to the phase center.
+            if return_elevation, also return elevation: [...]
+        """
+        if np.shape(ra) != np.shape(dec):
+            raise ValueError(f"ra and dec must have the same shape, got {np.shape(ra)} and {np.shape(dec)}")
+
+        l, m, n = perley_lmn_from_icrs(ra, dec, self.ra0, self.dec0)
+        lmn = mp_policy.cast_to_angle(jnp.stack([l, m, n], axis=-1))
+        if return_elevation:
+            if time is None:
+                raise ValueError("time must be provided if return_elevation is True")
+            lmn_zenith = self.lmn_zenith(time)  # [3]
+            lmn_zenith /= jnp.linalg.norm(lmn_zenith, axis=-1, keepdims=True)
+            ra_zenith, dec_zenith = perley_icrs_from_lmn(
+                l=lmn_zenith[0],
+                m=lmn_zenith[1],
+                n=lmn_zenith[2],
+                ra0=self.ra0,
+                dec0=self.dec0
+            )  # []
+            _, _, n = perley_lmn_from_icrs(ra, dec, ra_zenith, dec_zenith)
+            elevation = mp_policy.cast_to_angle(jnp.arcsin(n))
+            return lmn, elevation
+        return lmn
+
     def compute_far_field_geodesic(self, times: FloatArray, lmn_sources: FloatArray,
                                    antenna_indices: IntArray | None = None,
                                    return_elevation: bool = False) -> Union[FloatArray, Tuple[FloatArray, IntArray]]:
@@ -81,8 +120,8 @@ class BaseGeodesicModel:
             return_elevation: if True, return the elevation of the source wrt the antenna.
 
         Returns:
-            geodesic: [num_sources, num_time, num_ant, 3]
-            if return_elevation, also return elevation: [num_sources, num_time, num_ant]
+            geodesic: [num_time, num_ant, num_sources, 3]
+            if return_elevation, also return elevation: [num_time, num_ant, num_sources]
         """
         if len(np.shape(times)) != 1:
             raise ValueError(f"times must have shape [num_time], got {np.shape(times)}")
@@ -107,9 +146,9 @@ class BaseGeodesicModel:
             antennas_enu = antennas_enu[antenna_indices]  # [num_ant, 3]
 
         if return_elevation:
-            out_mapping = "[s,t,a,...],[s,t,a,...]"
+            out_mapping = "[t,a,s,...],[t,a,s,...]"
         else:
-            out_mapping = "[s,t,a,...]"
+            out_mapping = "[t,a,s,...]"
 
         @partial(
             multi_vmap,
@@ -159,7 +198,7 @@ class BaseGeodesicModel:
             return lmn
 
         return compute_far_field_geodesics(times, antennas_enu, lmn_pointing,
-                                           lmn_sources)  # [num_sources, num_time, num_ant, 3]
+                                           lmn_sources)  # [num_time, num_ant, num_sources, 3]
 
     def compute_near_field_geodesics(self, times: FloatArray, source_positions_enu: FloatArray,
                                      antenna_indices: IntArray | None = None,
@@ -175,8 +214,8 @@ class BaseGeodesicModel:
             return_elevation: if True, return the elevation of the source wrt the antenna.
 
         Returns:
-            geodesic: [num_sources, num_time, num_ant, 3]
-            if return_elevation, also return elevation: [num_sources, num_time, num_ant]
+            geodesic: [num_time, num_ant, num_sources, 3]
+            if return_elevation, also return elevation: [num_time, num_ant, num_sources]
         """
         if len(np.shape(times)) != 1:
             raise ValueError(f"times must have shape [num_time], got {np.shape(times)}")
@@ -203,9 +242,9 @@ class BaseGeodesicModel:
             antennas_enu = antennas_enu[antenna_indices]  # [num_ant, 3]
 
         if return_elevation:
-            out_mapping = "[s,t,a,...],[s,t,a,...]"
+            out_mapping = "[t,a,s,...],[t,a,s,...]"
         else:
-            out_mapping = "[s,t,a,...]"
+            out_mapping = "[t,a,s,...]"
 
         @partial(
             multi_vmap,
@@ -263,7 +302,7 @@ class BaseGeodesicModel:
 
         return compute_near_field_geodesics(
             times, lmn_pointing, antennas_enu, source_positions_enu
-        )  # [num_sources, num_time, num_ant, 3]
+        )  # [num_time, num_ant, num_sources, 3]
 
 
 def base_geodesic_model_flatten(base_geodesic_model: BaseGeodesicModel):

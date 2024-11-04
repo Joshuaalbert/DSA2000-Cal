@@ -33,25 +33,25 @@ def test_geodesic_model():
 
     lmn_sources = jnp.zeros((num_source, 3))
     far_field_geodesics = geodesic_model.compute_far_field_geodesic(times, lmn_sources)
-    assert np.shape(far_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(far_field_geodesics) == (num_time, num_ant, num_source, 3)
     assert np.all(np.isfinite(far_field_geodesics))
 
     far_field_geodesics, elevation = geodesic_model.compute_far_field_geodesic(times, lmn_sources,
                                                                                return_elevation=True)
-    assert np.shape(far_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(far_field_geodesics) == (num_time, num_ant, num_source, 3)
     assert np.all(np.isfinite(far_field_geodesics))
-    assert np.shape(elevation) == (num_source, num_time, num_ant)
+    assert np.shape(elevation) == (num_time, num_ant, num_source,)
     assert np.all(np.isfinite(elevation))
 
     source_positions_enu = jnp.ones((num_source, 3))
     near_field_geodesics = geodesic_model.compute_near_field_geodesics(times, source_positions_enu)
-    assert np.shape(near_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(near_field_geodesics) == (num_time, num_ant, num_source, 3)
 
     near_field_geodesics, elevation = geodesic_model.compute_near_field_geodesics(times, source_positions_enu,
                                                                                   return_elevation=True)
-    assert np.shape(near_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(near_field_geodesics) == (num_time, num_ant, num_source, 3)
     assert np.all(np.isfinite(near_field_geodesics))
-    assert np.shape(elevation) == (num_source, num_time, num_ant)
+    assert np.shape(elevation) == (num_time, num_ant, num_source,)
     assert np.all(np.isfinite(elevation))
 
     # if pointing_lmn does not have ant
@@ -66,11 +66,11 @@ def test_geodesic_model():
     )
 
     far_field_geodesics = geodesic_model.compute_far_field_geodesic(times, lmn_sources)
-    assert np.shape(far_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(far_field_geodesics) == (num_time, num_ant, num_source, 3)
 
     source_positions_enu = jnp.zeros((num_source, 3))
     near_field_geodesics = geodesic_model.compute_near_field_geodesics(times, source_positions_enu)
-    assert np.shape(near_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(near_field_geodesics) == (num_time, num_ant, num_source, 3)
 
     # zenith pointings
     pointings = None
@@ -84,11 +84,11 @@ def test_geodesic_model():
     )
 
     far_field_geodesics = geodesic_model.compute_far_field_geodesic(times, lmn_sources)
-    assert np.shape(far_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(far_field_geodesics) == (num_time, num_ant, num_source, 3)
 
     source_positions_enu = jnp.zeros((num_source, 3))
     near_field_geodesics = geodesic_model.compute_near_field_geodesics(times, source_positions_enu)
-    assert np.shape(near_field_geodesics) == (num_source, num_time, num_ant, 3)
+    assert np.shape(near_field_geodesics) == (num_time, num_ant, num_source, 3)
 
 
 def test_geodesic_model_results():
@@ -124,12 +124,12 @@ def test_geodesic_model_results():
         atol=1e-6
     )
     np.testing.assert_allclose(
-        far_field_geodesics[1, 0, 0, :],
+        far_field_geodesics[0, 0, 1, :],
         [1, 0, 0],
         atol=1e-3
     )
     np.testing.assert_allclose(
-        far_field_geodesics[2, 0, 0, :],
+        far_field_geodesics[0, 0, 2, :],
         [0, 1, 0],
         atol=1e-3
     )
@@ -150,12 +150,12 @@ def test_geodesic_model_results():
         atol=1e-6
     )
     np.testing.assert_allclose(
-        near_field_geodesics[1, 0, 0, :],
+        near_field_geodesics[0, 0, 1, :],
         [1, 0, 0],
         atol=1e-6
     )
     np.testing.assert_allclose(
-        near_field_geodesics[2, 0, 0, :],
+        near_field_geodesics[0, 0, 2, :],
         [0, 1, 0],
         atol=1e-6
     )

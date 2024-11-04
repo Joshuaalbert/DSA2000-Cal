@@ -132,9 +132,9 @@ def test_beam_gain_model_shape(full_stokes, tile_antennas):
 
     print(f"Tiled: {mock_gain_model.tile_antennas}")
     # Near field source
-    freqs = mock_gain_model.freqs
+    freqs = mock_gain_model.model_freqs
     num_sources = 3
-    obstimes = mock_gain_model.times
+    obstimes = mock_gain_model.model_times
 
     for near_sources in [True, False]:
         print(f'Near field sources: {near_sources}')
@@ -150,22 +150,22 @@ def test_beam_gain_model_shape(full_stokes, tile_antennas):
             )
 
         gains = mock_gain_model.compute_gain(
-            mock_gain_model.freqs,
+            mock_gain_model.model_freqs,
             obstimes,
             geodesics
         )
         if full_stokes:
             assert mock_gain_model.is_full_stokes()
             if tile_antennas:
-                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs), 2, 2)
+                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources, 2, 2)
             else:
-                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs), 2, 2)
+                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources, 2, 2)
         else:
             assert not mock_gain_model.is_full_stokes()
             if tile_antennas:
-                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs))
+                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources,)
             else:
-                assert gains.shape == (num_sources, len(obstimes), 5, len(freqs))
+                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources,)
 
 
 def test_regrid_to_regular_grid():

@@ -68,17 +68,6 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         return self.full_stokes
 
     def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array):
-        """
-        Compute the beam gain at the given source coordinates.
-
-        Args:
-            freqs: [num_freqs] The frequencies at which to compute the beam gain.
-            times: [num_times] Relative time in seconds from start, TT scale.
-            lmn_geodesic: [num_sources, num_times, num_ant, 3] lmn coords in antenna frame.
-
-        Returns:
-            [num_sources, num_times, num_ant, num_freq[, 2, 2]] The beam gain at the given source coordinates.
-        """
 
         if self.tile_antennas:
             if self.full_stokes:
@@ -93,8 +82,8 @@ class BaseSphericalInterpolatorGainModel(GainModel):
 
         @partial(
             multi_vmap,
-            in_mapping=f"[t],[s,t,a],[s,t,a],[f],{gain_mapping}",
-            out_mapping="[s,t,a,f,...]",
+            in_mapping=f"[t],[t,a,s],[t,a,s],[f],{gain_mapping}",
+            out_mapping="[t,a,f,s,...]",
             verbose=True
         )
         def interp_model_gains(time, l, m, freq, gains):
@@ -111,8 +100,40 @@ class BaseSphericalInterpolatorGainModel(GainModel):
             Returns:
                 [[2, 2]] The gain for the given time, theta, phi, freq.
             """
-            if len(self.model_times) == 1:  # single time
-                gains = gains[0]  # [lres, mres, F[, 2, 2]]
+
+            # interpolating along last is always better, for memory contiguity
+            # ==> order: F, mres, lres, T
+
+            # freq
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
+                x=freq,
+                xp=self.model_freqs,
+                regular_grid=True
+            )
+            # jax.debug.print("freq: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=3)  # [T, lres, mres, [2, 2]]
+
+            # mres
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
+                x=m,
+                xp=self.mvec,
+                regular_grid=True
+            )
+            # jax.debug.print("m: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=2)  # [T, lres, [2, 2]]
+
+            # lres
+            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
+                x=l,
+                xp=self.lvec,
+                regular_grid=True
+            )
+            # jax.debug.print("l: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
+            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=1)  # [T, [, 2, 2]]
+
+            # time
+            if len(self.model_times) == 1:
+                gains = gains[0]  # [[, 2, 2]]
             else:
                 # Get time
                 (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
@@ -121,33 +142,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
                     regular_grid=True
                 )
                 # jax.debug.print("time: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-                gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [lres, mres, F[, 2, 2]]
-
-            # get freq
-            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
-                x=freq,
-                xp=self.model_freqs,
-                regular_grid=True
-            )
-            # jax.debug.print("freq: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=2)  # [lres, mres, [2, 2]]
-
-            # get l
-            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
-                x=l,
-                xp=self.lvec,
-                regular_grid=True
-            )
-            # jax.debug.print("l: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [mres, [, 2, 2]]
-            # get m
-            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
-                x=m,
-                xp=self.mvec,
-                regular_grid=True
-            )
-            # jax.debug.print("m: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [[, 2, 2]]
+                gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [[, 2, 2]]
 
             return mp_policy.cast_to_gain(gains)
 
@@ -157,7 +152,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
             lmn_geodesic[..., 1],
             freqs,
             self.model_gains
-        )  # [num_sources, num_times, num_ant, num_freq[, 2, 2]]
+        )  # [num_times, num_ant, num_freq, num_sources, [, 2, 2]]
 
         return gains
 

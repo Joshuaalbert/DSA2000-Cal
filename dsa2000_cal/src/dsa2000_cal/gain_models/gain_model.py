@@ -34,10 +34,10 @@ class GainModel(ABC):
         Args:
             freqs: [num_freqs] the frequency values
             times: [num_times] the time values
-            lmn_geodesic: [num_sources, num_time, num_ant, 3] the lmn coordinates of the source in frame of the antennas.
+            lmn_geodesic: [num_time, num_ant, num_sources, 3] the lmn coordinates of the source in frame of the antennas.
 
         Returns:
-            [num_sources, num_time, num_ant, num_freq[, 2, 2]] The beam gain at the given source coordinates.
+            [num_time, num_ant, num_freq, num_sources,[, 2, 2]] The beam gain at the given source coordinates.
         """
         ...
 

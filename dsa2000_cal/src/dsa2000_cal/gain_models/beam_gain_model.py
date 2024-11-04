@@ -38,7 +38,14 @@ def build_beam_gain_model(array_name: str, times: at.Time | None = None, ref_tim
     if ref_time is None:
         warnings.warn(f"Ref time not provided for beam gain model. Using first time. Only use for testing.")
         ref_time = times[0]
-    model_times = at.Time([min(times), max(times)])
+
+    min_time = min(times)
+    max_time = max(times)
+    if min_time == max_time:
+        # Ensure times are different
+        model_times = at.Time([min_time, max_time + 1 * au.s])
+    else:
+        model_times = at.Time([min_time, max_time])
 
     dish_model = array.get_antenna_model()
 
@@ -63,12 +70,9 @@ def build_beam_gain_model(array_name: str, times: at.Time | None = None, ref_tim
         (len(model_phi), len(model_freqs), 2, 2)
     ) * au.dimensionless_unscaled  # [num_dir, num_model_freqs, 2, 2]
 
-    if len(model_times) == 1:
-        gains = au.Quantity(gains[None, ...])  # [num_times, num_dir, num_model_freqs, 2, 2]
-    else:
-        gains = au.Quantity(
-            np.repeat(gains[None, ...], len(model_times), axis=0)
-        )  # [num_times, num_dir, num_model_freqs, 2, 2]
+    gains = au.Quantity(
+        np.repeat(gains[None, ...], len(model_times), axis=0)
+    )  # [num_times, num_dir, num_model_freqs, 2, 2]
 
     if not full_stokes:
         # TODO: may need to convert basis. Assume linear for now.
@@ -103,39 +107,3 @@ def select_interpolation_points(desired_freqs, model_freqs):
     return select_idxs
 
 
-def test_select_interpolation_points():
-    desired_freqs = np.asarray([1.0])
-    model_freqs = np.asarray([1.0, 2.0, 3.0])
-    expected_select_idxs = np.asarray([0, 1])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([1.0])
-    model_freqs = np.asarray([1.0, 1.0, 2.0, 3.0])
-    expected_select_idxs = np.asarray([1, 2])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([3.0])
-    model_freqs = np.asarray([1.0, 2.0, 3.0])
-    expected_select_idxs = np.asarray([2])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([3.0])
-    model_freqs = np.asarray([1.0, 2.0, 3.0, 3.0])
-    expected_select_idxs = np.asarray([3])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([1.0, 2.0, 3.0])
-    model_freqs = np.asarray([0.5, 1.5, 2.5, 3.5])
-    expected_select_idxs = np.asarray([0, 1, 2, 3])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([1.0, 2.0, 3.0])
-    model_freqs = np.asarray([0.5, 1.5, 1.5, 1.5, 1.75, 2.5, 3.5])
-    expected_select_idxs = np.asarray([0, 1, 4, 5, 6])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
