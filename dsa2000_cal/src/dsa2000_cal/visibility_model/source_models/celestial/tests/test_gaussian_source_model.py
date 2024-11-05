@@ -6,6 +6,7 @@ import astropy.time as at
 import astropy.units as au
 import jax
 import numpy as np
+import pylab as plt
 import pytest
 import sympy as sp
 from tomographic_kernel.frames import ENU
@@ -18,6 +19,7 @@ from dsa2000_cal.common.wgridder import image_to_vis
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn
+from dsa2000_cal.gain_models.base_spherical_interpolator import build_spherical_interpolator
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model
 
@@ -154,16 +156,49 @@ def build_mock_obs_setup(ant: int, time: int):
         antenna_2=mp_policy.cast_to_index(antenna_2),
         time_idx=mp_policy.cast_to_index(time_idx)
     )
-    return phase_tracking, time_obs, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine
+    return phase_tracking, antennas, time_obs, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine
+
+
+def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation):
+    if with_gains:
+        model_freqs = np.linspace(700, 2000, 5) * au.MHz
+        model_theta = np.linspace(0, np.pi, 5) * au.rad
+        model_phi = np.linspace(0, 2 * np.pi, 5) * au.rad
+        ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
+        model_times = ref_time + np.arange(2) * au.s
+        if full_stokes:
+            model_gains = np.ones(
+                (len(model_times), len(model_theta), len(model_freqs), 2, 2)
+            ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
+            model_gains[..., 0, 1] *= 0.
+            model_gains[..., 1, 0] *= 0.
+        else:
+            model_gains = np.ones(
+                (len(model_times), len(model_theta), len(model_freqs))
+            ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs]
+        return build_spherical_interpolator(
+            antennas=antennas,
+            model_freqs=model_freqs,
+            model_theta=model_theta,
+            model_phi=model_phi,
+            model_times=model_times,
+            model_gains=model_gains,
+            ref_time=ref_time,
+            tile_antennas=True,
+        )
+    else:
+        return None
 
 
 @pytest.mark.parametrize("full_stokes", [True, False])
-def test_gaussian_predict(full_stokes: bool):
+@pytest.mark.parametrize("with_gains", [True, False])
+def test_gaussian_predict(full_stokes: bool, with_gains: bool):
     time = 2
     ant = 100
-    phase_tracking, time_obs, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
+    phase_tracking, antennas, time_obs, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
         ant, time
     )
+    gain_model = build_mock_gain_model(with_gains, full_stokes, antennas)
     row = len(visibility_coords.antenna_1)
 
     num_model_freqs = 3
@@ -188,7 +223,7 @@ def test_gaussian_predict(full_stokes: bool):
         assert np.shape(model_data.image) == (1, num_freqs, num_sources)
 
     visibilities = gaussian_source_model.predict(model_data=model_data, visibility_coords=visibility_coords,
-                                                 gain_model=None, near_field_delay_engine=near_field_delay_engine,
+                                                 gain_model=gain_model, near_field_delay_engine=near_field_delay_engine,
                                                  far_field_delay_engine=far_field_delay_engine,
                                                  geodesic_model=geodesic_model
                                                  )
@@ -197,7 +232,6 @@ def test_gaussian_predict(full_stokes: bool):
         assert np.shape(visibilities) == (row, num_freqs, 2, 2)
     else:
         assert np.shape(visibilities) == (row, num_freqs)
-    import pylab as plt
     plt.imshow(wgridder_data['dirty'])
     plt.colorbar()
     plt.show()
@@ -208,22 +242,27 @@ def test_gaussian_predict(full_stokes: bool):
         **wgridder_data
     )
 
-
-
     if full_stokes:
         sc = plt.scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1],
-                    c=np.abs(visibilities[:, 0, 0, 0]), s=10)
+                         c=np.abs(visibilities[:, 0, 0, 0]), s=10)
         plt.colorbar(sc)
         plt.show()
         np.testing.assert_allclose(wgridder_vis.real, visibilities.real[..., 0, 0], atol=1e-3)
         np.testing.assert_allclose(wgridder_vis.imag, visibilities.imag[..., 0, 0], atol=1e-3)
     else:
         sc = plt.scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1],
-                    c=np.abs(visibilities[:, 0]), s=10)
+                         c=np.abs(visibilities[:, 0]), s=10)
         plt.colorbar(sc)
         plt.show()
         np.testing.assert_allclose(wgridder_vis.real, visibilities.real, atol=1e-3)
         np.testing.assert_allclose(wgridder_vis.imag, visibilities.imag, atol=1e-3)
+
+    def f(sm):
+        return sm
+
+    f_jit = jax.jit(f).lower(gaussian_source_model).compile()
+
+    jax.block_until_ready(f_jit(gaussian_source_model))
 
 
 def test_linear_term_derivation():

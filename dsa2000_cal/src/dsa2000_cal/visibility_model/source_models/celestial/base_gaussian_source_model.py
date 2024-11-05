@@ -411,6 +411,50 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
         plt.show()
 
 
+# register pytree
+
+def base_gaussian_source_model_flatten(model: BaseGaussianSourceModel):
+    return (
+        [
+            model.model_freqs,
+            model.ra,
+            model.dec,
+            model.A,
+            model.major_axis,
+            model.minor_axis,
+            model.pos_angle
+        ],
+        (
+            model.convention,
+            model.order_approx
+        )
+    )
+
+
+def base_gaussian_source_model_unflatten(aux_data, children):
+    (model_freqs, ra, dec, A, major_axis, minor_axis, pos_angle) = children
+    (convention, order_approx) = aux_data
+    return BaseGaussianSourceModel(
+        model_freqs=model_freqs,
+        ra=ra,
+        dec=dec,
+        A=A,
+        major_axis=major_axis,
+        minor_axis=minor_axis,
+        pos_angle=pos_angle,
+        convention=convention,
+        order_approx=order_approx,
+        skip_post_init=True
+    )
+
+
+jax.tree_util.register_pytree_node(
+    BaseGaussianSourceModel,
+    base_gaussian_source_model_flatten,
+    base_gaussian_source_model_unflatten
+)
+
+
 def build_gaussian_source_model(
         model_freqs: au.Quantity,  # [num_model_freq] Frequencies
         ra: au.Quantity,  # [num_sources] l coordinate of the source

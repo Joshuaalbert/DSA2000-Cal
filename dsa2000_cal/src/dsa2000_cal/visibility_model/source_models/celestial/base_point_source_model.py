@@ -306,6 +306,40 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
         plt.show()
 
 
+def base_point_source_model_flatten(model: BasePointSourceModel):
+    return (
+        [
+            model.model_freqs,
+            model.ra,
+            model.dec,
+            model.A
+        ],
+        (
+            model.convention,
+        )
+    )
+
+# register pytree
+
+def base_point_source_model_unflatten(aux_data, children):
+    (model_freqs, ra, dec, A) = children
+    (convention,) = aux_data
+    return BasePointSourceModel(
+        model_freqs=model_freqs,
+        ra=ra,
+        dec=dec,
+        A=A,
+        convention=convention,
+        skip_post_init=True
+    )
+
+jax.tree_util.register_pytree_node(
+    BasePointSourceModel,
+    base_point_source_model_flatten,
+    base_point_source_model_unflatten
+)
+
+
 def build_point_source_model(
         model_freqs: au.Quantity,  # [num_model_freq] Frequencies
         ra: au.Quantity,  # [num_sources] l coordinate of the source
@@ -334,6 +368,8 @@ def build_point_source_model(
         dec=dec,
         A=A
     )
+
+
 
 
 def build_point_source_model_from_wsclean_components(
