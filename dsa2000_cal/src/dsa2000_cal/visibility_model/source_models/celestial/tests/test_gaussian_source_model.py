@@ -1,46 +1,151 @@
 import itertools
 
+import astropy.constants as const
+import astropy.coordinates as ac
+import astropy.time as at
+import astropy.units as au
 import jax
 import numpy as np
 import pytest
-from astropy import units as au
-from jax import numpy as jnp
+import sympy as sp
+from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.corr_translation import linear_to_stokes
+from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.wgridder import image_to_vis, vis_to_image
-from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.visibility_model.source_models.celestial.gaussian_source_model import \
-    GaussianPredict, GaussianModelData, GaussianSourceModel
+from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
+from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_cal.common.wgridder import image_to_vis
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
+from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model
 
 
-def build_mock_point_model_data(di_gains: bool, chan: int, source: int, time: int, ant: int) -> GaussianModelData:
-    lm = 1e-3 * jax.random.normal(jax.random.PRNGKey(42), (source, 2))
-    n = jnp.sqrt(1. - jnp.sum(lm ** 2, axis=-1))
-    lmn = jnp.concatenate([lm, n[:, None]], axis=-1)
-    if di_gains:
-        gain_shape = (time, ant, chan, 2, 2)
-    else:
-        gain_shape = (source, time, ant, chan, 2, 2)
-    freqs = jnp.ones((chan,))
-    model_data = GaussianModelData(
-        freqs=mp_policy.cast_to_freq(freqs),
-        image=mp_policy.cast_to_image(jnp.ones((source, chan, 2, 2))),
-        gains=mp_policy.cast_to_gain(jnp.ones(gain_shape)),
-        lmn=mp_policy.cast_to_angle(lmn),
-        ellipse_params=mp_policy.cast_to_angle(jnp.ones((source, 3)))
+def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stokes: bool,
+                                     phase_tracking: ac.ICRS):
+    model_freqs = np.linspace(700, 2000, num_freqs) * au.MHz
+
+    # Wgridder test data
+
+    N = 512
+    max_baseline = 20. * au.km
+    min_wavelength = const.c / model_freqs.max()
+
+    diff_scale = float((min_wavelength / max_baseline).to(au.dimensionless_unscaled))
+    dl = dm = diff_scale / 7.
+    l0 = m0 = 0.
+
+    lvec = (-0.5 * N + np.arange(N)) * dl + l0
+    mvec = (-0.5 * N + np.arange(N)) * dm + m0
+    L, M = np.meshgrid(lvec, mvec, indexing='ij')
+    l = np.asarray([lvec[N // (i + 2)] for i in range(num_source)])
+    m = np.asarray([mvec[N // (i + 2)] for i in range(num_source)])
+    major_axis = dl * 20 * np.ones(num_source)
+    minor_axis = dm * 10 * np.ones(num_source)
+    pos_angle = np.random.uniform(low=0, high=np.pi, size=num_source)
+
+    dirty = np.zeros((N, N))
+    lm = np.stack([L.flatten(), M.flatten()], axis=-1)
+
+    for i in range(num_source):
+        gaussian = Gaussian(
+            x0=np.stack([l[i], m[i]]),
+            major_fwhm=major_axis[i],
+            minor_fwhm=minor_axis[i],
+            pos_angle=pos_angle[i],
+            total_flux=1.0
+        )
+        dirty += jax.vmap(gaussian.compute_flux_density)(lm).reshape(L.shape) * dl * dm
+
+    n = np.sqrt(1. - l ** 2 - m ** 2)
+
+    ra, dec = perley_icrs_from_lmn(l, m, n, phase_tracking.ra.rad, phase_tracking.dec.rad)
+    ra = np.asarray(ra) * au.rad
+    dec = np.asarray(dec) * au.rad
+
+    wgridder_data = dict(
+        center_l=l0,
+        center_m=m0,
+        pixsize_l=dl,
+        pixsize_m=dm,
+        dirty=dirty
     )
-    print(model_data)
-    return model_data
+
+    ## Mock model data
+
+    if full_stokes:
+        A = np.ones((num_freqs, num_source, 2, 2)) * au.Jy
+    else:
+        A = np.ones((num_freqs, num_source)) * au.Jy
+    model_data = build_gaussian_source_model(
+        model_freqs=model_freqs,
+        ra=ra,
+        dec=dec,
+        A=A,
+        major_axis=major_axis * au.rad,
+        minor_axis=minor_axis * au.rad,
+        pos_angle=pos_angle * au.rad,
+        order_approx=0
+    )
+
+    return model_data, wgridder_data
 
 
-def build_mock_visibility_coord(rows: int, ant: int, time: int) -> VisibilityCoords:
-    uvw = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (rows, 3))
-    uvw = uvw.at[:, 2].mul(1e-3)
-    time_obs = jnp.zeros((rows,))
-    antenna_1 = jax.random.randint(jax.random.PRNGKey(42), (rows,), 0, ant)
-    antenna_2 = jax.random.randint(jax.random.PRNGKey(43), (rows,), 0, ant)
-    time_idx = jax.random.randint(jax.random.PRNGKey(44), (rows,), 0, time)
+def build_mock_obs_setup(ant: int, time: int):
+    array_location = ac.EarthLocation.of_site('vla')
+    ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
+    obstimes = ref_time + np.arange(time) * au.s
+    phase_tracking = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
+    pointing = phase_tracking
+    antennas = ENU(
+        east=np.random.uniform(low=-10, high=10, size=ant) * au.km,
+        north=np.random.uniform(low=-10, high=10, size=ant) * au.km,
+        up=np.random.uniform(low=-10, high=10, size=ant) * au.m,
+        location=array_location,
+        obstime=ref_time
+    ).transform_to(ac.ITRS(location=array_location, obstime=ref_time)).earth_location
+
+    geodesic_model = build_geodesic_model(
+        antennas=antennas,
+        array_location=array_location,
+        phase_center=phase_tracking,
+        obstimes=obstimes,
+        ref_time=ref_time,
+        pointings=pointing
+    )
+
+    far_field_delay_engine = build_far_field_delay_engine(
+        antennas=antennas,
+        phase_center=phase_tracking,
+        start_time=obstimes.min(),
+        end_time=obstimes.max(),
+        ref_time=ref_time
+    )
+
+    near_field_delay_engine = build_near_field_delay_engine(
+        antennas=antennas,
+        start_time=obstimes.min(),
+        end_time=obstimes.max(),
+        ref_time=ref_time
+    )
+    # combinations_with_replacement
+    baseline_pairs = np.asarray(list(itertools.combinations(range(ant), 2)),
+                                dtype=np.int32)
+    num_baselines = len(baseline_pairs)
+    antenna_1 = baseline_pairs[:, 0]
+    antenna_2 = baseline_pairs[:, 1]
+    time_obs = time_to_jnp(obstimes, ref_time)
+
+    time_obs = np.tile(time_obs[:, None], (1, num_baselines)).flatten()
+    antenna_1 = np.tile(antenna_1[None, :], (time, 1)).flatten()
+    antenna_2 = np.tile(antenna_2[None, :], (time, 1)).flatten()
+    time_idx = np.tile(np.arange(time)[:, None], (1, num_baselines)).flatten()
+    uvw = far_field_delay_engine.compute_uvw_jax(
+        times=time_obs,
+        antenna_1=antenna_1,
+        antenna_2=antenna_2
+    )
 
     visibility_coords = VisibilityCoords(
         uvw=mp_policy.cast_to_length(uvw),
@@ -49,214 +154,101 @@ def build_mock_visibility_coord(rows: int, ant: int, time: int) -> VisibilityCoo
         antenna_2=mp_policy.cast_to_index(antenna_2),
         time_idx=mp_policy.cast_to_index(time_idx)
     )
-    return visibility_coords
+    return phase_tracking, time_obs, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine
 
 
-@pytest.mark.parametrize("di_gains", [True, False])
-@pytest.mark.parametrize("order_approx", [0, 1])
-def test_gaussian_predict(di_gains: bool, order_approx: int):
-    gaussian_predict = GaussianPredict(
-        order_approx=order_approx
-    )
-    row = 100
-    chan = 4
-    source = 1
-    time = 15
-    ant = 24
-    model_data = build_mock_point_model_data(di_gains, chan, source, time, ant)
-    visibility_coords = build_mock_visibility_coord(row, ant, time)
-    visibilities = gaussian_predict.predict(model_data=model_data, visibility_coords=visibility_coords)
-    print(order_approx, visibilities)
-    assert np.all(np.isfinite(visibilities))
-    assert np.shape(visibilities) == (row, chan, 2, 2)
-
-    # Note: correctness is tested against wgridder
-
-
-@pytest.mark.parametrize("di_gains", [True, False])
-@pytest.mark.parametrize("order_approx", [0, 1])
-def test_ensure_gradients_work(di_gains: bool, order_approx: int):
-    gaussian_predict = GaussianPredict(order_approx=order_approx)
-    row = 100
-    chan = 4
-    source = 2
+@pytest.mark.parametrize("full_stokes", [True, False])
+def test_gaussian_predict(full_stokes: bool):
     time = 2
-    ant = 3
-    model_data = build_mock_point_model_data(di_gains, chan, source, time, ant)
-    _visibility_coords = build_mock_visibility_coord(row, ant, time)
+    ant = 100
+    phase_tracking, time_obs, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
+        ant, time
+    )
+    row = len(visibility_coords.antenna_1)
 
-    def objective(model_data: GaussianModelData, uvw: jax.Array):
-        visibility_coords = VisibilityCoords(
-            uvw=uvw,
-            time_obs=_visibility_coords.time_obs,
-            antenna_1=_visibility_coords.antenna_1,
-            antenna_2=_visibility_coords.antenna_2,
-            time_idx=_visibility_coords.time_idx
-        )
-        vis = gaussian_predict.predict(model_data=model_data, visibility_coords=visibility_coords)
+    num_model_freqs = 3
+    num_freqs = 4
+    num_sources = 5
+    gaussian_source_model, wgridder_data = build_mock_gaussian_source_model(num_model_freqs, num_sources, full_stokes,
+                                                                            phase_tracking)
 
-        return jnp.sum(jnp.abs(vis) ** 2)
-
-    grad = jax.grad(objective, argnums=(0, 1))(model_data, _visibility_coords.uvw)
-    # print(func(freqs, model_data, uvw))
-    # print(grad)
-    (model_data_grad, uvw_grad) = grad
-    if di_gains:
-        # gain_shape = (time, ant, chan, 2, 2)
-        for t in range(time):
-            for a in range(ant):
-                print(f"Time: {t}, Ant: {a}")
-                print("\tXX", model_data_grad.gains[t, a, :, 0, 0])
-                print("\tXY", model_data_grad.gains[t, a, :, 0, 1])
-                print("\tYX", model_data_grad.gains[t, a, :, 1, 0])
-                print("\tYY", model_data_grad.gains[t, a, :, 1, 1])
-                # Ensure gradient is not zero
-                assert np.all(np.abs(model_data_grad.gains[t, a, :, :, :]) > 1e-10)
-
+    freqs = quantity_to_jnp(np.linspace(700, 2000, num_freqs) * au.MHz)
+    if full_stokes:
+        assert gaussian_source_model.is_full_stokes()
     else:
-        # gain_shape = (source, time, ant, chan, 2, 2)
-        for s in range(source):
-            for t in range(time):
-                for a in range(ant):
-                    print(f"Source: {s}, Time: {t}, Ant: {a}")
-                    print("\tXX", model_data_grad.gains[s, t, a, :, 0, 0])
-                    print("\tXY", model_data_grad.gains[s, t, a, :, 0, 1])
-                    print("\tYX", model_data_grad.gains[s, t, a, :, 1, 0])
-                    print("\tYY", model_data_grad.gains[s, t, a, :, 1, 1])
-                    # Ensure gradient is not zero
-                    assert np.all(np.abs(model_data_grad.gains[s, t, a, :, :, :]) > 1e-10)
+        assert not gaussian_source_model.is_full_stokes()
 
+    model_data = gaussian_source_model.get_model_data(freqs, time_obs, geodesic_model)
+    assert np.shape(model_data.freqs) == (num_freqs,)
+    assert np.shape(model_data.times) == (1,)
+    assert np.shape(model_data.lmn) == (num_sources, 3)
+    if full_stokes:
+        assert np.shape(model_data.image) == (1, num_freqs, num_sources, 2, 2)
+    else:
+        assert np.shape(model_data.image) == (1, num_freqs, num_sources)
 
-def test_gh55_gaussian():
-    # Ensure that L-M axes of wgridder are correct, i.e. X=M, Y=-L
-    np.random.seed(42)
+    visibilities = gaussian_source_model.predict(model_data=model_data, visibility_coords=visibility_coords,
+                                                 gain_model=None, near_field_delay_engine=near_field_delay_engine,
+                                                 far_field_delay_engine=far_field_delay_engine,
+                                                 geodesic_model=geodesic_model
+                                                 )
+    assert np.all(np.isfinite(visibilities))
+    if full_stokes:
+        assert np.shape(visibilities) == (row, num_freqs, 2, 2)
+    else:
+        assert np.shape(visibilities) == (row, num_freqs)
     import pylab as plt
-    # Validate the units of image
-    # To do this we simulate an image with a single point source in the centre, and compute the visibilties from that.
-    N = 1024
-    num_ants = 200
-    num_freqs = 1
-    freqs = np.linspace(700e6, 2000e6, num_freqs)
-
-    major_pix = 20
-    minor_pix = 10
-
-    pixsize = 0.5 * np.pi / 180 / 3600.
-    x0 = 0.
-    y0 = 0.
-    l0 = y0
-    m0 = x0
-    dl = pixsize
-    dm = pixsize
-    L, M = np.meshgrid(-N / 2 + np.arange(N), -N / 2 + np.arange(N), indexing='ij')
-    L *= pixsize
-    M *= pixsize
-
-    g = GaussianSourceModel(
-        l0=l0 * au.dimensionless_unscaled,
-        m0=m0 * au.dimensionless_unscaled,
-        A=1. * au.Jy,
-        major=pixsize * major_pix * au.dimensionless_unscaled,
-        minor=pixsize * minor_pix * au.dimensionless_unscaled,
-        theta=0. * au.rad,
-        freqs=freqs * au.Hz
-    )
-    dirty = g.get_flux_model(lvec=(-N / 2 + np.arange(N)) * pixsize,
-                             mvec=(-N / 2 + np.arange(N)) * pixsize)[2].T.value  # [Nl, Nm]
-    plt.imshow(dirty.T, origin='lower')
+    plt.imshow(wgridder_data['dirty'])
     plt.colorbar()
     plt.show()
-    np.testing.assert_allclose(np.sum(dirty), 1.)
-
-    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
-
-    num_rows = len(antenna_1)
-    antennas = 10e3 * np.random.normal(size=(num_ants, 3))
-    antennas[:, 2] *= 0.001
-    uvw = jnp.asarray(antennas[antenna_2] - antennas[antenna_1])
-
-    wgt = None  # np.ones((num_rows, num_freqs))
-    # wgt = np.random.uniform(size=(num_rows, num_freqs))
-
-    vis = image_to_vis(
-        uvw=uvw,
+    wgridder_vis = image_to_vis(
+        uvw=visibility_coords.uvw,
         freqs=freqs,
-        dirty=dirty,
-        pixsize_m=dm,
-        pixsize_l=dl,
-        center_m=m0,
-        center_l=l0,
-        epsilon=1e-4
-    )
-    print(vis)
-
-    sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis)[:, 0], s=1, alpha=0.5)
-    plt.colorbar(sc)
-    plt.show()
-    predict = GaussianPredict(convention='physical')
-    image = np.zeros((1, num_freqs, 2, 2))  # [source, chan, 2, 2]
-    image[:, :, 0, 0] = 0.5
-    image[:, :, 1, 1] = 0.5
-    gains = np.zeros((1, num_ants, num_freqs, 2, 2))  # [[source,] time, ant, chan, 2, 2]
-    gains[..., 0, 0] = 1.
-    gains[..., 1, 1] = 1.
-    lmn = np.asarray([[0., 0., 1.]])  # [source, 3]
-
-    vis_predict = predict.predict(
-        model_data=GaussianModelData(
-            freqs=mp_policy.cast_to_freq(freqs),
-            image=mp_policy.cast_to_image(image),
-            gains=mp_policy.cast_to_gain(gains),
-            lmn=mp_policy.cast_to_angle(lmn),
-            ellipse_params=mp_policy.cast_to_angle(np.asarray([[major_pix * pixsize, minor_pix * pixsize, 0.]]))
-        ), visibility_coords=VisibilityCoords(
-            uvw=mp_policy.cast_to_length(uvw),
-            time_obs=mp_policy.cast_to_time(np.zeros(num_rows)),
-            antenna_1=mp_policy.cast_to_index(antenna_1),
-            antenna_2=mp_policy.cast_to_index(antenna_2),
-            time_idx=mp_policy.cast_to_index(np.zeros(num_rows))
-        )
-    )  # [row, chan, 2, 2]
-    vis_predict_stokes = jax.vmap(jax.vmap(linear_to_stokes))(vis_predict)[:, :, 0, 0]
-    print(vis_predict_stokes)
-    sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis_predict_stokes)[:, 0], s=1, alpha=0.5)
-    plt.colorbar(sc)
-    plt.show()
-
-    sc = plt.scatter(uvw[:, 0], uvw[:, 1], c=np.abs(vis_predict_stokes - vis)[:, 0], s=1, alpha=0.5)
-    plt.colorbar(sc)
-    plt.show()
-
-    dirty_rec = vis_to_image(
-        uvw=uvw,
-        freqs=freqs,
-        vis=vis_predict_stokes,
-        npix_m=N,
-        npix_l=N,
-        pixsize_m=dm,
-        pixsize_l=dl,
-        wgt=wgt,
-        center_m=m0,
-        center_l=l0,
-        epsilon=1e-4
+        epsilon=1e-4,
+        **wgridder_data
     )
 
-    plt.imshow(dirty_rec.T, origin='lower',
-               interpolation='nearest', cmap='inferno')
-    plt.colorbar()
-    plt.show()
-    plt.imshow(dirty.T, origin='lower',
-               interpolation='nearest', cmap='inferno')
-    plt.colorbar()
-    plt.show()
 
-    diff_dirty = dirty_rec - dirty
-    plt.imshow(diff_dirty.T, origin='lower',
-               interpolation='nearest', cmap='inferno')
-    plt.colorbar()
-    plt.show()
 
-    np.testing.assert_allclose(dirty_rec, dirty, atol=0.11)
+    if full_stokes:
+        sc = plt.scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1],
+                    c=np.abs(visibilities[:, 0, 0, 0]), s=10)
+        plt.colorbar(sc)
+        plt.show()
+        np.testing.assert_allclose(wgridder_vis.real, visibilities.real[..., 0, 0], atol=1e-3)
+        np.testing.assert_allclose(wgridder_vis.imag, visibilities.imag[..., 0, 0], atol=1e-3)
+    else:
+        sc = plt.scatter(visibility_coords.uvw[:, 0], visibility_coords.uvw[:, 1],
+                    c=np.abs(visibilities[:, 0]), s=10)
+        plt.colorbar(sc)
+        plt.show()
+        np.testing.assert_allclose(wgridder_vis.real, visibilities.real, atol=1e-3)
+        np.testing.assert_allclose(wgridder_vis.imag, visibilities.imag, atol=1e-3)
 
-    np.testing.assert_allclose(vis_predict_stokes.real, vis.real, atol=1e-3)
-    np.testing.assert_allclose(vis_predict_stokes.imag, vis.imag, atol=1e-3)
+
+def test_linear_term_derivation():
+    """
+    Derives the linear approximation term for w-correction.
+    """
+    # Define symbols
+    l, m, l0, m0, w = sp.symbols('l m l0 m0 w')
+    n0 = sp.sqrt(1 - l0 ** 2 - m0 ** 2)
+    n = sp.sqrt(1 - l ** 2 - m ** 2)
+
+    # Define the expression inside the brackets of our RIME equation
+    zeroth_term = sp.exp(-2 * sp.pi * sp.I * (n0 - 1) * w) / n0
+
+    expression = sp.exp(-2 * sp.pi * sp.I * (n - 1) * w) / n - zeroth_term
+
+    # Compute the first-order Taylor expansion around l0, m0 to second order
+    taylor_expansion = expression.subs({l: l0, m: m0}) + (sp.Matrix([expression]).jacobian([l, m])).subs(
+        {l: l0, m: m0}).dot(sp.Matrix([l - l0, m - m0])).simplify()
+
+    # pretty print
+    sp.pprint(taylor_expansion)
+
+    # (l0*(l - l0) + m0*(m - m0))*(1 + 2*I*pi*w*n0)*exp(-2*I*pi*w*(n0 - 1))/n0**3
+    correct = (l0 * (l - l0) + m0 * (m - m0)) * (1 + 2 * sp.I * sp.pi * w * n0) * sp.exp(
+        -2 * sp.I * sp.pi * w * (n0 - 1)) / n0 ** 3
+
+    assert taylor_expansion.equals(correct)

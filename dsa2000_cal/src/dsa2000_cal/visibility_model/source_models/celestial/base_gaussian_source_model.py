@@ -11,9 +11,11 @@ from astropy import constants
 from jax import numpy as jnp, lax
 
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
-from dsa2000_cal.common.corr_translation import stokes_I_to_linear
+from dsa2000_cal.common.corr_translation import stokes_I_to_linear, flatten_coherencies, unflatten_coherencies
+from dsa2000_cal.common.ellipse_utils import ellipse_eval, Gaussian
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import VisibilityCoords
@@ -27,7 +29,7 @@ from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
 
 
-class PointModelData(NamedTuple):
+class GaussianModelData(NamedTuple):
     """
     Data for predict.
     """
@@ -35,10 +37,13 @@ class PointModelData(NamedTuple):
     times: FloatArray  # [num_time]
     image: FloatArray  # [num_time, chan, source,[2,2]] in [[xx, xy], [yx, yy]] format or stokes I
     lmn: FloatArray  # [source, 3]
+    major_axis: FloatArray  # [source]
+    minor_axis: FloatArray  # [source]
+    pos_angle: FloatArray  # [source]
 
 
 @dataclasses.dataclass(eq=False)
-class BasePointSourceModel(AbstractSourceModel[PointModelData]):
+class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
     """
     Predict vis for point source.
     """
@@ -46,7 +51,11 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
     ra: FloatArray  # [num_sources] ra coordinate of the source
     dec: FloatArray  # [num_sources] dec coordinate of the source
     A: FloatArray  # [num_model_freqs,num_sources,[,2,2]] Flux amplitude of the source
+    major_axis: FloatArray  # [num_sources] Major axis of the source in proj.radians
+    minor_axis: FloatArray  # [num_sources] Minor axis of the source in proj.radians
+    pos_angle: FloatArray  # [num_sources] Position angle of the source in proj.radians
 
+    order_approx: int = 0
     convention: str = 'physical'
     skip_post_init: bool = False
 
@@ -60,7 +69,15 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
         if len(np.shape(self.ra)) != 1:
             raise ValueError("ra must be 1D")
         if np.shape(self.dec) != np.shape(self.ra):
-            raise ValueError("ra and dec must have the same shape")
+            raise ValueError(f"ra and dec must have the same shape, got {np.shape(self.ra)} and {np.shape(self.dec)}")
+        if np.shape(self.major_axis) != np.shape(self.ra):
+            raise ValueError(
+                f"major_axis {np.shape(self.major_axis)} must have the same shape as ra {np.shape(self.ra)}")
+        if np.shape(self.minor_axis) != np.shape(self.ra):
+            raise ValueError(
+                "minor_axis must {np.shape(self.minor_axis)} have the same shape as ra {np.shape(self.ra)}")
+        if np.shape(self.pos_angle) != np.shape(self.ra):
+            raise ValueError("pos_angle must {np.shape(self.pos_angle)} have the same shape as ra {np.shape(self.ra)}")
         if np.shape(self.A)[:2] != (len(self.model_freqs), len(self.ra)):
             raise ValueError(
                 f"A must have shape [{np.shape(self.model_freqs)[0]}, {np.shape(self.ra)[0]}[,2,2]], got {np.shape(self.A)}")
@@ -68,7 +85,8 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
     def is_full_stokes(self) -> bool:
         return len(np.shape(self.A)) == 4 and np.shape(self.A)[-2:] == (2, 2)
 
-    def get_model_data(self, freqs: FloatArray, times: FloatArray, geodesic_model: BaseGeodesicModel) -> PointModelData:
+    def get_model_data(self, freqs: FloatArray, times: FloatArray,
+                       geodesic_model: BaseGeodesicModel) -> GaussianModelData:
         mean_time = jnp.mean(times)
         lmn, elevation = geodesic_model.compute_far_field_lmn(self.ra, self.dec, mean_time, return_elevation=True)
         interp = InterpolatedArray(x=self.model_freqs, values=self.A, axis=0)
@@ -82,27 +100,19 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
         # Add a time dimension
         image = image[None]  # [1, num_freqs, num_sources[, 2, 2]]
 
-        return PointModelData(
+        return GaussianModelData(
             freqs=mp_policy.cast_to_freq(freqs),
             times=mp_policy.cast_to_time(mean_time[None]),
             image=mp_policy.cast_to_image(image),
-            lmn=mp_policy.cast_to_angle(lmn)
+            lmn=mp_policy.cast_to_angle(lmn),
+            major_axis=mp_policy.cast_to_angle(self.major_axis),
+            minor_axis=mp_policy.cast_to_angle(self.minor_axis),
+            pos_angle=mp_policy.cast_to_angle(self.pos_angle)
         )
-
-    # def get_flux_weighted_center_lmn(self, model_data: PointModelData):
-    #     # Get flux weighted lmn
-    #     A_sum = jnp.sum(model_data.image)  # []
-    #     l_avg = jnp.sum(model_data.lmn[None, None, :, 0, None, None] * model_data.image) / jnp.sum(A_sum)  # [num_source]
-    #     m_avg = jnp.sum(model_data.lmn[None, None, :, 1, None, None] * model_data.image,
-    #                     axis=(0, 1, 3, 4)) / jnp.sum(A_sum)  # [num_source]
-    #     n_avg = jnp.sum(model_data.lmn[None, None, :, 2, None, None] * model_data.image,
-    #                     axis=(0, 1, 3, 4)) / jnp.sum(A_sum)  # [num_source]
-    #     lmn_avg = jnp.stack([l_avg, m_avg, n_avg], axis=-1)  # [num_source, 3]
-    #     lmn_avg = lmn_avg / jnp.linalg.norm(lmn_avg, axis=-1, keepdims=True)  # [num_source, 3]
 
     def predict(
             self,
-            model_data: PointModelData,
+            model_data: GaussianModelData,
             visibility_coords: VisibilityCoords,
             gain_model: GainModel | None,
             near_field_delay_engine: BaseNearFieldDelayEngine,
@@ -113,7 +123,6 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
         # image: jax.Array  # [num_time/1, chan, source[,2,2]] in [[xx, xy], [yx, yy]] format or stokes I
         # lmn: jax.Array  # [source, 3]
         if gain_model is not None:
-            # normalise again
             lmn_geodesic = geodesic_model.compute_far_field_geodesic(
                 times=model_data.times,
                 lmn_sources=model_data.lmn
@@ -175,12 +184,13 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
         # image: [source, chan, 2, 2]
         @partial(
             multi_vmap,
-            in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],{image_mapping}",
+            in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],{image_mapping},[s],[s],[s]",
             out_mapping=out_mapping,
             scan_dims={'s'},
             verbose=True
         )
-        def compute_visibilities_point_sources(lmn, uvw, g1, g2, freq, image):
+        def compute_visibilities_point_sources(lmn, uvw, g1, g2, freq, image,
+                                               major_axis, minor_axis, pos_angle):
             """
             Compute visibilities for a single row, channel, accumulating over sources.
 
@@ -191,18 +201,22 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
                 g2: [source, 2, 2] or None
                 freq: []
                 image: [source, 2, 2]
+                major_axis: [source]
+                minor_axis: [source]
+                pos_angle: [source]
 
             Returns:
                 vis_accumulation: [2, 2] visibility for given baseline, accumulated over all provided directions.
             """
 
             def body_fn(accumulate, x):
-                (lmn, g1, g2, image) = x
-                delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image)  # [] or [2, 2]
+                (lmn, g1, g2, image, major_axis, minor_axis, pos_angle) = x
+                delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image, major_axis, minor_axis,
+                                                       pos_angle)  # [] or [2, 2]
                 accumulate += mp_policy.cast_to_vis(delta)
                 return accumulate, ()
 
-            xs = (lmn, g1, g2, image)
+            xs = (lmn, g1, g2, image, major_axis, minor_axis, pos_angle)
             init_accumulate = jnp.zeros((2, 2) if self.is_full_stokes() else (), dtype=mp_policy.vis_dtype)
             vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=4)
             return vis_accumulation  # [] or [2, 2]
@@ -213,11 +227,14 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
             g1,
             g2,
             model_data.freqs,
-            image
+            image,
+            model_data.major_axis,
+            model_data.minor_axis,
+            model_data.pos_angle
         )  # [row, chan[, 2, 2]]
         return visibilities
 
-    def _single_compute_visibilty(self, lmn, uvw, g1, g2, freq, image):
+    def _single_compute_visibilty(self, lmn, uvw, g1, g2, freq, image, major_axis, minor_axis, pos_angle):
         """
         Compute the visibility from a single direction for a single baseline.
 
@@ -228,6 +245,9 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
             g2: [2, 2]
             freq: []
             image: [] or [2, 2]
+            major_axis: []
+            minor_axis: []
+            pos_angle: []
 
         Returns:
             [2, 2] visibility in given direction for given baseline.
@@ -243,20 +263,84 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
 
         l, m, n = lmn  # scalar
 
-        # -2*pi*freq/c*(l*u + m*v + (n-1)*w)
-        delay = l * u + m * v + (n - 1.) * w  # scalar
-
-        phi = (-2 * np.pi) * delay  # scalar
-        fringe = jax.lax.complex(jnp.cos(phi), jnp.sin(phi)) / n  # scalar
-
         if self.is_full_stokes():
-            if g1 is None or g1 is None:
-                return mp_policy.cast_to_vis(fringe * image)  # [2, 2]
-            return mp_policy.cast_to_vis(fringe * kron_product(g1, image, g2.conj().T))
+            if g1 is not None and g1 is not None:
+                image = kron_product(g1, image, g2.conj().T)
+
+            vis = jax.vmap(
+                lambda A: self._single_predict(
+                    u, v, w,
+                    A=A,
+                    l0=l,
+                    m0=m,
+                    n0=n,
+                    major=major_axis,
+                    minor=minor_axis,
+                    theta=pos_angle
+                )
+            )(flatten_coherencies(image))  # [4]
+            vis = unflatten_coherencies(vis)  # [2,2]
         else:
-            if g1 is None or g1 is None:
-                return mp_policy.cast_to_vis(fringe * image)
-            return mp_policy.cast_to_vis(fringe * (g1 * g2.conj() * image))
+            if g1 is not None and g2 is not None:
+                image = g1 * image * g2.conj()
+            vis = self._single_predict(
+                u, v, w,
+                A=image,
+                l0=l,
+                m0=m,
+                n0=n,
+                major=major_axis,
+                minor=minor_axis,
+                theta=pos_angle
+            )  # []
+        return vis
+
+    def _single_predict(self, u, v, w,
+                        A,
+                        l0, m0, n0, major, minor, theta):
+
+        def F_gaussian(u, v):
+            gaussian = Gaussian(
+                x0=jnp.asarray([l0, m0]),
+                major_fwhm=major,
+                minor_fwhm=minor,
+                pos_angle=theta,
+                total_flux=A
+            )
+            return mp_policy.cast_to_vis(gaussian.fourier(jnp.asarray([u, v])))
+
+        def wkernel(l, m):
+            n = jnp.sqrt(1. - l ** 2 - m ** 2)
+            phase = -2j * jnp.pi * w * (n - 1.)
+            return mp_policy.cast_to_vis(jnp.exp(phase) / n)
+
+        if self.order_approx == 0:
+            vis = F_gaussian(u, v) * wkernel(l0, m0)
+        elif self.order_approx == 1:
+
+            # Let I(l,m) * W(l,m) ~= I(l,m) * (W(l0, m0) + W_l * (l - l0) + W_m * (m - m0))
+            # Where W_l = d/dl W(l0,m0), W_m = d/dm W(l0,m0)
+            # F[I(l,m) * W(l,m)] ~= F[I(l,m) * W(l0,m0) + I(l,m) * W_l * (l - l0) + I(l,m) * W_m * (m - m0)]
+            #  = (W0 - l0 * W_l - m0 * W_m) * F[I(l,m)] + (d/du * F[I(l,m)] * (W_l) + d/dv * F[I(l,m)] * (W_m)) / (-2 pi i)
+
+            # maybe divide by 2pi
+            wkernel_grad = jax.value_and_grad(wkernel, (0, 1), holomorphic=True)
+
+            W0, (Wl, Wm) = wkernel_grad(jnp.asarray(l0, mp_policy.vis_dtype), jnp.asarray(m0, mp_policy.vis_dtype))
+
+            F_jvp = JVPLinearOp(F_gaussian, promote_dtypes=True)
+            vec = (
+                jnp.asarray(Wl, mp_policy.vis_dtype), jnp.asarray(Wm, mp_policy.vis_dtype)
+            )
+            # promote_dtypes=True so we don't need to cast the primals here. Otherwise:
+            # primals = (u.astype(vec[0].dtypegrad), v.astype(vec[1].dtype))
+            primals = (u, v)
+            F_jvp = F_jvp(*primals)
+
+            vis = F_gaussian(u, v) * (W0 - l0 * Wl - m0 * Wm) + F_jvp.matvec(*vec) / (-2j * jnp.pi)
+        else:
+            raise ValueError("order_approx must be 0 or 1")
+        return mp_policy.cast_to_vis(vis)
 
     def plot(self, save_file: str = None, phase_tracking: ac.ICRS | None = None):
         """
@@ -278,6 +362,7 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
 
         lvec = np.linspace(np.min(l) - 0.01, np.max(l) + 0.01, 256)
         mvec = np.linspace(np.min(m) - 0.01, np.max(m) + 0.01, 256)
+        L, M = np.meshgrid(lvec, mvec, indexing='ij')
 
         # Evaluate over LM
         flux_model = np.zeros((lvec.size, mvec.size))
@@ -285,14 +370,34 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
         dl = lvec[1] - lvec[0]
         dm = mvec[1] - mvec[0]
 
-        for i, (li, mi) in enumerate(zip(l, m)):
-            l_idx = int((li - lvec[0]) / dl)
-            m_idx = int((mi - mvec[0]) / dm)
-            if l_idx >= 0 and l_idx < lvec.size and m_idx >= 0 and m_idx < mvec.size:
-                if self.is_full_stokes():
-                    flux_model[l_idx, m_idx] += self.A[0, i, 0, 0]
-                else:
-                    flux_model[l_idx, m_idx] += self.A[0, i]
+        @jax.jit
+        def compute_gaussian_flux(A, l0, m0, major, minor, theta):
+            return jax.vmap(
+                lambda l, m: ellipse_eval(A, major, minor, theta, l, m, l0, m0)
+            )(jnp.asarray(L).flatten(), jnp.asarray(M).flatten()).reshape(L.shape)
+
+        for i, (li, mi, majori, minori, pos_anglei) in enumerate(
+                zip(l, m, self.major_axis, self.minor_axis, self.pos_angle)):
+            if self.is_full_stokes():
+                args = (
+                    self.A[:, i, 0, 0],
+                    li,
+                    mi,
+                    majori,
+                    minori,
+                    pos_anglei
+                )
+            else:
+                args = (
+                    self.A[:, i],
+                    li,
+                    mi,
+                    majori,
+                    minori,
+                    pos_anglei
+                )
+
+            flux_model += compute_gaussian_flux(*args)
 
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
@@ -306,12 +411,16 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
         plt.show()
 
 
-def build_point_source_model(
+def build_gaussian_source_model(
         model_freqs: au.Quantity,  # [num_model_freq] Frequencies
         ra: au.Quantity,  # [num_sources] l coordinate of the source
         dec: au.Quantity,  # [num_sources] m coordinate of the source
         A: au.Quantity,  # [num_sources, num_freqs[,2,2]] Flux amplitude of the source
-) -> BasePointSourceModel:
+        major_axis: au.Quantity,  # [num_sources] Major axis of the source in proj.radians
+        minor_axis: au.Quantity,  # [num_sources] Minor axis of the source in proj.radians
+        pos_angle: au.Quantity,  # [num_sources] Position angle of the source in proj.radians
+        order_approx: int = 0
+) -> BaseGaussianSourceModel:
     """
     Build a point source model.
 
@@ -320,19 +429,29 @@ def build_point_source_model(
         ra: [num_sources] l coordinate of the source
         dec: [num_sources] m coordinate of the source
         A: [num_model_freqs, num_sources,[,2,2]] Flux amplitude of the source
+        major_axis: [num_sources] Major axis of the source in proj.radians
+        minor_axis: [num_sources] Minor axis of the source in proj.radians
+        pos_angle: [num_sources] Position angle of the source in proj.radians
 
     Returns:
-        the PointSourceModel
+        the GaussianSourceModel
     """
     A = quantity_to_jnp(A, 'Jy')
     model_freqs = quantity_to_jnp(model_freqs, 'Hz')
     ra = quantity_to_jnp(ra, 'rad')
     dec = quantity_to_jnp(dec, 'rad')
-    return BasePointSourceModel(
+    major_axis = quantity_to_jnp(major_axis, 'rad')
+    minor_axis = quantity_to_jnp(minor_axis, 'rad')
+    pos_angle = quantity_to_jnp(pos_angle, 'rad')
+    return BaseGaussianSourceModel(
         model_freqs=model_freqs,
         ra=ra,
         dec=dec,
-        A=A
+        A=A,
+        major_axis=major_axis,
+        minor_axis=minor_axis,
+        pos_angle=pos_angle,
+        order_approx=order_approx
     )
 
 
@@ -340,7 +459,7 @@ def build_point_source_model_from_wsclean_components(
         wsclean_clean_component_file: str,
         model_freqs: au.Quantity,
         full_stokes: bool = True
-) -> BasePointSourceModel:
+) -> BaseGaussianSourceModel:
     """
     Create a GaussianSourceModel from a wsclean model file.
 
@@ -350,7 +469,7 @@ def build_point_source_model_from_wsclean_components(
         full_stokes: whether the model is full stokes
 
     Returns:
-        the PointSourceModel
+        the GaussianSourceModel
     """
     # Format = Name, Type, Ra, Dec, I, SpectralIndex, LogarithmicSI, ReferenceFrequency='125584411.621094', MajorAxis, MinorAxis, Orientation
     # Example: s0c0,POINT,08:28:05.152,39.35.08.511,0.000748810650400475,[-0.00695379313004673,-0.0849693907803257],false,125584411.621094,,,
@@ -360,6 +479,9 @@ def build_point_source_model_from_wsclean_components(
 
     source_directions = []
     spectrum = []
+    major_axis = []
+    minor_axis = []
+    pos_angle = []
     with open(wsclean_clean_component_file, 'r') as fp:
         for line in fp:
             line = line.strip()
@@ -372,10 +494,15 @@ def build_point_source_model_from_wsclean_components(
             parsed_results = parse_and_process_wsclean_source_line(line, model_freqs)
             if parsed_results is None:
                 continue
-            if parsed_results.type_ != 'POINT':
+            if parsed_results.type_ != 'GAUSSIAN':
                 continue
+            if parsed_results.major is None or parsed_results.minor is None or parsed_results.theta is None:
+                raise ValueError("Major, minor, and theta must be provided for Gaussian sources")
             source_directions.append(parsed_results.direction)
             spectrum.append(parsed_results.spectrum)
+            major_axis.append(parsed_results.major)
+            minor_axis.append(parsed_results.minor)
+            pos_angle.append(parsed_results.theta)
 
     source_directions = ac.concatenate(source_directions).transform_to(ac.ICRS)
 
@@ -383,14 +510,21 @@ def build_point_source_model_from_wsclean_components(
     dec = source_directions.dec
     A = np.stack(spectrum, axis=1) * au.Jy  # [num_freqs, num_sources]
 
+    major_axis = au.Quantity(major_axis)
+    minor_axis = au.Quantity(minor_axis)
+    pos_angle = au.Quantity(pos_angle)
+
     if full_stokes:
         A = np.asarray(stokes_I_image_to_linear(quantity_to_jnp(A, 'Jy'), flat_output=False)) * au.Jy
 
-    return build_point_source_model(
+    return build_gaussian_source_model(
         model_freqs=model_freqs,
         ra=ra,
         dec=dec,
-        A=A
+        A=A,
+        major_axis=major_axis,
+        minor_axis=minor_axis,
+        pos_angle=pos_angle
     )
 
 
