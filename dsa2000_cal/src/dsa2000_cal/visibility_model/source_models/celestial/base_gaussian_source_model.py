@@ -26,16 +26,14 @@ from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldD
 from dsa2000_cal.delay_models.uvw_utils import perley_lmn_from_icrs
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
+from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel, ModelDataType
 
 
 class GaussianModelData(NamedTuple):
     """
     Data for predict.
     """
-    freqs: FloatArray  # [chan]
-    times: FloatArray  # [num_time]
-    image: FloatArray  # [num_time, chan, source,[2,2]] in [[xx, xy], [yx, yy]] format or stokes I
+    image: FloatArray  # [source,[2,2]] in [[xx, xy], [yx, yy]] format or stokes I
     lmn: FloatArray  # [source, 3]
     major_axis: FloatArray  # [source]
     minor_axis: FloatArray  # [source]
@@ -85,24 +83,19 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
     def is_full_stokes(self) -> bool:
         return len(np.shape(self.A)) == 4 and np.shape(self.A)[-2:] == (2, 2)
 
-    def get_model_data(self, freqs: FloatArray, times: FloatArray,
-                       geodesic_model: BaseGeodesicModel) -> GaussianModelData:
-        mean_time = jnp.mean(times)
-        lmn, elevation = geodesic_model.compute_far_field_lmn(self.ra, self.dec, mean_time, return_elevation=True)
+    def get_model_slice(self, freq: FloatArray, time: FloatArray, geodesic_model: BaseGeodesicModel) -> GaussianModelData:
+        lmn, elevation = geodesic_model.compute_far_field_lmn(self.ra, self.dec, time, return_elevation=True)
         interp = InterpolatedArray(x=self.model_freqs, values=self.A, axis=0)
-        image = interp(freqs)  # [num_freqs, num_sources[, 2, 2]]
+        image = interp(freq)  # [num_sources[, 2, 2]]
         elevation_mask = elevation <= 0  # [num_sources]
         if self.is_full_stokes():
-            image = jnp.where(elevation_mask[None, :, None, None], jnp.zeros_like(image),
-                              image)  # [num_freqs, num_sources, 2, 2]
+            image = jnp.where(elevation_mask[:, None, None], jnp.zeros_like(image), image)  # [num_sources, 2, 2]
         else:
-            image = jnp.where(elevation_mask[None, :], jnp.zeros_like(image), image)  # [num_freqs, num_sources]
+            image = jnp.where(elevation_mask, jnp.zeros_like(image), image)  # [num_sources]
         # Add a time dimension
-        image = image[None]  # [1, num_freqs, num_sources[, 2, 2]]
+        image = image  # [num_sources[, 2, 2]]
 
         return GaussianModelData(
-            freqs=mp_policy.cast_to_freq(freqs),
-            times=mp_policy.cast_to_time(mean_time[None]),
             image=mp_policy.cast_to_image(image),
             lmn=mp_policy.cast_to_angle(lmn),
             major_axis=mp_policy.cast_to_angle(self.major_axis),
@@ -112,126 +105,124 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
 
     def predict(
             self,
-            model_data: GaussianModelData,
             visibility_coords: VisibilityCoords,
             gain_model: GainModel | None,
             near_field_delay_engine: BaseNearFieldDelayEngine,
             far_field_delay_engine: BaseFarFieldDelayEngine,
             geodesic_model: BaseGeodesicModel
     ) -> ComplexArray:
-        # freqs: jax.Array  # [chan]
-        # image: jax.Array  # [num_time/1, chan, source[,2,2]] in [[xx, xy], [yx, yy]] format or stokes I
-        # lmn: jax.Array  # [source, 3]
-        if gain_model is not None:
-            lmn_geodesic = geodesic_model.compute_far_field_geodesic(
-                times=model_data.times,
-                lmn_sources=model_data.lmn
-            )  # [num_time, num_ant, num_sources, 3]
-            # Compute the gains
-            gains = gain_model.compute_gain(
-                freqs=model_data.freqs,
-                times=model_data.times,
-                lmn_geodesic=lmn_geodesic,
-            )  # [num_time, num_ant, num_freq, num_sources,[, 2, 2]]
-        else:
-            gains = None
-
-        _t = visibility_coords.time_idx
-        _a1 = visibility_coords.antenna_1
-        _a2 = visibility_coords.antenna_2
-
-        is_gains = gains is not None
-        tile_times = np.shape(model_data.image)[0] == 1
-        if tile_times:
-            image = model_data.image[0]
-            if self.is_full_stokes():
-                image_mapping = "[c,s,2,2]"
-            else:
-                image_mapping = "[c,s]"
-        else:
-            image = model_data.image[_t]
-            if self.is_full_stokes():
-                image_mapping = "[r,c,s,2,2]"
-            else:
-                image_mapping = "[r,c,s]"
-
-        if is_gains:
-            if self.is_full_stokes():
-                g1 = gains[_t, _a1, :, :, :, :]
-                g2 = gains[_t, _a1, :, :, :, :]
-                g_mapping = "[r,c,s,2,2]"
-            else:
-                g1 = gains[_t, _a1, :, :]
-                g2 = gains[_t, _a1, :, :]
-                g_mapping = "[r,c,s]"
-        else:
-            g1 = None
-            g2 = None
-            g_mapping = "[]"
+        _a1 = visibility_coords.antenna_1  # [B]
+        _a2 = visibility_coords.antenna_2  # [B]
 
         if self.is_full_stokes():
-            out_mapping = "[r,c,~p,~q]"
+            out_mapping = "[T,~B,C,~P,~Q]"
         else:
-            out_mapping = "[r,c]"
+            out_mapping = "[T,~B,C]"
+
+        _a1 = visibility_coords.antenna_1
+        _a2 = visibility_coords.antenna_2
 
         # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
         # We want the outer broadcast to be over chan, so we'll do this order.
 
-        # lmn: [source, 3]
-        # uvw: [rows, 3]
-        # g1, g2: g_mapping
-        # freq: [chan]
-        # image: [source, chan, 2, 2]
         @partial(
             multi_vmap,
-            in_mapping=f"[s,3],[r,3],{g_mapping},{g_mapping},[c],{image_mapping},[s],[s],[s]",
+            in_mapping=f"[T,B,3],[C],[T]",
             out_mapping=out_mapping,
-            scan_dims={'s'},
             verbose=True
         )
-        def compute_visibilities_point_sources(lmn, uvw, g1, g2, freq, image,
-                                               major_axis, minor_axis, pos_angle):
+        def compute_baseline_visibilities_gaussian(uvw, freq, time):
             """
             Compute visibilities for a single row, channel, accumulating over sources.
 
             Args:
-                lmn: [source, 3]
-                uvw: [3]
-                g1: [source, 2, 2] or None
-                g2: [source, 2, 2] or None
+                uvw: [B, 3]
                 freq: []
-                image: [source, 2, 2]
-                major_axis: [source]
-                minor_axis: [source]
-                pos_angle: [source]
+                time: []
 
             Returns:
-                vis_accumulation: [2, 2] visibility for given baseline, accumulated over all provided directions.
+                vis_accumulation: [B, 2, 2] visibility for given baseline, accumulated over all provided directions.
             """
 
-            def body_fn(accumulate, x):
-                (lmn, g1, g2, image, major_axis, minor_axis, pos_angle) = x
-                delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image, major_axis, minor_axis,
-                                                       pos_angle)  # [] or [2, 2]
-                accumulate += mp_policy.cast_to_vis(delta)
-                return accumulate, ()
+            model_data = self.get_model_slice(
+                freq=freq,
+                time=time,
+                geodesic_model=geodesic_model
+            )  # [num_sources, 2, 2]
 
-            xs = (lmn, g1, g2, image, major_axis, minor_axis, pos_angle)
-            init_accumulate = jnp.zeros((2, 2) if self.is_full_stokes() else (), dtype=mp_policy.vis_dtype)
-            vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=4)
-            return vis_accumulation  # [] or [2, 2]
+            if gain_model is not None:
+                lmn_phased = geodesic_model.compute_far_field_lmn(self.ra, self.dec)  # [num_sources, 3]
+                lmn_geodesic = geodesic_model.compute_far_field_geodesic(
+                    times=time[None],
+                    lmn_sources=lmn_phased
+                )  # [1, num_ant, num_sources, 3]
+                # Compute the gains
+                gains = gain_model.compute_gain(
+                    freqs=freq[None],
+                    times=time[None],
+                    lmn_geodesic=lmn_geodesic,
+                )  # [1, num_ant, 1, num_sources,[, 2, 2]]
+                g1 = gains[0, visibility_coords.antenna_1, 0, :, ...]  # [B, num_sources[, 2, 2]]
+                g2 = gains[0, visibility_coords.antenna_2, 0, :, ...]  # [B, num_sources[, 2, 2]]
+            else:
+                g1 = g2 = None
 
-        visibilities = compute_visibilities_point_sources(
-            model_data.lmn,
+            if self.is_full_stokes():
+                image_mapping = "[S,2,2]"
+                gain_mapping = "[B,S,2,2]"
+                out_mapping = "[B,~P,~Q]"
+            else:
+                image_mapping = "[S]"
+                gain_mapping = "[B,S]"
+                out_mapping = "[B]"
+
+            @partial(
+                multi_vmap,
+                in_mapping=f"[S,3],[B,3],{gain_mapping},{gain_mapping},{image_mapping},[S],[S],[S]",
+                out_mapping=out_mapping,
+                scan_dims={'S'},
+                verbose=True
+            )
+            def compute_visibilities_gaussian_over_sources(lmn, uvw, g1, g2, image,
+                                                           major_axis, minor_axis, pos_angle):
+                """
+                Compute visibilities for a single direction, accumulating over sources.
+
+                Args:
+                    lmn: [3]
+                    uvw: [3]
+                    g1: [S[, 2, 2]]
+                    g2: [S[, 2, 2]]
+                    image: [S[, 2, 2]]
+                    major_axis: [S]
+                    minor_axis: [S]
+                    pos_angle: [S]
+
+                Returns:
+                    vis_accumulation: [B[, 2, 2]] visibility for given baseline, accumulated over all provided directions.
+                """
+
+                def body_fn(accumulate, x):
+                    (lmn, g1, g2, image, major_axis, minor_axis, pos_angle) = x
+                    delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image,
+                                                           major_axis, minor_axis, pos_angle)  # [] or [2, 2]
+                    accumulate += mp_policy.cast_to_vis(delta)
+                    return accumulate, ()
+
+                xs = (lmn, g1, g2, image, major_axis, minor_axis, pos_angle)
+                init_accumulate = jnp.zeros((2, 2) if self.is_full_stokes() else (), dtype=mp_policy.vis_dtype)
+                vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=4)
+                return vis_accumulation  # [] or [2, 2]
+
+            return compute_visibilities_gaussian_over_sources(model_data.lmn, uvw, g1, g2, model_data.image,
+                                                              model_data.major_axis, model_data.minor_axis,
+                                                              model_data.pos_angle)
+
+        visibilities = compute_baseline_visibilities_gaussian(
             visibility_coords.uvw,
-            g1,
-            g2,
-            model_data.freqs,
-            image,
-            model_data.major_axis,
-            model_data.minor_axis,
-            model_data.pos_angle
-        )  # [row, chan[, 2, 2]]
+            visibility_coords.freqs,
+            visibility_coords.times
+        )  # [num_times, num_baselines, num_freqs[,2, 2]]
         return visibilities
 
     def _single_compute_visibilty(self, lmn, uvw, g1, g2, freq, image, major_axis, minor_axis, pos_angle):
