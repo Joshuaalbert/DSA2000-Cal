@@ -9,7 +9,8 @@ from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx
-from dsa2000_cal.common.quantity_utils import time_to_jnp
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
@@ -87,22 +88,27 @@ def test_compute_uvw(with_autocorr):
         verbose=True
     )
     visibilitiy_coords = engine.compute_visibility_coords(
+        freqs=jnp.asarray([1.]),
         times=time_to_jnp(times, times[0]),
         with_autocorr=with_autocorr,
         convention='physical'
     )
-    uvw = visibilitiy_coords.uvw[None, :, :] * au.m
+    assert visibilitiy_coords.uvw.dtype == mp_policy.length_dtype
+    assert visibilitiy_coords.freqs.dtype == mp_policy.freq_dtype
+    assert visibilitiy_coords.times.dtype == mp_policy.time_dtype
+
+    uvw = visibilitiy_coords.uvw * au.m # [T, B, 3]
 
     uvw_other = earth_location_to_uvw_approx(
         antennas=antennas[None, :],
         obs_time=times[:, None],
         phase_tracking=phase_centre
-    )
+    ) # [T, A, 3]
     if with_autocorr:
         antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations_with_replacement(range(len(antennas)), 2))).T
     else:
         antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
-    uvw_other = uvw_other[:, antenna_2, :] - uvw_other[:, antenna_1, :]
+    uvw_other = uvw_other[:, antenna_2, :] - uvw_other[:, antenna_1, :] # [T, B, 3]
 
     if with_autocorr:
         np.testing.assert_allclose(uvw_other[0, 1, 0], 10 * au.km, atol=1 * au.m)
@@ -110,8 +116,8 @@ def test_compute_uvw(with_autocorr):
         np.testing.assert_allclose(uvw_other[0, 0, 0], 10 * au.km, atol=1 * au.m)
     np.testing.assert_allclose(uvw, uvw_other, atol=0.9 * au.m)
 
-    print(engine.compute_uvw_jax(time_to_jnp(times, times[0]), jnp.asarray([0]), jnp.asarray([1]),
-                                 convention='physical'))
+    print(engine.compute_uvw(time_to_jnp(times, times[0]), jnp.asarray([0]), jnp.asarray([1]),
+                             convention='physical'))
 
 
 @pytest.mark.parametrize('baseline', [10 * au.km, 100 * au.km, 1000 * au.km])
@@ -126,6 +132,7 @@ def test_resolution_error(baseline: au.Quantity):
     end_time = start_time + (300 * au.s)
 
     times = start_time + np.arange(0, 300, 1) * au.s
+    freqs = quantity_to_jnp(np.linspace(700, 2000, 4) * au.MHz)
 
     # Let us see the error in delay for the approximation tau(l,m) = u*l + v*m + w*sqrt(1 - l^2 - m^2)
     array_location = ac.EarthLocation.of_site('vla')
@@ -151,9 +158,10 @@ def test_resolution_error(baseline: au.Quantity):
     )
     vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
         times=time_to_jnp(times, times[0]),
+        freqs=freqs,
         with_autocorr=False
     )
-    uvw0 = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
+    uvw0 = np.asarray(vis_coords.uvw) * au.m # [T, B, 3]
 
     engine = build_far_field_delay_engine(
         antennas=antennas,
@@ -165,9 +173,10 @@ def test_resolution_error(baseline: au.Quantity):
     )
     vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
         times=time_to_jnp(times, times[0]),
+        freqs=freqs,
         with_autocorr=False
     )
-    uvw = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
+    uvw = np.asarray(vis_coords.uvw) * au.m
 
     error = jnp.linalg.norm(uvw[:, 0, :] - uvw0[:, 0, :], axis=-1)
 
@@ -189,9 +198,10 @@ def test_resolution_error(baseline: au.Quantity):
         )
         vis_coords = jax.jit(engine.compute_visibility_coords, static_argnames=['with_autocorr'])(
             times=time_to_jnp(times, times[0]),
+            freqs=freqs,
             with_autocorr=False
         )
-        uvw = vis_coords.uvw.reshape((len(times), -1, 3)) * au.m
+        uvw = np.asarray(vis_coords) * au.m
         axs[0, 0].plot(times.jd, uvw[:, 0, 0], label=f'{resolution}')
         axs[1, 0].plot(times.jd, jnp.linalg.norm(uvw[:, 0, :] - uvw0[:, 0, :], axis=-1), label=f'{resolution}')
     axs[0, 0].set_ylabel('u (m)')

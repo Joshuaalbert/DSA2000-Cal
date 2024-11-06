@@ -3,18 +3,18 @@ import itertools
 import time as time_mod
 import warnings
 from functools import partial
-from typing import Tuple
 
 import jax
 import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
-from jax import config, numpy as jnp, lax
+from jax import config, numpy as jnp
 
+from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import FloatArray, VisibilityCoords
+from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 
@@ -113,7 +113,7 @@ class BaseFarFieldDelayEngine:
         # I *think* it is because we've flipped direction of photon by using K_bcrs for photon travel.
         # Then essentially, we're computing the delay for the signal to travel from 2 to 1, but there should be an error
         # from using t1 for reference point.
-        return -delta_t
+        return mp_policy.cast_to_length(-delta_t)
 
     def _single_compute_uvw(self, t1: jax.Array, i1: jax.Array, i2: jax.Array) -> jax.Array:
         """
@@ -134,8 +134,8 @@ class BaseFarFieldDelayEngine:
         w, (u, v) = jax.value_and_grad(self.compute_delay_from_lm_jax, argnums=(0, 1))(l, m, t1, i1, i2)
         return jnp.stack([u, v, w], axis=-1)  # [3]
 
-    def compute_uvw_jax(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array,
-                        convention: str = 'physical') -> jax.Array:
+    def compute_uvw(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array,
+                    convention: str = 'physical') -> jax.Array:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model.
 
@@ -154,18 +154,19 @@ class BaseFarFieldDelayEngine:
         else:
             raise ValueError(f"Unknown convention {convention}")
 
-    def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True,
+    def compute_visibility_coords(self, freqs: FloatArray, times: FloatArray, with_autocorr: bool = True,
                                   convention: str = 'physical') -> VisibilityCoords:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model in batched mode.
 
         Args:
+            freqs: [F] Frequency of the visibilities.
             times: [T] Time of observation, in tt scale in seconds, relative to the first time.
             with_autocorr: bool, whether to include autocorrelations.
             convention: str, the convention to use for the UVW coordinates.
 
         Returns:
-            visibility_coords: [T*B] stacked time-wise
+            visibility_coords: the visibility coordinates.
         """
         if with_autocorr:
             antenna_1, antenna_2 = jnp.asarray(
@@ -180,23 +181,23 @@ class BaseFarFieldDelayEngine:
         else:
             raise ValueError(f"Unknown convention {convention}")
 
-        @partial(multi_vmap, in_mapping="[T],[T],[B],[B]", out_mapping="[T,B,...],[T,B],[T,B],[T,B],[T,B]",
-                 verbose=True)
-        def _compute_visibility_coords(time_idx: jax.Array, t1: jax.Array, i1: jax.Array, i2: jax.Array
-                                       ) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
-            return self._single_compute_uvw(t1, i1, i2), time_idx, t1, i1, i2
+        times = mp_policy.cast_to_time(times)
+        antenna_1 = mp_policy.cast_to_index(antenna_1)
+        antenna_2 = mp_policy.cast_to_index(antenna_2)
 
-        num_baselines = len(antenna_2)
-        num_times = len(times)
-        num_rows = num_baselines * num_times
-        uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_visibility_coords(
-            jnp.arange(num_times), times, antenna_1, antenna_2)
+        @partial(multi_vmap, in_mapping="[T],[B],[B]", out_mapping="[T,B,...]",
+                 verbose=True)
+        def _compute_visibility_coords(t1: jax.Array, i1: jax.Array, i2: jax.Array
+                                       ):
+            return mp_policy.cast_to_length(self._single_compute_uvw(t1, i1, i2))
+
+        uvw = _compute_visibility_coords(times, antenna_1, antenna_2)
         return VisibilityCoords(
-            uvw=mp_policy.length_dtype(lax.reshape(uvw, (num_rows, 3))),
-            time_idx=mp_policy.cast_to_index(lax.reshape(time_idx, (num_rows,))),
-            time_obs=mp_policy.cast_to_time(lax.reshape(time_obs, (num_rows,))),
-            antenna_1=mp_policy.cast_to_index(lax.reshape(antenna_1, (num_rows,))),
-            antenna_2=mp_policy.cast_to_index(lax.reshape(antenna_2, (num_rows,)))
+            uvw=uvw,
+            times=times,
+            freqs=freqs,
+            antenna_1=antenna_1,
+            antenna_2=antenna_2
         )
 
 
