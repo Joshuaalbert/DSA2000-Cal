@@ -351,8 +351,7 @@ def vis_to_image(uvw: FloatArray, freqs: FloatArray, vis: ComplexArray, pixsize_
     Returns:
         [npix_l, npix_m] array of image.
     """
-    if nthreads is None:
-        nthreads = os.cpu_count()
+
     # Make scaled image, I'(l,m)=I(l,m)/n(l,m) such that PSF(l=0,m=0)=1
     image = vis2dirty(
         uvw=uvw,
@@ -419,8 +418,7 @@ def image_to_vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
-    if nthreads is None:
-        nthreads = os.cpu_count()
+
     # Divides I(l,m) by n(l,m) then applies gridding with w-term taken into account.
     # Pixels should be in Jy/pixel.
     return mp_policy.cast_to_vis(dirty2vis(

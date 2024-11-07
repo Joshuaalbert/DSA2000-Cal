@@ -25,6 +25,22 @@ def test_construct_threaded_pure_callback():
     cb_vmap = jax.vmap(jax.vmap(cb, in_axes=(None, 0, None)), in_axes=(0, None, None))
     assert cb_vmap(x, y, z).shape == (4, 5)
 
+    def add_kernel(x, y, z):
+        if z is None:
+            return x + y
+        return x + y + z
+
+    cb = construct_threaded_pure_callback(
+        add_kernel,
+        jax.ShapeDtypeStruct(shape=(), dtype=jnp.float32),
+        0, 0, 0
+    )
+
+    cb_vmap = jax.vmap(jax.vmap(cb, in_axes=(None, 0, None)), in_axes=(0, None, None))
+    cb_jit = jax.jit(cb_vmap)
+    assert cb_jit(x, y, z).shape == (4, 5)
+    assert cb_jit(x, y, None).shape == (4, 5)
+
 
 def test_build_batch_shape_determiner():
     x = np.ones((4, 5, 1))
