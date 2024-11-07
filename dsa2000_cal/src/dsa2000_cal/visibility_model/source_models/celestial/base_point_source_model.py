@@ -102,6 +102,7 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
             multi_vmap,
             in_mapping=f"[T,B,3],[C],[T]",
             out_mapping=out_mapping,
+            scan_dims={'C'},
             verbose=True
         )
         def compute_baseline_visibilities_point(uvw, freq, time):

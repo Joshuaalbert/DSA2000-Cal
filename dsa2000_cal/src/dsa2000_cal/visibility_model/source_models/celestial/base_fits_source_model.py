@@ -135,6 +135,7 @@ class BaseFITSSourceModel(AbstractSourceModel[FITSModelData]):
             multi_vmap,
             in_mapping=f"[T,B,3],[C],[T]",
             out_mapping=out_mapping,
+            scan_dims={'C'},
             verbose=True
         )
         def compute_baseline_visibilities_fits(uvw, freq, time):
@@ -189,7 +190,6 @@ class BaseFITSSourceModel(AbstractSourceModel[FITSModelData]):
                 multi_vmap,
                 in_mapping=f"[B,3],{gain_mapping},{gain_mapping},{image_mapping},[S],[S],[S]",
                 out_mapping=out_mapping,
-                scan_dims={'S'},
                 verbose=True
             )
             def compute_visibilities_fits_over_sources(uvw, g1, g2, image,

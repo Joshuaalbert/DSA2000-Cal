@@ -129,6 +129,7 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
             multi_vmap,
             in_mapping=f"[T,B,3],[C],[T]",
             out_mapping=out_mapping,
+            scan_dims={'C'},
             verbose=True
         )
         def compute_baseline_visibilities_gaussian(uvw, freq, time):
@@ -180,7 +181,6 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
                 multi_vmap,
                 in_mapping=f"[S,3],[B,3],{gain_mapping},{gain_mapping},{image_mapping},[S],[S],[S]",
                 out_mapping=out_mapping,
-                scan_dims={'S'},
                 verbose=True
             )
             def compute_visibilities_gaussian_over_sources(lmn, uvw, g1, g2, image,
