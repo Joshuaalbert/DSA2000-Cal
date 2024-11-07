@@ -15,7 +15,7 @@ import tables as tb
 from astropy import time as at
 from pydantic import Field
 
-from dsa2000_cal.adapter.utils import translate_corrs
+from dsa2000_cal.adapter.utils import broadcast_translate_corrs
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
@@ -61,13 +61,7 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     integration_time: au.Quantity = Field(
         description="Integration time."
     )
-    coherencies: List[
-        Literal[
-            'XX', 'XY', 'YX', 'YY',
-            'RR', 'RL', 'LR', 'LL',
-            'I', 'Q', 'U', 'V'
-        ]
-    ] = Field(
+    coherencies: Tuple[str, ...] = Field(
         description="Coherency type."
     )
 
@@ -645,7 +639,7 @@ class MeasurementSet:
 
     def create_block_generator(self, start_time_idx: int = 0, end_time_idx: int | None = None, vis: bool = True,
                                weights: bool = True, flags: bool = True, num_blocks: int = 1,
-                               corrs: List[str] | List[List[str]] | None = None) -> Generator[
+                               corrs: Tuple[str] | Tuple[Tuple[str]] | None = None) -> Generator[
         Tuple[at.Time, VisibilityCoords, VisibilityData], VisibilityData | None, None
     ]:
         """
@@ -675,21 +669,15 @@ class MeasurementSet:
         if corrs is None:
             corrs = self.meta.coherencies
 
-        @jax.jit
-        @jax.vmap
-        @jax.vmap
         def transform_corr_from_fn(coh: jax.Array) -> jax.Array:
-            return translate_corrs(
-                coh, from_corrs=self.meta.coherencies, to_corrs=corrs
-            )  # num_rows : num_chan : [num_coherencies] -> [num_coherencies]
+            return broadcast_translate_corrs(
+                coh.astype(jnp.promote_types(coh.dtype, jnp.float32)), from_corrs=self.meta.coherencies, to_corrs=corrs
+            )
 
-        @jax.jit
-        @jax.vmap
-        @jax.vmap
         def transform_corr_to_fn(coh: jax.Array) -> jax.Array:
-            return translate_corrs(
-                coh, from_corrs=corrs, to_corrs=self.meta.coherencies
-            )  # num_rows : num_chan : [num_coherencies] -> [num_coherencies]
+            return broadcast_translate_corrs(
+                coh.astype(jnp.promote_types(coh.dtype, jnp.float32)), from_corrs=corrs, to_corrs=self.meta.coherencies
+            )
 
         if num_blocks <= 0:
             raise ValueError(f"Number of blocks {num_blocks} must be positive.")
@@ -760,13 +748,19 @@ class MeasurementSet:
                     # For each we transform back to the original coherencies, and stack into rows.
                     if response.vis is not None:
                         f.root.vis[from_row:to_row] = np.asarray(
-                            reshape_from_blocks(transform_corr_to_fn(response.vis)))
+                            reshape_from_blocks(transform_corr_to_fn(response.vis)),
+                            np.float32
+                        )
                     if response.weights is not None:
                         f.root.weights[from_row:to_row] = np.asarray(
-                            reshape_from_blocks(transform_corr_to_fn(response.weights)))
+                            reshape_from_blocks(transform_corr_to_fn(response.weights)),
+                            np.float16
+                        )
                     if response.flags is not None:
                         f.root.flags[from_row:to_row] = np.asarray(
-                            reshape_from_blocks(transform_corr_to_fn(response.flags)))
+                            reshape_from_blocks(transform_corr_to_fn(response.flags)),
+                            np.bool_
+                        )
 
 
 def get_non_unqiue(h5_array, indices, axis=0, indices_sorted: bool = False):

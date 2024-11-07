@@ -1,4 +1,5 @@
-from typing import List
+from functools import partial
+from typing import List, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -47,6 +48,30 @@ CASA_CORR_TYPES = {
 INV_CASA_CORR_TYPES = {v: k for k, v in CASA_CORR_TYPES.items()}
 
 
+@partial(jax.jit, static_argnames=("from_corrs", "to_corrs"))
+def broadcast_translate_corrs(coherencies: jax.Array,
+                              from_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]],
+                              to_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]]):
+    """
+    Broadcast the translation of coherencies to any array of CASA coherencies
+
+    Args:
+        coherencies: [..., num_corrs] array of coherencies.
+        from_corrs: list of corrs.
+        to_corrs: list of corrs.
+
+    Returns:
+        [..., num_corrs] array of coherencies in the type and order of corrs.
+    """
+    from_corrs_shape = np.shape(from_corrs)
+    to_corrs_shape = np.shape(to_corrs)
+    output_coherencies_shape = np.shape(coherencies)[:-len(from_corrs_shape)] + to_corrs_shape
+    coherencies = jnp.reshape(coherencies, (-1,) + from_corrs_shape)
+    coherencies = jax.vmap(partial(translate_corrs, from_corrs=from_corrs, to_corrs=to_corrs))(coherencies)
+    coherencies = jax.lax.reshape(coherencies, output_coherencies_shape)
+    return coherencies
+
+
 def translate_corrs(coherencies: jax.Array,
                     from_corrs: List[int | str] | List[List[int | str]],
                     to_corrs: List[int | str] | List[List[int | str]]) -> jax.Array:
@@ -70,7 +95,7 @@ def translate_corrs(coherencies: jax.Array,
     to_corrs = [(INV_CASA_CORR_TYPES[coor] if isinstance(coor, str) else coor) for coor in to_corrs]
 
     if np.size(coherencies) != len(from_corrs):
-        raise ValueError(f"Input coherencies must match input coors {_from_corrs}.")
+        raise ValueError(f"Input coherencies {np.shape(coherencies)} must match input coors {_from_corrs}.")
 
     if _from_corrs == _to_corrs:
         return coherencies
@@ -84,10 +109,12 @@ def translate_corrs(coherencies: jax.Array,
     if detect_mixed_corrs(to_corrs):
         raise ValueError(f"Mixed correlation output types provided, {to_corrs}.")
 
+    # Fill data dict with zeros
     zero = jnp.asarray(0., dtype=coherencies.dtype)
     data_dict = {
         CASA_CORR_TYPES[coor]: zero for coor in INV_CASA_CORR_TYPES.values()
     }
+    # Update data dict with input coherencies
     data_dict.update(
         {
             CASA_CORR_TYPES[coor]: coherencies[i] for coor, i in zip(from_corrs, range(len(coherencies)))
@@ -101,7 +128,7 @@ def translate_corrs(coherencies: jax.Array,
                 flat_output=True)
             data_dict.update(
                 {
-                    CASA_CORR_TYPES[coor]: coh_circ[i] for coor, i in
+                    coor: coh_circ[i] for coor, i in
                     zip(['RR', 'RL', 'LR', 'LL'], range(len(coh_circ)))
                 }
             )
@@ -111,7 +138,7 @@ def translate_corrs(coherencies: jax.Array,
                           axis=-1), flat_output=True)
             data_dict.update(
                 {
-                    CASA_CORR_TYPES[coor]: coh_stokes[i] for coor, i in
+                    coor: coh_stokes[i] for coor, i in
                     zip(['I', 'Q', 'U', 'V'], range(len(coh_stokes)))
                 }
             )
@@ -122,7 +149,7 @@ def translate_corrs(coherencies: jax.Array,
                 flat_output=True)
             data_dict.update(
                 {
-                    CASA_CORR_TYPES[coor]: coh_lin[i] for coor, i in zip(['XX', 'XY', 'YX', 'YY'], range(len(coh_lin)))
+                    coor: coh_lin[i] for coor, i in zip(['XX', 'XY', 'YX', 'YY'], range(len(coh_lin)))
                 }
             )
         elif is_stokes_present(to_corrs):
@@ -131,7 +158,7 @@ def translate_corrs(coherencies: jax.Array,
                           axis=-1), flat_output=True)
             data_dict.update(
                 {
-                    CASA_CORR_TYPES[coor]: coh_stokes[i] for coor, i in
+                    coor: coh_stokes[i] for coor, i in
                     zip(['I', 'Q', 'U', 'V'], range(len(coh_stokes)))
                 }
             )
@@ -142,7 +169,7 @@ def translate_corrs(coherencies: jax.Array,
                 flat_output=True)
             data_dict.update(
                 {
-                    CASA_CORR_TYPES[coor]: coh_lin[i] for coor, i in zip(['XX', 'XY', 'YX', 'YY'], range(len(coh_lin)))
+                    coor: coh_lin[i] for coor, i in zip(['XX', 'XY', 'YX', 'YY'], range(len(coh_lin)))
                 }
             )
         elif is_circular_present(to_corrs):
@@ -151,7 +178,7 @@ def translate_corrs(coherencies: jax.Array,
                 flat_output=True)
             data_dict.update(
                 {
-                    CASA_CORR_TYPES[coor]: coh_circ[i] for coor, i in
+                    coor: coh_circ[i] for coor, i in
                     zip(['RR', 'RL', 'LR', 'LL'], range(len(coh_circ)))
                 }
             )
@@ -171,6 +198,7 @@ def is_linear_present(corrs: List[str]):
     Returns:
         True if linear corrs are present, False otherwise.
     """
+    corrs = [CASA_CORR_TYPES[corr] if isinstance(corr, int) else corr for corr in corrs]
     linear_corrs = {"XX", "XY", "YX", "YY"}
     return len(linear_corrs.intersection(set(corrs))) > 0
 
@@ -185,6 +213,7 @@ def is_circular_present(corrs: List[str]):
     Returns:
         True if circular corrs are present, False otherwise.
     """
+    corrs = [CASA_CORR_TYPES[corr] if isinstance(corr, int) else corr for corr in corrs]
     circular_corrs = {"RR", "RL", "LR", "LL"}
     return len(circular_corrs.intersection(set(corrs))) > 0
 
@@ -199,6 +228,7 @@ def is_stokes_present(corrs: List[str]):
     Returns:
         True if stokes corrs are present, False otherwise.
     """
+    corrs = [CASA_CORR_TYPES[corr] if isinstance(corr, int) else corr for corr in corrs]
     stokes_corrs = {"I", "Q", "U", "V"}
     return len(stokes_corrs.intersection(set(corrs))) > 0
 

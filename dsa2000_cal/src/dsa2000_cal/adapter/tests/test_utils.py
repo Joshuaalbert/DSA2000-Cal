@@ -2,7 +2,8 @@ import jax
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.adapter.utils import INV_CASA_CORR_TYPES, translate_corrs, detect_mixed_corrs
+from dsa2000_cal.adapter.utils import INV_CASA_CORR_TYPES, translate_corrs, detect_mixed_corrs, \
+    broadcast_translate_corrs
 
 
 def test_transform_corrs():
@@ -136,3 +137,30 @@ def test_detect_mixed_corrs():
     assert detect_mixed_corrs(["RR", "RL", "LR", "LL", "I"])
     assert detect_mixed_corrs(["I", "Q", "U", "V", "XX"])
     assert detect_mixed_corrs(["I", "Q", "U", "V", "RR"])
+
+
+def test_broadcast_translate_corrs():
+    coherencies = jnp.ones((11, 13, 4))
+    from_corrs = ("XX", "XY", "YX", "YY")
+    to_corrs = ("RR", "RL", "LR", "LL")
+    assert broadcast_translate_corrs(coherencies, from_corrs, to_corrs).shape == (11, 13, 4)
+
+    to_corrs = (("RR", "RL"), ("LR", "LL"))
+    assert broadcast_translate_corrs(coherencies, from_corrs, to_corrs).shape == (11, 13, 2, 2)
+
+    coherencies = jnp.ones((11, 13, 2, 2))
+    from_corrs = (("XX", "XY"), ("YX", "YY"))
+    to_corrs = ("RR", "RL", "LR", "LL")
+    assert broadcast_translate_corrs(coherencies, from_corrs, to_corrs).shape == (11, 13, 4)
+
+    to_corrs = (("RR", "RL"), ("LR", "LL"))
+    assert broadcast_translate_corrs(coherencies, from_corrs, to_corrs).shape == (11, 13, 2, 2)
+
+    x = jnp.ones((2, 1), dtype=jnp.complex64)
+    y = broadcast_translate_corrs(
+        x, from_corrs=('I',), to_corrs=('XX', 'XY', 'YX', 'YY')
+    )
+    x_rec = broadcast_translate_corrs(
+        y, from_corrs=('XX', 'XY', 'YX', 'YY'), to_corrs=('I',)
+    )
+    assert jnp.allclose(x, x_rec)

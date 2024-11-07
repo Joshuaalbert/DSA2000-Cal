@@ -6,7 +6,7 @@ import tables as tb
 from astropy import coordinates as ac, units as au, time as at
 
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
-from dsa2000_cal.measurement_sets.measurement_set import  _combination_with_replacement_index, _combination_index, \
+from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
     _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData, get_non_unqiue, \
     put_non_unique
 
@@ -43,7 +43,7 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=au.Quantity(1, au.Hz),
         integration_time=au.Quantity(1, au.s),
-        coherencies=['XX', 'XY', 'YX', 'YY'],
+        coherencies=('XX', 'XY', 'YX', 'YY'),
         pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
         times=at.Time.now() + np.arange(10) * au.s,
         freqs=au.Quantity([1, 2, 3], au.Hz),
@@ -75,17 +75,17 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
 @pytest.mark.parametrize("convention", ['physical', 'engineering'])
-@pytest.mark.parametrize("relative_time_idx", [True, False])
-def test_measurement_setting(tmp_path, with_autocorr, convention, relative_time_idx):
+@pytest.mark.parametrize("num_blocks", [1, 2, 3])
+def test_measurement_setting(tmp_path, with_autocorr, convention, num_blocks):
     meta = MeasurementSetMetaV0(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=au.Quantity(1, au.Hz),
         integration_time=au.Quantity(1, au.s),
-        coherencies=['XX', 'XY', 'YX', 'YY'],
+        coherencies=('XX', 'XY', 'YX', 'YY'),
         pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
-        times=at.Time.now() + np.arange(10) * au.s,
+        times=at.Time.now() + np.arange(num_blocks * 2) * au.s,
         freqs=au.Quantity([1, 2, 3], au.Hz),
         antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
         antenna_names=[f"antenna_{i}" for i in range(5)],
@@ -97,7 +97,7 @@ def test_measurement_setting(tmp_path, with_autocorr, convention, relative_time_
     )
     ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
 
-    gen = ms.create_block_generator(relative_time_idx=relative_time_idx)
+    gen = ms.create_block_generator(corrs=('I',), num_blocks=num_blocks)
 
     gen_response = None
     ti = 0
@@ -107,39 +107,34 @@ def test_measurement_setting(tmp_path, with_autocorr, convention, relative_time_
         except StopIteration:
             break
 
-        assert coords.uvw.shape == (ms.block_size, 3)
-        assert coords.time_obs.shape == (ms.block_size,)
+        assert len(time) == num_blocks
+
+        assert coords.uvw.shape == (num_blocks, ms.block_size, 3)
+        assert coords.times.shape == (num_blocks,)
         assert coords.antenna_1.shape == (ms.block_size,)
         assert coords.antenna_2.shape == (ms.block_size,)
-        assert np.all(coords.antenna_1 <= coords.antenna_2)
-        assert coords.time_idx.shape == (ms.block_size,)
-        assert data.vis.shape == (ms.block_size, 3, 4)
-        assert data.weights.shape == (ms.block_size, 3, 4)
-        assert data.flags.shape == (ms.block_size, 3, 4)
+        if meta.convention == 'physical':
+            assert np.all(coords.antenna_1 <= coords.antenna_2)
+        elif meta.convention == 'engineering':
+            assert np.all(coords.antenna_1 >= coords.antenna_2)
+        assert data.vis.shape == (num_blocks, ms.block_size, 3, 1)
+        assert data.weights.shape == (num_blocks, ms.block_size, 3, 1)
+        assert data.flags.shape == (num_blocks, ms.block_size, 3, 1)
 
-        assert np.all(coords.time_idx >= 0)
-        assert np.all(coords.time_idx < len(meta.times))
         assert np.all(coords.antenna_1 >= 0)
         assert np.all(coords.antenna_1 < len(meta.antennas))
         assert np.all(coords.antenna_2 >= 0)
         assert np.all(coords.antenna_2 < len(meta.antennas))
 
-        if not relative_time_idx:
-            for time_idx in coords.time_idx:
-                assert ms.meta.times[time_idx] == time
-        else:
-            for time_idx in coords.time_idx:
-                assert ms.meta.times[ti + time_idx] == time
         ti += 1
 
-
         gen_response = VisibilityData(
-            vis=np.ones((ms.block_size, 3, 4), dtype=np.complex64),
-            weights=np.zeros((ms.block_size, 3, 4), dtype=np.float16),
-            flags=np.ones((ms.block_size, 3, 4), dtype=np.bool_)
+            vis=np.ones((num_blocks, ms.block_size, 3, 1), dtype=np.complex64),
+            weights=np.zeros((num_blocks, ms.block_size, 3, 1), dtype=np.float16),
+            flags=np.ones((num_blocks, ms.block_size, 3, 1), dtype=np.bool_)
         )
 
-    gen = ms.create_block_generator(relative_time_idx=relative_time_idx)
+    gen = ms.create_block_generator(corrs=('I',))
     gen_response = None
     while True:
         try:
@@ -150,127 +145,6 @@ def test_measurement_setting(tmp_path, with_autocorr, convention, relative_time_
         assert np.all(data.vis.real == 1)
         assert np.all(data.weights == 0)
         assert np.all(data.flags)
-
-
-
-@pytest.mark.parametrize("with_autocorr", [True, False])
-def test_measurement_setting_put(tmp_path, with_autocorr):
-    meta = MeasurementSetMetaV0(
-        array_name="test_array",
-        array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
-        channel_width=au.Quantity(1, au.Hz),
-        integration_time=au.Quantity(1, au.s),
-        coherencies=['XX', 'XY', 'YX', 'YY'],
-        pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
-        times=at.Time.now() + np.arange(10) * au.s,
-        freqs=au.Quantity([1, 2, 3], au.Hz),
-        antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
-        antenna_names=[f"antenna_{i}" for i in range(5)],
-        antenna_diameters=au.Quantity(np.ones(5), au.m),
-        with_autocorr=with_autocorr,
-        mount_types='ALT-AZ',
-        system_equivalent_flux_density=au.Quantity(1, au.Jy)
-    )
-    ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
-
-    gen = ms.create_block_generator()
-    gen_response = None
-    scale = 1.
-    while True:
-
-        try:
-            time, coords, data = gen.send(gen_response)
-        except StopIteration:
-            break
-
-        ms.put(
-            data=VisibilityData(
-                vis=scale * np.ones((ms.block_size, 3, 4), dtype=np.complex64),
-                weights=scale * np.ones((ms.block_size, 3, 4), dtype=np.float16),
-                flags=np.zeros((ms.block_size, 3, 4), dtype=np.bool_)
-            ),
-            antenna_1=coords.antenna_1,
-            antenna_2=coords.antenna_2,
-            times=time
-        )
-        scale += 1
-
-    data = ms.match(antenna_1=0, antenna_2=1, times=ms.meta.times)
-    assert data.vis.shape == (len(meta.times), len(meta.freqs), 4)
-
-    data = ms.match(antenna_1=np.asarray([0, 1]), antenna_2=np.asarray([1, 2]), times=ms.meta.times[:2])
-    assert data.vis.shape == (2, len(meta.freqs), 4)
-
-    gen = ms.create_block_generator()
-    scale = 1.
-    for time, coords, data in gen:
-        assert np.all(data.vis.real == scale)
-        assert np.all(data.weights == scale)
-        assert np.bitwise_not(np.any(data.flags))
-        scale += 1.
-
-
-@pytest.mark.parametrize("with_autocorr", [True, False])
-def test_multi_block_gen(tmp_path, with_autocorr):
-    meta = MeasurementSetMetaV0(
-        array_name="test_array",
-        array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
-        channel_width=au.Quantity(1, au.Hz),
-        integration_time=au.Quantity(1, au.s),
-        coherencies=['XX', 'XY', 'YX', 'YY'],
-        pointings=ac.ICRS(0 * au.deg, 0 * au.deg),
-        times=at.Time.now() + np.arange(10) * au.s,
-        freqs=au.Quantity([1, 2, 3], au.Hz),
-        antennas=ac.EarthLocation.from_geodetic(np.arange(5) * au.deg, np.arange(5) * au.deg, np.arange(5) * au.m),
-        antenna_names=[f"antenna_{i}" for i in range(5)],
-        antenna_diameters=au.Quantity(np.ones(5), au.m),
-        with_autocorr=with_autocorr,
-        mount_types='ALT-AZ',
-        system_equivalent_flux_density=au.Quantity(1, au.Jy)
-    )
-    ms = MeasurementSet.create_measurement_set(str(tmp_path / "test_ms"), meta)
-
-    with pytest.raises(ValueError):
-        gen = ms.create_block_generator(num_blocks=0)
-        next(gen)
-    with pytest.raises(ValueError):
-        gen = ms.create_block_generator(num_blocks=4)
-        next(gen)
-
-    gen = ms.create_block_generator(num_blocks=2)
-    gen_response = None
-
-    block_count = 0
-    while True:
-        try:
-            times, coords, data = gen.send(gen_response)
-        except StopIteration:
-            break
-
-        block_count += 2
-        assert len(times) == 2
-        assert coords.uvw.shape == (ms.block_size * 2, 3)
-        assert coords.time_obs.shape == (ms.block_size * 2,)
-        assert coords.antenna_1.shape == (ms.block_size * 2,)
-        assert coords.antenna_2.shape == (ms.block_size * 2,)
-        assert coords.time_idx.shape == (ms.block_size * 2,)
-        assert data.vis.shape == (ms.block_size * 2, 3, 4)
-        assert data.weights.shape == (ms.block_size * 2, 3, 4)
-        assert data.flags.shape == (ms.block_size * 2, 3, 4)
-        for time_idx in coords.time_idx:
-            assert ms.meta.times[time_idx] in times
-        for time in times:
-            assert time in ms.meta.times[coords.time_idx]
-
-        gen_response = VisibilityData(
-            vis=np.ones((ms.block_size * 2, 3, 4), dtype=np.complex64),
-            weights=np.zeros((ms.block_size * 2, 3, 4), dtype=np.float16),
-            flags=np.ones((ms.block_size * 2, 3, 4), dtype=np.bool_)
-        )
-
-    assert block_count == 10
 
 
 def test_get_non_unique():
