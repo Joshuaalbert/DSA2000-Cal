@@ -4,9 +4,9 @@ ujson
 astropy>=6.1.0
 h5parm
 tables
-jax>=0.4.25
+jax>=0.4.35
 jaxlib
-jaxns>=2.6.0
+jaxns>=2.6.4
 jaxopt
 python-casacore
 scipy
