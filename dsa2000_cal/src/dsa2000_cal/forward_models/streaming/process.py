@@ -17,12 +17,12 @@ from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import MemoryLogger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.forward_models.streaming.core.predict_and_sample import PredictAndSampleStep
 from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationStep
 from dsa2000_cal.forward_models.streaming.core.simulate_beam import SimulateBeamStep
 from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishStep
-from dsa2000_cal.common.types import DishEffectsParams
 
 
 class ProcessLocalParams(SerialisableBaseModel):
@@ -37,6 +37,7 @@ class ProcessLocalParams(SerialisableBaseModel):
     solution_interval: au.Quantity
     validity_interval: au.Quantity
     integration_interval: au.Quantity
+    system_equivalent_flux_density: au.Quantity
     dish_effects_params: DishEffectsParams
 
 
@@ -60,6 +61,8 @@ def get_process_local_params(process_id: int, array_name: str) -> ProcessLocalPa
     phase_center = pointing = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
 
     dish_effects_params = array.get_dish_effect_params()
+
+    system_equivalent_flux_density = array.get_system_equivalent_flux_density()
     return ProcessLocalParams(
         freqs=freqs,
         channel_width=channel_width,
@@ -72,7 +75,8 @@ def get_process_local_params(process_id: int, array_name: str) -> ProcessLocalPa
         solution_interval=solution_interval,
         validity_interval=validity_interval,
         integration_interval=integration_interval,
-        dish_effects_params=dish_effects_params
+        dish_effects_params=dish_effects_params,
+        system_equivalent_flux_density=system_equivalent_flux_density
     )
 
 
@@ -212,7 +216,20 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     #
     # create_model_data_step = CreateModelDataStep()
     #
-    predict_and_sample_step = PredictAndSampleStep()
+    predict_and_sample_step = PredictAndSampleStep(
+        plot_folder=os.path.join(plot_folder, "predict_and_sample"),
+        freqs=process_local_params.freqs,
+        channel_width=process_local_params.channel_width,
+        integration_time=process_local_params.integration_interval,
+        system_equivalent_flux_density=process_local_params.system_equivalent_flux_density,
+        num_facets_per_side=2,
+        full_stokes=full_stokes,
+        convention="physical",
+        faint_sky_model='cas_a',
+        bright_sky_model='cas_a',
+        crop_box_size=au.Quantity(1, "arcmin")
+    )
+
     #
     # flag_step = FlagStep()
     #
