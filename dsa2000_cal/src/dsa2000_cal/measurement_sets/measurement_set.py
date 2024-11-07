@@ -18,7 +18,7 @@ from pydantic import Field
 from dsa2000_cal.adapter.utils import translate_corrs
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import time_to_jnp
+from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -295,6 +295,13 @@ class MeasurementSet:
             return (num_antennas * (num_antennas + 1)) // 2
         return (num_antennas * (num_antennas - 1)) // 2
 
+    @property
+    def num_baselines(self) -> int:
+        """
+        Get the number of baselines in the measurement set.
+        """
+        return self.block_size
+
     @cached_property
     def ref_time(self) -> at.Time:
         """
@@ -464,7 +471,7 @@ class MeasurementSet:
 
         start_row = 0
 
-        compute_uvw_jax = jax.jit(partial(engine.compute_uvw_jax, convention=meta.convention))
+        compute_uvw_jax = jax.jit(partial(engine.compute_uvw, convention=meta.convention))
         for time_idx in range(num_times):
             # UVW are position(antenna_2) - position(antenna_1)
             # antenna_1, antenna_2 are all possible baselines
@@ -636,9 +643,8 @@ class MeasurementSet:
             flags=flags
         )
 
-    def create_block_generator(self, start_time_idx: int = 0, end_time_idx: int | None = None,
-                               vis: bool = True, weights: bool = True, flags: bool = True,
-                               relative_time_idx: bool = False, num_blocks: int = 1,
+    def create_block_generator(self, start_time_idx: int = 0, end_time_idx: int | None = None, vis: bool = True,
+                               weights: bool = True, flags: bool = True, num_blocks: int = 1,
                                corrs: List[str] | List[List[str]] | None = None) -> Generator[
         Tuple[at.Time, VisibilityCoords, VisibilityData], VisibilityData | None, None
     ]:
@@ -651,8 +657,6 @@ class MeasurementSet:
             vis: whether to include visibilities, default True
             weights: whether to include weights, default True
             flags: whether to include flags, default True
-            relative_time_idx: if True, the time index is relative to the start time index, default False
-                This is required if indexing gains produced per block.
             num_blocks: the number of blocks to yield at a time, default 1
             corrs: the coherencies to translate to, default None
 
@@ -710,7 +714,21 @@ class MeasurementSet:
                 f"block size {self.block_size} and number of blocks {num_blocks}."
             )
 
-        time_obs = jnp.asarray((self.meta.times - self.ref_time).sec, dtype=jnp.float32)
+        compute_visibility_coords_jit = jax.jit(
+            partial(
+                self.far_field_delay_engine.compute_visibility_coords,
+                with_autocorr=self.meta.with_autocorr,
+                convention=self.meta.convention
+            )
+        )
+
+        def reshape_to_blocks(x):
+            return x.reshape((num_blocks, self.num_baselines) + np.shape(x)[1:])
+
+        def reshape_from_blocks(x):
+            return x.reshape((num_blocks * self.num_baselines,) + np.shape(x)[2:])
+
+        freqs = quantity_to_jnp(self.meta.freqs)
 
         with tb.open_file(self.data_file, 'r+') as f:
             from_time_idx = start_time_idx
@@ -718,40 +736,37 @@ class MeasurementSet:
                 to_time_idx = from_time_idx + num_blocks
                 if to_time_idx > len(self.meta.times):
                     raise RuntimeError(f"Time index {to_time_idx} out of bounds.")
-                times = self.meta.times[from_time_idx:to_time_idx]
+                times_slice = self.meta.times[from_time_idx:to_time_idx]
 
                 to_row = from_row + self.block_size * num_blocks
                 if to_row > end_row:
                     raise RuntimeError(f"Row {from_row} + block size {self.block_size} * num blocks {num_blocks}.")
-                output_time_idx = f.root.time_idx[from_row:to_row]
-                output_time_obs = time_obs[output_time_idx]
-                if relative_time_idx:
-                    output_time_idx = output_time_idx - from_time_idx
+
                 from_time_idx += num_blocks
 
-                coords = VisibilityCoords(
-                    uvw=mp_policy.cast_to_length(f.root.uvw[from_row:to_row]),
-                    time_obs=mp_policy.cast_to_time(output_time_obs),
-                    antenna_1=mp_policy.cast_to_index(f.root.antenna_1[from_row:to_row]),
-                    antenna_2=mp_policy.cast_to_index(f.root.antenna_2[from_row:to_row]),
-                    time_idx=mp_policy.cast_to_index(output_time_idx)
-                )
+                coords = compute_visibility_coords_jit(freqs=freqs, times=self.time_to_jnp(times_slice))
+
+                # We transform to the desired coherencies, and unstack into blocks.
                 data = VisibilityData(
-                    vis=mp_policy.cast_to_vis(
-                        transform_corr_from_fn(f.root.vis[from_row:to_row])) if vis is not None else None,
-                    weights=mp_policy.cast_to_weight(
-                        transform_corr_from_fn(f.root.weights[from_row:to_row])) if weights is not None else None,
-                    flags=mp_policy.cast_to_flag(
-                        transform_corr_from_fn(f.root.flags[from_row:to_row])) if flags is not None else None
+                    vis=reshape_to_blocks(mp_policy.cast_to_vis(
+                        transform_corr_from_fn(f.root.vis[from_row:to_row]))) if vis is not None else None,
+                    weights=reshape_to_blocks(mp_policy.cast_to_weight(
+                        transform_corr_from_fn(f.root.weights[from_row:to_row]))) if weights is not None else None,
+                    flags=reshape_to_blocks(mp_policy.cast_to_flag(
+                        transform_corr_from_fn(f.root.flags[from_row:to_row]))) if flags is not None else None
                 )
-                response = yield (times, coords, data)
+                response = yield (times_slice, coords, data)
                 if response is not None and isinstance(response, VisibilityData):
+                    # For each we transform back to the original coherencies, and stack into rows.
                     if response.vis is not None:
-                        f.root.vis[from_row:to_row] = np.asarray(transform_corr_to_fn(response.vis))
+                        f.root.vis[from_row:to_row] = np.asarray(
+                            reshape_from_blocks(transform_corr_to_fn(response.vis)))
                     if response.weights is not None:
-                        f.root.weights[from_row:to_row] = np.asarray(transform_corr_to_fn(response.weights))
+                        f.root.weights[from_row:to_row] = np.asarray(
+                            reshape_from_blocks(transform_corr_to_fn(response.weights)))
                     if response.flags is not None:
-                        f.root.flags[from_row:to_row] = np.asarray(transform_corr_to_fn(response.flags))
+                        f.root.flags[from_row:to_row] = np.asarray(
+                            reshape_from_blocks(transform_corr_to_fn(response.flags)))
 
 
 def get_non_unqiue(h5_array, indices, axis=0, indices_sorted: bool = False):
