@@ -13,9 +13,10 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_mode
 
 
 @pytest.mark.parametrize('source', ['cas_a', 'cyg_a', 'tau_a', 'vir_a'])
-@pytest.mark.parametrize('crop_box_size', [None, 1*au.arcmin])
+@pytest.mark.parametrize('crop_box_size', [None, 1 * au.arcmin])
 @pytest.mark.parametrize('full_stokes', [True, False])
-def test_plot_ateam_sources(source, crop_box_size, full_stokes):
+@pytest.mark.parametrize('num_facets_per_side', [1, 2])
+def test_plot_ateam_sources(source, crop_box_size, full_stokes, num_facets_per_side):
     fill_registries()
 
     wsclean_fits_files = source_model_registry.get_instance(
@@ -28,7 +29,8 @@ def test_plot_ateam_sources(source, crop_box_size, full_stokes):
         wsclean_fits_files=wsclean_fits_files,
         model_freqs=model_freqs,
         full_stokes=full_stokes,
-        crop_box_size=crop_box_size
+        crop_box_size=crop_box_size,
+        num_facets_per_side=num_facets_per_side
     )
 
     source_model.plot()
@@ -49,4 +51,3 @@ def test_plot_ateam_sources(source, crop_box_size, full_stokes):
         full_stokes=full_stokes
     )
     sky_model.plot()
-

@@ -1,4 +1,5 @@
 import dataclasses
+import warnings
 from functools import partial
 from typing import NamedTuple, List
 
@@ -659,8 +660,15 @@ def divide_fits_into_facets(images: au.Quantity, ras: au.Quantity, decs: au.Quan
     slices = []
     num_l_facet = num_l // num_facets_per_side
     num_m_facet = num_m // num_facets_per_side
-    if num_l_facet % 2 != 0 or num_m_facet % 2 != 0:
-        raise ValueError(f"Size of each resulting facet must be even, got {(num_l_facet, num_m_facet)}.")
+    pad_l = False
+    if num_l_facet % 2 != 0:
+        warnings.warn("num_l_facet is not even, padding to make it even.")
+        pad_l = True
+    pad_m = False
+    if num_m_facet % 2 != 0:
+        warnings.warn("num_m_facet is not even, padding to make it even.")
+        pad_m = True
+
     for l_idx in range(num_facets_per_side):
         for m_idx in range(num_facets_per_side):
             l_start = l_idx * num_l_facet
@@ -678,12 +686,26 @@ def divide_fits_into_facets(images: au.Quantity, ras: au.Quantity, decs: au.Quan
     lvec = (-0.5 * num_l + np.arange(num_l)) * dls[:, None]  # [num_model_freqs, num_l]
     mvec = (-0.5 * num_m + np.arange(num_m)) * dms[:, None]  # [num_model_freqs, num_m]
     for l_slice, m_slice in slices:
-        facet_images.append(images[:, l_slice, m_slice, ...])  # [num_model_freqs, num_l_facet, num_m_facet, [2,2]]
+        facet_image = images[:, l_slice, m_slice, ...]  # [num_model_freqs, num_l_facet, num_m_facet, [2,2]]
         lvec_facet = lvec[:, l_slice]  # [num_model_freqs, num_l_facet]
         mvec_facet = mvec[:, m_slice]  # [num_model_freqs, num_m_facet]
         # 0 1 2 3 -> 2 , 4//2, so l0 is seen as N//2
         l0_facet = lvec_facet[:, num_l_facet // 2]  # [num_model_freqs]
         m0_facet = mvec_facet[:, num_m_facet // 2]  # [num_model_freqs]
+
+        if pad_l:
+            # 0 1 2 -> 0 1 2 3
+            slice_l = facet_image[:, :1, ...]
+            facet_image = np.concatenate([facet_image, np.zeros_like(slice_l)], axis=1)
+            # l_pix: num_l_facet // 2 ==> 3 // 2 = 1 -> 4 // 2 = 2 = 3 // 2 + 1
+            l0_facet += dls
+        if pad_m:
+            # 0 1 2 -> 0 1 2 3
+            slice_m = facet_image[:, :, :1, ...]
+            facet_image = np.concatenate([facet_image, np.zeros_like(slice_m)], axis=2)
+            # m_pix: num_m_facet // 2 ==> 3 // 2 = 1 -> 4 // 2 = 2 = 3 // 2 + 1
+            m0_facet += dms
+
         n0_facet = np.sqrt(1 - l0_facet.to('rad').value ** 2 - m0_facet.to('rad').value ** 2) * au.rad
         ra0_facet, dec0_facet = perley_icrs_from_lmn(
             quantity_to_jnp(l0_facet, 'rad'),
@@ -693,13 +715,14 @@ def divide_fits_into_facets(images: au.Quantity, ras: au.Quantity, decs: au.Quan
             quantity_to_jnp(decs, 'rad')
         )  # [num_model_freqs]
 
+        facet_images.append(facet_image)  # [num_model_freqs, num_l_facet, num_m_facet, [2,2]]
         facet_ras.append(ra0_facet * au.rad)  # [num_model_freqs]
         facet_decs.append(dec0_facet * au.rad)  # [num_model_freqs]
         facet_dls.append(dls)  # [num_model_freqs]
         facet_dms.append(dms)  # [num_model_freqs]
     images = au.Quantity(
         np.stack(facet_images, axis=1)
-    )  # [num_model_freqs, num_facets, num_l_facet, num_m_facet, [2,2]]
+    )  # [num_model_freqs, num_facets, num_l_facet, num_m_facet, [2,2]]]
     ras = au.Quantity(np.stack(facet_ras, axis=1))  # [num_model_freqs, num_facets]
     decs = au.Quantity(np.stack(facet_decs, axis=1))  # [num_model_freqs, num_facets]
     dls = au.Quantity(np.stack(facet_dls, axis=1))  # [num_model_freqs, num_facets]
