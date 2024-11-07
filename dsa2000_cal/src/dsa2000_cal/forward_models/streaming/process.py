@@ -18,6 +18,7 @@ from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import MemoryLogger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
+from dsa2000_cal.forward_models.streaming.core.predict_and_sample import PredictAndSampleStep
 from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationStep
 from dsa2000_cal.forward_models.streaming.core.simulate_beam import SimulateBeamStep
 from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishStep
@@ -211,7 +212,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     #
     # create_model_data_step = CreateModelDataStep()
     #
-    # predict_and_sample_step = PredictAndSampleStep()
+    predict_and_sample_step = PredictAndSampleStep()
     #
     # flag_step = FlagStep()
     #
@@ -228,11 +229,13 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     # subtract_step = SubtractStep()
     #
     # image_step = ImageStep()
+
     # DAG
     dag: Dict[AbstractCoreStep, Tuple[AbstractCoreStep, ...]] = dict()  # step -> primals
     dag[setup_observation_step] = ()
     dag[simulate_beam_step] = (setup_observation_step,)
     dag[simulate_dish_step] = (setup_observation_step, simulate_beam_step)
+    dag[predict_and_sample_step] = (simulate_dish_step, simulate_dish_step)
 
     # dag[simulate_ionosphere_step] = (simulate_dish_step,)
     # dag[create_model_data_step] = (simulate_dish_step, simulate_ionosphere_step)
