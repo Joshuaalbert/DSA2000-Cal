@@ -12,7 +12,9 @@ from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
+    BaseNearFieldDelayEngine
+from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.facet_model import FacetModel, FacetModelData
 
 
@@ -26,9 +28,9 @@ class RIMEModel:
             raise ValueError("At least one source model must be provided.")
 
         # Assumes all source models have the same engines
-        self.near_field_delay_engine: build_near_field_delay_engine = self.facet_models[0].near_field_delay_engine
+        self.near_field_delay_engine: BaseNearFieldDelayEngine = self.facet_models[0].near_field_delay_engine
         self.far_field_delay_engine: BaseFarFieldDelayEngine = self.facet_models[0].far_field_delay_engine
-        self.geodesic_model: GeodesicModel = self.facet_models[0].geodesic_model
+        self.geodesic_model: BaseGeodesicModel = self.facet_models[0].geodesic_model
         self.convention = self.facet_models[0].convention
 
     @property

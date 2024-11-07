@@ -5,7 +5,7 @@ import astropy.units as au
 import numpy as np
 import pylab as plt
 
-from dsa2000_cal.abc import AbstractAntennaModel
+from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
 
 logger = logging.getLogger(__name__)
 

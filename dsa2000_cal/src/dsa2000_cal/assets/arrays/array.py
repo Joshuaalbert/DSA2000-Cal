@@ -5,9 +5,9 @@ import astropy.coordinates as ac
 import astropy.units as au
 from astropy.coordinates import CartesianRepresentation, ITRS
 
-from dsa2000_cal.abc import AbstractAntennaModel
+from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
 from dsa2000_cal.assets.base_content import BaseContent
-from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
+from dsa2000_cal.common.types import DishEffectsParams
 
 
 def extract_itrs_coords(filename: str, delim=' ') -> Tuple[List[str], ac.ITRS]:

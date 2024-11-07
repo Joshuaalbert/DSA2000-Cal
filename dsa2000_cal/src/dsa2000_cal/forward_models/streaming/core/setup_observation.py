@@ -10,11 +10,12 @@ import jax.numpy as jnp
 import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import FloatArray, IntArray, BoolArray
+from dsa2000_cal.common.array_types import FloatArray, IntArray, BoolArray
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
+    BaseNearFieldDelayEngine
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel, build_geodesic_model
 
@@ -25,7 +26,7 @@ class SetupObservationState(NamedTuple):
     solution_idx: IntArray
     geodesic_model: BaseGeodesicModel
     far_field_delay_engine: BaseFarFieldDelayEngine
-    near_field_delay_engine: build_near_field_delay_engine
+    near_field_delay_engine: BaseNearFieldDelayEngine
 
 
 class SetupObservationOutput(NamedTuple):
@@ -34,7 +35,7 @@ class SetupObservationOutput(NamedTuple):
     do_solve: BoolArray
     geodesic_model: BaseGeodesicModel
     far_field_delay_engine: BaseFarFieldDelayEngine
-    near_field_delay_engine: build_near_field_delay_engine
+    near_field_delay_engine: BaseNearFieldDelayEngine
 
 
 @dataclasses.dataclass(eq=False)

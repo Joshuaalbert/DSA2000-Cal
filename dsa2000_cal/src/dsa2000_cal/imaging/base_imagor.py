@@ -19,7 +19,7 @@ from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.vec_utils import kron_inv
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
@@ -200,24 +200,10 @@ class BaseImagor:
                  out_mapping="[...,coh]",
                  verbose=True)
         def image_per_coh(vis, weights, mask):
-            dirty_image = vis_to_image(
-                uvw=uvw,
-                freqs=freqs,
-                vis=vis,
-                npix_m=num_pixel,
-                npix_l=num_pixel,
-                pixsize_m=dm,
-                pixsize_l=dl,
-                center_m=center_m,
-                center_l=center_l,
-                epsilon=self.epsilon,
-                mask=mask,
-                wgt=weights,
-                verbosity=0,
-                nthreads=self.nthreads,
-                scale_by_n=True,
-                normalise=True
-            )  # [num_l, num_m]
+            dirty_image = vis_to_image(uvw=uvw, freqs=freqs, vis=vis, pixsize_m=dm, pixsize_l=dl, center_m=center_m,
+                                       center_l=center_l, npix_m=num_pixel, npix_l=num_pixel, wgt=weights, mask=mask,
+                                       epsilon=self.epsilon, nthreads=self.nthreads, verbosity=0, scale_by_n=True,
+                                       normalise=True)  # [num_l, num_m]
             return dirty_image
 
         return image_per_coh(vis, weights, jnp.logical_not(flags))

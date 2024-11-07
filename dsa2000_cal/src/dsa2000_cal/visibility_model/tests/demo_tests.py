@@ -109,18 +109,8 @@ def test_facet_model_gaussian():
                                        order_approx=1)
     vis_gaussian_order_1 = gaussian_predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
-    dirty = vis_to_image(
-        uvw=uvw,
-        freqs=freqs,
-        vis=vis_gaussian_order_1,
-        npix_m=n,
-        npix_l=n,
-        pixsize_l=pix_size,
-        pixsize_m=pix_size,
-        center_l=l0,
-        center_m=m0,
-        epsilon=1e-6
-    )  # [nl, nm]
+    dirty = vis_to_image(uvw=uvw, freqs=freqs, vis=vis_gaussian_order_1, pixsize_m=pix_size, pixsize_l=pix_size,
+                         center_m=m0, center_l=l0, npix_m=n, npix_l=n, epsilon=1e-6)  # [nl, nm]
 
     plt.imshow(
         dirty.T,
@@ -192,18 +182,8 @@ def test_facet_model_point():
                            dtype=complex_type)
     vis_gaussian_order_1 = predict.predict(model_data=gaussian_data, visibility_coords=visibility_coords)
 
-    dirty = vis_to_image(
-        uvw=uvw,
-        freqs=freqs,
-        vis=vis_gaussian_order_1,
-        npix_m=n,
-        npix_l=n,
-        pixsize_l=pix_size,
-        pixsize_m=pix_size,
-        center_l=l0,
-        center_m=m0,
-        epsilon=1e-6
-    )  # [nl, nm]
+    dirty = vis_to_image(uvw=uvw, freqs=freqs, vis=vis_gaussian_order_1, pixsize_m=pix_size, pixsize_l=pix_size,
+                         center_m=m0, center_l=l0, npix_m=n, npix_l=n, epsilon=1e-6)  # [nl, nm]
 
     plt.imshow(
         dirty.T,
@@ -292,18 +272,8 @@ def test_facet_model_fits():
     print(pixsize * 180 / np.pi * 3600)
     n = 4096
 
-    dirty = vis_to_image(
-        uvw=visibility_coords.uvw,
-        freqs=quantity_to_jnp(freqs),
-        vis=vis,
-        npix_m=n,
-        npix_l=n,
-        pixsize_l=pixsize,
-        pixsize_m=pixsize,
-        center_l=0.,
-        center_m=0.,
-        epsilon=1e-6
-    )
+    dirty = vis_to_image(uvw=visibility_coords.uvw, freqs=quantity_to_jnp(freqs), vis=vis, pixsize_m=pixsize,
+                         pixsize_l=pixsize, center_m=0., center_l=0., npix_m=n, npix_l=n, epsilon=1e-6)
 
     mvec = lvec = pixsize * (-n / 2 + np.arange(n))
 
@@ -404,18 +374,9 @@ def test_facet_model():
     pixsize = quantity_to_jnp(const.c / (freqs[0] * au.MHz) / (20 * au.km))
     print(pixsize * 180 / np.pi * 3600)
     n = 4096
-    dirty = vis_to_image(
-        uvw=visibility_coords.uvw,
-        freqs=quantity_to_jnp(freqs),
-        vis=vis[:, :, 0, 0],
-        npix_m=n,
-        npix_l=n,
-        pixsize_l=pixsize,
-        pixsize_m=pixsize,
-        center_l=0.,
-        center_m=0.,
-        epsilon=1e-6
-    )
+    dirty = vis_to_image(uvw=visibility_coords.uvw, freqs=quantity_to_jnp(freqs), vis=vis[:, :, 0, 0],
+                         pixsize_m=pixsize, pixsize_l=pixsize, center_m=0., center_l=0., npix_m=n, npix_l=n,
+                         epsilon=1e-6)
     import pylab as plt
 
     mvec = lvec = pixsize * (-n / 2 + np.arange(n))
@@ -506,19 +467,8 @@ def test_facet_model_lte():
 
     l0 = 0.
     m0 = 0.
-    dirty = vis_to_image(
-        uvw=visibility_coords.uvw,
-        freqs=quantity_to_jnp(freqs),
-        vis=vis,
-        npix_m=n,
-        npix_l=n,
-        pixsize_l=pixsize,
-        pixsize_m=pixsize,
-        center_l=l0,
-        center_m=m0,
-        epsilon=1e-6,
-        nthreads=12
-    )
+    dirty = vis_to_image(uvw=visibility_coords.uvw, freqs=quantity_to_jnp(freqs), vis=vis, pixsize_m=pixsize,
+                         pixsize_l=pixsize, center_m=m0, center_l=l0, npix_m=n, npix_l=n, epsilon=1e-6, nthreads=12)
     import pylab as plt
 
     lvec = pixsize * (-n / 2 + np.arange(n)) + l0

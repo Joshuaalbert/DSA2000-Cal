@@ -3,7 +3,7 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.calibration.approx_cg_newton import ApproxCGNewton
-from dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.array_types import FloatArray
 
 
 @pytest.mark.parametrize("n", [2, 10, 100, 1000])

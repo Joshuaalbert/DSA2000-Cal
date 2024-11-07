@@ -146,10 +146,8 @@ class Calibration:
         # Inputs
         freqs_jax = quantity_to_jnp(ms.meta.freqs)
 
-        gen = ms.create_block_generator(
-            vis=True, weights=True, flags=True, relative_time_idx=True,
-            num_blocks=num_blocks, corrs=[['XX', 'XY'], ['YX', 'YY']]
-        )
+        gen = ms.create_block_generator(vis=True, weights=True, flags=True, num_blocks=num_blocks,
+                                        corrs=[['XX', 'XY'], ['YX', 'YY']])
         gen_response = None
         last_state: MultiStepLevenbergMarquardtState | None = None
         cadence_idx = 0

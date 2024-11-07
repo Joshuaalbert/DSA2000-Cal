@@ -58,7 +58,7 @@ def test_uvw_performance(n: int):
     data_dict = jax.device_put(data_dict)
 
     t0 = time.time()
-    compute_uvw_jax = jax.jit(engine.compute_uvw_jax).lower(**data_dict).compile()
+    compute_uvw_jax = jax.jit(engine.compute_uvw).lower(**data_dict).compile()
     compile_time = time.time() - t0
     print(f"Compilation time for n={n}: {compile_time:.4f} seconds")
 

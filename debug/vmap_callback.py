@@ -13,13 +13,14 @@ def add_vmapped(x, y, z):
 @partial(jax.vmap, in_axes=(0, None, None))
 @partial(jax.vmap, in_axes=(None, 0, None))
 def cb_no_vec(x, y, z):
+    print(x.shape)
     def add(x, y, z):
         assert x.shape == ()
         assert y.shape == ()
         assert z.shape == ()
         return x + y + z
 
-    return jax.pure_callback(add, jax.ShapeDtypeStruct(shape=x.shape, dtype=x.dtype), x, y, z, vectorized=False)
+    return jax.pure_callback(add, jax.ShapeDtypeStruct(shape=x.shape, dtype=x.dtype), x, y, z,vmap_method='broadcast_all')
 
 
 def convert_to_ufunc(f, tile: bool = True):
@@ -74,7 +75,7 @@ def cb(x, y, z):
         return x + y + z
 
     return jax.pure_callback(add, jax.ShapeDtypeStruct(shape=jnp.broadcast_shapes(x.shape, y.shape), dtype=x.dtype), x,
-                             y, z, vectorized=True)
+                             y, z, vmap_method='broadcast_all')
 
 
 if __name__ == '__main__':

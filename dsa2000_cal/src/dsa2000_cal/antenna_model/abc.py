@@ -1,10 +1,6 @@
 from abc import ABC, abstractmethod
 
-import astropy.units as au
-
-
-class AbstractSourceModel(ABC):
-    ...
+from astropy import units as au
 
 
 class AbstractAntennaModel(ABC):

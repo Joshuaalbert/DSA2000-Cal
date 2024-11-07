@@ -7,7 +7,8 @@ from astropy import coordinates as ac, units as au, time as at
 import numpy as np
 
 from dsa2000_cal.forward_models.systematics.dish_effects_gain_model import dish_effects_gain_model_factory
-from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsSimulation, DishEffectsParams
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsSimulation
+from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.common.astropy_utils import create_spherical_earth_grid, create_spherical_grid_old
 from dsa2000_cal.common.coord_utils import icrs_to_lmn

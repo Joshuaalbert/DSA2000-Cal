@@ -9,7 +9,7 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
 from dsa2000_cal.common.astropy_utils import create_spherical_grid
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel, \
     build_spherical_interpolator

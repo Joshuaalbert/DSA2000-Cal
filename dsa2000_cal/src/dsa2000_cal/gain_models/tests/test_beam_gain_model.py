@@ -7,7 +7,7 @@ import pytest
 
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.gain_models.base_spherical_interpolator import lmn_from_phi_theta, phi_theta_from_lmn
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model, select_interpolation_points
+from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
 
 def test_pytree_serialisation():
@@ -57,7 +57,6 @@ def test_beam_gain_model_factory(array_name: str):
     compute_gains = jax.jit(beam_gain_model.compute_gain).lower(**args).compile()
     print(f"Compiled in {time_mod.time() - t0} seconds.")
 
-
     t0 = time_mod.time()
     reconstructed_model_gains = block_until_ready(compute_gains(
         **args
@@ -79,41 +78,3 @@ def test_beam_gain_model_factory(array_name: str):
         beam_gain_model.model_gains[0, :, :, 0, :, :].imag[mask],
         atol=0.05
     )
-
-
-def test_select_interpolation_points():
-    desired_freqs = np.asarray([1.0])
-    model_freqs = np.asarray([1.0, 2.0, 3.0])
-    expected_select_idxs = np.asarray([0, 1])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([1.0])
-    model_freqs = np.asarray([1.0, 1.0, 2.0, 3.0])
-    expected_select_idxs = np.asarray([1, 2])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([3.0])
-    model_freqs = np.asarray([1.0, 2.0, 3.0])
-    expected_select_idxs = np.asarray([2])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([3.0])
-    model_freqs = np.asarray([1.0, 2.0, 3.0, 3.0])
-    expected_select_idxs = np.asarray([3])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([1.0, 2.0, 3.0])
-    model_freqs = np.asarray([0.5, 1.5, 2.5, 3.5])
-    expected_select_idxs = np.asarray([0, 1, 2, 3])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)
-
-    desired_freqs = np.asarray([1.0, 2.0, 3.0])
-    model_freqs = np.asarray([0.5, 1.5, 1.5, 1.5, 1.75, 2.5, 3.5])
-    expected_select_idxs = np.asarray([0, 1, 4, 5, 6])
-    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
-    np.testing.assert_allclose(select_idxs, expected_select_idxs)

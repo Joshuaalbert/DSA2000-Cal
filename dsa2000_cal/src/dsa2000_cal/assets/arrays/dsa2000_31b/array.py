@@ -3,7 +3,7 @@ import os
 import astropy.coordinates as ac
 import astropy.units as au
 
-from dsa2000_cal.abc import AbstractAntennaModel
+from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
 from dsa2000_cal.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
 from dsa2000_cal.assets.registries import array_registry

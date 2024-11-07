@@ -12,7 +12,7 @@ from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.forward_models.simulation.simulate_systematics import SimulateSystematics
 from dsa2000_cal.forward_models.simulation.simulate_visibilties import SimulateVisibilities
-from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
+from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.imaging.imagor import Imagor
 from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, beam_gain_model_factory

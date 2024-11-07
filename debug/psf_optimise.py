@@ -93,7 +93,7 @@ if __name__ == '__main__':
                                      dtype=mp_policy.index_dtype).T
 
     times = obstime + np.arange(0, 10.3 * 60, 60) * au.s
-    f_jit = jax.jit(engine.compute_uvw_jax)
+    f_jit = jax.jit(engine.compute_uvw)
     uv = []
     for t in times:
         _times = jnp.repeat(time_to_jnp(t, ref_time)[None], len(antenna1))

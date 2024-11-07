@@ -8,7 +8,7 @@ import jax
 from jax import numpy as jnp
 
 from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.array_types import FloatArray
 
 jax.config.update("jax_explain_cache_misses", True)
 

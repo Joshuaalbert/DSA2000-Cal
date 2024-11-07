@@ -6,17 +6,18 @@ import jax
 import numpy as np
 import pylab as plt
 from astropy import constants as const, units as au
-from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from jax import numpy as jnp
 
-from dsa2000_cal.abc import AbstractSourceModel
+from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
 from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_product
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
+    BaseNearFieldDelayEngine
 from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 
@@ -108,7 +109,7 @@ class RFIEmitterSourceModel(AbstractSourceModel):
 
 @dataclasses.dataclass(eq=False)
 class RFIEmitterPredict:
-    delay_engine: build_near_field_delay_engine
+    delay_engine: BaseNearFieldDelayEngine
     convention: str = 'physical'
 
     def check_predict_inputs(self, model_data: RFIEmitterModelData

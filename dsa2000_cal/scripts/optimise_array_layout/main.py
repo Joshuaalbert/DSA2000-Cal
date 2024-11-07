@@ -7,7 +7,7 @@ from scipy.spatial import KDTree
 
 from dsa2000_cal.assets.array_constraints import ArrayConstraint
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.common.types import FloatArray
+from dsa2000_cal.common.array_types import FloatArray
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 

@@ -52,7 +52,7 @@ def test_aberated_plane_of_sky(time: at.Time, baseline: au.Quantity):
         ref_time=time,
         verbose=True
     )
-    uvw = engine.compute_uvw_jax(
+    uvw = engine.compute_uvw(
         times=time_to_jnp(time[None], time),
         antenna_1=jnp.asarray([0]),
         antenna_2=jnp.asarray([1])
@@ -231,7 +231,7 @@ def test_standard_test_dsa2000():
             verbose=True
         )
         times = jnp.repeat(time_to_jnp(obstime, obstime), len(antenna_1))
-        uvw = far_field_engine.compute_uvw_jax(
+        uvw = far_field_engine.compute_uvw(
             times=times,
             antenna_1=antenna_1,
             antenna_2=antenna_2
@@ -340,7 +340,7 @@ def test_uvw_coverage():
     data_dict = jax.device_put(data_dict)
 
     t0 = time.time()
-    compute_uvw_jax = jax.jit(engine.compute_uvw_jax).lower(**data_dict).compile()
+    compute_uvw_jax = jax.jit(engine.compute_uvw).lower(**data_dict).compile()
     compile_time = time.time() - t0
     print(f"Compilation time for n={n}: {compile_time:.4f} seconds")
 

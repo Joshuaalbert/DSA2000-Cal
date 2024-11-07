@@ -5,6 +5,7 @@ from astropy import units as au, time as at
 
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.common.interp_utils import select_interpolation_points
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel, \
     build_spherical_interpolator
 
@@ -97,13 +98,5 @@ def build_beam_gain_model(array_name: str, times: at.Time | None = None, ref_tim
         ref_time=ref_time,
         tile_antennas=True
     )
-
-
-def select_interpolation_points(desired_freqs, model_freqs):
-    # Only select the frequencies such that each desired frequency is between two model frequencies
-    i0 = np.clip(np.searchsorted(model_freqs, desired_freqs, side='right') - 1, 0, len(model_freqs) - 1)
-    i1 = np.clip(i0 + 1, 0, len(model_freqs) - 1)
-    select_idxs = np.unique(np.concatenate([i0, i1]))
-    return select_idxs
 
 

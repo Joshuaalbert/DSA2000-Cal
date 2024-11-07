@@ -23,19 +23,19 @@ class AbstractSourceModel(ABC, Generic[ModelDataType]):
         """
         ...
 
-    def get_model_data(self, freqs: FloatArray, times: FloatArray, geodesic_model: BaseGeodesicModel) -> ModelDataType:
+    @abstractmethod
+    def get_model_slice(self, freq: FloatArray, time: FloatArray, geodesic_model: BaseGeodesicModel) -> ModelDataType:
         """
-        Construct the model data for the given freqs and times.
+        Construct the model slice for the given freq and time.
 
         Returns:
-            the model data ordered for optimal reduction [num_time, num_freqs] + source_shape + [[2,2]]
+            the model slice [source_shape] + [[2,2]]
         """
         ...
 
     @abstractmethod
     def predict(
             self,
-            model_data: ModelDataType,
             visibility_coords: VisibilityCoords,
             gain_model: GainModel,
             near_field_delay_engine: BaseNearFieldDelayEngine,

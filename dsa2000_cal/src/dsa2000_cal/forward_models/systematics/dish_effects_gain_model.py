@@ -9,7 +9,8 @@ from jax._src.typing import SupportsDType
 
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 from dsa2000_cal.common.mixed_precision_utils import complex_type
-from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams, DishEffectsSimulation
+from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsSimulation
+from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.gain_models.base_spherical_interpolator import phi_theta_from_lmn
 from dsa2000_cal.gain_models.gain_model import GainModel
 

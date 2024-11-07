@@ -67,6 +67,33 @@ class BaseGeodesicModel:
     def num_antennas(self) -> int:
         return np.shape(self.antennas_enu)[0]
 
+    def compute_elevation_from_lmn(self, lmn: FloatArray, time: FloatArray) -> FloatArray:
+        """
+        Compute the elevation of the given LMN sources wrt the antenna.
+
+        Args:
+            lmn: [..., 3] the LMN of the sources relative to the antenna.
+            time: the time in TT, since start of observation.
+
+        Returns:
+            elevation: [...] the elevation of the sources wrt the antenna in radians
+        """
+        # Compute ra/dec of sources
+        ra, dec = perley_icrs_from_lmn(lmn[..., 0], lmn[..., 1], lmn[..., 2], self.ra0, self.dec0)
+        # compute the zenith ra/dec
+        lmn_zenith = self.lmn_zenith(time)  # [3]
+        lmn_zenith /= jnp.linalg.norm(lmn_zenith, axis=-1, keepdims=True)
+        ra_zenith, dec_zenith = perley_icrs_from_lmn(
+            l=lmn_zenith[0],
+            m=lmn_zenith[1],
+            n=lmn_zenith[2],
+            ra0=self.ra0,
+            dec0=self.dec0
+        )  # []
+        _, _, n = perley_lmn_from_icrs(ra, dec, ra_zenith, dec_zenith)
+        elevation = mp_policy.cast_to_angle(jnp.arcsin(n))
+        return elevation
+
     def compute_far_field_lmn(self, ra: FloatArray, dec: FloatArray, time: FloatArray | None = None,
                               return_elevation: bool = False
                               ) -> Union[FloatArray, Tuple[FloatArray, FloatArray]]:

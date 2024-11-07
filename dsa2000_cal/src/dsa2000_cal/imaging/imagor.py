@@ -60,8 +60,7 @@ class Imagor:
         print(f"Imaging {ms}")
         # Metrics
         t0 = time_mod.time()
-        gen = ms.create_block_generator(vis=True, weights=True, flags=True,
-                                        corrs=self.coherencies)
+        gen = ms.create_block_generator(vis=True, weights=True, flags=True, corrs=self.coherencies)
         gen_response = None
         uvw = []
         vis = []

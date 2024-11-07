@@ -21,7 +21,7 @@ from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationStep
 from dsa2000_cal.forward_models.streaming.core.simulate_beam import SimulateBeamStep
 from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishStep
-from dsa2000_cal.forward_models.systematics.dish_effects_simulation import DishEffectsParams
+from dsa2000_cal.common.types import DishEffectsParams
 
 
 class ProcessLocalParams(SerialisableBaseModel):
