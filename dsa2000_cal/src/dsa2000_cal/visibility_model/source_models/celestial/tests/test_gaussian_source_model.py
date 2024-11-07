@@ -87,6 +87,7 @@ def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stoke
         order_approx=0
     )
 
+    model_data.plot(phase_tracking=phase_tracking)
     return model_data, wgridder_data
 
 
@@ -204,9 +205,6 @@ def test_gaussian_predict(full_stokes: bool, with_gains: bool):
     else:
         assert np.shape(visibilities) == (num_times, num_baselines, num_freqs)
 
-    plt.imshow(wgridder_data['dirty'])
-    plt.colorbar()
-    plt.show()
     wgridder_vis = image_to_vis(
         uvw=visibility_coords.uvw.reshape((-1, 3)),
         freqs=visibility_coords.freqs,
@@ -215,17 +213,16 @@ def test_gaussian_predict(full_stokes: bool, with_gains: bool):
     )
     wgridder_vis = wgridder_vis.reshape((num_times, num_baselines, num_freqs))
 
-
     if full_stokes:
-        sc = plt.scatter(visibility_coords.uvw[:,:, 0].flatten(), visibility_coords.uvw[:,:, 1].flatten(),
-                         c=np.abs(visibilities[:,:, 0, 0, 0].flatten()), s=10)
+        sc = plt.scatter(visibility_coords.uvw[:, :, 0].flatten(), visibility_coords.uvw[:, :, 1].flatten(),
+                         c=np.abs(visibilities[:, :, 0, 0, 0].flatten()), s=10)
         plt.colorbar(sc)
         plt.show()
         np.testing.assert_allclose(wgridder_vis.real, visibilities.real[..., 0, 0], atol=1e-3)
         np.testing.assert_allclose(wgridder_vis.imag, visibilities.imag[..., 0, 0], atol=1e-3)
     else:
-        sc = plt.scatter(visibility_coords.uvw[:,:, 0].flatten(), visibility_coords.uvw[:,:, 1].flatten(),
-                         c=np.abs(visibilities[:,:, 0].flatten()), s=10)
+        sc = plt.scatter(visibility_coords.uvw[:, :, 0].flatten(), visibility_coords.uvw[:, :, 1].flatten(),
+                         c=np.abs(visibilities[:, :, 0].flatten()), s=10)
         plt.colorbar(sc)
         plt.show()
         np.testing.assert_allclose(wgridder_vis.real, visibilities.real, atol=1e-3)

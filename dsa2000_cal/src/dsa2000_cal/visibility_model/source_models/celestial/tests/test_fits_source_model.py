@@ -1,135 +1,238 @@
+import astropy.constants as const
+import astropy.coordinates as ac
+import astropy.time as at
+import astropy.units as au
 import jax
 import numpy as np
 import pytest
-from jax import numpy as jnp
+from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.mixed_precision_utils import complex_type, mp_policy
-from dsa2000_cal.delay_models.far_field import VisibilityCoords
-from dsa2000_cal.visibility_model.source_models.celestial.fits_source_model import FITSPredict, FITSModelData
+from dsa2000_cal.common.ellipse_utils import Gaussian
+from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
+from dsa2000_cal.common.wgridder import image_to_vis
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_cal.gain_models.base_spherical_interpolator import build_spherical_interpolator
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
+from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import build_fits_source_model, \
+    divide_fits_into_facets
 
 
-def build_mock_point_model_data(full_stokes: bool, is_gains: bool, image_has_chan: bool, Nx: int, Ny: int, chan: int,
-                                time: int, ant: int) -> FITSModelData:
+def build_mock_fits_source_model(num_model_freqs: int, num_source: int, full_stokes: bool,
+                                 phase_tracking: ac.ICRS, num_facets_per_side):
+    model_freqs = np.linspace(700, 2000, num_model_freqs) * au.MHz
+
+    # Wgridder test data
+
+    N = 512
+    max_baseline = 20. * au.km
+    min_wavelength = const.c / model_freqs.max()
+
+    diff_scale = float((min_wavelength / max_baseline).to(au.dimensionless_unscaled))
+    dl = dm = diff_scale / 7.
+    l0 = m0 = 0.
+
+    lvec = (-0.5 * N + np.arange(N)) * dl + l0
+    mvec = (-0.5 * N + np.arange(N)) * dm + m0
+    L, M = np.meshgrid(lvec, mvec, indexing='ij')
+    l = np.asarray([lvec[N // (i + 2)] for i in range(num_source)])
+    m = np.asarray([mvec[N // (i + 2)] for i in range(num_source)])
+    major_axis = dl * 20 * np.ones(num_source)
+    minor_axis = dm * 10 * np.ones(num_source)
+    pos_angle = np.random.uniform(low=0, high=np.pi, size=num_source)
+
+    dirty = np.zeros((N, N))
+    lm = np.stack([L.flatten(), M.flatten()], axis=-1)
+
+    for i in range(num_source):
+        gaussian = Gaussian(
+            x0=np.stack([l[i], m[i]]),
+            major_fwhm=major_axis[i],
+            minor_fwhm=minor_axis[i],
+            pos_angle=pos_angle[i],
+            total_flux=1.0
+        )
+        dirty += jax.vmap(gaussian.compute_flux_density)(lm).reshape(L.shape) * dl * dm
+
+    wgridder_data = dict(
+        center_l=l0,
+        center_m=m0,
+        pixsize_l=dl,
+        pixsize_m=dm,
+        dirty=dirty
+    )
+
+    ## Mock model data
+
     if full_stokes:
-        gain_shape = (time, ant, chan, 2, 2)
+        images = np.tile(dirty[None, :, :, None, None], (num_model_freqs, 1, 1, 2, 2)) * au.Jy
     else:
-        gain_shape = (time, ant, chan)
-    if is_gains:
-        gains = jnp.ones(gain_shape, dtype=complex_type)
-    else:
-        gains = None
-    if image_has_chan:
-        if full_stokes:
-            image_shape = (chan, Nx, Ny, 2, 2)
-        else:
-            image_shape = (chan, Nx, Ny)
-        l0 = jnp.zeros((chan,))
-        m0 = jnp.zeros((chan,))
-        dl = 0.01 * jnp.ones((chan,))
-        dm = 0.01 * jnp.ones((chan,))
-    else:
-        if full_stokes:
-            image_shape = (Nx, Ny, 2, 2)
-        else:
-            image_shape = (Nx, Ny)
-        l0 = jnp.zeros(())
-        m0 = jnp.zeros(())
-        dl = 0.01 * jnp.ones(())
-        dm = 0.01 * jnp.ones(())
-    image = jnp.ones(image_shape, dtype=jnp.float32)
-    freqs = 700e6 * jnp.ones((chan,))
-    model_data = FITSModelData(
-        image=mp_policy.cast_to_image(image),
-        gains=mp_policy.cast_to_gain(gains),
-        l0=mp_policy.cast_to_angle(l0), m0=mp_policy.cast_to_angle(m0),
-        dl=mp_policy.cast_to_angle(dl), dm=mp_policy.cast_to_angle(dm),
-        freqs=mp_policy.cast_to_freq(freqs)
+        images = np.tile(dirty[None, :, :], (num_model_freqs, 1, 1)) * au.Jy
+
+    ras = au.Quantity(np.tile(phase_tracking.ra[None], (num_model_freqs,)))
+    decs = au.Quantity(np.tile(phase_tracking.dec[None], (num_model_freqs,)))
+    dls = au.Quantity(np.tile([dl] * au.rad, (num_model_freqs,)))
+    dms = au.Quantity(np.tile([dm] * au.rad, (num_model_freqs,)))
+
+    images, ras, decs, dls, dms = divide_fits_into_facets(
+        images, ras, decs, dls, dms, num_facets_per_side
     )
-    # print(model_data)
-    return model_data
 
+    if full_stokes:
+        assert np.shape(images) == (num_model_freqs, num_facets_per_side**2, N//num_facets_per_side, N//num_facets_per_side, 2, 2)
+    else:
+        assert np.shape(images) == (num_model_freqs, num_facets_per_side**2, N//num_facets_per_side, N//num_facets_per_side)
+    assert np.shape(ras) == (num_model_freqs, num_facets_per_side**2)
+    assert np.shape(decs) == (num_model_freqs, num_facets_per_side**2)
+    assert np.shape(dls) == (num_model_freqs, num_facets_per_side**2)
+    assert np.shape(dms) == (num_model_freqs, num_facets_per_side**2)
 
-def build_mock_visibility_coord(rows: int, ant: int, time: int) -> VisibilityCoords:
-    uvw = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (rows, 3))
-    uvw = uvw.at[:, 2].mul(1e-3)
-    time_obs = jnp.zeros((rows,))
-    antenna_1 = jax.random.randint(jax.random.PRNGKey(42), (rows,), 0, ant)
-    antenna_2 = jax.random.randint(jax.random.PRNGKey(43), (rows,), 0, ant)
-    time_idx = jax.random.randint(jax.random.PRNGKey(44), (rows,), 0, time)
-
-    visibility_coords = VisibilityCoords(
-        uvw=mp_policy.cast_to_length(uvw),
-        time_obs=mp_policy.cast_to_time(time_obs),
-        antenna_1=mp_policy.cast_to_index(antenna_1),
-        antenna_2=mp_policy.cast_to_index(antenna_2),
-        time_idx=mp_policy.cast_to_index(time_idx)
+    model_data = build_fits_source_model(
+        model_freqs=model_freqs,
+        image=images,
+        ra=ras,
+        dec=decs,
+        dl=dls,
+        dm=dms
     )
-    return visibility_coords
+
+    model_data.plot(phase_tracking=phase_tracking)
+    return model_data, wgridder_data
 
 
-@pytest.mark.parametrize("is_gains", [True, False])
+def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation):
+    if with_gains:
+        model_freqs = np.linspace(700, 2000, 5) * au.MHz
+        model_theta = np.linspace(0, np.pi, 5) * au.rad
+        model_phi = np.linspace(0, 2 * np.pi, 5) * au.rad
+        ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
+        model_times = ref_time + np.arange(2) * au.s
+        if full_stokes:
+            model_gains = np.ones(
+                (len(model_times), len(model_theta), len(model_freqs), 2, 2)
+            ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
+            model_gains[..., 0, 1] *= 0.
+            model_gains[..., 1, 0] *= 0.
+
+        else:
+            model_gains = np.ones(
+                (len(model_times), len(model_theta), len(model_freqs))
+            ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs]
+        return build_spherical_interpolator(
+            antennas=antennas,
+            model_freqs=model_freqs,
+            model_theta=model_theta,
+            model_phi=model_phi,
+            model_times=model_times,
+            model_gains=model_gains,
+            ref_time=ref_time,
+            tile_antennas=True,
+        )
+    else:
+        return None
+
+
+def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
+    array_location = ac.EarthLocation.of_site('vla')
+    ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
+    obstimes = ref_time + np.arange(time) * au.s
+    phase_tracking = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
+    freqs = np.linspace(700, 2000, num_freqs) * au.MHz
+
+    pointing = phase_tracking
+    antennas = ENU(
+        east=np.random.uniform(low=-10, high=10, size=ant) * au.km,
+        north=np.random.uniform(low=-10, high=10, size=ant) * au.km,
+        up=np.random.uniform(low=-10, high=10, size=ant) * au.m,
+        location=array_location,
+        obstime=ref_time
+    ).transform_to(ac.ITRS(location=array_location, obstime=ref_time)).earth_location
+
+    geodesic_model = build_geodesic_model(
+        antennas=antennas,
+        array_location=array_location,
+        phase_center=phase_tracking,
+        obstimes=obstimes,
+        ref_time=ref_time,
+        pointings=pointing
+    )
+
+    far_field_delay_engine = build_far_field_delay_engine(
+        antennas=antennas,
+        phase_center=phase_tracking,
+        start_time=obstimes.min(),
+        end_time=obstimes.max(),
+        ref_time=ref_time
+    )
+
+    near_field_delay_engine = build_near_field_delay_engine(
+        antennas=antennas,
+        start_time=obstimes.min(),
+        end_time=obstimes.max(),
+        ref_time=ref_time
+    )
+
+    visibility_coords = far_field_delay_engine.compute_visibility_coords(
+        freqs=quantity_to_jnp(freqs),
+        times=time_to_jnp(obstimes, ref_time)
+    )
+    return phase_tracking, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine
+
+
 @pytest.mark.parametrize("full_stokes", [True, False])
-@pytest.mark.parametrize("image_has_chan", [True, False])
-@pytest.mark.parametrize("chan", [1, 4])
-def test_shapes_correctness(is_gains: bool, image_has_chan: bool, full_stokes: bool, chan: int):
-    faint_predict = FITSPredict()
-    Nx = 100
-    Ny = 100
+@pytest.mark.parametrize("with_gains", [True, False])
+def test_fits_predict(full_stokes: bool, with_gains: bool):
     time = 15
-    ant = 24
-    row = 1000
-    model_data = build_mock_point_model_data(full_stokes, is_gains, image_has_chan, Nx, Ny, chan, time, ant)
-    visibility_coords = build_mock_visibility_coord(row, ant, time)
-    visibilities = faint_predict.predict(model_data=model_data, visibility_coords=visibility_coords)
+    ant = 100
+    num_freqs = 4
+    phase_tracking, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
+        ant, time, num_freqs
+    )
+    gain_model = build_mock_gain_model(with_gains, full_stokes, antennas)
+    num_times, num_baselines, _ = np.shape(visibility_coords.uvw)
+
+    num_model_freqs = 3
+    num_sources = 5
+    num_facets_per_side = 2
+    fits_source_model, wgridder_data = build_mock_fits_source_model(num_model_freqs, num_sources, full_stokes,
+                                                                    phase_tracking, num_facets_per_side)
+
+    if full_stokes:
+        assert fits_source_model.is_full_stokes()
+    else:
+        assert not fits_source_model.is_full_stokes()
+
+    visibilities = fits_source_model.predict(
+        visibility_coords=visibility_coords,
+        gain_model=gain_model,
+        near_field_delay_engine=near_field_delay_engine,
+        far_field_delay_engine=far_field_delay_engine,
+        geodesic_model=geodesic_model
+    )
     assert np.all(np.isfinite(visibilities))
     if full_stokes:
-        assert np.shape(visibilities) == (row, chan, 2, 2)
+        assert np.shape(visibilities) == (num_times, num_baselines, num_freqs, 2, 2)
     else:
-        assert np.shape(visibilities) == (row, chan)
+        assert np.shape(visibilities) == (num_times, num_baselines, num_freqs)
 
-    # Note: correctness is based on wgridder correctness
+    wgridder_vis = image_to_vis(
+        uvw=visibility_coords.uvw.reshape((-1, 3)),
+        freqs=visibility_coords.freqs,
+        epsilon=1e-4,
+        **wgridder_data
+    )
+    wgridder_vis = wgridder_vis.reshape((num_times, num_baselines, num_freqs))
 
+    if full_stokes:
+        np.testing.assert_allclose(wgridder_vis.real, visibilities.real[..., 0, 0], atol=1e-3)
+        np.testing.assert_allclose(wgridder_vis.imag, visibilities.imag[..., 0, 0], atol=1e-3)
+    else:
+        np.testing.assert_allclose(wgridder_vis.real, visibilities.real, atol=1e-3)
+        np.testing.assert_allclose(wgridder_vis.imag, visibilities.imag, atol=1e-3)
 
-@pytest.mark.parametrize("full_stokes", [True, False])
-@pytest.mark.parametrize("image_has_chan", [True, False])
-def test_grads_good(image_has_chan: bool, full_stokes: bool):
-    faint_predict = FITSPredict()
-    Nx = 100
-    Ny = 100
-    chan = 4
-    time = 2
-    ant = 24
-    row = 1000
-    _model_data = build_mock_point_model_data(full_stokes, is_gains=True, image_has_chan=image_has_chan, Nx=Nx, Ny=Ny,
-                                              chan=chan, time=time, ant=ant)
-    _visibility_coords = build_mock_visibility_coord(row, ant, time)
+    def f(sm):
+        return sm
 
-    def objective(gains):
-        model_data = FITSModelData(
-            image=_model_data.image,
-            gains=mp_policy.cast_to_gain(gains),
-            l0=_model_data.l0, m0=_model_data.m0,
-            dl=_model_data.dl, dm=_model_data.dm,
-            freqs=_model_data.freqs
-        )
+    f_jit = jax.jit(f).lower(fits_source_model).compile()
 
-        vis = faint_predict.predict(model_data=model_data, visibility_coords=_visibility_coords)
-
-        return jnp.sum(jnp.abs(vis) ** 2)
-
-    gains_grad = jax.grad(objective, argnums=0)(_model_data.gains)
-    assert np.all(np.isfinite(gains_grad))
-    # print(func(freqs, model_data, uvw))
-    # print(grad)
-    # gain_shape = (time, ant, chan, 2, 2)
-    for t in range(time):
-        for a in range(ant):
-            print(f"Time: {t}, Ant: {a}")
-            if full_stokes:
-                print("\tXX", gains_grad[t, a, ..., 0, 0])
-                print("\tXY", gains_grad[t, a, ..., 0, 1])
-                print("\tYX", gains_grad[t, a, ..., 1, 0])
-                print("\tYY", gains_grad[t, a, ..., 1, 1])
-            else:
-                print("\tXX", gains_grad[t, a, ...])
-            assert np.all(np.isfinite(gains_grad[t, a]))
+    jax.block_until_ready(f_jit(fits_source_model))

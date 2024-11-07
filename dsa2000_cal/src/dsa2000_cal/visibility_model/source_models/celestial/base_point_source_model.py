@@ -75,8 +75,6 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
             image = jnp.where(elevation_mask[:, None, None], jnp.zeros_like(image), image)  # [num_sources, 2, 2]
         else:
             image = jnp.where(elevation_mask, jnp.zeros_like(image), image)  # [num_sources]
-        # Add a time dimension
-        image = image  # [num_sources[, 2, 2]]
 
         return PointModelData(
             image=mp_policy.cast_to_image(image),
@@ -252,8 +250,8 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
 
         l, m, n = perley_lmn_from_icrs(self.ra, self.dec, phase_tracking.ra.rad, phase_tracking.dec.rad)
 
-        lvec = np.linspace(np.min(l) - 0.01, np.max(l) + 0.01, 256)
-        mvec = np.linspace(np.min(m) - 0.01, np.max(m) + 0.01, 256)
+        lvec = np.linspace(np.min(l), np.max(l), 256)
+        mvec = np.linspace(np.min(m), np.max(m), 256)
 
         # Evaluate over LM
         flux_model = np.zeros((lvec.size, mvec.size))
@@ -272,7 +270,12 @@ class BasePointSourceModel(AbstractSourceModel[PointModelData]):
 
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
-        im = axs.imshow(flux_model.T, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
+        im = axs.imshow(
+            flux_model.T,
+            origin='lower',
+            extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
+            interpolatin='nearest'
+        )
         # colorbar
         plt.colorbar(im, ax=axs)
         axs.set_xlabel('l [proj.rad]')

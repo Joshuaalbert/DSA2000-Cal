@@ -12,7 +12,7 @@ from jax import numpy as jnp, lax
 
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
 from dsa2000_cal.common.corr_translation import stokes_I_to_linear, flatten_coherencies, unflatten_coherencies
-from dsa2000_cal.common.ellipse_utils import ellipse_eval, Gaussian
+from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
@@ -26,7 +26,7 @@ from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldD
 from dsa2000_cal.delay_models.uvw_utils import perley_lmn_from_icrs
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel, ModelDataType
+from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
 
 
 class GaussianModelData(NamedTuple):
@@ -83,7 +83,8 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
     def is_full_stokes(self) -> bool:
         return len(np.shape(self.A)) == 4 and np.shape(self.A)[-2:] == (2, 2)
 
-    def get_model_slice(self, freq: FloatArray, time: FloatArray, geodesic_model: BaseGeodesicModel) -> GaussianModelData:
+    def get_model_slice(self, freq: FloatArray, time: FloatArray,
+                        geodesic_model: BaseGeodesicModel) -> GaussianModelData:
         lmn, elevation = geodesic_model.compute_far_field_lmn(self.ra, self.dec, time, return_elevation=True)
         interp = InterpolatedArray(x=self.model_freqs, values=self.A, axis=0)
         image = interp(freq)  # [num_sources[, 2, 2]]
@@ -92,8 +93,6 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
             image = jnp.where(elevation_mask[:, None, None], jnp.zeros_like(image), image)  # [num_sources, 2, 2]
         else:
             image = jnp.where(elevation_mask, jnp.zeros_like(image), image)  # [num_sources]
-        # Add a time dimension
-        image = image  # [num_sources[, 2, 2]]
 
         return GaussianModelData(
             image=mp_policy.cast_to_image(image),
@@ -351,9 +350,11 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
 
         l, m, n = perley_lmn_from_icrs(self.ra, self.dec, phase_tracking.ra.rad, phase_tracking.dec.rad)
 
-        lvec = np.linspace(np.min(l) - 0.01, np.max(l) + 0.01, 256)
-        mvec = np.linspace(np.min(m) - 0.01, np.max(m) + 0.01, 256)
+        lvec = np.linspace(np.min(l), np.max(l), 256)
+        mvec = np.linspace(np.min(m), np.max(m), 256)
         L, M = np.meshgrid(lvec, mvec, indexing='ij')
+
+        lm = np.stack([L.flatten(), M.flatten()], axis=-1)
 
         # Evaluate over LM
         flux_model = np.zeros((lvec.size, mvec.size))
@@ -363,15 +364,20 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
 
         @jax.jit
         def compute_gaussian_flux(A, l0, m0, major, minor, theta):
-            return jax.vmap(
-                lambda l, m: ellipse_eval(A, major, minor, theta, l, m, l0, m0)
-            )(jnp.asarray(L).flatten(), jnp.asarray(M).flatten()).reshape(L.shape)
+            gaussian = Gaussian(
+                x0=jnp.stack([l0, m0]),
+                major_fwhm=major,
+                minor_fwhm=minor,
+                pos_angle=theta,
+                total_flux=A
+            )
+            return jax.vmap(gaussian.compute_flux_density)(lm).reshape(L.shape) * dl * dm
 
         for i, (li, mi, majori, minori, pos_anglei) in enumerate(
                 zip(l, m, self.major_axis, self.minor_axis, self.pos_angle)):
             if self.is_full_stokes():
-                args = (
-                    self.A[:, i, 0, 0],
+                flux_model += compute_gaussian_flux(
+                    self.A[0, i, 0, 0],
                     li,
                     mi,
                     majori,
@@ -379,8 +385,8 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
                     pos_anglei
                 )
             else:
-                args = (
-                    self.A[:, i],
+                flux_model += compute_gaussian_flux(
+                    self.A[0, i],
                     li,
                     mi,
                     majori,
@@ -388,11 +394,14 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
                     pos_anglei
                 )
 
-            flux_model += compute_gaussian_flux(*args)
-
         fig, axs = plt.subplots(1, 1, figsize=(10, 10))
 
-        im = axs.imshow(flux_model.T, origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]))
+        im = axs.imshow(
+            flux_model.T,
+            origin='lower',
+            extent=(lvec[0], lvec[-1], mvec[0], mvec[-1]),
+            interpolation='nearest'
+        )
         # colorbar
         plt.colorbar(im, ax=axs)
         axs.set_xlabel('l [proj.rad]')
@@ -490,7 +499,7 @@ def build_gaussian_source_model(
     )
 
 
-def build_point_source_model_from_wsclean_components(
+def build_gaussian_source_model_from_wsclean_components(
         wsclean_clean_component_file: str,
         model_freqs: au.Quantity,
         full_stokes: bool = True

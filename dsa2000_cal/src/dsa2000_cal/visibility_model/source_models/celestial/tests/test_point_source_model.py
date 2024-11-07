@@ -68,6 +68,8 @@ def build_mock_point_source_model(num_freqs: int, num_source: int, full_stokes: 
         A=A
     )
 
+    model_data.plot(phase_tracking=phase_tracking)
+
     return model_data, wgridder_data
 
 
