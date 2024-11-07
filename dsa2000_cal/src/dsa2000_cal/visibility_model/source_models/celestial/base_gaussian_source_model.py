@@ -10,8 +10,9 @@ import pylab as plt
 from astropy import constants
 from jax import numpy as jnp, lax
 
+from dsa2000_cal.adapter.utils import broadcast_translate_corrs
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
-from dsa2000_cal.common.corr_translation import stokes_I_to_linear, flatten_coherencies, unflatten_coherencies
+from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_coherencies
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
@@ -552,14 +553,20 @@ def build_gaussian_source_model_from_wsclean_components(
 
     ra = source_directions.ra
     dec = source_directions.dec
-    A = np.stack(spectrum, axis=1) * au.Jy  # [num_freqs, num_sources]
+    A = np.stack(spectrum, axis=1)  # [num_freqs, num_sources]
 
     major_axis = au.Quantity(major_axis)
     minor_axis = au.Quantity(minor_axis)
     pos_angle = au.Quantity(pos_angle)
 
     if full_stokes:
-        A = np.asarray(stokes_I_image_to_linear(quantity_to_jnp(A, 'Jy'), flat_output=False)) * au.Jy
+        A = np.asarray(
+            broadcast_translate_corrs(
+                quantity_to_jnp(A[..., None], 'Jy'),
+                ('I',),
+                (('XX', 'XY'), ('YX', 'YY'))
+            )
+        ) * au.Jy  # [num_freqs, num_sources, 2, 2]
 
     return build_gaussian_source_model(
         model_freqs=model_freqs,
@@ -570,22 +577,3 @@ def build_gaussian_source_model_from_wsclean_components(
         minor_axis=minor_axis,
         pos_angle=pos_angle
     )
-
-
-@partial(jax.jit, static_argnames=['flat_output'])
-def stokes_I_image_to_linear(image: FloatArray, flat_output: bool) -> FloatArray:
-    """
-    Convert a Stokes I image to linear.
-
-    Args:
-        image: [Nl, Nm]
-
-    Returns:
-        linear: [Nl, Nm, ...]
-    """
-
-    @partial(multi_vmap, in_mapping="[f,s]", out_mapping="[f,s,...]")
-    def convert_stokes_I_to_linear(coh):
-        return stokes_I_to_linear(coh, flat_output)
-
-    return convert_stokes_I_to_linear(image)
