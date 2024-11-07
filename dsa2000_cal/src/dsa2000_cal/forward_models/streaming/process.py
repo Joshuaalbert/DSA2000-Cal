@@ -252,7 +252,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     dag[setup_observation_step] = ()
     dag[simulate_beam_step] = (setup_observation_step,)
     dag[simulate_dish_step] = (setup_observation_step, simulate_beam_step)
-    dag[predict_and_sample_step] = (simulate_dish_step, simulate_dish_step)
+    dag[predict_and_sample_step] = (setup_observation_step, simulate_dish_step)
 
     # dag[simulate_ionosphere_step] = (simulate_dish_step,)
     # dag[create_model_data_step] = (simulate_dish_step, simulate_ionosphere_step)
