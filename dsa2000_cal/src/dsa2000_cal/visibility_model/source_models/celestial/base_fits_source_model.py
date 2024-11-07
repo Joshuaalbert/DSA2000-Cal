@@ -440,6 +440,7 @@ def build_fits_source_model_from_wsclean_components(
         model_freqs: au.Quantity,
         full_stokes: bool = True,
         repoint_centre: ac.ICRS | None = None,
+        crop_box_size: au.Quantity | None = None,
         num_facets_per_side: int = 1
 ) -> BaseFITSSourceModel:
     """
@@ -493,7 +494,8 @@ def build_fits_source_model_from_wsclean_components(
     for freq_idx in range(len(model_freqs)):
         # interpolate between the two closest frequencies
         select_file_idx = select_idx[freq_idx]
-        with fits.open(wsclean_fits_freqs_and_fits[select_file_idx]) as hdul0:
+        freq, fits_file = wsclean_fits_freqs_and_fits[select_file_idx]
+        with fits.open(fits_file) as hdul0:
             # image = hdul0[0].data.T[:, :, 0, 0].T # [Nm, Nl]
             if np.shape(hdul0[0].data)[1] > 1:
                 raise ValueError(f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}")
@@ -535,20 +537,49 @@ def build_fits_source_model_from_wsclean_components(
                 # Use WCS conversion instead using crval directly to avoid issues with convention-breaking FITS files
                 # I.e. CRVAL might not always the centre of the image
                 # ra0, dec0 = w0.wcs.crval[0], w0.wcs.crval[1]
-
                 center_icrs = pointing_coord.transform_to(ac.ICRS)
             else:
                 center_icrs = repoint_centre
 
             # Extract centre ra/dec
-            ra0 = center_icrs.ra.rad
-            dec0 = center_icrs.dec.rad
+            ra0 = center_icrs.ra.to('rad')
+            dec0 = center_icrs.dec.to('rad')
             # Order is l, m, freq, stokes
             dl = -pixel_size_l.to('rad')  # negative pixel size
             dm = pixel_size_m.to('rad')
 
+            if crop_box_size is not None:
+                # crop to box of given size
+                if not crop_box_size.unit.is_equivalent(au.rad):
+                    raise ValueError(f"crop_box_size must be in radians, got {crop_box_size.unit}")
+                ra_right, dec_right = ac.offset_by(ra0, dec0, np.pi / 2 * au.rad, 0.5 * crop_box_size)
+                ra_left, dec_left = ac.offset_by(ra0, dec0, -np.pi / 2 * au.rad, 0.5 * crop_box_size)
+                ra_top, dec_top = ac.offset_by(ra0, dec0, 0 * au.rad, 0.5 * crop_box_size)
+                ra_bottom, dec_bottom = ac.offset_by(ra0, dec0, np.pi * au.rad, 0.5 * crop_box_size)
+                # Get l,m for right, left, top, bottom
+                l_right, m_right, _ = perley_lmn_from_icrs(quantity_to_np(ra_right), quantity_to_np(dec_right),
+                                                           quantity_to_np(ra0), quantity_to_np(dec0))
+                l_left, m_left, _ = perley_lmn_from_icrs(quantity_to_np(ra_left), quantity_to_np(dec_left),
+                                                         quantity_to_np(ra0), quantity_to_np(dec0))
+                l_top, m_top, _ = perley_lmn_from_icrs(quantity_to_np(ra_top), quantity_to_np(dec_top),
+                                                       quantity_to_np(ra0), quantity_to_np(dec0))
+                l_bottom, m_bottom, _ = perley_lmn_from_icrs(quantity_to_np(ra_bottom), quantity_to_np(dec_bottom),
+                                                             quantity_to_np(ra0), quantity_to_np(dec0))
+
+                # Get the indices for the box
+                lvec = ((-0.5 * Nl + np.arange(Nl)) * dl).to('rad').value
+                mvec = ((-0.5 * Nm + np.arange(Nm)) * dm).to('rad').value
+                l_left_idx = np.searchsorted(lvec, l_left)
+                l_right_idx = np.clip(np.searchsorted(lvec, l_right, side='right') - 1, 0, Nl - 1)
+                l_slice = slice(l_left_idx, l_right_idx)
+                m_bottom_idx = np.clip(np.searchsorted(mvec, m_bottom, side='right') - 1, 0, Nm - 1)
+                m_top_idx = np.searchsorted(mvec, m_top)
+                m_slice = slice(m_bottom_idx, m_top_idx)
+                image = image[l_slice, m_slice, :]  # [Nl, Nm, stokes]
+                Nl, Nm, num_stokes = image.shape
+
             print(
-                f"freq={model_freqs[freq_idx].to('MHz')}, dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
+                f"freq={freq.to('MHz')}, dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
                 f"centre_ra={ra0}, centre_dec={dec0}\n"
                 f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"
                 f"num_l={Nl}, num_m={Nm}, num_stokes={num_stokes}"

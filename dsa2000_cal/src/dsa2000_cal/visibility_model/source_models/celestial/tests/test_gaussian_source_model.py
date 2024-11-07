@@ -21,7 +21,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_m
 
 
 def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stokes: bool,
-                                     phase_tracking: ac.ICRS):
+                                     phase_tracking: ac.ICRS, order):
     model_freqs = np.linspace(700, 2000, num_freqs) * au.MHz
 
     # Wgridder test data
@@ -84,7 +84,7 @@ def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stoke
         major_axis=major_axis * au.rad,
         minor_axis=minor_axis * au.rad,
         pos_angle=pos_angle * au.rad,
-        order_approx=0
+        order_approx=order
     )
 
     model_data.plot(phase_tracking=phase_tracking)
@@ -171,7 +171,8 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
 
 @pytest.mark.parametrize("full_stokes", [True, False])
 @pytest.mark.parametrize("with_gains", [True, False])
-def test_gaussian_predict(full_stokes: bool, with_gains: bool):
+@pytest.mark.parametrize("order", [0, 1])
+def test_gaussian_predict(full_stokes: bool, with_gains: bool, order):
     time = 2
     ant = 100
     num_freqs = 4
@@ -185,7 +186,7 @@ def test_gaussian_predict(full_stokes: bool, with_gains: bool):
     num_model_freqs = 3
     num_sources = 5
     gaussian_source_model, wgridder_data = build_mock_gaussian_source_model(num_model_freqs, num_sources, full_stokes,
-                                                                            phase_tracking)
+                                                                            phase_tracking, order)
 
     if full_stokes:
         assert gaussian_source_model.is_full_stokes()
