@@ -58,30 +58,31 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
     def get_state(self) -> PredictAndSampleState:
         fill_registries()
 
+        model_freqs = au.Quantity([self.freqs[0], self.freqs[-1]])
         wsclean_fits_files = source_model_registry.get_instance(
             source_model_registry.get_match(self.faint_sky_model)).get_wsclean_fits_files()
         # -04:00:28.608,40.43.33.595
 
         faint_sky_model = build_fits_source_model_from_wsclean_components(
             wsclean_fits_files=wsclean_fits_files,
-            model_freqs=self.freqs,
+            model_freqs=model_freqs,
             full_stokes=self.full_stokes,
             crop_box_size=self.crop_box_size,
             num_facets_per_side=self.num_facets_per_side
         )
 
         wsclean_clean_component_file = source_model_registry.get_instance(
-            self.bright_sky_model).get_wsclean_clean_component_file()
+            source_model_registry.get_match(self.bright_sky_model)).get_wsclean_clean_component_file()
 
         bright_sky_model_points = build_point_source_model_from_wsclean_components(
             wsclean_clean_component_file=wsclean_clean_component_file,
-            model_freqs=self.freqs,
+            model_freqs=model_freqs,
             full_stokes=self.full_stokes
         )
 
         bright_sky_model_gaussians = build_gaussian_source_model_from_wsclean_components(
             wsclean_clean_component_file=wsclean_clean_component_file,
-            model_freqs=self.freqs,
+            model_freqs=model_freqs,
             full_stokes=self.full_stokes
         )
 
