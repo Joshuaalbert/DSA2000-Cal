@@ -5,8 +5,8 @@ import jax
 import numpy as np
 from jax import lax, numpy as jnp
 
+from dsa2000_cal.common.array_types import Array, ComplexArray, FloatArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.types import FloatArray, Array, ComplexArray
 
 
 def optimized_interp_jax_safe(x, xp, yp):
@@ -373,6 +373,16 @@ def field_dunder(binary_op, self: 'InterpolatedArray',
         )
 
 
+# def cubic_interp():
+#     A_CUBIC = jnp.array([
+#         [1, 0, 0, 0],
+#         [0, 0, 1, 0],
+#         [-3, 3, -2, -1],
+#         [2, -2, 1, 1],
+#     ])
+#
+#     jax.lax.switch
+
 @dataclasses.dataclass(eq=False)
 class InterpolatedArray(Generic[VT]):
     x: FloatArray  # [N]
@@ -389,10 +399,6 @@ class InterpolatedArray(Generic[VT]):
     def __post_init__(self):
         if self.skip_post_init:
             return
-
-        num_dims = len(np.shape(self.values))
-        if self.axis == num_dims - 1:
-            self.axis = -1  # Prefer it like this for getitem
 
         if self.auto_reorder and self.axis != -1:
             # Move axis to the last dimension
@@ -584,3 +590,11 @@ def is_regular_grid(q: np.ndarray):
     if len(q) < 2:
         return True
     return np.allclose(np.diff(q), q[1] - q[0])
+
+
+def select_interpolation_points(desired_freqs, model_freqs):
+    # Only select the frequencies such that each desired frequency is between two model frequencies
+    i0 = np.clip(np.searchsorted(model_freqs, desired_freqs, side='right') - 1, 0, len(model_freqs) - 1)
+    i1 = np.clip(i0 + 1, 0, len(model_freqs) - 1)
+    select_idxs = np.unique(np.concatenate([i0, i1]))
+    return select_idxs

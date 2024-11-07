@@ -4,14 +4,16 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
+from dsa2000_cal.common.array_types import FloatArray
+
 
 @dataclasses.dataclass(eq=False)
 class Gaussian:
-    x0: jax.Array  # [2]
-    major_fwhm: jax.Array  # []
-    minor_fwhm: jax.Array  # []
-    pos_angle: jax.Array  # []
-    total_flux: jax.Array  # []
+    x0: FloatArray  # [2]
+    major_fwhm: FloatArray  # []
+    minor_fwhm: FloatArray  # []
+    pos_angle: FloatArray  # []
+    total_flux: FloatArray  # []
 
     def __post_init__(self):
         if np.shape(self.x0) != (2,):

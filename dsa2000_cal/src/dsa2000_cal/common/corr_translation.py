@@ -68,12 +68,11 @@ def stokes_I_to_linear(stokes_I: jax.Array, flat_output: bool = False) -> jax.Ar
     Returns:
         [4] array of linear coherencies in the order [XX, XY, YX, YY], or [[XX, XY], [YX, YY]]
     """
-    if np.size(stokes_I) != 1:
-        raise ValueError("Stokes I must have 1 element.")
+    if np.shape(stokes_I) != ():
+        raise ValueError(f"Stokes I must be a scalar, got shape {np.shape(stokes_I)}.")
     I = stokes_I
     XX = I
-    XY = 0
-    YX = 0
+    XY = YX = jnp.zeros_like(I)
     YY = I
     output = 0.5 * jnp.stack([XX, XY, YX, YY], axis=-1)
     if flat_output:

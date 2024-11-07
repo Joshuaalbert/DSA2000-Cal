@@ -466,6 +466,8 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
         for dim in dims:
             if dim.startswith("~") or dim == '...':
                 # Dims prefixed with ~ are not mapped
+                if dims.count(dim) > 1:
+                    raise ValueError(f"Unmapped dimension {dim} must be unique in output dims {dims}.")
                 continue
             if dim not in mapped_dims:
                 mapped_dims.append(dim)

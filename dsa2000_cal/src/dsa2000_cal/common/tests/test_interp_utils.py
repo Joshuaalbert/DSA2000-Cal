@@ -11,7 +11,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.interp_utils import optimized_interp_jax_safe, multilinear_interp_2d, \
     get_interp_indices_and_weights, left_broadcast_multiply, convolved_interp, get_centred_insert_index, apply_interp, \
-    InterpolatedArray
+    InterpolatedArray, select_interpolation_points
 
 
 def test_linear_interpolation():
@@ -394,7 +394,6 @@ def test_interpolated_array(regular_grid: bool, normalise: bool, value_shape: tu
     assert interp(x).shape == interp.shape
     np.testing.assert_allclose(interp(x), y_expected, atol=1e-6)
 
-
     x = jnp.asarray([xp[0], xp[-1]])
     if axis == 0:
         y_expected = values[jnp.asarray([0, -1]), ...]
@@ -425,12 +424,33 @@ def test_interpolated_array(regular_grid: bool, normalise: bool, value_shape: tu
     def f(ia: InterpolatedArray):
         return ia(ia.x)
 
-    x = np.linspace(0, 1, 10)
-    y = np.random.rand(10, 3)
-    axis = 0
-    ia = InterpolatedArray(x, y, axis=axis, regular_grid=regular_grid, normalise=normalise, auto_reorder=auto_reorder)
+    ia = InterpolatedArray(np.linspace(0, 1, 10), np.random.rand(10, 3), axis=0, regular_grid=regular_grid,
+                           normalise=normalise, auto_reorder=auto_reorder)
     f_jit = f.lower(ia).compile()
     np.testing.assert_allclose(f_jit(ia), ia(ia.x))
+
+    # test pytree values
+    tuple_values = (values, values)
+
+    interp = InterpolatedArray(
+        xp, tuple_values, regular_grid=regular_grid, normalise=normalise, axis=axis, auto_reorder=auto_reorder
+    )
+
+    if axis == 0:
+        assert interp.shape == (value_shape[1:], value_shape[1:])
+    elif axis == -1:
+        assert interp.shape == (value_shape[:-1], value_shape[:-1])
+    else:
+        raise ValueError('Invalid axis')
+
+    x = 0.
+    if axis == 0:
+        y_expected = (values[0, ...], values[0, ...])
+    elif axis == -1:
+        y_expected = (values[..., 0], values[..., 0])
+    else:
+        raise ValueError('Invalid axis')
+    np.testing.assert_allclose(interp(x), y_expected, atol=1e-6)
 
 
 def test_interpolated_array_dunders():
@@ -571,3 +591,41 @@ def test_compare_interpolation_methods():
     plt.ylabel('Average Execution Time (s)')
     plt.legend()
     plt.show()
+
+
+def test_select_interpolation_points():
+    desired_freqs = np.asarray([1.0])
+    model_freqs = np.asarray([1.0, 2.0, 3.0])
+    expected_select_idxs = np.asarray([0, 1])
+    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
+    np.testing.assert_allclose(select_idxs, expected_select_idxs)
+
+    desired_freqs = np.asarray([1.0])
+    model_freqs = np.asarray([1.0, 1.0, 2.0, 3.0])
+    expected_select_idxs = np.asarray([1, 2])
+    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
+    np.testing.assert_allclose(select_idxs, expected_select_idxs)
+
+    desired_freqs = np.asarray([3.0])
+    model_freqs = np.asarray([1.0, 2.0, 3.0])
+    expected_select_idxs = np.asarray([2])
+    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
+    np.testing.assert_allclose(select_idxs, expected_select_idxs)
+
+    desired_freqs = np.asarray([3.0])
+    model_freqs = np.asarray([1.0, 2.0, 3.0, 3.0])
+    expected_select_idxs = np.asarray([3])
+    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
+    np.testing.assert_allclose(select_idxs, expected_select_idxs)
+
+    desired_freqs = np.asarray([1.0, 2.0, 3.0])
+    model_freqs = np.asarray([0.5, 1.5, 2.5, 3.5])
+    expected_select_idxs = np.asarray([0, 1, 2, 3])
+    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
+    np.testing.assert_allclose(select_idxs, expected_select_idxs)
+
+    desired_freqs = np.asarray([1.0, 2.0, 3.0])
+    model_freqs = np.asarray([0.5, 1.5, 1.5, 1.5, 1.75, 2.5, 3.5])
+    expected_select_idxs = np.asarray([0, 1, 4, 5, 6])
+    select_idxs = select_interpolation_points(desired_freqs, model_freqs)
+    np.testing.assert_allclose(select_idxs, expected_select_idxs)
