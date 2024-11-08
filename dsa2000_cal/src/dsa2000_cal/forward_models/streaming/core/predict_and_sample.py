@@ -45,7 +45,7 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
     faint_sky_model: str  # Likely TRECS
     bright_sky_model: str  # Likely FIRST > 5Jy resampled onto sky with about 100 over >-30deg sky
     num_facets_per_side: int
-    crop_box_size: au.Quantity
+    crop_box_size: au.Quantity | None
     full_stokes: bool
     system_equivalent_flux_density: au.Quantity
     channel_width: au.Quantity
