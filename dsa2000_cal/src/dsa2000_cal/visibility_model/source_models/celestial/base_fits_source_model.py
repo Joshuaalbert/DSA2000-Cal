@@ -559,18 +559,26 @@ def build_fits_source_model_from_wsclean_components(
                 ra_top, dec_top = ac.offset_by(ra0, dec0, 0 * au.rad, 0.5 * crop_box_size)
                 ra_bottom, dec_bottom = ac.offset_by(ra0, dec0, np.pi * au.rad, 0.5 * crop_box_size)
                 # Get l,m for right, left, top, bottom
-                l_right, m_right, _ = perley_lmn_from_icrs(quantity_to_np(ra_right), quantity_to_np(dec_right),
-                                                           quantity_to_np(ra0), quantity_to_np(dec0))
-                l_left, m_left, _ = perley_lmn_from_icrs(quantity_to_np(ra_left), quantity_to_np(dec_left),
-                                                         quantity_to_np(ra0), quantity_to_np(dec0))
-                l_top, m_top, _ = perley_lmn_from_icrs(quantity_to_np(ra_top), quantity_to_np(dec_top),
-                                                       quantity_to_np(ra0), quantity_to_np(dec0))
-                l_bottom, m_bottom, _ = perley_lmn_from_icrs(quantity_to_np(ra_bottom), quantity_to_np(dec_bottom),
-                                                             quantity_to_np(ra0), quantity_to_np(dec0))
+                l_right, m_right, _ = jax.tree.map(np.asarray,
+                                                   perley_lmn_from_icrs(quantity_to_np(ra_right),
+                                                                        quantity_to_np(dec_right),
+                                                                        quantity_to_np(ra0), quantity_to_np(dec0)))
+                l_left, m_left, _ = jax.tree.map(np.asarray,
+                                                 perley_lmn_from_icrs(quantity_to_np(ra_left), quantity_to_np(dec_left),
+                                                                      quantity_to_np(ra0), quantity_to_np(dec0)))
+                l_top, m_top, _ = jax.tree.map(np.asarray,
+                                               perley_lmn_from_icrs(quantity_to_np(ra_top), quantity_to_np(dec_top),
+                                                                    quantity_to_np(ra0), quantity_to_np(dec0)))
+                l_bottom, m_bottom, _ = jax.tree.map(np.asarray, perley_lmn_from_icrs(quantity_to_np(ra_bottom),
+                                                                                      quantity_to_np(dec_bottom),
+                                                                                      quantity_to_np(ra0),
+                                                                                      quantity_to_np(dec0)))
 
                 # Get the indices for the box
                 lvec = ((-0.5 * Nl + np.arange(Nl)) * dl).to('rad').value
                 mvec = ((-0.5 * Nm + np.arange(Nm)) * dm).to('rad').value
+
+                print(l_left.shape)
                 l_left_idx = np.clip(np.searchsorted(lvec, l_left, side='right') - 1, 0, Nl - 1)
                 l_right_idx = np.clip(np.searchsorted(lvec, l_right, side='right') - 1, 0, Nl - 1)
                 l_slice = slice(l_left_idx, l_right_idx)
