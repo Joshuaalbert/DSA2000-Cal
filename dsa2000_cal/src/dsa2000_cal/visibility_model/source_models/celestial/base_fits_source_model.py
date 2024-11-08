@@ -485,6 +485,7 @@ def build_fits_source_model_from_wsclean_components(
     )
     # hereafter model freqs is the selected freqs
     model_freqs = available_freqs[select_idx]
+    print(f"Selecting frequencies: {model_freqs}")
 
     images = []
     ras = []
@@ -570,11 +571,11 @@ def build_fits_source_model_from_wsclean_components(
                 # Get the indices for the box
                 lvec = ((-0.5 * Nl + np.arange(Nl)) * dl).to('rad').value
                 mvec = ((-0.5 * Nm + np.arange(Nm)) * dm).to('rad').value
-                l_left_idx = np.searchsorted(lvec, l_left)
+                l_left_idx = np.clip(np.searchsorted(lvec, l_left, side='right') - 1, 0, Nl - 1)
                 l_right_idx = np.clip(np.searchsorted(lvec, l_right, side='right') - 1, 0, Nl - 1)
                 l_slice = slice(l_left_idx, l_right_idx)
                 m_bottom_idx = np.clip(np.searchsorted(mvec, m_bottom, side='right') - 1, 0, Nm - 1)
-                m_top_idx = np.searchsorted(mvec, m_top)
+                m_top_idx = np.clip(np.searchsorted(mvec, m_top, side='right') - 1, 0, Nm - 1)
                 m_slice = slice(m_bottom_idx, m_top_idx)
                 image = image[l_slice, m_slice, :]  # [Nl, Nm, stokes]
                 Nl, Nm, num_stokes = image.shape
