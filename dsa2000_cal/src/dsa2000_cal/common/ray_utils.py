@@ -123,8 +123,7 @@ class LogErrors:
             )
             # Log the error message and the formatted stack trace
             msg = (
-                f"{now.isoformat()} An error occurred: {str(exc_val)}\n"
-                f"Stack trace (last {self.max_stack_depth:d} calls):\n"
+                f"{now.isoformat()} An error occurred: {str(exc_val)}:\n"
                 f"{formatted_traceback}"
             )
             print(msg)
