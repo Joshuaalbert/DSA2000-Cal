@@ -1,7 +1,7 @@
 import warnings
 from contextlib import contextmanager
 from functools import wraps
-from typing import Callable, Tuple, Dict, NamedTuple, Any, Optional, TypeVar, List
+from typing import Callable, Tuple, NamedTuple, Any, Optional, TypeVar, List
 
 import jax
 from jax._src.typing import SupportsDType
@@ -92,8 +92,8 @@ jax.tree_util.register_pytree_node(
     scoped_dict_unflatten
 )
 
-MutableParams = Dict[str, jax.Array]
-ImmutableParams = Dict[str, jax.Array]
+MutableParams = ScopedDict
+ImmutableParams = ScopedDict
 
 
 class Ctx:

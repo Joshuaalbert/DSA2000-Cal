@@ -102,10 +102,11 @@ class LogErrors:
     have good debugging.
     """
 
-    def __init__(self, max_stack_depth: int = 5):
+    def __init__(self, logfile, max_stack_depth: int = None):
         """
         :param max_stack_depth: Maximum depth of the stack trace to be logged.
         """
+        self.logfile = logfile
         self.max_stack_depth = max_stack_depth
 
     def __enter__(self):
@@ -131,7 +132,7 @@ class LogErrors:
                 msg,
                 exc_info=(exc_type, exc_val, exc_tb)
             )
-            with open('error.log', 'a') as f:
+            with open(self.logfile, 'a') as f:
                 f.write(
                     f"\n\n########\n\n"
                     f"{msg}"

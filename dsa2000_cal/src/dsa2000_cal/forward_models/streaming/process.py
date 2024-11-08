@@ -15,7 +15,7 @@ from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.common.ray_utils import MemoryLogger
+from dsa2000_cal.common.ray_utils import MemoryLogger, LogErrors
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
@@ -319,23 +319,24 @@ def process_start(
     run_key, init_key = jax.random.split(key, 2)
     with MemoryLogger(log_file=os.path.join(plot_folder, 'memory_usage.log'), interval=0.5,
                       kill_threshold=max_memory_MB):
-        print("Initialising...")
+        with LogErrors(logfile=os.path.join(plot_folder, 'errors.log')):
+            print("Initialising...")
 
-        init_start_time = current_utc()
-        init = block_until_ready(execute_dag_transformed.init(init_key))
-        init_end_time = current_utc()
+            init_start_time = current_utc()
+            init = block_until_ready(execute_dag_transformed.init(init_key))
+            init_end_time = current_utc()
 
-        print("Compiling...")
-        compile_start_time = current_utc()
-        run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states).compile()
-        compile_end_time = current_utc()
+            print("Compiling...")
+            compile_start_time = current_utc()
+            run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states).compile()
+            compile_end_time = current_utc()
 
-        print("Running...")
-        run_start_time = current_utc()
-        final_keep = block_until_ready(
-            run_process_jit_compiled(run_key, init.params, init.states)
-        )
-        run_end_time = current_utc()
+            print("Running...")
+            run_start_time = current_utc()
+            final_keep = block_until_ready(
+                run_process_jit_compiled(run_key, init.params, init.states)
+            )
+            run_end_time = current_utc()
     end_time = current_utc()
     total_run_time = (end_time - start_time).total_seconds()
     init_time = (init_end_time - init_start_time).total_seconds()
