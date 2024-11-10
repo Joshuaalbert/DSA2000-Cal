@@ -323,7 +323,7 @@ def process_start(
             print("Initialising...")
 
             init_start_time = current_utc()
-            init = block_until_ready(execute_dag_transformed.init(init_key))
+            init = block_until_ready(jax.jit(execute_dag_transformed.init)(init_key))
             init_end_time = current_utc()
 
             print("Compiling...")
