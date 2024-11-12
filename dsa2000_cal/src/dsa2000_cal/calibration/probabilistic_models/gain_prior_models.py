@@ -22,7 +22,7 @@ class AbstractGainPriorModel(ABC):
             times: [num_time] the times to compute the model data, in TT since start of observation
 
         Returns:
-            gains: [num_source, num_time, num_ant, num_chan[, 2, 2]].
+            gains: [num_time, num_ant, num_chan, num_source, [, 2, 2]].
         """
         ...
 
@@ -37,6 +37,11 @@ class UnconstrainedGain(AbstractGainPriorModel):
     dof: int = 4
 
     def build_prior_model(self, num_source: int, num_ant: int, freqs: jax.Array, times: jax.Array) -> PriorModelType:
+        T = len(times)
+        F = len(freqs)
+        D = num_source
+        A = num_ant
+
         def prior_model():
             def make_gains_model(shape):
                 ones = jnp.ones(shape)
@@ -53,34 +58,28 @@ class UnconstrainedGain(AbstractGainPriorModel):
                                 ),
                     name='gains_imag'
                 ).parametrised()
-                gains = jax.lax.complex(gains_real, gains_imag)  # [num_source, num_ant[, 2, 2]]
+                gains = jax.lax.complex(gains_real, gains_imag)
                 return gains
 
             if self.full_stokes:
                 if self.dof == 1:
-                    gains = yield from make_gains_model((num_source, num_ant))
+                    gains = yield from make_gains_model((T, A, F, D))
                     # Set diag
-                    gains = jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.repeat(g, 2))))(
-                        gains)  # [num_source, num_ant, 2, 2]
+                    gains = jax.vmap(jax.vmap(jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.stack([g, g]))))))(
+                        gains)  # [T,A,F,D,2,2]
                 elif self.dof == 2:
-                    gains = yield from make_gains_model((num_source, num_ant, 2))
+                    gains = yield from make_gains_model((T, A, F, D, 2))
                     # Set diag
-                    gains = jax.vmap(jax.vmap(jnp.diag))(
-                        gains)  # [num_source, num_ant, 2, 2]
+                    gains = jax.vmap(jax.vmap(jax.vmap(jax.vmap(jnp.diag))))(gains)  # [T,A,F,D,2,2]
                 elif self.dof == 4:
-                    gains = yield from make_gains_model((num_source, num_ant, 2, 2))
+                    gains = yield from make_gains_model((T, A, F, D, 2, 2))  # [T,A,F,D,2,2]
                 else:
                     raise ValueError(f"Unsupported dof, {self.dof}")
             else:
                 if self.dof != 1:
                     raise ValueError("Cannot have full_stokes=False and dof > 1")
-                gains = yield from make_gains_model((num_source, num_ant))
+                gains = yield from make_gains_model((T, A, F, D))  # [T,A,F,D]
 
-            # Broadcast to shape
-            gains = jnp.broadcast_to(
-                gains[:, None, :, None, ...],
-                (num_source, len(times), num_ant, len(freqs), 2, 2)
-            )  # [num_source, num_time, num_ant, num_chan[, 2, 2]]
             return gains
 
         return prior_model
@@ -96,6 +95,11 @@ class ScalarRiceGain(AbstractGainPriorModel):
     dof: int = 4
 
     def build_prior_model(self, num_source: int, num_ant: int, freqs: jax.Array, times: jax.Array) -> PriorModelType:
+        T = len(times)
+        F = len(freqs)
+        D = num_source
+        A = num_ant
+
         def prior_model():
             def make_gains_model(shape):
                 ones = jnp.ones(shape)
@@ -122,29 +126,23 @@ class ScalarRiceGain(AbstractGainPriorModel):
 
             if self.full_stokes:
                 if self.dof == 1:
-                    gains = yield from make_gains_model((num_source, num_ant))
+                    gains = yield from make_gains_model((T, A, F, D))
                     # Set diag
-                    gains = jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.repeat(g, 2))))(
-                        gains)  # [num_source, num_ant, 2, 2]
+                    gains = jax.vmap(jax.vmap(jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.stack([g, g]))))))(
+                        gains)  # [T,A,F,D,2,2]
                 elif self.dof == 2:
-                    gains = yield from make_gains_model((num_source, num_ant, 2))
+                    gains = yield from make_gains_model((T, A, F, D, 2))
                     # Set diag
-                    gains = jax.vmap(jax.vmap(jnp.diag))(
-                        gains)  # [num_source, num_ant, 2, 2]
+                    gains = jax.vmap(jax.vmap(jax.vmap(jax.vmap(jnp.diag))))(gains)  # [T,A,F,D,2,2]
                 elif self.dof == 4:
-                    gains = yield from make_gains_model((num_source, num_ant, 2, 2))
+                    gains = yield from make_gains_model((T, A, F, D, 2, 2))  # [T,A,F,D,2,2]
                 else:
                     raise ValueError(f"Unsupported dof, {self.dof}")
             else:
                 if self.dof != 1:
                     raise ValueError("Cannot have full_stokes=False and dof > 1")
-                gains = yield from make_gains_model((num_source, num_ant))
+                gains = yield from make_gains_model((T, A, F, D))  # [T,A,F,D]
 
-            # Broadcast to shape
-            gains = jnp.broadcast_to(
-                gains[:, None, :, None, ...],
-                (num_source, len(times), num_ant, len(freqs), 2, 2)
-            )  # [num_source, num_time, num_ant, num_chan[, 2, 2]]
             return gains
 
         return prior_model
