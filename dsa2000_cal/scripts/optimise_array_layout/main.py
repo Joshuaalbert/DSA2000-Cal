@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 from jaxns.framework.special_priors import SpecialPrior
 from scipy.spatial import KDTree
 
-from dsa2000_cal.assets.array_constraints import ArrayConstraint
+from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.common.array_types import FloatArray
 
@@ -444,11 +444,8 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         residual_fn=residuals,
         num_iterations=10,
         num_approx_steps=0,
-        delta=2,
-        mu1=100.,
         p_any_improvement=0.01,
         p_less_newton=0.25,
-        p_sufficient_improvement=0.5,
         p_more_newton=0.8,
         c_more_newton=0.2,
         c_less_newton=1.5,

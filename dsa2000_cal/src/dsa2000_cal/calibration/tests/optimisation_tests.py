@@ -7,8 +7,8 @@ from typing import NamedTuple
 import jax
 from jax import numpy as jnp
 
-from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.jax_utils import block_until_ready
 
 jax.config.update("jax_explain_cache_misses", True)
 
@@ -107,12 +107,9 @@ class OptimisationProblem:
             num_approx_steps=self.num_approx_steps,
             p_any_improvement=params.p_any_improvement,
             p_less_newton=params.p_less_newton,
-            p_sufficient_improvement=params.p_sufficient_improvement,
             p_more_newton=params.p_more_newton,
             c_more_newton=params.c_more_newton,
             c_less_newton=params.c_less_newton,
-            delta=params.delta,
-            mu1=params.mu1,
             mu_min=params.mu_min,
             verbose=True
         )
