@@ -42,8 +42,8 @@ class PredictAndSampleReturn(NamedTuple):
 class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSampleReturn]):
     plot_folder: str
     freqs: au.Quantity
-    faint_sky_model: str  # Likely TRECS
-    bright_sky_model: str  # Likely FIRST > 5Jy resampled onto sky with about 100 over >-30deg sky
+    faint_sky_model_id: str  # Likely TRECS
+    bright_sky_model_id: str  # Likely FIRST > 5Jy resampled onto sky with about 100 over >-30deg sky
     num_facets_per_side: int
     crop_box_size: au.Quantity | None
     full_stokes: bool
@@ -54,16 +54,14 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
 
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
-
-    def get_state(self) -> PredictAndSampleState:
         fill_registries()
 
         model_freqs = au.Quantity([self.freqs[0], self.freqs[-1]])
         wsclean_fits_files = source_model_registry.get_instance(
-            source_model_registry.get_match(self.faint_sky_model)).get_wsclean_fits_files()
+            source_model_registry.get_match(self.faint_sky_model_id)).get_wsclean_fits_files()
         # -04:00:28.608,40.43.33.595
 
-        faint_sky_model = build_fits_source_model_from_wsclean_components(
+        self.faint_sky_model = build_fits_source_model_from_wsclean_components(
             wsclean_fits_files=wsclean_fits_files,
             model_freqs=model_freqs,
             full_stokes=self.full_stokes,
@@ -72,24 +70,27 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
         )
 
         wsclean_clean_component_file = source_model_registry.get_instance(
-            source_model_registry.get_match(self.bright_sky_model)).get_wsclean_clean_component_file()
+            source_model_registry.get_match(self.bright_sky_model_id)).get_wsclean_clean_component_file()
 
-        bright_sky_model_points = build_point_source_model_from_wsclean_components(
+        self.bright_sky_model_points = build_point_source_model_from_wsclean_components(
             wsclean_clean_component_file=wsclean_clean_component_file,
             model_freqs=model_freqs,
             full_stokes=self.full_stokes
         )
 
-        bright_sky_model_gaussians = build_gaussian_source_model_from_wsclean_components(
+        self.bright_sky_model_gaussians = build_gaussian_source_model_from_wsclean_components(
             wsclean_clean_component_file=wsclean_clean_component_file,
             model_freqs=model_freqs,
             full_stokes=self.full_stokes
         )
 
+        # TODO: RFI emiiter add here
+
+    def get_state(self) -> PredictAndSampleState:
         return PredictAndSampleState(
-            faint_source_model=faint_sky_model,
-            bright_source_model_points=bright_sky_model_points,
-            bright_source_model_gaussians=bright_sky_model_gaussians
+            faint_source_model=self.faint_sky_model,
+            bright_source_model_points=self.bright_sky_model_points,
+            bright_source_model_gaussians=self.bright_sky_model_gaussians
         )
 
     def step(self, primals: Tuple[SetupObservationOutput, SimulateDishOutput]) -> Tuple[
