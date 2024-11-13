@@ -32,9 +32,35 @@ fi
 echo "Resolved head node hostname ($HEAD_NODE_NAME) to IP: $HEAD_NODE_IP"
 
 # Function to start containers
+
+
+# Build or rebuild the base images as needed
+build_base_images() {
+  local base_dockerfiles_path="$SCRIPT_DIR/"
+  local base_image_name=""
+  local base_dockerfile=""
+
+  # Loop over all the Dockerfiles in the base_images directory
+  for base_dockerfile in "$base_dockerfiles_path"/*.Dockerfile; do
+    # Extract the base image name from the Dockerfile filename
+    base_image_name="$(basename "$base_dockerfile" .Dockerfile)"
+
+    # Build the base image
+    echo "Building or updating base image $base_image_name..."
+    docker build -t "$base_image_name" -f "$base_dockerfile" "$SCRIPT_DIR/../.." || {
+      echo "Failed to build base image $base_image_name"
+      exit 1
+    }
+  done
+}
+
+
 start_containers() {
   # Enable error handling
   set -e
+
+  # Step 0: Build or rebuild the base images as needed
+  build_base_images
 
   # Step 1: Build Docker Image from the root of repository
   docker build -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" "$SCRIPT_DIR/../.."
@@ -133,6 +159,7 @@ stop_containers() {
     echo "All containers stopped successfully."
   fi
 }
+
 
 # Main script logic
 if [ "$1" == "start" ]; then
