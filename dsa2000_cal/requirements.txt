@@ -6,7 +6,7 @@ h5parm
 tables
 jax>=0.4.35
 jaxlib
-jaxns>=2.6.4
+jaxns>=2.6.6
 jaxopt
 python-casacore
 scipy
@@ -20,3 +20,5 @@ geopandas
 shapely
 websockets
 ray==2.37.0
+uvloop
+websockets<14
