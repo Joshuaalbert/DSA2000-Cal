@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 # Set num jax devices to number of CPUs
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()} --xla_dump_to=logs --xla_dump_hlo_as_text --xla_dump_hlo_as_html"
 jax.config.update('jax_threefry_partitionable', True)
 
 sys.tracebacklimit = None  # Increase as needed; -1 to suppress tracebacks

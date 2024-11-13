@@ -9,14 +9,13 @@ from jax import numpy as jnp
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry, rfi_model_registry
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.visibility_model.source_models.rfi.base_rfi_emitter_source_model import \
-    RFIEmitterSourceModel, RFIEmitterPredict, RFIEmitterModelData
+    RFIEmitterSourceModel, RFIEmitterModelData
 
 
 def build_mock_rfi_model_data(is_gains: bool, full_stokes: bool, direction_dependent_gains: bool, chan: int,
-                              num_time: int) -> Tuple[RFIEmitterModelData, RFIEmitterPredict]:
+                              num_time: int) -> Tuple[RFIEmitterModelData]:
     # Create a simple model
     fill_registries()
     # rfi_model = rfi_model_registry.get_instance(rfi_model_registry.get_match('mock_cell_tower'))
