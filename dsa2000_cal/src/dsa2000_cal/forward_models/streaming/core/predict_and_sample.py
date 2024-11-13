@@ -111,21 +111,21 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
             far_field_delay_engine=setup_observation_output.far_field_delay_engine,
             geodesic_model=setup_observation_output.geodesic_model
         )
-        vis_bright_points = state.bright_source_model_points.predict(
-            visibility_coords=visibility_coords,
-            gain_model=simulate_dish_output.gain_model,
-            near_field_delay_engine=setup_observation_output.near_field_delay_engine,
-            far_field_delay_engine=setup_observation_output.far_field_delay_engine,
-            geodesic_model=setup_observation_output.geodesic_model
-        )
-        vis_bright_gaussians = state.bright_source_model_gaussians.predict(
-            visibility_coords=visibility_coords,
-            gain_model=simulate_dish_output.gain_model,
-            near_field_delay_engine=setup_observation_output.near_field_delay_engine,
-            far_field_delay_engine=setup_observation_output.far_field_delay_engine,
-            geodesic_model=setup_observation_output.geodesic_model
-        )
-        visibilities = vis_faint + vis_bright_points + vis_bright_gaussians
+        # vis_bright_points = state.bright_source_model_points.predict(
+        #     visibility_coords=visibility_coords,
+        #     gain_model=simulate_dish_output.gain_model,
+        #     near_field_delay_engine=setup_observation_output.near_field_delay_engine,
+        #     far_field_delay_engine=setup_observation_output.far_field_delay_engine,
+        #     geodesic_model=setup_observation_output.geodesic_model
+        # )
+        # vis_bright_gaussians = state.bright_source_model_gaussians.predict(
+        #     visibility_coords=visibility_coords,
+        #     gain_model=simulate_dish_output.gain_model,
+        #     near_field_delay_engine=setup_observation_output.near_field_delay_engine,
+        #     far_field_delay_engine=setup_observation_output.far_field_delay_engine,
+        #     geodesic_model=setup_observation_output.geodesic_model
+        # )
+        visibilities = vis_faint# + vis_bright_points + vis_bright_gaussians
 
         noise_scale = calc_baseline_noise(
             system_equivalent_flux_density=quantity_to_jnp(self.system_equivalent_flux_density, 'Jy'),
