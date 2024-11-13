@@ -1,8 +1,9 @@
 FROM 0_base:latest
 
-# install dsa2000_cal
+# install dsa2000_cal -- Now done in entrypoint.sh
 WORKDIR /dsa/code
-COPY dsa2000_cal/requirements.txt dsa2000_cal/requirements.txt
-RUN pip install -r dsa2000_cal/requirements.txt
-COPY dsa2000_cal dsa2000_cal
-RUN pip install ./dsa2000_cal
+# COPY dsa2000_cal/requirements.txt dsa2000_cal/requirements.txt
+# RUN pip install -r dsa2000_cal/requirements.txt
+
+# COPY dsa2000_cal dsa2000_cal
+# RUN pip install ./dsa2000_cal

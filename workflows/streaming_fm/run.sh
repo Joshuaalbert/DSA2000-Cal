@@ -7,7 +7,8 @@ echo "Script dir $SCRIPT_DIR"
 IMAGE_NAME="streaming_fm"
 DOCKERFILE_PATH="${SCRIPT_DIR}/Dockerfile" # Path to your Dockerfile
 BRIDGE_NETWORK_NAME="ray_network"
-CONTAINER_DATA_DIR="/dsa/data" # Directory inside the container where data is mounted
+CONTAINER_RUN_DIR="/dsa/run" # Directory inside the container where data is mounted
+GIT_BRANCH="joshs-working-branch"
 
 # List of nodes with their corresponding working directories
 # Format: "IP WORK_DIR"
@@ -63,7 +64,7 @@ start_containers() {
 
   # Run the Ray head node container
   docker run -d --rm --network "$BRIDGE_NETWORK_NAME" --name "ray_head_container_${HOSTNAME}" \
-    -v "$HEAD_WORK_DIR":"$CONTAINER_DATA_DIR" \
+    -v "$HEAD_WORK_DIR":"$CONTAINER_RUN_DIR" \
     "$IMAGE_NAME" --head \
     --num_processes="$NUM_PROCESSES" \
     --plot_folder="plots"
@@ -80,11 +81,12 @@ start_containers() {
 
         # Run the Ray worker container passing the head node IP and process ID
         ssh "$ip" "docker run -d --rm --network '$BRIDGE_NETWORK_NAME' --name 'ray_worker_container_${ip}' \
-          -v '$work_dir':'$CONTAINER_DATA_DIR' \
+          -v '$work_dir':'$CONTAINER_RUN_DIR' \
           '$IMAGE_NAME' --head_ip '$HEAD_NODE_IP' \
           --process_id '$process_id' \
           --num_processes '$NUM_PROCESSES' \
-          --plot_folder 'plots'"
+          --plot_folder 'plots' \
+          --git_branch '$GIT_BRANCH'"
         process_id=$((process_id + 1))
       } || {
         echo "Error occurred while starting worker on $ip. Stopping all containers."

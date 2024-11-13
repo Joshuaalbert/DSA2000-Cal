@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# Default values
-NUM_PROCESSES=
-PROCESS_ID=
-COORDINATOR_ADDRESS=
-PLOT_FOLDER=
+# Default values in case the arguments are not provided
+NUM_PROCESSES=1
+PROCESS_ID=0
+COORDINATOR_ADDRESS="127.0.0.1"
+PLOT_FOLDER="plots"
+GIT_BRANCH="main"  # Default branch
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -35,6 +36,11 @@ while [[ $# -gt 0 ]]; do
         shift # past argument
         shift # past value
         ;;
+        --git_branch)
+        GIT_BRANCH="$2"
+        shift # past argument
+        shift # past value
+        ;;
         *)
         # Unknown option
         shift # past argument
@@ -42,6 +48,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Clone or pull the repository
+REPO_DIR="DSA2000-Cal"
+
+if [ -d "$REPO_DIR/.git" ]; then
+    echo "Repository already exists. Pulling latest changes from branch $GIT_BRANCH..."
+    cd "$REPO_DIR"
+    git fetch origin
+    git checkout "$GIT_BRANCH"
+    git pull origin "$GIT_BRANCH"
+else
+    echo "Cloning repository from branch $GIT_BRANCH..."
+    git clone --branch "$GIT_BRANCH" https://github.com/Joshuaalbert/DSA2000-Cal.git "$REPO_DIR"
+fi
+
+# Install the code
+echo "Installing the DSA2000-Cal package..."
+pip install "$REPO_DIR"/dsa2000_cal
+
+# Start Ray
 if [ "$IS_HEAD" = true ]; then
     echo "Starting Ray head node..."
     RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING=0 ray start --head \
@@ -64,7 +89,6 @@ else
 fi
 
 # Create plot folder if it doesn't exist
-PLOT_FOLDER="/dsa/run/${PLOT_FOLDER}"
 mkdir -p "$PLOT_FOLDER"
 
 # Launch the Python process
@@ -73,11 +97,10 @@ echo "NUM_PROCESSES=${NUM_PROCESSES}"
 echo "PROCESS_ID=${PROCESS_ID}"
 echo "COORDINATOR_ADDRESS=${COORDINATOR_ADDRESS}"
 echo "PLOT_FOLDER=${PLOT_FOLDER}"
+echo "GIT_BRANCH=${GIT_BRANCH}"
 
-JAX_PLATFORMS=cpu python /dsa/code/dsa2000_cal/scripts/steaming_forward_modelling/launch_process.py \
+JAX_PLATFORMS=cpu python /dsa/code/DSA2000-Cal/scripts/streaming_forward_modelling/launch_process.py \
   --num_processes="${NUM_PROCESSES}" \
   --process_id="${PROCESS_ID}" \
   --coordinator_address="${COORDINATOR_ADDRESS}" \
   --plot_folder="${PLOT_FOLDER}"
-
-#tail -f /dev/null
