@@ -394,8 +394,7 @@ def build_geodesic_model(
     zenith_lmn = quantity_to_jnp(
         icrs_to_lmn(
             sources=ENU(east=0, north=0, up=1, location=array_location,
-                        obstime=obstimes).transform_to(
-                ac.ICRS()),
+                        obstime=obstimes).transform_to(ac.ICRS()),
             phase_tracking=phase_center
         )
     )  # [num_model_times, 3]

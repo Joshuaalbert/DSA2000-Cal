@@ -8,11 +8,10 @@ import astropy.units as au
 import jax.numpy as jnp
 
 import dsa2000_cal.common.context as ctx
+from dsa2000_cal.common.array_types import FloatArray, IntArray, BoolArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.array_types import FloatArray, IntArray, BoolArray
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
-
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
     BaseNearFieldDelayEngine
@@ -54,40 +53,32 @@ class SetupObservationStep(AbstractCoreStep[SetupObservationOutput, None]):
 
     def __post_init__(self):
         os.makedirs(self.plot_folder, exist_ok=True)
+        self.geodesic_model = build_geodesic_model(
+            antennas=self.antennas,
+            array_location=self.array_location,
+            phase_center=self.phase_center,
+            obstimes=self.obstimes,
+            ref_time=self.ref_time,
+            pointings=self.pointings
+        )
+
+        self.far_field_delay_engine = build_far_field_delay_engine(
+            antennas=self.antennas,
+            start_time=self.obstimes[0],
+            end_time=self.obstimes[-1],
+            ref_time=self.ref_time,
+            phase_center=self.phase_center
+        )
+
+        self.near_field_delay_engine = build_near_field_delay_engine(
+            antennas=self.antennas,
+            start_time=self.obstimes[0],
+            end_time=self.obstimes[-1],
+            ref_time=self.obstimes[0]
+        )
 
     def get_state(self) -> SetupObservationState:
-        geodesic_model = ctx.get_parameter(
-            'geodesic_model',
-            init=lambda: build_geodesic_model(
-                antennas=self.antennas,
-                array_location=self.array_location,
-                phase_center=self.phase_center,
-                obstimes=self.obstimes,
-                ref_time=self.ref_time,
-                pointings=self.pointings
-            )
-        )
-        # TODO: make pytrees
-        far_field_delay_engine = ctx.get_parameter(
-            'far_field_delay_engine',
-            init=lambda: build_far_field_delay_engine(
-                antennas=self.antennas,
-                start_time=self.obstimes[0],
-                end_time=self.obstimes[-1],
-                ref_time=self.ref_time,
-                phase_center=self.phase_center
-            )
-        )
-        near_field_delay_engine = ctx.get_parameter(
-            'near_field_delay_engine',
-            init=lambda: build_near_field_delay_engine(
-                antennas=self.antennas,
-                start_time=self.obstimes[0],
-                end_time=self.obstimes[-1],
-                ref_time=self.obstimes[0]
-            )
-        )
-        freqs = ctx.get_parameter('freqs', init=lambda: self.freqs)
+        freqs = quantity_to_jnp(self.freqs)
         integrations_per_solution = int(self.solution_interval / self.integration_interval)
         times = mp_policy.cast_to_time(
             jnp.arange(integrations_per_solution) * quantity_to_jnp(self.integration_interval)
@@ -95,9 +86,9 @@ class SetupObservationStep(AbstractCoreStep[SetupObservationOutput, None]):
         return SetupObservationState(
             freqs=freqs,
             times=times,
-            geodesic_model=geodesic_model,
-            far_field_delay_engine=far_field_delay_engine,
-            near_field_delay_engine=near_field_delay_engine,
+            geodesic_model=self.geodesic_model,
+            far_field_delay_engine=self.far_field_delay_engine,
+            near_field_delay_engine=self.near_field_delay_engine,
             solution_idx=jnp.zeros((), mp_policy.index_dtype)
         )
 

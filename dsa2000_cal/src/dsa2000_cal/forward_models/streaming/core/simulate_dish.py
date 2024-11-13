@@ -12,7 +12,7 @@ import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationOutput
@@ -164,10 +164,16 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
 
     def get_state(self, beam_model: BaseSphericalInterpolatorGainModel) -> SimulateDishState:
 
+        # Compute the "perfect" beam aperture pattern
+        beam_aperture = self.compute_beam_aperture(
+            beam_model=beam_model
+        )  # [num_model_times, lres, mres, num_ant/1, num_model_freqs, 2, 2]
+
+        # Compute aperture coordinates
         model_freqs = beam_model.model_freqs
-        model_wavelengths = quantity_to_np(constants.c) / model_freqs
-        aperture_sampling_interval = np.min(model_wavelengths)
-        minimal_n = 2 * int(quantity_to_np(self.dish_effects_params.dish_diameter) / aperture_sampling_interval) + 1
+        model_wavelengths = quantity_to_jnp(constants.c) / model_freqs
+        aperture_sampling_interval = jnp.min(model_wavelengths)
+        minimal_n = 2 * int(quantity_to_jnp(self.dish_effects_params.dish_diameter) / aperture_sampling_interval) + 1
         n = np.size(beam_model.lvec)
         if n < minimal_n:
             raise ValueError(f"Beam model resolution {np.shape(beam_model.lvec)} is too low for the dish diameter.")
@@ -175,14 +181,6 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         L, M = jnp.meshgrid(beam_model.lvec, beam_model.mvec, indexing='ij')
         N = jnp.sqrt(1. - (jnp.square(L) + jnp.square(M)))
         lmn_image = jnp.stack([L, M, N], axis=-1)  # [Nl, Nm, 3]
-
-        beam_aperture = ctx.get_parameter(
-            'beam_aperture',
-            init=lambda: self.compute_beam_aperture(
-                beam_model=beam_model
-            )  # [num_model_times, lres, mres, num_ant/1, num_model_freqs, 2, 2]
-        )
-
         dl = beam_model.lvec[1] - beam_model.lvec[0]
         dm = beam_model.mvec[1] - beam_model.mvec[0]
         dx = 1. / (dm * n)  # units of wavelength
@@ -192,38 +190,18 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         yvec = -yvec  # L = -Y
         Y, X = jnp.meshgrid(yvec, xvec, indexing='ij')
 
-        dish_effect_params = ctx.get_parameter(
-            'dish_effect_params',
-            init=lambda: SimulationParams(
-                dish_diameter=quantity_to_jnp(self.dish_effects_params.dish_diameter),
-                focal_length=quantity_to_jnp(self.dish_effects_params.focal_length),
-                elevation_pointing_error_stddev=quantity_to_jnp(
-                    self.dish_effects_params.elevation_pointing_error_stddev),
-                cross_elevation_pointing_error_stddev=quantity_to_jnp(
-                    self.dish_effects_params.cross_elevation_pointing_error_stddev),
-                axial_focus_error_stddev=quantity_to_jnp(self.dish_effects_params.axial_focus_error_stddev),
-                elevation_feed_offset_stddev=quantity_to_jnp(self.dish_effects_params.elevation_feed_offset_stddev),
-                cross_elevation_feed_offset_stddev=quantity_to_jnp(
-                    self.dish_effects_params.cross_elevation_feed_offset_stddev),
-                horizon_peak_astigmatism_stddev=quantity_to_jnp(
-                    self.dish_effects_params.horizon_peak_astigmatism_stddev),
-                surface_error_mean=quantity_to_jnp(self.dish_effects_params.surface_error_mean),
-                surface_error_stddev=quantity_to_jnp(self.dish_effects_params.surface_error_stddev),
-            )
-        )
-
-        static_system_params = ctx.get_parameter(
-            'system_params',
-            init=lambda: self._get_static_system_params(
-                dish_effect_params=dish_effect_params,
-                num_antennas=self.num_antennas
-            )
+        # Get the dish parameters and sample static ones
+        dish_effect_params = SimulationParams(quantity_to_jnp(x) for x in self.dish_effects_params)
+        static_system_params = self._get_static_system_params(
+            dish_effect_params=dish_effect_params,
+            num_antennas=self.num_antennas
         )
 
         return SimulateDishState(
+            # Could change depending if beam is static model or not
             beam_aperture=beam_aperture,
-            dish_effect_params=dish_effect_params,
             # Static parameters
+            dish_effect_params=dish_effect_params,
             L=L,
             M=M,
             dl=dl,

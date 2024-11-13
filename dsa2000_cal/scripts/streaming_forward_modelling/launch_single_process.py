@@ -28,6 +28,6 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--process_id", type=int, required=True, help="Process ID")
-    parser.add_argument("--plot_folder", type=str, required=True, help="Plot folder")
+    parser.add_argument("--plot_folder", type=str, required=False, default='plots', help="Plot folder")
     args = parser.parse_args()
     main(args.process_id, args.plot_folder)
