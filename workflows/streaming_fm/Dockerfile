@@ -1,8 +1,8 @@
-FROM 1_base:latest
+FROM 0_base:latest
 
 
 # Prepare run
-WORKDIR /dsa/run
+WORKDIR /dsa/code
 COPY workflows/streaming_fm/src src
 
 # Directies that will be mounted

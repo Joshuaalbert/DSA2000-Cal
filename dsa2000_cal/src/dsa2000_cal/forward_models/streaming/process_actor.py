@@ -18,7 +18,9 @@ logger = logging.getLogger("ray")
 
 
 class SFMProcessParams(SerialisableBaseModel):
-    ...
+    num_processes: int
+    process_id: int
+    plot_folder: str
 
 
 class SFMProcess:
@@ -92,8 +94,8 @@ class SFMProcess:
     def actor_name(node_id: str) -> str:
         return f"SFM_PROCESS#{node_id}"
 
-    def run(self, num_processes: int, process_id: int, plot_folder: str):
-        return ray.get(self._actor.run.remote(num_processes, process_id, plot_folder))
+    def run(self):
+        return ray.get(self._actor.run.remote())
 
 
 def get_head_ip():
@@ -124,14 +126,14 @@ class _SFMProcess:
         logger.info(f"Healthy {self.__class__.__name__}")
         return
 
-    async def run(self, num_processes: int, process_id: int, plot_folder: str):
+    async def run(self):
         coordinator_address = get_head_ip()
 
         print(f"Beginning multi-host initialisation at {datetime.now()}")
         jax.distributed.initialize(
             coordinator_address=coordinator_address,
-            num_processes=num_processes,
-            process_id=process_id
+            num_processes=self.params.num_processes,
+            process_id=self.params.process_id
         )
         print(f"Initialised at {datetime.now()}")
 
@@ -139,9 +141,9 @@ class _SFMProcess:
         from dsa2000_cal.forward_models.streaming.process import process_start
 
         process_start(
-            process_id=process_id,
+            process_id=self.params.process_id,
             key=jax.random.PRNGKey(0),
             array_name="dsa2000_31b",
             full_stokes=True,
-            plot_folder=plot_folder
+            plot_folder=self.params.plot_folder
         )

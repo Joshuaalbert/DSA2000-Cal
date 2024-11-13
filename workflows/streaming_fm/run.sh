@@ -14,8 +14,8 @@ GIT_BRANCH="joshs-working-branch"
 # Format: "IP WORK_DIR"
 nodes=(
   "mario /fastpool/albert/streaming_fm"
+  "wario /fastpool/albert/streaming_fm"
 )
-  #"wario /fastpool/albert/streaming_fm"
 
 NUM_PROCESSES=${#nodes[@]}
 
@@ -32,7 +32,6 @@ fi
 echo "Resolved head node hostname ($HEAD_NODE_NAME) to IP: $HEAD_NODE_IP"
 
 # Function to start containers
-
 
 # Build or rebuild the base images as needed
 build_base_images() {
@@ -53,7 +52,6 @@ build_base_images() {
     }
   done
 }
-
 
 start_containers() {
   # Enable error handling
@@ -96,7 +94,7 @@ start_containers() {
     --plot_folder="plots"
 
   # Step 5: Distribute Docker Image and Start Worker Containers
-  process_id=1  # Start from 1 since 0 is the head node
+  process_id=1 # Start from 1 since 0 is the head node
 
   for node_info in "${nodes[@]}"; do
     read -r ip work_dir <<<"$node_info"
@@ -125,7 +123,6 @@ start_containers() {
   # Cleanup: Remove the image tar file from the head node
   rm "$IMAGE_TAR_PATH"
 }
-
 
 # Function to stop containers
 stop_containers() {
@@ -159,7 +156,6 @@ stop_containers() {
     echo "All containers stopped successfully."
   fi
 }
-
 
 # Main script logic
 if [ "$1" == "start" ]; then
