@@ -1,11 +1,23 @@
 import os
+import sys
+
+import jax
+import jax.numpy as jnp
+
+# Set num jax devices to number of CPUs
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+jax.config.update('jax_threefry_partitionable', True)
+
+sys.tracebacklimit = None  # Increase as needed; -1 to suppress tracebacks
+
+# jax.config.update("jax_explain_cache_misses", True)
+# jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
 from typing import Dict, Tuple, NamedTuple, Any
 
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
-import jax
-import jax.numpy as jnp
+
 import numpy as np
 from tomographic_kernel.frames import ENU
 

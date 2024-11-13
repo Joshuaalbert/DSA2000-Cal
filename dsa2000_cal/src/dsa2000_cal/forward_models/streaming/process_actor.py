@@ -8,8 +8,9 @@ import ray
 import uvloop
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from dsa2000_cal.actors.jax_coordinator.actor import JaxCoordinator, JaxCoordinatorParams
 from dsa2000_cal.actors.namespace import NAMESPACE
-from dsa2000_cal.common.ray_utils import get_head_node_id
+from dsa2000_cal.common.ray_utils import get_head_node_id, get_free_port
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -58,7 +59,7 @@ class SFMProcess:
                 # Schedule the controller on the head node with a soft constraint. This
                 # prefers it to run on the head node in most cases, but allows it to be
                 # restarted on other nodes in an HA cluster.
-                "scheduling_strategy": NodeAffinitySchedulingStrategy(placement_node_id, soft=True),
+                "scheduling_strategy": NodeAffinitySchedulingStrategy(placement_node_id, soft=False),
                 "namespace": NAMESPACE,
                 "max_concurrency": 15000  # Needs to be large, as there should be no limit.
             }
@@ -127,19 +128,32 @@ class _SFMProcess:
         return
 
     async def run(self):
-        coordinator_address = get_head_ip()
 
-        print(f"Beginning multi-host initialisation at {datetime.now()}")
+        if self.params.process_id == 0:
+            coordinator = JaxCoordinator(params=JaxCoordinatorParams(port=get_free_port()))
+        else:
+            while True:
+                try:
+                    coordinator = JaxCoordinator()
+                    break
+                except ValueError:
+                    logger.info(f"JaxCoordinator not ready, waiting for process 0 to start it...")
+                    await asyncio.sleep(1)
+
+        coordinator_address = coordinator.get_coordinator_address()
+
+        logger.info(f"Beginning multi-host initialisation at {datetime.now()}")
         jax.distributed.initialize(
             coordinator_address=coordinator_address,
             num_processes=self.params.num_processes,
             process_id=self.params.process_id
         )
-        print(f"Initialised at {datetime.now()}")
+        logger.info(f"Initialised at {datetime.now()}")
 
         # Must import only after jax.distributed.initialize to avoid issues with jax devices
         from dsa2000_cal.forward_models.streaming.process import process_start
 
+        await asyncio.sleep(60)
         process_start(
             process_id=self.params.process_id,
             key=jax.random.PRNGKey(0),
