@@ -86,32 +86,6 @@ class BaseNearFieldDelayEngine:
                 + self.enu_origin_gcrs[None, :]
         )  # [E, 3]
 
-    def compute_delay_from_emitter_jax(self,
-                                       emitter: ac.EarthLocation,
-                                       t1: jax.Array,
-                                       i1: jax.Array,
-                                       i2: jax.Array
-                                       ) -> Tuple[jax.Array, jax.Array, jax.Array]:
-        """
-        Compute the delay for a given phase center, using VLBI delay model.
-
-        Args:
-            emitter: [E] the location of the emitter.
-            t1: the time of observation, in tt scale in seconds, relative to the first time.
-            i1: the index of the first antenna.
-            i2: the index of the second antenna.
-
-        Returns:
-            delay: [E] the delay in meters, i.e. light travel distance, for each emitter.
-            dist2: the distance in meters, for baseline b=x2-x0.
-            dist1: the distance in meters, for baseline b=x1-x0.
-        """
-        delay, dist2, dist1 = self.compute_delay(
-            self.construct_x_0_gcrs(emitter=emitter),
-            t1, i1, i2
-        )
-        return delay.reshape(emitter.shape), dist2.reshape(emitter.shape), dist1.reshape(emitter.shape)
-
     def compute_delay(self,
                       x_0_gcrs: InterpolatedArray,
                       t1: jax.Array,

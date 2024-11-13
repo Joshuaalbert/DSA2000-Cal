@@ -55,7 +55,7 @@ def test_near_field():
         )
     ).earth_location
 
-    delay, dist2, dist1 = engine.compute_delay_from_emitter_jax(
+    delay, dist2, dist1 = engine.compute_delay_from_emitter(
         emitter,
         time_to_jnp(time, time),
         jnp.asarray(0),
@@ -93,7 +93,7 @@ def test_near_field():
             location=array_location
         )
         emitter = emitter.transform_to(ac.ITRS(obstime=time, location=array_location)).earth_location
-        delay, dist2_proj, dist1_proj = engine.compute_delay_from_emitter_jax(
+        delay, dist2_proj, dist1_proj = engine.compute_delay_from_emitter(
             emitter,
             time_to_jnp(time, time),
             jnp.asarray(0),

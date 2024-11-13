@@ -10,7 +10,7 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.delay_models.far_field import VisibilityCoords
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
-from dsa2000_cal.visibility_model.source_models.rfi.rfi_emitter_source_model import \
+from dsa2000_cal.visibility_model.source_models.rfi.base_rfi_emitter_source_model import \
     RFIEmitterSourceModel, RFIEmitterPredict
 
 

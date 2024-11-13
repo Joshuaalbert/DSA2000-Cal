@@ -5,12 +5,13 @@ import numpy as np
 from astropy import units as au
 from jax import numpy as jnp
 
+from dsa2000_cal.common.array_types import FloatArray, ComplexArray
 from dsa2000_cal.common.interp_utils import left_broadcast_multiply
-from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction
 
 
 @dataclasses.dataclass(eq=False)
-class ParametricDelayACF:
+class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
     mu: FloatArray  # [E]
     fwhp: FloatArray  # [E]
     spectral_power: FloatArray  # [E[,2,2]] in Jy*m^2/Hz
@@ -52,16 +53,7 @@ class ParametricDelayACF:
         resolution = int(2 * channel_width / (10 * au.kHz))
         return resolution
 
-    def __call__(self, tau: jax.Array) -> jax.Array:
-        """
-        Compute the auto-correlation function of the RFI signal, using sinc parametrisation of power spectrum.
-
-        Args:
-            tau: delay time
-
-        Returns:
-            Delay ACF of the RFI signal
-        """
+    def eval(self, freq: FloatArray, tau: FloatArray) -> ComplexArray:
 
         def sinc(x: jax.Array):
             # sinc((fwhm/2) / sigma) = 1/2 ==> (fwhm/2) / sigma = 1.89549 ==> sigma = fwhm / (2 * 1.89549)
@@ -82,6 +74,7 @@ class ParametricDelayACF:
                 raise ValueError(f"Invalid convention {self.convention}")
             return left_broadcast_multiply(self.spectral_power, acf)  # [E[,2,2]]
 
+        # TODO: Need to filer for freq
         return jax.vmap(single_channel_acf, in_axes=0, out_axes=1)(
             self.channel_lower, self.channel_upper)  # [E, chan[,2,2]]
 
