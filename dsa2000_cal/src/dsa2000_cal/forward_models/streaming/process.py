@@ -302,7 +302,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
             )
             step_primals = tuple(step_outputs[primal] for primal in primals)
             with ctx.scope(step.name):
-                step_output, step_keep = step.step(primals=step_primals)
+                step_output, step_keep = jax.jit(step.step)(primals=step_primals)
             step_outputs[step] = step_output
             step_keeps[step.name] = step_keep
             done.add(step)
