@@ -2,6 +2,7 @@ import dataclasses
 import os
 from typing import NamedTuple, Tuple
 
+import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -12,7 +13,7 @@ import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationOutput
@@ -62,10 +63,9 @@ class SimulateDishState(NamedTuple):
     Y: jax.Array
     dx: jax.Array
     dy: jax.Array
-    lmn_image: jax.Array  # [Nl, Nm, 3]
-
-    model_freqs: jax.Array
     model_wavelengths: jax.Array
+    model_freqs: jax.Array
+    lmn_image: jax.Array  # [Nl, Nm, 3]
 
 
 class SimulateDishOutput(NamedTuple):
@@ -80,6 +80,7 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
     X = M
     -Y = L
     """
+    freqs: au.Quantity
     num_antennas: int
     static_beam: bool
     dish_effects_params: DishEffectsParams
@@ -172,8 +173,10 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         # Compute aperture coordinates
         model_freqs = beam_model.model_freqs
         model_wavelengths = quantity_to_jnp(constants.c) / model_freqs
-        aperture_sampling_interval = jnp.min(model_wavelengths)
-        minimal_n = 2 * int(quantity_to_jnp(self.dish_effects_params.dish_diameter) / aperture_sampling_interval) + 1
+
+        wavelengths = quantity_to_np(constants.c) / quantity_to_np(self.freqs)
+        aperture_sampling_interval = np.min(wavelengths)
+        minimal_n = 2 * int(quantity_to_np(self.dish_effects_params.dish_diameter) / aperture_sampling_interval) + 1
         n = np.size(beam_model.lvec)
         if n < minimal_n:
             raise ValueError(f"Beam model resolution {np.shape(beam_model.lvec)} is too low for the dish diameter.")
@@ -201,6 +204,8 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
             # Could change depending if beam is static model or not
             beam_aperture=beam_aperture,
             # Static parameters
+            model_freqs=model_freqs,
+            model_wavelengths=model_wavelengths,
             dish_effect_params=dish_effect_params,
             L=L,
             M=M,
@@ -210,8 +215,6 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
             Y=Y,
             dx=dx,
             dy=dy,
-            model_freqs=model_freqs,
-            model_wavelengths=model_wavelengths,
             lmn_image=lmn_image,
             static_system_params=static_system_params,
         )

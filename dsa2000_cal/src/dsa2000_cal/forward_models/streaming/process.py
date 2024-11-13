@@ -218,6 +218,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
         plot_folder=os.path.join(plot_folder, "simulate_beam")
     )
     simulate_dish_step = SimulateDishStep(
+        freqs=process_local_params.freqs,
         static_beam=True,
         dish_effects_params=process_local_params.dish_effects_params,
         convention="physical",
