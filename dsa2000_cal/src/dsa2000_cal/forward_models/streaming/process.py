@@ -238,8 +238,8 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
         num_facets_per_side=2,
         full_stokes=full_stokes,
         convention="physical",
-        faint_sky_model='cas_a',
-        bright_sky_model='cas_a',
+        faint_sky_model_id='cas_a',
+        bright_sky_model_id='cas_a',
         crop_box_size=None  # au.Quantity(1, "arcmin")
     )
 
