@@ -14,8 +14,8 @@ GIT_BRANCH="joshs-working-branch"
 # Format: "IP WORK_DIR"
 nodes=(
   "mario /fastpool/albert/streaming_fm"
-  "wario /fastpool/albert/streaming_fm"
 )
+  #"wario /fastpool/albert/streaming_fm"
 
 NUM_PROCESSES=${#nodes[@]}
 
