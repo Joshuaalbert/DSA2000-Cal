@@ -581,9 +581,15 @@ def build_fits_source_model_from_wsclean_components(
 
                 l_left_idx = np.clip(np.searchsorted(lvec, l_left, side='right') - 1, 0, Nl - 1)
                 l_right_idx = np.clip(np.searchsorted(lvec, l_right, side='right') - 1, 0, Nl - 1)
+                # ensure even
+                if (l_right_idx - l_left_idx) % 2 != 0:
+                    l_right_idx += 1
                 l_slice = slice(l_left_idx, l_right_idx)
                 m_bottom_idx = np.clip(np.searchsorted(mvec, m_bottom, side='right') - 1, 0, Nm - 1)
                 m_top_idx = np.clip(np.searchsorted(mvec, m_top, side='right') - 1, 0, Nm - 1)
+                # ensure even
+                if (m_top_idx - m_bottom_idx) % 2 != 0:
+                    m_top_idx += 1
                 m_slice = slice(m_bottom_idx, m_top_idx)
                 image = image[l_slice, m_slice, :]  # [Nl, Nm, stokes]
                 Nl, Nm, num_stokes = image.shape

@@ -336,7 +336,7 @@ def process_start(
             print("Initialising...")
 
             init_start_time = current_utc()
-            init = jax.eval_shape(execute_dag_transformed.init, init_key)
+            init = jax.jit(execute_dag_transformed.init)(init_key)
             print(init)
             init_end_time = current_utc()
 
