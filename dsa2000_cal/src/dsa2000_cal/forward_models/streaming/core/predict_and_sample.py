@@ -98,7 +98,7 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
         state: PredictAndSampleState = ctx.get_state('state', init=lambda: self.get_state())
         (setup_observation_output, simulate_dish_output) = primals
 
-        visibility_coords = jax.jit(setup_observation_output.far_field_delay_engine.compute_visibility_coords)(
+        visibility_coords = setup_observation_output.far_field_delay_engine.compute_visibility_coords(
             freqs=setup_observation_output.freqs,
             times=setup_observation_output.times,
             with_autocorr=True,
