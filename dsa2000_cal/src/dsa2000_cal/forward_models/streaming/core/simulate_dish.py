@@ -194,7 +194,9 @@ class SimulateDishStep(AbstractCoreStep[SimulateDishOutput, None]):
         Y, X = jnp.meshgrid(yvec, xvec, indexing='ij')
 
         # Get the dish parameters and sample static ones
-        dish_effect_params = SimulationParams(quantity_to_jnp(x) for x in self.dish_effects_params)
+        dish_effect_params = SimulationParams(
+            **dict((k, quantity_to_jnp(v)) for k, v in self.dish_effects_params.dict().items())
+        )
         static_system_params = self._get_static_system_params(
             dish_effect_params=dish_effect_params,
             num_antennas=self.num_antennas
