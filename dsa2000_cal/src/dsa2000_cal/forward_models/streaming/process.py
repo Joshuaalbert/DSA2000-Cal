@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 
@@ -339,11 +340,13 @@ def process_start(
             init = jax.jit(execute_dag_transformed.init)(init_key)
             print(init)
             init_end_time = current_utc()
+            gc.collect()
 
             print("Compiling...")
             compile_start_time = current_utc()
             run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states).compile()
             compile_end_time = current_utc()
+            gc.collect()
 
             print("Running...")
             run_start_time = current_utc()
@@ -351,6 +354,7 @@ def process_start(
                 run_process_jit_compiled(run_key, init.params, init.states)
             )
             run_end_time = current_utc()
+            gc.collect()
     end_time = current_utc()
     total_run_time = (end_time - start_time).total_seconds()
     init_time = (init_end_time - init_start_time).total_seconds()
