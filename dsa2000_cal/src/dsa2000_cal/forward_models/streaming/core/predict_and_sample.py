@@ -118,9 +118,12 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
         if total_chunks % len(local_devices) != 0:
             raise RuntimeError(f"The total number of chunks {total_chunks} must be divisible by the number of devices "
                                f"{len(local_devices)}")
+        if len(local_devices) % T != 0:
+            raise RuntimeError(f"The number of devices {len(local_devices)} must be divisible by the number of times "
+                               f"{T} for the chunking pattern to work.")
         local_devices = local_devices[:total_chunks]
         mesh = create_mesh(
-            (len(local_devices) // C, 1, len(local_devices) // T),
+            (T, 1, len(local_devices) // T),
             ('T', 'B', 'C'), devices=jax.devices()
         )
 
