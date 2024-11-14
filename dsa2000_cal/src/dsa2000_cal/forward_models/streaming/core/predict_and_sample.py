@@ -115,8 +115,9 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
         C = np.shape(visibility_coords.freqs)[0]
         total_chunks = T * C
         local_devices = jax.devices()
-        if len(local_devices) < total_chunks:
-            raise RuntimeError(f'Not enough devices to process {total_chunks} chunks on {len(local_devices)} devices')
+        if total_chunks % len(local_devices) != 0:
+            raise RuntimeError(f"The total number of chunks {total_chunks} must be divisible by the number of devices "
+                               f"{len(local_devices)}")
         local_devices = local_devices[:total_chunks]
         mesh = create_mesh(
             (len(local_devices) // C, 1, len(local_devices) // T),

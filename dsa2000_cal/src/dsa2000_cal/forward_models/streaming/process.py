@@ -178,6 +178,7 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
     total_bandwidth = len(process_local_params.freqs) * process_local_params.channel_width
     num_steps = int(total_duration / process_local_params.solution_interval)
     num_antennas = len(process_local_params.antennas)
+    local_devices = jax.local_devices()
     print(
         f"Streaming Forward Model:\n"
         f"- array: {array_name}\n"
@@ -194,8 +195,11 @@ def build_process_core_dag(process_id, array_name, full_stokes, plot_folder):
         f"- phase center: {process_local_params.phase_center}\n"
         f"- ref time: {process_local_params.ref_time}\n"
         f"- antennas: {num_antennas}\n"
-        f"- plot folder: {plot_folder}"
+        f"- plot folder: {plot_folder}\n"
+        f"- full stokes: {full_stokes}\n"
+        f"- number of local devices: {len(local_devices)}\n"
     )
+
     setup_observation_step = SetupObservationStep(
         freqs=process_local_params.freqs,
         antennas=process_local_params.antennas,
