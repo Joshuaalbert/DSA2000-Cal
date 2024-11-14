@@ -5,9 +5,7 @@ import sys
 import jax
 import jax.numpy as jnp
 
-# Set num jax devices to number of CPUs
-os.environ[
-    "XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()} --xla_dump_to=logs --xla_dump_hlo_as_text --xla_dump_hlo_as_html"
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count=32 --xla_dump_to=logs --xla_dump_hlo_as_text --xla_dump_hlo_as_html"
 jax.config.update('jax_threefry_partitionable', True)
 
 sys.tracebacklimit = None  # Increase as needed; -1 to suppress tracebacks
@@ -340,10 +338,14 @@ def process_start(
             gc.collect()
 
             print("Compiling...")
+
             # donate state arg
-            execute_dag_apply = jax.jit(execute_dag_transformed.apply, donate_argnums=(1,))
+            def execute_dag_apply(params, states, run_key):
+                return execute_dag_transformed.apply(params, states, run_key)
+
             compile_start_time = current_utc()
-            execute_dag_apply_compiled = execute_dag_apply.lower(init.params, init.states, run_key).compile()
+            execute_dag_apply_compiled = jax.jit(execute_dag_apply, donate_argnums=(1,)).lower(init.params, init.states,
+                                                                                               run_key).compile()
             compile_end_time = current_utc()
             run_process = build_process_for(execute_dag_apply_compiled, num_steps=1)
             gc.collect()

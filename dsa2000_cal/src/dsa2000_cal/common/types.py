@@ -2,6 +2,7 @@ from typing import NamedTuple, List, Tuple
 
 import numpy as np
 from astropy import coordinates as ac, time as at, units as au
+from jax._src.partition_spec import PartitionSpec
 
 from dsa2000_cal.common.array_types import FloatArray, IntArray
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
@@ -11,11 +12,12 @@ class VisibilityCoords(NamedTuple):
     """
     Coordinates for a single visibility.
     """
-    uvw: FloatArray  # [num_times, num_baselines, 3] the uvw coordinates
-    times: FloatArray  # [num_times] the time relative to the reference time in TT scale (typically observation start)
-    freqs: FloatArray  # [num_freqs] the frequency of the visibility
-    antenna_1: IntArray  # [num_baselines] the first antenna
-    antenna_2: IntArray  # [num_baselines] the second antenna
+    uvw: FloatArray | PartitionSpec  # [num_times, num_baselines, 3] the uvw coordinates
+    times: FloatArray | PartitionSpec  # [num_times] the time relative to the reference time in TT scale (typically observation start)
+    freqs: FloatArray | PartitionSpec  # [num_freqs] the frequency of the visibility
+    antenna_1: IntArray | PartitionSpec  # [num_baselines] the first antenna
+    antenna_2: IntArray | PartitionSpec  # [num_baselines] the second antenna
+
 
 class SystemGains(SerialisableBaseModel):
     """

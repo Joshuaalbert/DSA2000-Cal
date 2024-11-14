@@ -1,18 +1,23 @@
 import dataclasses
 import os
+from functools import partial
 from typing import NamedTuple, Tuple
 
 import astropy.units as au
 import jax
 import numpy as np
+from jax._src.partition_spec import PartitionSpec
+from jax.experimental.shard_map import shard_map
 
 import dsa2000_cal.common.context as ctx
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.array_types import ComplexArray
+from dsa2000_cal.common.jax_utils import create_mesh
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
 from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationOutput
 from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishOutput
@@ -104,28 +109,60 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
             with_autocorr=True,
             convention=self.convention
         )
-        vis_faint = state.faint_source_model.predict(
-            visibility_coords=visibility_coords,
-            gain_model=simulate_dish_output.gain_model,
-            near_field_delay_engine=setup_observation_output.near_field_delay_engine,
-            far_field_delay_engine=setup_observation_output.far_field_delay_engine,
-            geodesic_model=setup_observation_output.geodesic_model
+
+        # all devices work on channels
+        T = np.shape(visibility_coords.times)[0]
+        C = np.shape(visibility_coords.freqs)[0]
+        total_chunks = T * C
+        local_devices = jax.devices()
+        if len(local_devices) < total_chunks:
+            raise RuntimeError(f'Not enough devices to process {total_chunks} chunks on {len(local_devices)} devices')
+        local_devices = local_devices[:total_chunks]
+        mesh = create_mesh(
+            (len(local_devices) // C, 1, len(local_devices) // T),
+            ('T', 'B', 'C'), devices=jax.devices()
         )
-        # vis_bright_points = state.bright_source_model_points.predict(
-        #     visibility_coords=visibility_coords,
-        #     gain_model=simulate_dish_output.gain_model,
-        #     near_field_delay_engine=setup_observation_output.near_field_delay_engine,
-        #     far_field_delay_engine=setup_observation_output.far_field_delay_engine,
-        #     geodesic_model=setup_observation_output.geodesic_model
-        # )
-        # vis_bright_gaussians = state.bright_source_model_gaussians.predict(
-        #     visibility_coords=visibility_coords,
-        #     gain_model=simulate_dish_output.gain_model,
-        #     near_field_delay_engine=setup_observation_output.near_field_delay_engine,
-        #     far_field_delay_engine=setup_observation_output.far_field_delay_engine,
-        #     geodesic_model=setup_observation_output.geodesic_model
-        # )
-        visibilities = vis_faint# + vis_bright_points + vis_bright_gaussians
+
+        @partial(
+            shard_map,
+            mesh=mesh,
+            in_specs=(
+                    VisibilityCoords(
+                        uvw=PartitionSpec('T', 'B'),
+                        times=PartitionSpec('T'),
+                        freqs=PartitionSpec('C'),
+                        antenna_1=PartitionSpec('B'),
+                        antenna_2=PartitionSpec('B')
+                    ),
+            ),
+            out_specs=PartitionSpec('T', 'B', 'C')
+        )
+        def predict_visibilties(visibility_coords: VisibilityCoords) -> ComplexArray:
+            vis_faint = state.faint_source_model.predict(
+                visibility_coords=visibility_coords,
+                gain_model=simulate_dish_output.gain_model,
+                near_field_delay_engine=setup_observation_output.near_field_delay_engine,
+                far_field_delay_engine=setup_observation_output.far_field_delay_engine,
+                geodesic_model=setup_observation_output.geodesic_model
+            )
+            # vis_bright_points = state.bright_source_model_points.predict(
+            #     visibility_coords=visibility_coords,
+            #     gain_model=simulate_dish_output.gain_model,
+            #     near_field_delay_engine=setup_observation_output.near_field_delay_engine,
+            #     far_field_delay_engine=setup_observation_output.far_field_delay_engine,
+            #     geodesic_model=setup_observation_output.geodesic_model
+            # )
+            # vis_bright_gaussians = state.bright_source_model_gaussians.predict(
+            #     visibility_coords=visibility_coords,
+            #     gain_model=simulate_dish_output.gain_model,
+            #     near_field_delay_engine=setup_observation_output.near_field_delay_engine,
+            #     far_field_delay_engine=setup_observation_output.far_field_delay_engine,
+            #     geodesic_model=setup_observation_output.geodesic_model
+            # )
+            visibilities = vis_faint  # + vis_bright_points + vis_bright_gaussians
+            return visibilities
+
+        visibilities = predict_visibilties()
 
         noise_scale = calc_baseline_noise(
             system_equivalent_flux_density=quantity_to_jnp(self.system_equivalent_flux_density, 'Jy'),
