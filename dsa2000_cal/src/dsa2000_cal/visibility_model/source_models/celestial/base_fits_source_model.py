@@ -86,6 +86,7 @@ class BaseFITSSourceModel(AbstractSourceModel):
                 multi_vmap,
                 in_mapping=f'[C],[T],[T,B,3],[B],[B]',
                 out_mapping=out_mapping,
+                scan_dims={'C','T'},
                 verbose=True
             )
             def compute_visibilities_fits_single_source(freq, time, uvw, antenna_1, antenna_2):
@@ -492,8 +493,6 @@ def build_fits_source_model_from_wsclean_components(
                 # Get the indices for the box
                 lvec = ((-0.5 * Nl + np.arange(Nl)) * dl).to('rad').value
                 mvec = ((-0.5 * Nm + np.arange(Nm)) * dm).to('rad').value
-
-                print(l_left.shape, lvec.shape)
 
                 l_left_idx = np.clip(np.searchsorted(lvec, l_left, side='right') - 1, 0, Nl - 1)
                 l_right_idx = np.clip(np.searchsorted(lvec, l_right, side='right') - 1, 0, Nl - 1)

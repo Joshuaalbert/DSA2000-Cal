@@ -93,6 +93,7 @@ class BaseGaussianSourceModel(AbstractSourceModel):
                 multi_vmap,
                 in_mapping=f'[C],[T],[T,B,3],[B],[B]',
                 out_mapping=out_mapping,
+                scan_dims={'C', 'T'},
                 verbose=True
             )
             def compute_visibilities_gaussian_single_source(freq, time, uvw, antenna_1, antenna_2):
