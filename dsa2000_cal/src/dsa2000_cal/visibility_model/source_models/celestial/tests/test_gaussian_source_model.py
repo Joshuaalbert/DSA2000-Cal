@@ -73,9 +73,9 @@ def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stoke
     ## Mock model data
 
     if full_stokes:
-        A = np.ones((num_freqs, num_source, 2, 2)) * au.Jy
+        A = np.ones((num_source, num_freqs, 2, 2)) * au.Jy
     else:
-        A = np.ones((num_freqs, num_source)) * au.Jy
+        A = np.ones((num_source, num_freqs)) * au.Jy
     model_data = build_gaussian_source_model(
         model_freqs=model_freqs,
         ra=ra,

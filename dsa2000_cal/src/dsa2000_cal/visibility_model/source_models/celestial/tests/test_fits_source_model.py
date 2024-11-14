@@ -79,13 +79,15 @@ def build_mock_fits_source_model(num_model_freqs: int, num_source: int, full_sto
     )
 
     if full_stokes:
-        assert np.shape(images) == (num_model_freqs, num_facets_per_side**2, N//num_facets_per_side, N//num_facets_per_side, 2, 2)
+        assert np.shape(images) == (
+        num_facets_per_side ** 2, num_model_freqs, N // num_facets_per_side, N // num_facets_per_side, 2, 2)
     else:
-        assert np.shape(images) == (num_model_freqs, num_facets_per_side**2, N//num_facets_per_side, N//num_facets_per_side)
-    assert np.shape(ras) == (num_model_freqs, num_facets_per_side**2)
-    assert np.shape(decs) == (num_model_freqs, num_facets_per_side**2)
-    assert np.shape(dls) == (num_model_freqs, num_facets_per_side**2)
-    assert np.shape(dms) == (num_model_freqs, num_facets_per_side**2)
+        assert np.shape(images) == (
+        num_facets_per_side ** 2, num_model_freqs, N // num_facets_per_side, N // num_facets_per_side)
+    assert np.shape(ras) == (num_facets_per_side ** 2, num_model_freqs)
+    assert np.shape(decs) == (num_facets_per_side ** 2, num_model_freqs)
+    assert np.shape(dls) == (num_facets_per_side ** 2, num_model_freqs)
+    assert np.shape(dms) == (num_facets_per_side ** 2, num_model_freqs)
 
     model_data = build_fits_source_model(
         model_freqs=model_freqs,

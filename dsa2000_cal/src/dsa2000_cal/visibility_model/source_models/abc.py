@@ -1,17 +1,14 @@
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic
 
+from dsa2000_cal.common.array_types import ComplexArray
 from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 
-ModelDataType = TypeVar('ModelDataType')
 
-
-class AbstractSourceModel(ABC, Generic[ModelDataType]):
+class AbstractSourceModel(ABC):
 
     @abstractmethod
     def is_full_stokes(self) -> bool:
@@ -20,16 +17,6 @@ class AbstractSourceModel(ABC, Generic[ModelDataType]):
 
         Returns:
             True if full stokes, False otherwise
-        """
-        ...
-
-    @abstractmethod
-    def get_model_slice(self, freq: FloatArray, time: FloatArray, geodesic_model: BaseGeodesicModel) -> ModelDataType:
-        """
-        Construct the model slice for the given freq and time.
-
-        Returns:
-            the model slice [source_shape] + [[2,2]]
         """
         ...
 
@@ -46,7 +33,6 @@ class AbstractSourceModel(ABC, Generic[ModelDataType]):
         Predict the visibility model for the given model data.
 
         Args:
-            model_data: the model data [num_time, num_freqs] + source_shape + [[2,2]]
             visibility_coords: the visibility coordinates
             gain_model: the gain model
             near_field_delay_engine: the near field delay engine

@@ -1,7 +1,7 @@
 import dataclasses
 import warnings
 from functools import partial
-from typing import NamedTuple, List
+from typing import List
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -29,28 +29,17 @@ from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
 
 
-class FITSModelData(NamedTuple):
-    """
-    Data for predict.
-    """
-    image: FloatArray  # [facet, num_l, num_m, [2,2]] in [[xx, xy], [yx, yy]] format or stokes I
-    l0: FloatArray  # [facet] central l coordinate of the facet
-    m0: FloatArray  # [facet] central m coordinate of the facet
-    dl: FloatArray  # [facet] width of pixel in l
-    dm: FloatArray  # [facet] width of pixel in m
-
-
 @dataclasses.dataclass(eq=False)
-class BaseFITSSourceModel(AbstractSourceModel[FITSModelData]):
+class BaseFITSSourceModel(AbstractSourceModel):
     """
     Predict vis for fits source.
     """
     model_freqs: FloatArray  # [num_model_freqs] Frequencies
-    image: FloatArray  # [num_model_freqs, facet, num_l, num_m, [2,2]] in [[xx, xy], [yx, yy]] format or stokes I
-    ra: FloatArray  # [num_model_freqs,facet] central ra coordinate of the facet
-    dec: FloatArray  # [num_model_freqs,facet] central dec coordinate of the facet
-    dl: FloatArray  # [num_model_freqs,facet] width of pixel in l
-    dm: FloatArray  # [num_model_freqs,facet] width of pixel in m
+    image: FloatArray  # [facet,num_model_freqs, num_l, num_m, [2,2]] in [[xx, xy], [yx, yy]] format or stokes I
+    ra: FloatArray  # [facet,num_model_freqs] central ra coordinate of the facet
+    dec: FloatArray  # [facet,num_model_freqs] central dec coordinate of the facet
+    dl: FloatArray  # [facet,num_model_freqs] width of pixel in l
+    dm: FloatArray  # [facet,num_model_freqs] width of pixel in m
 
     epsilon: float = 1e-6
     convention: str = 'physical'
@@ -65,7 +54,7 @@ class BaseFITSSourceModel(AbstractSourceModel[FITSModelData]):
             raise ValueError("model_freqs must be 1D")
         if len(np.shape(self.ra)) != 2:
             raise ValueError(f"ra must be (num_model_freqs, facet) got {np.shape(self.ra)}")
-        if np.shape(self.ra)[0] != np.shape(self.model_freqs)[0]:
+        if np.shape(self.ra)[1] != np.shape(self.model_freqs)[0]:
             raise ValueError("ra must have same length as model_freqs")
         if np.shape(self.image)[:2] != np.shape(self.ra):
             raise ValueError(f"image[:2] shape must be {np.shape(self.ra)}, got {np.shape(self.image)}")
@@ -76,39 +65,6 @@ class BaseFITSSourceModel(AbstractSourceModel[FITSModelData]):
     def is_full_stokes(self) -> bool:
         return len(np.shape(self.image)) == 6 and np.shape(self.image)[-2:] == (2, 2)
 
-    def get_model_slice(self, freq: FloatArray, time: FloatArray, geodesic_model: BaseGeodesicModel) -> FITSModelData:
-        interp = InterpolatedArray(x=self.model_freqs, values=(self.image, self.ra, self.dec, self.dl, self.dm), axis=0)
-        image, ra, dec, dl, dm = interp(freq)  # [facet, num_l, num_m, [2,2]]
-
-        def _mask_image(facet_image, ra, dec, dl, dm):
-            num_l, num_m = np.shape(facet_image)[:2]
-            lmn = geodesic_model.compute_far_field_lmn(ra, dec, time, return_elevation=False)
-            l0, m0 = lmn[:2]
-            lvec = (-0.5 * num_l + jnp.arange(num_l)) * dl + l0
-            mvec = (-0.5 * num_m + jnp.arange(num_m)) * dm + m0
-            L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
-            L2M2 = L ** 2 + M ** 2
-            N = jnp.sqrt(1 - L2M2)
-            LMN = jnp.stack([L, M, N], axis=-1)  # [num_l, num_m, 3]
-            elevation = geodesic_model.compute_elevation_from_lmn(LMN, time)  # [num_l, num_m]
-            elevation_mask = elevation <= 0
-            n_mask = L2M2 > 1
-            mask = jnp.logical_or(elevation_mask, n_mask)
-            if self.is_full_stokes():
-                return jnp.where(mask[:, :, None, None], jnp.zeros_like(facet_image), facet_image), l0, m0
-            else:
-                return jnp.where(mask, jnp.zeros_like(facet_image), facet_image), l0, m0
-
-        image, l0, m0 = jax.vmap(_mask_image)(image, ra, dec, dl, dm)  # [facet, num_l, num_m, [2,2]]
-
-        return FITSModelData(
-            image=mp_policy.cast_to_image(image),
-            l0=mp_policy.cast_to_angle(l0),
-            m0=mp_policy.cast_to_angle(m0),
-            dl=mp_policy.cast_to_angle(dl),
-            dm=mp_policy.cast_to_angle(dm)
-        )
-
     def predict(
             self,
             visibility_coords: VisibilityCoords,
@@ -117,124 +73,86 @@ class BaseFITSSourceModel(AbstractSourceModel[FITSModelData]):
             far_field_delay_engine: BaseFarFieldDelayEngine,
             geodesic_model: BaseGeodesicModel
     ) -> ComplexArray:
-        _a1 = visibility_coords.antenna_1  # [B]
-        _a2 = visibility_coords.antenna_2  # [B]
+        def body_fn(accumulate, x):
+            (ra, dec, dl, dm, image) = x
 
-        if self.is_full_stokes():
-            out_mapping = "[T,~B,C,~P,~Q]"
-        else:
-            out_mapping = "[T,~B,C]"
-
-        _a1 = visibility_coords.antenna_1
-        _a2 = visibility_coords.antenna_2
-
-        # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
-        # We want the outer broadcast to be over chan, so we'll do this order.
-
-        @partial(
-            multi_vmap,
-            in_mapping=f"[T,B,3],[C],[T]",
-            out_mapping=out_mapping,
-            scan_dims={'C'},
-            verbose=True
-        )
-        def compute_baseline_visibilities_fits(uvw, freq, time):
-            """
-            Compute visibilities for a single row, channel, accumulating over sources.
-
-            Args:
-                uvw: [B, 3]
-                freq: []
-                time: []
-
-            Returns:
-                vis_accumulation: [B, 2, 2] visibility for given baseline, accumulated over all provided directions.
-            """
-
-            model_data = self.get_model_slice(
-                freq=freq,
-                time=time,
-                geodesic_model=geodesic_model
-            )  # [facet, num_l, num_m[, 2, 2]]
-
-            if gain_model is not None:
-                n_phased = jnp.sqrt(1. - model_data.l0 ** 2 - model_data.m0 ** 2)
-                lmn_phased = jnp.stack([model_data.l0, model_data.m0, n_phased], axis=-1)  # [facet, 3]
-                lmn_geodesic = geodesic_model.compute_far_field_geodesic(
-                    times=time[None],
-                    lmn_sources=lmn_phased
-                )  # [1, num_ant, facet, 3]
-                # Compute the gains
-                gains = gain_model.compute_gain(
-                    freqs=freq[None],
-                    times=time[None],
-                    lmn_geodesic=lmn_geodesic,
-                )  # [1, num_ant, 1, facet,[, 2, 2]]
-                g1 = gains[0, visibility_coords.antenna_1, 0, :, ...]  # [B, facet[, 2, 2]]
-                g1 = jnp.moveaxis(g1, 1, 0)  # [facet, B[, 2, 2]]
-                g2 = gains[0, visibility_coords.antenna_2, 0, :, ...]  # [B, facet[, 2, 2]]
-                g2 = jnp.moveaxis(g2, 1, 0)  # [facet, B[, 2, 2]]
-            else:
-                g1 = g2 = None
-
+            # vmap over time and freqs
             if self.is_full_stokes():
-                image_mapping = "[S,Nl,Nm,2,2]"
-                gain_mapping = "[S,B,2,2]"
-                out_mapping = "[~B,~P,~Q]"
+                out_mapping = '[T,~B,C,~P,~Q]'
             else:
-                image_mapping = "[S,Nl,Nm]"
-                gain_mapping = "[S,B]"
-                out_mapping = "[~B]"
+                out_mapping = '[T,~B,C]'
 
             @partial(
                 multi_vmap,
-                in_mapping=f"[B,3],{gain_mapping},{gain_mapping},{image_mapping},[S],[S],[S]",
+                in_mapping=f'[C],[T],[T,B,3],[B],[B]',
                 out_mapping=out_mapping,
                 verbose=True
             )
-            def compute_visibilities_fits_over_sources(uvw, g1, g2, image,
-                                                       l0, m0, dl, dm):
-                """
-                Compute visibilities for a single direction, accumulating over sources.
+            def compute_visibilities_fits_single_source(freq, time, uvw, antenna_1, antenna_2):
 
-                Args:
-                    uvw: [B, 3]
-                    g1: [S, B[, 2, 2]]
-                    g2: [S, B[, 2, 2]]
-                    image: [S,Nl,Nm[, 2, 2]]
-                    l0: [S]
-                    m0: [S]
-                    dl: [S]
-                    dm: [S]
+                interp = InterpolatedArray(x=self.model_freqs, values=(image, ra, dec, dl, dm),
+                                           axis=0)
+                _image, _ra, _dec, _dl, _dm = interp(freq)  # [num_l, num_m, [2,2]], [],...
 
-                Returns:
-                    vis_accumulation: [B[, 2, 2]] visibility for given baseline, accumulated over all provided directions.
-                """
-                num_baselines = np.shape(uvw)[0]
+                num_l, num_m = np.shape(_image)[:2]
+                lmn = geodesic_model.compute_far_field_lmn(_ra, _dec, time, return_elevation=False)
+                l0, m0 = lmn[:2]
+                lvec = (-0.5 * num_l + jnp.arange(num_l)) * _dl + l0
+                mvec = (-0.5 * num_m + jnp.arange(num_m)) * _dm + m0
+                L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
+                L2M2 = L ** 2 + M ** 2
+                N = jnp.sqrt(1 - L2M2)
+                LMN = jnp.stack([L, M, N], axis=-1)  # [num_l, num_m, 3]
+                elevation = geodesic_model.compute_elevation_from_lmn(LMN, time)  # [num_l, num_m]
+                elevation_mask = elevation <= 0
+                n_mask = L2M2 > 1
+                mask = jnp.logical_or(elevation_mask, n_mask)
+                if self.is_full_stokes():
+                    masked_image = jnp.where(mask[:, :, None, None], 0, _image)  # [Nl,Nm[,2, 2]]
+                else:
+                    masked_image = jnp.where(mask, 0, _image)  # [Nl,Nm[,2, 2]]
 
-                def body_fn(accumulate, x):
-                    (g1, g2, image, l0, m0, dl, dm) = x
-                    delta = self._single_compute_visibilty(uvw, g1, g2, freq, image,
-                                                           l0, m0, dl, dm)  # [[2,2]]
-                    accumulate += mp_policy.cast_to_vis(delta)
-                    return accumulate, ()
+                lmn_geodesic = geodesic_model.compute_far_field_geodesic(
+                    times=time[None],
+                    lmn_sources=lmn[None, :]
+                )  # [1, num_ant, 1, 3]
+                if gain_model is not None:
+                    # Compute the gains
+                    gains = gain_model.compute_gain(
+                        freqs=freq[None],
+                        times=time[None],
+                        lmn_geodesic=lmn_geodesic,
+                    )  # [1, num_ant, 1, 1,[, 2, 2]]
+                    g1 = gains[0, antenna_1, 0, 0, ...]  # [[, 2, 2]]
+                    g2 = gains[0, antenna_2, 0, 0, ...]  # [[, 2, 2]]
+                else:
+                    g1 = g2 = None
+                return self._single_compute_visibilty(uvw, g1, g2, freq, masked_image, l0, m0, _dl, _dm)  # [B[,2, 2]]
 
-                xs = (g1, g2, image, l0, m0, dl, dm)
-                init_accumulate = jnp.zeros((num_baselines, 2, 2) if self.is_full_stokes() else (num_baselines,),
-                                            dtype=mp_policy.vis_dtype)
-                vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=4)
-                return vis_accumulation  # [] or [2, 2]
+            delta = compute_visibilities_fits_single_source(
+                visibility_coords.freqs,
+                visibility_coords.times,
+                visibility_coords.uvw,
+                visibility_coords.antenna_1,
+                visibility_coords.antenna_2
+            )
 
-            return compute_visibilities_fits_over_sources(uvw, g1, g2, model_data.image,
-                                                          model_data.l0, model_data.m0, model_data.dl, model_data.dm
-                                                          )
+            accumulate += mp_policy.cast_to_vis(delta)
+            return accumulate, ()
 
-        visibilities = compute_baseline_visibilities_fits(
-            visibility_coords.uvw,
-            visibility_coords.freqs,
-            visibility_coords.times
-        )  # [num_times, num_baselines, num_freqs[,2, 2]]
-        return visibilities
+        T = np.shape(visibility_coords.times)[0]
+        B = np.shape(visibility_coords.antenna_1)[0]
+        C = np.shape(visibility_coords.freqs)[0]
+        if self.is_full_stokes():
+            init_accumulate = jnp.zeros((T, B, C, 2, 2), dtype=mp_policy.vis_dtype)
+
+        else:
+            init_accumulate = jnp.zeros((T, B, C), dtype=mp_policy.vis_dtype)
+        xs = (self.ra, self.dec, self.dl, self.dm, self.image)
+
+        # sum over sources
+        vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs)
+        return vis_accumulation  # [T, B, C[, 2, 2]]
 
     def _single_compute_visibilty(self, uvw, g1, g2, freq, image, l0, m0, dl, dm):
         """
@@ -314,14 +232,14 @@ class BaseFITSSourceModel(AbstractSourceModel[FITSModelData]):
         # Plot the first facet
         l, m, n = perley_lmn_from_icrs(self.ra, self.dec, phase_tracking.ra.rad,
                                        phase_tracking.dec.rad)  # [num_model_freqs, facet]
-        l0 = l[0, :]
-        m0 = m[0, :]
-        dl = self.dl[0, :]
-        dm = self.dm[0, :]
+        l0 = l[:, 0]
+        m0 = m[:, 0]
+        dl = self.dl[:, 0]
+        dm = self.dm[:, 0]
         if self.is_full_stokes():
-            image = self.image[0, :, :, :, 0, 0]  # [facet, num_l, num_m, [2,2]]
+            image = self.image[:, 0, :, :, 0, 0]  # [facet, num_l, num_m, [2,2]]
         else:
-            image = self.image[0, :, :, :]  # [facet, num_l, num_m]
+            image = self.image[:, 0, :, :]  # [facet, num_l, num_m]
         num_l, num_m = np.shape(image)[-2:]
         lvec = (-0.5 * num_l + np.arange(num_l)) * dl[:, None] + l0[:, None]  # [facet, num_l]
         mvec = (-0.5 * num_m + np.arange(num_m)) * dm[:, None] + m0[:, None]  # [facet, num_m]
@@ -391,12 +309,12 @@ jax.tree_util.register_pytree_node(
 
 
 def build_fits_source_model(
-        model_freqs: au.Quantity,  # [num_model_freqs] Frequencies
-        image: au.Quantity,  # [ num_model_freqs, facets,[,2,2]] Flux amplitude of the source
-        ra: au.Quantity,  # [num_model_freqs,facets] central ra coordinate of the facet
-        dec: au.Quantity,  # [num_model_freqs,facets] central dec coordinate of the facet
-        dl: au.Quantity,  # [num_model_freqs,facets] width of pixel in l
-        dm: au.Quantity,  # [num_model_freqs,facets] width of pixel in m
+        model_freqs: au.Quantity,
+        image: au.Quantity,
+        ra: au.Quantity,
+        dec: au.Quantity,
+        dl: au.Quantity,
+        dm: au.Quantity,
         epsilon: float = 1e-6,
         convention: str = 'physical'
 ) -> BaseFITSSourceModel:
@@ -405,11 +323,11 @@ def build_fits_source_model(
 
     Args:
         model_freqs: [num_model_freq] Frequencies
-        image: [ num_model_freqs, facets,[,2,2]] Flux amplitude of the source
-        ra: [num_model_freqs,facets] central ra coordinate of the facet
-        dec: [num_model_freqs,facets] central dec coordinate of the facet
-        dl: [num_model_freqs,facets] width of pixel in l
-        dm: [num_model_freqs,facets] width of pixel in m
+        image: [ facets,num_model_freqs, [,2,2]] Flux amplitude of the source
+        ra: [facets,num_model_freqs] central ra coordinate of the facet
+        dec: [facets,num_model_freqs] central dec coordinate of the facet
+        dl: [facets,num_model_freqs] width of pixel in l
+        dm: [facets,num_model_freqs] width of pixel in m
         epsilon: the epsilon value for the wgridder
         convention: the convention for the uvw
 
@@ -418,11 +336,11 @@ def build_fits_source_model(
     """
     sort_order = np.argsort(model_freqs)
     model_freqs = quantity_to_jnp(model_freqs[sort_order], 'Hz')
-    image = quantity_to_jnp(image[sort_order], 'Jy')
-    ra = quantity_to_jnp(ra[sort_order], 'rad')
-    dec = quantity_to_jnp(dec[sort_order], 'rad')
-    dl = quantity_to_jnp(dl[sort_order], 'rad')
-    dm = quantity_to_jnp(dm[sort_order], 'rad')
+    image = quantity_to_jnp(image[:, sort_order], 'Jy')
+    ra = quantity_to_jnp(ra[:, sort_order], 'rad')
+    dec = quantity_to_jnp(dec[:, sort_order], 'rad')
+    dl = quantity_to_jnp(dl[:, sort_order], 'rad')
+    dm = quantity_to_jnp(dm[:, sort_order], 'rad')
 
     return BaseFITSSourceModel(
         model_freqs=model_freqs,
@@ -571,13 +489,11 @@ def build_fits_source_model_from_wsclean_components(
                                                              quantity_to_np(ra0),
                                                              quantity_to_np(dec0))
 
-
                 # Get the indices for the box
                 lvec = ((-0.5 * Nl + np.arange(Nl)) * dl).to('rad').value
                 mvec = ((-0.5 * Nm + np.arange(Nm)) * dm).to('rad').value
 
                 print(l_left.shape, lvec.shape)
-
 
                 l_left_idx = np.clip(np.searchsorted(lvec, l_left, side='right') - 1, 0, Nl - 1)
                 l_right_idx = np.clip(np.searchsorted(lvec, l_right, side='right') - 1, 0, Nl - 1)
@@ -659,11 +575,11 @@ def divide_fits_into_facets(images: au.Quantity, ras: au.Quantity, decs: au.Quan
         num_facets_per_side: int, number of facets per side
 
     Returns:
-        images: [num_model_freqs, num_facets, num_l_facet, num_m_facet, [2,2]] in [[xx, xy], [yx, yy]] format or stokes I
-        ras: [num_model_freqs, num_facets] the central ra coordinate of the facet
-        decs: [num_model_freqs, num_facets] the central dec coordinate of the facet
-        dls: [num_model_freqs, num_facets] the width of pixel in l
-        dms: [num_model_freqs, num_facets] the width of pixel in m
+        images: [num_facets,num_model_freqs, num_l_facet, num_m_facet, [2,2]] in [[xx, xy], [yx, yy]] format or stokes I
+        ras: [num_facets,num_model_freqs] the central ra coordinate of the facet
+        decs: [num_facets,num_model_freqs] the central dec coordinate of the facet
+        dls: [num_facets,num_model_freqs] the width of pixel in l
+        dms: [num_facets,num_model_freqs] the width of pixel in m
     """
     # Now break up into facets.
     num_l, num_m = np.shape(images)[1:3]
@@ -736,10 +652,10 @@ def divide_fits_into_facets(images: au.Quantity, ras: au.Quantity, decs: au.Quan
         facet_dls.append(dls)  # [num_model_freqs]
         facet_dms.append(dms)  # [num_model_freqs]
     images = au.Quantity(
-        np.stack(facet_images, axis=1)
-    )  # [num_model_freqs, num_facets, num_l_facet, num_m_facet, [2,2]]]
-    ras = au.Quantity(np.stack(facet_ras, axis=1))  # [num_model_freqs, num_facets]
-    decs = au.Quantity(np.stack(facet_decs, axis=1))  # [num_model_freqs, num_facets]
-    dls = au.Quantity(np.stack(facet_dls, axis=1))  # [num_model_freqs, num_facets]
-    dms = au.Quantity(np.stack(facet_dms, axis=1))  # [num_model_freqs, num_facets]
+        np.stack(facet_images, axis=0)
+    )  # [num_facets, num_model_freqs, num_l_facet, num_m_facet, [2,2]]]
+    ras = au.Quantity(np.stack(facet_ras, axis=0))  # [num_facets,num_model_freqs]
+    decs = au.Quantity(np.stack(facet_decs, axis=0))  # [num_facets,num_model_freqs]
+    dls = au.Quantity(np.stack(facet_dls, axis=0))  # [num_facets,num_model_freqs]
+    dms = au.Quantity(np.stack(facet_dms, axis=0))  # [num_facets,num_model_freqs]
     return images, ras, decs, dls, dms

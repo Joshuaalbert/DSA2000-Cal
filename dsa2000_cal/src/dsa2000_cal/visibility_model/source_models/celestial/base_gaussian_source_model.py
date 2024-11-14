@@ -1,6 +1,5 @@
 import dataclasses
 from functools import partial
-from typing import NamedTuple
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -30,26 +29,15 @@ from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
 
 
-class GaussianModelData(NamedTuple):
-    """
-    Data for predict.
-    """
-    image: FloatArray  # [source,[2,2]] in [[xx, xy], [yx, yy]] format or stokes I
-    lmn: FloatArray  # [source, 3]
-    major_axis: FloatArray  # [source]
-    minor_axis: FloatArray  # [source]
-    pos_angle: FloatArray  # [source]
-
-
 @dataclasses.dataclass(eq=False)
-class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
+class BaseGaussianSourceModel(AbstractSourceModel):
     """
-    Predict vis for point source.
+    Predict vis for gaussian source.
     """
     model_freqs: FloatArray  # [num_model_freqs] Frequencies
     ra: FloatArray  # [num_sources] ra coordinate of the source
     dec: FloatArray  # [num_sources] dec coordinate of the source
-    A: FloatArray  # [num_model_freqs,num_sources,[,2,2]] Flux amplitude of the source
+    A: FloatArray  # [num_sources, num_model_freqs,[,2,2]] Flux amplitude of the source
     major_axis: FloatArray  # [num_sources] Major axis of the source in proj.radians
     minor_axis: FloatArray  # [num_sources] Minor axis of the source in proj.radians
     pos_angle: FloatArray  # [num_sources] Position angle of the source in proj.radians
@@ -77,31 +65,12 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
                 "minor_axis must {np.shape(self.minor_axis)} have the same shape as ra {np.shape(self.ra)}")
         if np.shape(self.pos_angle) != np.shape(self.ra):
             raise ValueError("pos_angle must {np.shape(self.pos_angle)} have the same shape as ra {np.shape(self.ra)}")
-        if np.shape(self.A)[:2] != (len(self.model_freqs), len(self.ra)):
+        if np.shape(self.A)[:2] != (len(self.ra), len(self.model_freqs)):
             raise ValueError(
                 f"A must have shape [{np.shape(self.model_freqs)[0]}, {np.shape(self.ra)[0]}[,2,2]], got {np.shape(self.A)}")
 
     def is_full_stokes(self) -> bool:
         return len(np.shape(self.A)) == 4 and np.shape(self.A)[-2:] == (2, 2)
-
-    def get_model_slice(self, freq: FloatArray, time: FloatArray,
-                        geodesic_model: BaseGeodesicModel) -> GaussianModelData:
-        lmn, elevation = geodesic_model.compute_far_field_lmn(self.ra, self.dec, time, return_elevation=True)
-        interp = InterpolatedArray(x=self.model_freqs, values=self.A, axis=0)
-        image = interp(freq)  # [num_sources[, 2, 2]]
-        elevation_mask = elevation <= 0  # [num_sources]
-        if self.is_full_stokes():
-            image = jnp.where(elevation_mask[:, None, None], jnp.zeros_like(image), image)  # [num_sources, 2, 2]
-        else:
-            image = jnp.where(elevation_mask, jnp.zeros_like(image), image)  # [num_sources]
-
-        return GaussianModelData(
-            image=mp_policy.cast_to_image(image),
-            lmn=mp_policy.cast_to_angle(lmn),
-            major_axis=mp_policy.cast_to_angle(self.major_axis),
-            minor_axis=mp_policy.cast_to_angle(self.minor_axis),
-            pos_angle=mp_policy.cast_to_angle(self.pos_angle)
-        )
 
     def predict(
             self,
@@ -111,119 +80,69 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
             far_field_delay_engine: BaseFarFieldDelayEngine,
             geodesic_model: BaseGeodesicModel
     ) -> ComplexArray:
-        _a1 = visibility_coords.antenna_1  # [B]
-        _a2 = visibility_coords.antenna_2  # [B]
+        def body_fn(accumulate, x):
+            (ra, dec, major_axis, minor_axis, pos_angle, image) = x
 
-        if self.is_full_stokes():
-            out_mapping = "[T,~B,C,~P,~Q]"
-        else:
-            out_mapping = "[T,~B,C]"
-
-        _a1 = visibility_coords.antenna_1
-        _a2 = visibility_coords.antenna_2
-
-        # Data will be sharded over frequency so don't reduce over these dimensions, or else communication happens.
-        # We want the outer broadcast to be over chan, so we'll do this order.
-
-        @partial(
-            multi_vmap,
-            in_mapping=f"[T,B,3],[C],[T]",
-            out_mapping=out_mapping,
-            scan_dims={'C'},
-            verbose=True
-        )
-        def compute_baseline_visibilities_gaussian(uvw, freq, time):
-            """
-            Compute visibilities for a single row, channel, accumulating over sources.
-
-            Args:
-                uvw: [B, 3]
-                freq: []
-                time: []
-
-            Returns:
-                vis_accumulation: [B, 2, 2] visibility for given baseline, accumulated over all provided directions.
-            """
-
-            model_data = self.get_model_slice(
-                freq=freq,
-                time=time,
-                geodesic_model=geodesic_model
-            )  # [num_sources, 2, 2]
-
-            if gain_model is not None:
-                lmn_phased = geodesic_model.compute_far_field_lmn(self.ra, self.dec)  # [num_sources, 3]
-                lmn_geodesic = geodesic_model.compute_far_field_geodesic(
-                    times=time[None],
-                    lmn_sources=lmn_phased
-                )  # [1, num_ant, num_sources, 3]
-                # Compute the gains
-                gains = gain_model.compute_gain(
-                    freqs=freq[None],
-                    times=time[None],
-                    lmn_geodesic=lmn_geodesic,
-                )  # [1, num_ant, 1, num_sources,[, 2, 2]]
-                g1 = gains[0, visibility_coords.antenna_1, 0, :, ...]  # [B, num_sources[, 2, 2]]
-                g2 = gains[0, visibility_coords.antenna_2, 0, :, ...]  # [B, num_sources[, 2, 2]]
-            else:
-                g1 = g2 = None
-
+            # vmap over time and freqs
             if self.is_full_stokes():
-                image_mapping = "[S,2,2]"
-                gain_mapping = "[B,S,2,2]"
-                out_mapping = "[B,~P,~Q]"
+                out_mapping = '[T,B,C,~P,~Q]'
             else:
-                image_mapping = "[S]"
-                gain_mapping = "[B,S]"
-                out_mapping = "[B]"
+                out_mapping = '[T,B,C]'
 
             @partial(
                 multi_vmap,
-                in_mapping=f"[S,3],[B,3],{gain_mapping},{gain_mapping},{image_mapping},[S],[S],[S]",
+                in_mapping=f'[C],[T],[T,B,3],[B],[B]',
                 out_mapping=out_mapping,
                 verbose=True
             )
-            def compute_visibilities_gaussian_over_sources(lmn, uvw, g1, g2, image,
-                                                           major_axis, minor_axis, pos_angle):
-                """
-                Compute visibilities for a single direction, accumulating over sources.
+            def compute_visibilities_gaussian_single_source(freq, time, uvw, antenna_1, antenna_2):
+                lmn, elevation = geodesic_model.compute_far_field_lmn(ra, dec, time, return_elevation=True)  # [3]
+                interp = InterpolatedArray(x=self.model_freqs, values=image, axis=0, regular_grid=True,
+                                           check_spacing=False)
+                masked_image = jnp.where(elevation <= 0, 0, interp(freq))  # [2, 2]
+                lmn_geodesic = geodesic_model.compute_far_field_geodesic(
+                    times=time[None],
+                    lmn_sources=lmn[None, :],
+                    antenna_indices=jnp.stack([antenna_1, antenna_2])
+                )  # [1, num_ant=2, 1, 3]
+                if gain_model is not None:
+                    # Compute the gains
+                    gains = gain_model.compute_gain(
+                        freqs=freq[None],
+                        times=time[None],
+                        lmn_geodesic=lmn_geodesic,
+                    )  # [1, num_ant=2, 1, 1,[, 2, 2]]
+                    g1 = gains[0, 0, 0, 0, ...]  # [[, 2, 2]]
+                    g2 = gains[0, 1, 0, 0, ...]  # [[, 2, 2]]
+                else:
+                    g1 = g2 = None
+                return self._single_compute_visibilty(lmn, uvw, g1, g2, freq, masked_image, major_axis, minor_axis,
+                                                      pos_angle)  # [] or [2, 2]
 
-                Args:
-                    lmn: [3]
-                    uvw: [3]
-                    g1: [S[, 2, 2]]
-                    g2: [S[, 2, 2]]
-                    image: [S[, 2, 2]]
-                    major_axis: [S]
-                    minor_axis: [S]
-                    pos_angle: [S]
+            delta = compute_visibilities_gaussian_single_source(
+                visibility_coords.freqs,
+                visibility_coords.times,
+                visibility_coords.uvw,
+                visibility_coords.antenna_1,
+                visibility_coords.antenna_2
+            )
 
-                Returns:
-                    vis_accumulation: [B[, 2, 2]] visibility for given baseline, accumulated over all provided directions.
-                """
+            accumulate += mp_policy.cast_to_vis(delta)
+            return accumulate, ()
 
-                def body_fn(accumulate, x):
-                    (lmn, g1, g2, image, major_axis, minor_axis, pos_angle) = x
-                    delta = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, image,
-                                                           major_axis, minor_axis, pos_angle)  # [] or [2, 2]
-                    accumulate += mp_policy.cast_to_vis(delta)
-                    return accumulate, ()
+        T = np.shape(visibility_coords.times)[0]
+        B = np.shape(visibility_coords.antenna_1)[0]
+        C = np.shape(visibility_coords.freqs)[0]
+        if self.is_full_stokes():
+            init_accumulate = jnp.zeros((T, B, C, 2, 2), dtype=mp_policy.vis_dtype)
 
-                xs = (lmn, g1, g2, image, major_axis, minor_axis, pos_angle)
-                init_accumulate = jnp.zeros((2, 2) if self.is_full_stokes() else (), dtype=mp_policy.vis_dtype)
-                vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs, unroll=4)
-                return vis_accumulation  # [] or [2, 2]
+        else:
+            init_accumulate = jnp.zeros((T, B, C), dtype=mp_policy.vis_dtype)
+        xs = (self.ra, self.dec, self.major_axis, self.minor_axis, self.pos_angle, self.A)
 
-            return compute_visibilities_gaussian_over_sources(model_data.lmn, uvw, g1, g2, model_data.image,
-                                                              model_data.major_axis, model_data.minor_axis,
-                                                              model_data.pos_angle)
-
-        visibilities = compute_baseline_visibilities_gaussian(
-            visibility_coords.uvw,
-            visibility_coords.freqs,
-            visibility_coords.times
-        )  # [num_times, num_baselines, num_freqs[,2, 2]]
-        return visibilities
+        # sum over sources
+        vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs)
+        return vis_accumulation  # [T, B, C[, 2, 2]]
 
     def _single_compute_visibilty(self, lmn, uvw, g1, g2, freq, image, major_axis, minor_axis, pos_angle):
         """
@@ -378,7 +297,7 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
                 zip(l, m, self.major_axis, self.minor_axis, self.pos_angle)):
             if self.is_full_stokes():
                 flux_model += compute_gaussian_flux(
-                    self.A[0, i, 0, 0],
+                    self.A[i, 0, 0, 0],
                     li,
                     mi,
                     majori,
@@ -387,7 +306,7 @@ class BaseGaussianSourceModel(AbstractSourceModel[GaussianModelData]):
                 )
             else:
                 flux_model += compute_gaussian_flux(
-                    self.A[0, i],
+                    self.A[i, 0],
                     li,
                     mi,
                     majori,
@@ -467,13 +386,13 @@ def build_gaussian_source_model(
         order_approx: int = 0
 ) -> BaseGaussianSourceModel:
     """
-    Build a point source model.
+    Build a gaussian source model.
 
     Args:
         model_freqs: [num_model_freq] Frequencies
         ra: [num_sources] l coordinate of the source
         dec: [num_sources] m coordinate of the source
-        A: [num_model_freqs, num_sources,[,2,2]] Flux amplitude of the source
+        A: [num_sources, num_model_freqs,[,2,2]] Flux amplitude of the source
         major_axis: [num_sources] Major axis of the source in proj.radians
         minor_axis: [num_sources] Minor axis of the source in proj.radians
         pos_angle: [num_sources] Position angle of the source in proj.radians
@@ -553,7 +472,7 @@ def build_gaussian_source_model_from_wsclean_components(
 
     ra = source_directions.ra
     dec = source_directions.dec
-    A = np.stack(spectrum, axis=1)  # [num_freqs, num_sources]
+    A = np.stack(spectrum, axis=0)  # [num_sources, num_freqs]
 
     major_axis = au.Quantity(major_axis)
     minor_axis = au.Quantity(minor_axis)
@@ -566,7 +485,7 @@ def build_gaussian_source_model_from_wsclean_components(
                 ('I',),
                 (('XX', 'XY'), ('YX', 'YY'))
             )
-        ) * au.Jy  # [num_freqs, num_sources, 2, 2]
+        ) * au.Jy  # [num_sources, num_freqs, 2, 2]
 
     return build_gaussian_source_model(
         model_freqs=model_freqs,
