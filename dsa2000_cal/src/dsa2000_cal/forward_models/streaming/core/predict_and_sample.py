@@ -124,7 +124,7 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
         local_devices = local_devices[:total_chunks]
         mesh = create_mesh(
             (T, 1, len(local_devices) // T),
-            ('T', 'B', 'C'), devices=jax.devices()
+            ('T', 'B', 'C'), devices=local_devices
         )
 
         @partial(
