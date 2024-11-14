@@ -94,7 +94,7 @@ def get_process_local_params(process_id: int, array_name: str) -> ProcessLocalPa
     )
 
 
-def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn, num_steps: int):
+def build_process_scan(execute_dag_apply: ctx.TransformedWithStateFn.apply, num_steps: int):
     def run_process(key, params: ctx.ImmutableParams, init_states: ctx.MutableParams):
         class Carry(NamedTuple):
             states: ctx.MutableParams
@@ -103,7 +103,7 @@ def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn, num_
             key: jax.Array
 
         def body(carry: Carry, x: XType):
-            apply_return = execute_dag_transformed.apply(params, carry.states, x.key)
+            apply_return = execute_dag_apply(params, carry.states, x.key)
             return Carry(states=apply_return.states), apply_return.fn_val
 
         carry, keep = jax.lax.scan(
@@ -116,7 +116,7 @@ def build_process_scan(execute_dag_transformed: ctx.TransformedWithStateFn, num_
     return run_process
 
 
-def build_process_for(execute_dag_transformed: ctx.TransformedWithStateFn, num_steps: int):
+def build_process_for(execute_dag_apply: ctx.TransformedWithStateFn.apply, num_steps: int):
     def run_process(key, params: ctx.ImmutableParams, init_states: ctx.MutableParams):
         class Carry(NamedTuple):
             states: ctx.MutableParams
@@ -125,7 +125,7 @@ def build_process_for(execute_dag_transformed: ctx.TransformedWithStateFn, num_s
             key: jax.Array
 
         def body(carry: Carry, x: XType):
-            apply_return = execute_dag_transformed.apply(params, carry.states, x.key)
+            apply_return = execute_dag_apply(params, carry.states, x.key)
             return Carry(states=apply_return.states), apply_return.fn_val
 
         carry = Carry(states=init_states)
@@ -323,9 +323,6 @@ def process_start(
     execute_dag = build_process_core_dag(process_id, array_name, full_stokes, plot_folder)
 
     execute_dag_transformed = ctx.transform_with_state(execute_dag)
-    run_process = build_process_scan(execute_dag_transformed, num_steps=1)
-
-    run_process_jit = jax.jit(run_process, donate_argnums=(0, 1, 2))
 
     # Run the process
     hostname = os.uname().nodename
@@ -338,14 +335,18 @@ def process_start(
             print("Initialising...")
 
             init_start_time = current_utc()
-            init = jax.jit(execute_dag_transformed.init)(init_key)
-            print(init)
+            init = block_until_ready(jax.jit(execute_dag_transformed.init)(init_key))
             init_end_time = current_utc()
+            gc.collect()
 
             print("Compiling...")
+            # donate state arg
+            execute_dag_apply = jax.jit(execute_dag_transformed.apply, donate_argnums=(1,))
             compile_start_time = current_utc()
-            run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states).compile()
+            execute_dag_apply_compiled = execute_dag_apply.lower(init.params, init.states, run_key).compile()
             compile_end_time = current_utc()
+            run_process = build_process_for(execute_dag_apply_compiled, num_steps=1)
+            gc.collect()
 
             print("Running...")
             run_start_time = current_utc()
@@ -357,11 +358,11 @@ def process_start(
     end_time = current_utc()
     total_run_time = (end_time - start_time).total_seconds()
     init_time = (init_end_time - init_start_time).total_seconds()
-    # compile_time = (compile_end_time - compile_start_time).total_seconds()
+    compile_time = (compile_end_time - compile_start_time).total_seconds()
     run_time = (run_end_time - run_start_time).total_seconds()
     print(f"Total run time: {total_run_time:.2f}s")
     print(f"Initialisation time: {init_time:.2f}s")
-    # print(f"Compilation time: {compile_time:.2f}s")
+    print(f"Compilation time: {compile_time:.2f}s")
     print(f"Run time: {run_time:.2f}s")
 
     # Tell Slack we're done
