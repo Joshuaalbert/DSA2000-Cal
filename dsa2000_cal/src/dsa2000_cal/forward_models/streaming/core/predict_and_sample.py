@@ -166,7 +166,7 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
             visibilities = vis_faint  # + vis_bright_points + vis_bright_gaussians
             return visibilities
 
-        visibilities = predict_visibilties()
+        visibilities = predict_visibilties(visibility_coords)
 
         noise_scale = calc_baseline_noise(
             system_equivalent_flux_density=quantity_to_jnp(self.system_equivalent_flux_density, 'Jy'),
