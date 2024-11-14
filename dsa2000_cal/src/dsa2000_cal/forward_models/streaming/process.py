@@ -338,14 +338,14 @@ def process_start(
             print("Initialising...")
 
             init_start_time = current_utc()
-            init = execute_dag_transformed.init(init_key)
+            init = jax.jit(execute_dag_transformed.init)(init_key)
             print(init)
             init_end_time = current_utc()
 
-            # print("Compiling...")
-            # compile_start_time = current_utc()
-            # run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states).compile()
-            # compile_end_time = current_utc()
+            print("Compiling...")
+            compile_start_time = current_utc()
+            run_process_jit_compiled = run_process_jit.lower(run_key, init.params, init.states).compile()
+            compile_end_time = current_utc()
 
             print("Running...")
             run_start_time = current_utc()
