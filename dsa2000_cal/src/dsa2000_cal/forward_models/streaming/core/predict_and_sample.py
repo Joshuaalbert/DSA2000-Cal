@@ -122,9 +122,14 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
             raise RuntimeError(f"The number of devices {len(local_devices)} must be divisible by the number of times "
                                f"{T} for the chunking pattern to work.")
         local_devices = local_devices[:total_chunks]
+        # mesh = create_mesh(
+        #     (T, 1, len(local_devices) // T),
+        #     ('T', 'B', 'C'), devices=local_devices
+        # )
+
         mesh = create_mesh(
-            (T, 1, len(local_devices) // T),
-            ('T', 'B', 'C'), devices=local_devices
+            (T, 1, 1),
+            ('T', 'B', 'C'), devices=local_devices[:T]
         )
 
         @partial(
