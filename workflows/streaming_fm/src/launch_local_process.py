@@ -7,7 +7,7 @@ from uuid import uuid4
 import jax
 import ray
 
-from dsa2000_cal.forward_models.streaming.process_actor import SFMProcessParams, SFMProcess
+from dsa2000_cal.forward_models.streaming.single_kernel.process_actor import SFMProcessParams, SFMProcess
 
 # Set num jax devices to number of CPUs
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"

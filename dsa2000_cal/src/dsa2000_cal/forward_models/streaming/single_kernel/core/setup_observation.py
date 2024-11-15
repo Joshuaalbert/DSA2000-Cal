@@ -15,7 +15,7 @@ from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDel
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
     BaseNearFieldDelayEngine
-from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
+from dsa2000_cal.forward_models.streaming.single_kernel.abc import AbstractCoreStep
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel, build_geodesic_model
 
 

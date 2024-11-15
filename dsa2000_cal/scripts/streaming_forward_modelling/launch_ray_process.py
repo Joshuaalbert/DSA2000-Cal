@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import ray
 
-from dsa2000_cal.forward_models.streaming.process_actor import SFMProcessParams, SFMProcess
+from dsa2000_cal.forward_models.streaming.single_kernel.process_actor import SFMProcessParams, SFMProcess
 
 sys.tracebacklimit = None  # Increase as needed; -1 to suppress tracebacks
 

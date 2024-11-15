@@ -6,8 +6,8 @@ import astropy.time as at
 import astropy.units as au
 
 import dsa2000_cal.common.context as ctx
-from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
-from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationOutput
+from dsa2000_cal.forward_models.streaming.single_kernel.abc import AbstractCoreStep
+from dsa2000_cal.forward_models.streaming.single_kernel.core.setup_observation import SetupObservationOutput
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 

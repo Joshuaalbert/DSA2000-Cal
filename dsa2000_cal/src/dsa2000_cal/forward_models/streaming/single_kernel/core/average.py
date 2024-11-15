@@ -4,25 +4,29 @@ from typing import NamedTuple, Tuple, Any
 from tomographic_kernel.tomographic_kernel import TomographicKernel
 
 from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
+from dsa2000_cal.forward_models.streaming.single_kernel.abc import AbstractCoreStep
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 
 
-class CreateCalibrationModelDataState(NamedTuple):
+class AverageState(NamedTuple):
     window_dtec: FloatArray  # [window_size, num_model_ant, num_model_dir]
     window_geodesics: FloatArray  # [window_size, num_model_ant, num_model_dir, 3]
     tomographic_kernel: TomographicKernel
 
 
-class CreateCalibrationModelDataOutput(NamedTuple):
+class AverageOutput(NamedTuple):
     gain_model: BaseSphericalInterpolatorGainModel
 
 
 @dataclasses.dataclass(eq=False)
-class CreateCalibrationModelDataStep(AbstractCoreStep[CreateCalibrationModelDataState, CreateCalibrationModelDataOutput, None]):
-    def get_state(self) -> CreateCalibrationModelDataState:
+class AverageStep(AbstractCoreStep[AverageState, AverageOutput, None]):
+    """
+    Averages incoming visibility data.
+
+    """
+    def get_state(self) -> AverageState:
         pass
 
     def step(self, primals: Tuple[Any, ...]) -> \
-            Tuple[CreateCalibrationModelDataState, CreateCalibrationModelDataOutput, None]:
+            Tuple[AverageState, AverageOutput, None]:
         pass

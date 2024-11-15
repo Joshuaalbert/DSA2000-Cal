@@ -18,9 +18,9 @@ from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
-from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationOutput
-from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishOutput
+from dsa2000_cal.forward_models.streaming.single_kernel.abc import AbstractCoreStep
+from dsa2000_cal.forward_models.streaming.single_kernel.core.setup_observation import SetupObservationOutput
+from dsa2000_cal.forward_models.streaming.single_kernel.core.simulate_dish import SimulateDishOutput
 from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
     build_fits_source_model_from_wsclean_components
 from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import \

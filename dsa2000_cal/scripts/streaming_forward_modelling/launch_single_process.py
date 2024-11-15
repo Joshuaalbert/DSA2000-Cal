@@ -3,7 +3,7 @@ import warnings
 
 import jax
 
-from dsa2000_cal.forward_models.streaming.process import process_start
+from dsa2000_cal.forward_models.streaming.single_kernel.process import process_start
 
 sys.tracebacklimit = None  # Increase as needed; -1 to suppress tracebacks
 

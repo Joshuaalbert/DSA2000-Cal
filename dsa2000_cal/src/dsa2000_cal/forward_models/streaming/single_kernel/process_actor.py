@@ -151,7 +151,7 @@ class _SFMProcess:
         logger.info(f"Initialised at {datetime.now()}")
 
         # Must import only after jax.distributed.initialize to avoid issues with jax devices
-        from dsa2000_cal.forward_models.streaming.process import process_start
+        from dsa2000_cal.forward_models.streaming.single_kernel.process import process_start
 
         await asyncio.sleep(60)
         process_start(

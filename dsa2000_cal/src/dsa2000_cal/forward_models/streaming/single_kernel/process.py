@@ -30,11 +30,11 @@ from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import MemoryLogger, LogErrors
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import DishEffectsParams
-from dsa2000_cal.forward_models.streaming.abc import AbstractCoreStep
-from dsa2000_cal.forward_models.streaming.core.predict_and_sample import PredictAndSampleStep
-from dsa2000_cal.forward_models.streaming.core.setup_observation import SetupObservationStep
-from dsa2000_cal.forward_models.streaming.core.simulate_beam import SimulateBeamStep
-from dsa2000_cal.forward_models.streaming.core.simulate_dish import SimulateDishStep
+from dsa2000_cal.forward_models.streaming.single_kernel.abc import AbstractCoreStep
+from dsa2000_cal.forward_models.streaming.single_kernel.core.predict_and_sample import PredictAndSampleStep
+from dsa2000_cal.forward_models.streaming.single_kernel.core.setup_observation import SetupObservationStep
+from dsa2000_cal.forward_models.streaming.single_kernel.core.simulate_beam import SimulateBeamStep
+from dsa2000_cal.forward_models.streaming.single_kernel.core.simulate_dish import SimulateDishStep
 
 
 class ProcessLocalParams(SerialisableBaseModel):
