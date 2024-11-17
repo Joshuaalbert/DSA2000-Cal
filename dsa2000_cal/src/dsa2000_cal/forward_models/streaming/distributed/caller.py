@@ -34,13 +34,15 @@ class Caller:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'caller')
         os.makedirs(self.params.plot_folder, exist_ok=True)
 
-        self._num_coh = len(self.params.ms_meta.coherencies)
+        shape = (params.image_params.num_l, params.image_params.num_m, params.chunk_params.num_sub_bands)
+        if params.full_stokes:
+            shape += (2, 2)
 
         self._image = np.zeros(
-            (params.image_params.num_l, params.image_params.num_m, params.chunk_params.num_sub_bands, self._num_coh),
+            shape,
             dtype=np.float64)
         self._psf = np.zeros(
-            (params.image_params.num_l, params.image_params.num_m, params.chunk_params.num_sub_bands, self._num_coh),
+            shape,
             dtype=np.float64)
 
         self._fit_beam_jit = jax.jit(fit_beam)
@@ -49,25 +51,25 @@ class Caller:
         image_path = os.path.join(self.params.plot_folder, f"{self.params.run_name}_{image_idx:03d}_image.fits")
         psf_path = os.path.join(self.params.plot_folder, f"{self.params.run_name}_{image_idx:03d}_psf.fits")
 
-        if self.params.ms_meta.coherencies not in [('I',), ('I', 'Q'), ('I', 'Q', 'U'), ('I', 'Q', 'U', 'V')]:
+        if self.params.full_stokes:
+            coherencies = ('I', 'Q', 'U', 'V')
             image = au.Quantity(
                 np.asarray(broadcast_translate_corrs(
                     jnp.asarray(self._image),
-                    self.params.ms_meta.coherencies, ('I', 'Q', 'U', 'V')
+                    (('XX', 'XY'), ('YX', 'YY')), coherencies
                 )),
                 'Jy'
             )
             psf = au.Quantity(
                 np.asarray(broadcast_translate_corrs(
                     jnp.asarray(self._psf),
-                    self.params.ms_meta.coherencies, ('I', 'Q', 'U', 'V')
+                    (('XX', 'XY'), ('YX', 'YY')), coherencies
                 )), 'Jy'
             )
-            coherencies = ('I', 'Q', 'U', 'V')
         else:
-            image = au.Quantity(self._image, 'Jy')
-            psf = au.Quantity(self._psf, 'Jy')
-            coherencies = self.params.ms_meta.coherencies
+            coherencies = ('I',)
+            image = au.Quantity(self._image[..., None], 'Jy')
+            psf = au.Quantity(self._psf[..., None], 'Jy')
 
         bandwidth = self.params.ms_meta.channel_width * len(self.params.ms_meta.freqs)
 
@@ -112,17 +114,20 @@ class Caller:
         )
 
     async def __call__(self) -> AsyncGenerator[CallerResponse, None]:
-        async def get_image_subbands(accumulate_idx: int):
+        async def get_image_subbands(accumulate_idx: int, subkey):
             sub_band_idxs = list(range(self.params.chunk_params.num_sub_bands))
+            subkeys = jax.random.split(subkey, len(sub_band_idxs))
             # Submit all sub bands for gridding, and wait for all to complete.
             responses: List[GridderResponse] = await asyncio.gather(
-                *[self._gridder.remote(accumulate_idx, sub_band_idx) for sub_band_idx in sub_band_idxs]
+                *[self._gridder.remote(accumulate_idx, sub_band_idx, key) for sub_band_idx, key in zip(sub_band_idxs, subkeys)]
             )
             for sub_band_idx, gridder_response in enumerate(responses):
-                self._image[:, :, sub_band_idx, :] = gridder_response.image
-                self._psf[:, :, sub_band_idx, :] = gridder_response.psf
+                self._image[:, :, sub_band_idx, ...] = gridder_response.image  # [num_l, num_m[,2,2]]
+                self._psf[:, :, sub_band_idx, ...] = gridder_response.psf  # [num_l, num_m[,2,2]]
 
         # Response generator can be used in an `async for` block.
+        key = jax.random.PRNGKey(0)
         for accumulate_idx in range(self.params.chunk_params.num_images_time):
-            await get_image_subbands(accumulate_idx)
+            key, subkey = jax.random.split(key)
+            await get_image_subbands(accumulate_idx, subkey)
             yield self.save_image_to_fits(accumulate_idx)

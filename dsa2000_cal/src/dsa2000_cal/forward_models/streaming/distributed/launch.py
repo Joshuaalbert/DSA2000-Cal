@@ -18,7 +18,7 @@ from dsa2000_cal.forward_models.streaming.distributed.caller import Caller
 from dsa2000_cal.forward_models.streaming.distributed.common import ChunkParams, ForwardModellingRunParams, ImageParams
 from dsa2000_cal.forward_models.streaming.distributed.data_streamer import DataStreamerParams, DataStreamer
 from dsa2000_cal.forward_models.streaming.distributed.gridder import Gridder
-from dsa2000_cal.forward_models.streaming.distributed.model_predictor import ModelPredictor
+from dsa2000_cal.forward_models.streaming.distributed.model_predictor import ModelPredictor, ModelPredictorParams
 from dsa2000_cal.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulator
 from dsa2000_cal.imaging.utils import get_image_parameters
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
@@ -149,7 +149,13 @@ def main(array_name: str, with_autocorr: bool, field_of_view: au.Quantity | None
     data_streamer_params = DataStreamerParams()
     data_streamer = DataStreamer.bind(run_params, data_streamer_params, system_gain_simulator)
 
-    model_predictor = ModelPredictor.bind(run_params)
+    predict_params = ModelPredictorParams(
+        sky_models=[],
+        near_field_delay_engine=near_field_delay_engine,
+        far_field_delay_engine=far_field_delay_engine,
+        geodesic_model=geodesic_model
+    )
+    model_predictor = ModelPredictor.bind(run_params, predict_params)
 
     calibration_soluation_cache = CalibrationSolutionCache(params=CalibrationSolutionCacheParams())
 

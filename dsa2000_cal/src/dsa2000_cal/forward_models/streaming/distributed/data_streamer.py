@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import NamedTuple, Tuple
+from typing import NamedTuple
 
 import jax
 import numpy as np
@@ -8,11 +8,12 @@ from jax import numpy as jnp
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
+from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -36,8 +37,7 @@ class DataStreamerResponse(NamedTuple):
     vis: np.ndarray  # [B,[, 2, 2]]
     weights: np.ndarray  # [B, [, 2, 2]]
     flags: np.ndarray  # [B, [, 2, 2]]
-    freq: np.ndarray  # [C]
-    time: np.ndarray  # [T]
+    visibility_coords: VisibilityCoords
 
 
 @serve.deployment
@@ -61,7 +61,7 @@ class DataStreamer:
                 near_field_delay_engine: BaseNearFieldDelayEngine,
                 far_field_delay_engine: BaseFarFieldDelayEngine,
                 geodesic_model: BaseGeodesicModel
-        ) -> Tuple[ComplexArray, FloatArray, BoolArray]:
+        ):
             # Compute visibility coordinates
             visibility_coords = far_field_delay_engine.compute_visibility_coords(
                 freqs=freq[None],
@@ -85,7 +85,7 @@ class DataStreamer:
                 geodesic_model=geodesic_model
             )
             vis = sky_vis + bright_vis  # [T=1, B, C=1, 2, 2]
-            vis = vis[0, :, 0]
+            vis = vis[0, :, 0]  # [B, 2, 2]
             # Add noise
             num_pol = 2 if self.predict_params.bright_sky_model.is_full_stokes() else 1
             noise_scale = calc_baseline_noise(
@@ -104,17 +104,17 @@ class DataStreamer:
             vis += noise
             weights = jnp.full(np.shape(vis), 1 / noise_scale ** 2, mp_policy.weight_dtype)
             flags = jnp.full(np.shape(vis), False, mp_policy.flag_dtype)
-            return vis, weights, flags
+            return vis, weights, flags, visibility_coords
 
         self._predict_jit = jax.jit(predict)
 
-    async def __call__(self, time_idx: int, freq_idx: int) -> DataStreamerResponse:
-        system_gain_main = await self._system_gain_simulator.remote(time_idx, freq_idx)
+    async def __call__(self, time_idx: int, freq_idx: int, key) -> DataStreamerResponse:
+        gain_key, noise_key = jax.random.split(key)
+        system_gain_main = await self._system_gain_simulator.remote(time_idx, freq_idx, gain_key)
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
-        key = jax.random.key(0)
-        vis, weights, flags = self._predict_jit(
-            key=key,
+        vis, weights, flags, visibility_coords = self._predict_jit(
+            key=noise_key,
             freq=freq,
             time=time,
             sky_model=self.predict_params.sky_model,
@@ -124,11 +124,14 @@ class DataStreamer:
             far_field_delay_engine=self.predict_params.far_field_delay_engine,
             geodesic_model=self.predict_params.geodesic_model
         )
+        vis = np.asarray(vis)
+        weights = np.asarray(weights)
+        flags = np.asarray(flags)
+        visibility_coords = jax.tree.map(np.asarray, visibility_coords)
         # Predict then send
         return DataStreamerResponse(
             vis=vis,
             weights=weights,
             flags=flags,
-            freq=np.asarray(freq),
-            time=np.asarray(time)
+            visibility_coords=visibility_coords
         )

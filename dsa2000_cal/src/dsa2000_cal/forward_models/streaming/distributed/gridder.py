@@ -21,8 +21,8 @@ logger = logging.getLogger('ray')
 
 
 class GridderResponse(NamedTuple):
-    image: np.ndarray  # [npix_l, npix_m]
-    psf: np.ndarray  # [npix_l, npix_m]
+    image: np.ndarray  # [npix_l, npix_m[,2,2]]
+    psf: np.ndarray  # [npix_l, npix_m[,2,2]]
 
 
 @serve.deployment
@@ -118,8 +118,8 @@ class Gridder:
                 freqs=freqs,
                 pixsize_l=quantity_to_jnp(self.params.image_params.dl, 'rad'),
                 pixsize_m=quantity_to_jnp(self.params.image_params.dm, 'rad'),
-                center_l=quantity_to_jnp(self.params.image_params.image_params.l0, 'rad'),
-                center_m=quantity_to_jnp(self.params.image_params.image_params.m0, 'rad'),
+                center_l=quantity_to_jnp(self.params.image_params.l0, 'rad'),
+                center_m=quantity_to_jnp(self.params.image_params.m0, 'rad'),
                 epsilon=self.params.image_params.epsilon,
                 npix_l=self.params.image_params.num_l,
                 npix_m=self.params.image_params.num_m
@@ -129,7 +129,7 @@ class Gridder:
 
         self.compute_image_jit = jax.jit(compute_image)
 
-    async def __call__(self, accumulate_idx: int, sub_band_idx: int) -> GridderResponse:
+    async def __call__(self, accumulate_idx: int, sub_band_idx: int, key) -> GridderResponse:
 
         # Get sol_ints in image_idx and sub_band_idx
         sol_int_time_idxs = accumulate_idx * self.params.chunk_params.num_sol_ints_per_accumlate + np.arange(
@@ -147,19 +147,20 @@ class Gridder:
             for s, t, f in zip(sol_idxs, T.flatten(), F.flatten())
         )  # sol_idx -> (sol_int_time_idx, sol_int_freq_idx)
 
-        async def get_cal_results(sol_idxs: List[int]):
+        async def get_cal_results(sol_idxs: List[int], key):
+            keys = jax.random.split(key, len(sol_idxs))
             responses: List[CalibratorResponse] = await asyncio.gather(
-                *[self._calibrator.remote(sol_idx) for sol_idx in sol_idxs]
+                *[self._calibrator.remote(sol_idx, key) for sol_idx, key in zip(sol_idxs, keys)]
             )
             for sol_idx, cal_response in enumerate(responses):
                 sol_int_time_idx, sol_int_freq_idx = sol_slice_map[sol_idx]
-                self.visibilities[sol_int_time_idx, :, sol_int_freq_idx, :, :] = cal_response.visibilities
-                self.weights[sol_int_time_idx, :, sol_int_freq_idx, :, :] = cal_response.weights
-                self.flags[sol_int_time_idx, :, sol_int_freq_idx, :, :] = cal_response.flags
-                self.uvw[sol_int_time_idx, :, :] = cal_response.uvw
-                self.freqs[sol_int_freq_idx, :] = cal_response.freqs
+                self.visibilities[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.visibilities # [Ts,B,Fs[2,2]]
+                self.weights[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.weights# [Ts,B,Fs[2,2]]
+                self.flags[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.flags# [Ts,B,Fs[2,2]]
+                self.uvw[sol_int_time_idx, :, :] = cal_response.uvw # [Ts,B,3]
+                self.freqs[sol_int_freq_idx, :] = cal_response.freqs # [Fs]
 
-        await get_cal_results(sol_idxs)
+        await get_cal_results(sol_idxs, key)
         image, psf = self.compute_image_jit(
             jnp.asarray(self.uvw, mp_policy.length_dtype),
             jnp.asarray(self.visibilities, mp_policy.vis_dtype),
@@ -167,6 +168,6 @@ class Gridder:
             jnp.asarray(self.freqs, mp_policy.freq_dtype)
         )
         yield GridderResponse(
-            image=np.asarray(image),
-            psf=np.asarray(psf)
+            image=np.asarray(image),  # [npix_l, npix_m[,2,2]]
+            psf=np.asarray(psf)  # [npix_l, npix_m[,2,2]]
         )
