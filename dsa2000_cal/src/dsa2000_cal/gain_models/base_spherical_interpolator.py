@@ -1,5 +1,8 @@
 import dataclasses
+import pickle
+import warnings
 from functools import partial
+from typing import Tuple, List, Any
 
 import jax
 import numpy as np
@@ -216,37 +219,95 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         else:
             plt.show()
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-def base_spherical_interpolator_gain_model_flatten(
-        base_spherical_interpolator_gain_model: BaseSphericalInterpolatorGainModel):
-    return (
-        [
-            base_spherical_interpolator_gain_model.model_freqs,
-            base_spherical_interpolator_gain_model.model_times,
-            base_spherical_interpolator_gain_model.lvec,
-            base_spherical_interpolator_gain_model.mvec,
-            base_spherical_interpolator_gain_model.model_gains
-        ], (
-            base_spherical_interpolator_gain_model.tile_antennas,
-            base_spherical_interpolator_gain_model.full_stokes
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "BaseSphericalInterpolatorGainModel") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            [
+                this.model_freqs,
+                this.model_times,
+                this.lvec,
+                this.mvec,
+                this.model_gains
+            ], (
+                this.tile_antennas,
+                this.full_stokes
+            )
         )
-    )
 
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "BaseSphericalInterpolatorGainModel":
+        """
+        Unflatten the model.
 
-def base_spherical_interpolator_gain_model_unflatten(aux_data, children) -> BaseSphericalInterpolatorGainModel:
-    model_freqs, model_times, lvec, mvec, model_gains = children
-    tile_antennas, full_stokes = aux_data
-    return BaseSphericalInterpolatorGainModel(
-        model_freqs, model_times, lvec, mvec, model_gains, tile_antennas, full_stokes,
-        skip_post_init=True
-    )
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
 
+        Returns:
+            the unflattened model
+        """
+        model_freqs, model_times, lvec, mvec, model_gains = children
+        tile_antennas, full_stokes = aux_data
+        return BaseSphericalInterpolatorGainModel(
+            model_freqs, model_times, lvec, mvec, model_gains, tile_antennas, full_stokes,
+            skip_post_init=True
+        )
 
-jax.tree_util.register_pytree_node(
-    BaseSphericalInterpolatorGainModel,
-    base_spherical_interpolator_gain_model_flatten,
-    base_spherical_interpolator_gain_model_unflatten
-)
+BaseSphericalInterpolatorGainModel.register_pytree()
 
 
 @partial(jax.jit, static_argnames=['resolution'])

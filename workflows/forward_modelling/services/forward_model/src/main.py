@@ -9,7 +9,7 @@ from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_models.dsa2000_forward_model import DSA2000ForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
 from dsa2000_cal.common.types import DishEffectsParams
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMeta, MeasurementSet
 
 # Set num jax devices
 config.update("jax_enable_x64", True)
@@ -26,7 +26,7 @@ def main(ms_folder: str):
     else:
         array_location = array.get_array_location()
         antennas = array.get_antennas()
-        meta = MeasurementSetMetaV0(
+        meta = MeasurementSetMeta(
             array_name='dsa2000W',
             array_location=array_location,
             phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),

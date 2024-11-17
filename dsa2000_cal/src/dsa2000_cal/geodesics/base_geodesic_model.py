@@ -1,6 +1,8 @@
 import dataclasses
+import pickle
+import warnings
 from functools import partial
-from typing import Tuple, Union
+from typing import Tuple, Union, List, Any
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -10,12 +12,12 @@ import numpy as np
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
+from dsa2000_cal.common.array_types import FloatArray, IntArray
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.array_types import FloatArray, IntArray
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
@@ -331,33 +333,93 @@ class BaseGeodesicModel:
             times, lmn_pointing, antennas_enu, source_positions_enu
         )  # [num_time, num_ant, num_sources, 3]
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-def base_geodesic_model_flatten(base_geodesic_model: BaseGeodesicModel):
-    return (
-        [
-            base_geodesic_model.ra0,
-            base_geodesic_model.dec0,
-            base_geodesic_model.antennas_enu,
-            base_geodesic_model.lmn_zenith,
-            base_geodesic_model.lmn_pointings
-        ], (
-            base_geodesic_model.tile_antennas,
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "BaseGeodesicModel") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            [
+                this.ra0,
+                this.dec0,
+                this.antennas_enu,
+                this.lmn_zenith,
+                this.lmn_pointings
+            ], (
+                this.tile_antennas,
+            )
         )
-    )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "BaseGeodesicModel":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        ra0, dec0, antennas_enu, lmn_zenith, lmn_pointings = children
+        (tile_antennas,) = aux_data
+        return BaseGeodesicModel(ra0, dec0, antennas_enu, lmn_zenith, lmn_pointings, tile_antennas=tile_antennas,
+                                 skip_post_init=True)
 
 
-def base_geodesic_model_unflatten(aux_data, children):
-    ra0, dec0, antennas_enu, lmn_zenith, lmn_pointings = children
-    (tile_antennas,) = aux_data
-    return BaseGeodesicModel(ra0, dec0, antennas_enu, lmn_zenith, lmn_pointings, tile_antennas=tile_antennas,
-                             skip_post_init=True)
-
-
-jax.tree_util.register_pytree_node(
-    BaseGeodesicModel,
-    base_geodesic_model_flatten,
-    base_geodesic_model_unflatten
-)
+BaseGeodesicModel.register_pytree()
 
 
 def build_geodesic_model(

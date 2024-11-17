@@ -19,6 +19,6 @@ imageio
 geopandas
 shapely
 websockets
-ray==2.37.0
+ray[serve]==2.39.0
 uvloop
 websockets<14

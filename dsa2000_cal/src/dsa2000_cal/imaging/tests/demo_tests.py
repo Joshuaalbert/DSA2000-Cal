@@ -8,7 +8,7 @@ from tomographic_kernel.frames import ENU
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.imaging.imagor import Imagor
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0, MeasurementSet, VisibilityData
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMeta, MeasurementSet, VisibilityData
 
 
 def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan, corrs):
@@ -21,7 +21,7 @@ def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan, 
     obstime = at.Time("2021-01-01T00:00:00", scale='utc')
     phase_tracking = zenith = ENU(0, 0, 1, obstime=obstime, location=array_location).transform_to(ac.ICRS())
 
-    meta = MeasurementSetMetaV0(
+    meta = MeasurementSetMeta(
         array_name=array_name,
         array_location=array_location,
         phase_tracking=phase_tracking,

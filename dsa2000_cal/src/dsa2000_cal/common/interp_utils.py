@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Tuple, TypeVar, Generic
+from typing import Tuple, TypeVar, Generic, List, Any
 
 import jax
 import numpy as np
@@ -537,44 +537,102 @@ class InterpolatedArray(Generic[VT]):
             values = jax.tree.map(lambda x: jax.lax.reshape(x, x_shape + np.shape(x)[1:]), values)
         return values
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-# Define how the object is flattened (converted to a list of leaves and a context tuple)
-def interpolated_array_flatten(interpolated_array: InterpolatedArray):
-    # Leaves are the arrays (x, values), and auxiliary data is the rest
-    extra = dict()
-    if interpolated_array.normalise:
-        extra['values_mean'] = interpolated_array.values_mean
-        extra['values_std'] = interpolated_array.values_std
-        extra['x_mean'] = interpolated_array.x_mean
-        extra['x_std'] = interpolated_array.x_std
-        extra['values_norm'] = interpolated_array.values_norm
-        extra['x_norm'] = interpolated_array.x_norm
-    return (
-        [interpolated_array.x, interpolated_array.values, extra], (
-            interpolated_array.axis, interpolated_array.regular_grid, interpolated_array.check_spacing,
-            interpolated_array.clip_out_of_bounds, interpolated_array.normalise, interpolated_array.auto_reorder)
-    )
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "InterpolatedArray") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        # Leaves are the arrays (x, values), and auxiliary data is the rest
+        extra = dict()
+        if this.normalise:
+            extra['values_mean'] = this.values_mean
+            extra['values_std'] = this.values_std
+            extra['x_mean'] = this.x_mean
+            extra['x_std'] = this.x_std
+            extra['values_norm'] = this.values_norm
+            extra['x_norm'] = this.x_norm
+        return (
+            [this.x, this.values, extra], (
+                this.axis, this.regular_grid, this.check_spacing,
+                this.clip_out_of_bounds, this.normalise, this.auto_reorder)
+        )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "InterpolatedArray":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        x, values, extra = children
+        axis, regular_grid, check_spacing, clip_out_of_bounds, normalise, auto_reorder = aux_data
+        output = InterpolatedArray(x=x, values=values, axis=axis, regular_grid=regular_grid,
+                                   check_spacing=check_spacing,
+                                   clip_out_of_bounds=clip_out_of_bounds,
+                                   normalise=normalise, auto_reorder=auto_reorder,
+                                   skip_post_init=True)
+        for key, value in extra.items():
+            setattr(output, key, value)
+        return output
 
 
-# Define how the object is unflattened (reconstructed from leaves and context)
-def interpolated_array_unflatten(aux_data, children):
-    x, values, extra = children
-    axis, regular_grid, check_spacing, clip_out_of_bounds, normalise, auto_reorder = aux_data
-    output = InterpolatedArray(x=x, values=values, axis=axis, regular_grid=regular_grid, check_spacing=check_spacing,
-                               clip_out_of_bounds=clip_out_of_bounds,
-                               normalise=normalise, auto_reorder=auto_reorder,
-                               skip_post_init=True)
-    for key, value in extra.items():
-        setattr(output, key, value)
-    return output
-
-
-# Register the custom pytree
-jax.tree_util.register_pytree_node(
-    InterpolatedArray,
-    interpolated_array_flatten,
-    interpolated_array_unflatten
-)
+InterpolatedArray.register_pytree()
 
 
 def is_regular_grid(q: np.ndarray):

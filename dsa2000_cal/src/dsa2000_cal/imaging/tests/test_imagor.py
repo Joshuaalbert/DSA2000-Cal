@@ -14,7 +14,7 @@ from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.imaging.base_imagor import fit_beam, evaluate_beam, divide_out_beam
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMeta, MeasurementSet
 
 
 def build_mock_calibrator_source_models(tmp_path, coherencies):
@@ -30,7 +30,7 @@ def build_mock_calibrator_source_models(tmp_path, coherencies):
     phase_tracking = ac.SkyCoord("-00h36m29.015s", "58d45m50.398s", frame='icrs')
     phase_tracking = ac.ICRS(phase_tracking.ra, phase_tracking.dec)
 
-    meta = MeasurementSetMetaV0(
+    meta = MeasurementSetMeta(
         array_name=array_name,
         array_location=array_location,
         phase_tracking=phase_tracking,

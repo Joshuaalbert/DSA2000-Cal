@@ -7,7 +7,7 @@ from pyrap import tables as pt
 
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.adapter.to_casa_ms import create_makems_config
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMeta
 
 
 def test_transfer_from_casa(tmp_path):
@@ -41,7 +41,7 @@ def test_transfer_from_casa(tmp_path):
 
 
 def test_create_makems_config(tmp_path):
-    meta = MeasurementSetMetaV0(
+    meta = MeasurementSetMeta(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),

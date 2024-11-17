@@ -317,11 +317,7 @@ class ImageModel(SerialisableBaseModel):
     dm: au.Quantity
     freqs: au.Quantity  # [num_freqs]
     bandwidth: au.Quantity
-    coherencies: List[Literal[
-        'XX', 'XY', 'YX', 'YY',
-        'I', 'Q', 'U', 'V',
-        'RR', 'RL', 'LR', 'LL'
-    ]]  # [num_coherencies]
+    coherencies: Tuple[str, ...]  # [num_coherencies]
     beam_major: au.Quantity
     beam_minor: au.Quantity
     beam_pa: au.Quantity
@@ -348,10 +344,10 @@ class ImageModel(SerialisableBaseModel):
 
 def _check_image_model(image_model: ImageModel):
     # Check units
-    if not image_model.dl.unit.is_equivalent(au.dimensionless_unscaled):
-        raise ValueError("dl must be in dimensionless_unscaled")
-    if not image_model.dm.unit.is_equivalent(au.dimensionless_unscaled):
-        raise ValueError("dm must be in dimensionless_unscaled")
+    if not image_model.dl.unit.is_equivalent(au.rad):
+        raise ValueError("dl must be in rad")
+    if not image_model.dm.unit.is_equivalent(au.rad):
+        raise ValueError("dm must be in rad")
     if not image_model.freqs.unit.is_equivalent(au.Hz):
         raise ValueError("freqs must be in Hz")
     if not image_model.bandwidth.unit.is_equivalent(au.Hz):
@@ -470,13 +466,13 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     # Create the WCS
     w = wcs.WCS(naxis=4)  # 4D image [l, m, freq, coherency]
     w.wcs.ctype = ["RA--SIN", "DEC-SIN", "FREQ", "STOKES"]
-    if (np.shape(image_model.image)[0] % 2 == 1) or (np.shape(image_model.image)[1] % 2 == 1):
+    if (np.shape(image_model.image)[0] % 2 != 0) or (np.shape(image_model.image)[1] % 2 != 0):
         raise ValueError("Image must have an even number of pixels in each direction")
-    w.wcs.crpix = [image_model.image.shape[0] / 2 + 1, image_model.image.shape[1] / 2 + 1, 1, 1]
+    w.wcs.crpix = [image_model.image.shape[0] // 2 + 1, image_model.image.shape[1] // 2 + 1, 1, 1]
     dfreq = image_model.bandwidth / len(image_model.freqs)
     w.wcs.cdelt = [
-        -image_model.dl.value * 180. / np.pi,
-        image_model.dm.value * 180. / np.pi,
+        -image_model.dl.to('deg').value,
+        image_model.dm.to('deg').value,
         dfreq.to('Hz').value,
         1
     ]
@@ -484,7 +480,7 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
         image_model.phase_tracking.ra.deg,
         image_model.phase_tracking.dec.deg,
         image_model.freqs[0].to('Hz').value,
-        1
+        1 # {1: I, 2: Q, 3: U, 4: V}
     ]
     w.wcs.cunit = ['deg', 'deg', 'Hz', '']
     w.wcs.set()
@@ -494,9 +490,9 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     header["BSCALE"] = 1
     header["BZERO"] = 0
     header["BTYPE"] = "Intensity"
-    header["BMAJ"] = image_model.beam_major.to(au.deg).value
-    header["BMIN"] = image_model.beam_minor.to(au.deg).value
-    header["BPA"] = image_model.beam_pa.to(au.deg).value
+    header["BMAJ"] = image_model.beam_major.to("deg").value
+    header["BMIN"] = image_model.beam_minor.to("deg").value
+    header["BPA"] = image_model.beam_pa.to("deg").value
     header["TELESCOP"] = "DSA2000"
     header["OBSERVER"] = "unknown"
     header["OBJECT"] = image_model.object_name

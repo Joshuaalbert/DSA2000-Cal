@@ -1,7 +1,8 @@
 import dataclasses
+import pickle
 import warnings
 from functools import partial
-from typing import List
+from typing import List, Tuple, Any
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -86,7 +87,7 @@ class BaseFITSSourceModel(AbstractSourceModel):
                 multi_vmap,
                 in_mapping=f'[C],[T],[T,B,3],[B],[B]',
                 out_mapping=out_mapping,
-                scan_dims={'C','T'},
+                scan_dims={'C', 'T'},
                 verbose=True
             )
             def compute_visibilities_fits_single_source(freq, time, uvw, antenna_1, antenna_2):
@@ -266,47 +267,105 @@ class BaseFITSSourceModel(AbstractSourceModel):
             plt.savefig(save_file)
         plt.show()
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-# register pytree
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
 
-def base_fits_source_model_flatten(model: BaseFITSSourceModel):
-    return (
-        [
-            model.model_freqs,
-            model.image,
-            model.ra,
-            model.dec,
-            model.dl,
-            model.dm
-        ],
-        (
-            model.convention,
-            model.epsilon
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "BaseFITSSourceModel") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            [
+                this.model_freqs,
+                this.image,
+                this.ra,
+                this.dec,
+                this.dl,
+                this.dm
+            ],
+            (
+                this.convention,
+                this.epsilon
+            )
         )
-    )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "BaseFITSSourceModel":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        (model_freqs, image, ra, dec, dl, dm) = children
+        (convention, epsilon) = aux_data
+        return BaseFITSSourceModel(
+            model_freqs=model_freqs,
+            image=image,
+            ra=ra,
+            dec=dec,
+            dl=dl,
+            dm=dm,
+            convention=convention,
+            epsilon=epsilon,
+            skip_post_init=True
+        )
 
 
-def base_fits_source_model_unflatten(aux_data, children):
-    (model_freqs, image, ra, dec, dl, dm) = children
-    (convention, epsilon) = aux_data
-    return BaseFITSSourceModel(
-        model_freqs=model_freqs,
-        image=image,
-        ra=ra,
-        dec=dec,
-        dl=dl,
-        dm=dm,
-        convention=convention,
-        epsilon=epsilon,
-        skip_post_init=True
-    )
-
-
-jax.tree_util.register_pytree_node(
-    BaseFITSSourceModel,
-    base_fits_source_model_flatten,
-    base_fits_source_model_unflatten
-)
+BaseFITSSourceModel.register_pytree()
 
 
 def build_fits_source_model(

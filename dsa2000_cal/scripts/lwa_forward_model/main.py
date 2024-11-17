@@ -18,7 +18,7 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.forward_models.lwa_forward_model import LWAForwardModel
 from dsa2000_cal.forward_models.synthetic_sky_model import SyntheticSkyModelProducer
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMetaV0, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMeta, MeasurementSet
 
 
 def main(ms_folder: str):
@@ -33,7 +33,7 @@ def main(ms_folder: str):
         obstimes = at.Time("2021-01-01T00:00:00", scale='utc') + 10 * np.arange(10) * au.s
         freqs = au.Quantity([55], unit=au.MHz)
         phase_tracking = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
-        meta = MeasurementSetMetaV0(
+        meta = MeasurementSetMeta(
             array_name='lwa',
             array_location=array_location,
             phase_tracking=phase_tracking,

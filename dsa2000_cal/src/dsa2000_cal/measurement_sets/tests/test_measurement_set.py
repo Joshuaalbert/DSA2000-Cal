@@ -7,7 +7,7 @@ from astropy import coordinates as ac, units as au, time as at
 
 from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
-    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMetaV0, MeasurementSet, VisibilityData, get_non_unqiue, \
+    _try_get_slice, _get_slice, NotContiguous, MeasurementSetMeta, MeasurementSet, VisibilityData, get_non_unqiue, \
     put_non_unique
 
 
@@ -37,7 +37,7 @@ def test__get_slice():
 
 @pytest.mark.parametrize("with_autocorr", [True, False])
 def test_measurement_set_shapes(tmp_path, with_autocorr):
-    meta = MeasurementSetMetaV0(
+    meta = MeasurementSetMeta(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
@@ -77,7 +77,7 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
 @pytest.mark.parametrize("convention", ['physical', 'engineering'])
 @pytest.mark.parametrize("num_blocks", [1, 2, 3])
 def test_measurement_setting(tmp_path, with_autocorr, convention, num_blocks):
-    meta = MeasurementSetMetaV0(
+    meta = MeasurementSetMeta(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
         phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),

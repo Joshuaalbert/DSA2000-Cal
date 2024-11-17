@@ -1,4 +1,7 @@
 import dataclasses
+import pickle
+import warnings
+from typing import Tuple, Any, List
 
 import jax
 import numpy as np
@@ -78,28 +81,85 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
         return jax.vmap(single_channel_acf, in_axes=0, out_axes=1)(
             self.channel_lower, self.channel_upper)  # [E, chan[,2,2]]
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-# Define how the object is flattened (converted to a list of leaves and a context tuple)
-def parametric_delay_acf_flatten(parametric_delay_acf: ParametricDelayACF):
-    return (
-        [parametric_delay_acf.mu, parametric_delay_acf.fwhp, parametric_delay_acf.spectral_power,
-         parametric_delay_acf.channel_lower, parametric_delay_acf.channel_upper], (
-            parametric_delay_acf.resolution, parametric_delay_acf.convention))
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "ParametricDelayACF") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            [this.mu, this.fwhp, this.spectral_power,
+             this.channel_lower, this.channel_upper], (
+                this.resolution, this.convention))
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "ParametricDelayACF":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        resolution, convention = aux_data
+        mu, fwhp, spectral_power, channel_lower, channel_upper = children
+        return ParametricDelayACF(mu=mu, fwhp=fwhp, spectral_power=spectral_power,
+                                  channel_lower=channel_lower, channel_upper=channel_upper,
+                                  resolution=resolution, convention=convention,
+                                  skip_post_init=True)
 
 
-# Define how the object is unflattened (reconstructed from leaves and context)
-def parametric_delay_acf_unflatten(aux_data, children):
-    resolution, convention = aux_data
-    mu, fwhp, spectral_power, channel_lower, channel_upper = children
-    return ParametricDelayACF(mu=mu, fwhp=fwhp, spectral_power=spectral_power,
-                              channel_lower=channel_lower, channel_upper=channel_upper,
-                              resolution=resolution, convention=convention,
-                              skip_post_init=True)
-
-
-# Register the custom pytree
-jax.tree_util.register_pytree_node(
-    ParametricDelayACF,
-    parametric_delay_acf_flatten,
-    parametric_delay_acf_unflatten
-)
+ParametricDelayACF.register_pytree()

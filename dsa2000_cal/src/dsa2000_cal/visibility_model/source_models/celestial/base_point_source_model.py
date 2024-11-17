@@ -1,5 +1,8 @@
 import dataclasses
+import pickle
+import warnings
 from functools import partial
+from typing import Tuple, List, Any
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -223,41 +226,99 @@ class BasePointSourceModel(AbstractSourceModel):
             plt.savefig(save_file)
         plt.show()
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-def base_point_source_model_flatten(model: BasePointSourceModel):
-    return (
-        [
-            model.model_freqs,
-            model.ra,
-            model.dec,
-            model.A
-        ],
-        (
-            model.convention,
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "BasePointSourceModel") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            [
+                this.model_freqs,
+                this.ra,
+                this.dec,
+                this.A
+            ],
+            (
+                this.convention,
+            )
         )
-    )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "BasePointSourceModel":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        (model_freqs, ra, dec, A) = children
+        (convention,) = aux_data
+        return BasePointSourceModel(
+            model_freqs=model_freqs,
+            ra=ra,
+            dec=dec,
+            A=A,
+            convention=convention,
+            skip_post_init=True
+        )
 
 
-# register pytree
-
-def base_point_source_model_unflatten(aux_data, children):
-    (model_freqs, ra, dec, A) = children
-    (convention,) = aux_data
-    return BasePointSourceModel(
-        model_freqs=model_freqs,
-        ra=ra,
-        dec=dec,
-        A=A,
-        convention=convention,
-        skip_post_init=True
-    )
-
-
-jax.tree_util.register_pytree_node(
-    BasePointSourceModel,
-    base_point_source_model_flatten,
-    base_point_source_model_unflatten
-)
+BasePointSourceModel.register_pytree()
 
 
 def build_point_source_model(

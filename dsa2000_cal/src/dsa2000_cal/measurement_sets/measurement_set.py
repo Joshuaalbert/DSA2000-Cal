@@ -30,7 +30,7 @@ from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
 
 
-class MeasurementSetMetaV0(SerialisableBaseModel):
+class MeasurementSetMeta(SerialisableBaseModel):
     """
     A class to store metadata about a measurement set, based on the meta of CASA's MS v2.
     We use astropy quantities to store the values of the meta, as they are more robust than floats with assumed units.
@@ -75,6 +75,9 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
     times: at.Time = Field(
         description="Centre times of data windows."
     )  # [num_times]
+    ref_time: at.Time = Field(
+        description="Reference time of the measurement set."
+    )
     freqs: au.Quantity = Field(
         description="Centre frequencies of data windows."
     )  # [num_freqs]
@@ -112,12 +115,12 @@ class MeasurementSetMetaV0(SerialisableBaseModel):
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
-        super(MeasurementSetMetaV0, self).__init__(**data)
+        super(MeasurementSetMeta, self).__init__(**data)
         # Use _check_measurement_set_meta_v0 as instance-wise validator
         _check_measurement_set_meta_v0(self)
 
 
-def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
+def _check_measurement_set_meta_v0(meta: MeasurementSetMeta):
     num_antennas = len(meta.antennas)
     num_times = len(meta.times)
     num_freqs = len(meta.freqs)
@@ -175,9 +178,6 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMetaV0):
             f"Expected antenna_diameters to have shape ({num_antennas},), got {meta.antenna_diameters.shape}")
     if len(meta.mount_types) != num_antennas:
         raise ValueError(f"Expected mount_types to have length {num_antennas}, got {len(meta.mount_types)}")
-
-
-MeasurementSetMeta = Annotated[Union[MeasurementSetMetaV0], Field(discriminator='version')]
 
 
 def _check_measurement_set_meta(meta: MeasurementSetMeta):
@@ -302,7 +302,7 @@ class MeasurementSet:
         Get the reference time of the measurement set.
         """
         # Casa convention is to use the first time as the reference time, also for FITS
-        return min(self.meta.times).tt
+        return self.meta.ref_time.tt
 
     def time_to_jnp(self, times: at.Time) -> jax.Array:
         """

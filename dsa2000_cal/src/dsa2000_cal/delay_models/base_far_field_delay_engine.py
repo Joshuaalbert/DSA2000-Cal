@@ -1,8 +1,10 @@
 import dataclasses
 import itertools
+import pickle
 import time as time_mod
 import warnings
 from functools import partial
+from typing import Tuple, List, Any
 
 import jax
 import numpy as np
@@ -200,40 +202,98 @@ class BaseFarFieldDelayEngine:
             antenna_2=antenna_2
         )
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-# Register pytree:
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
 
-def base_far_field_delay_flatten(base_far_field_delay_engine: BaseFarFieldDelayEngine):
-    return (
-        base_far_field_delay_engine.ra0, base_far_field_delay_engine.dec0,
-        base_far_field_delay_engine.x_antennas_gcrs, base_far_field_delay_engine.w_antennas_gcrs,
-        base_far_field_delay_engine.X_earth_bcrs, base_far_field_delay_engine.V_earth_bcrs,
-        base_far_field_delay_engine.R_earth_bcrs, base_far_field_delay_engine.X_J_bcrs,
-        base_far_field_delay_engine.V_J_bcrs, base_far_field_delay_engine.GM_J
-    ), ()
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "BaseFarFieldDelayEngine") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            this.ra0, this.dec0,
+            this.x_antennas_gcrs, this.w_antennas_gcrs,
+            this.X_earth_bcrs, this.V_earth_bcrs,
+            this.R_earth_bcrs, this.X_J_bcrs,
+            this.V_J_bcrs, this.GM_J
+        ), ()
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "BaseFarFieldDelayEngine":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        ra0, dec0, x_antennas_gcrs, w_antennas_gcrs, X_earth_bcrs, V_earth_bcrs, R_earth_bcrs, X_J_bcrs, V_J_bcrs, GM_J = children
+        return BaseFarFieldDelayEngine(
+            ra0=ra0,
+            dec0=dec0,
+            x_antennas_gcrs=x_antennas_gcrs,
+            w_antennas_gcrs=w_antennas_gcrs,
+            X_earth_bcrs=X_earth_bcrs,
+            V_earth_bcrs=V_earth_bcrs,
+            R_earth_bcrs=R_earth_bcrs,
+            X_J_bcrs=X_J_bcrs,
+            V_J_bcrs=V_J_bcrs,
+            GM_J=GM_J
+        )
 
 
-def base_far_field_delay_unflatten(aux_data, children):
-    ra0, dec0, x_antennas_gcrs, w_antennas_gcrs, X_earth_bcrs, V_earth_bcrs, R_earth_bcrs, X_J_bcrs, V_J_bcrs, GM_J = children
-    return BaseFarFieldDelayEngine(
-        ra0=ra0,
-        dec0=dec0,
-        x_antennas_gcrs=x_antennas_gcrs,
-        w_antennas_gcrs=w_antennas_gcrs,
-        X_earth_bcrs=X_earth_bcrs,
-        V_earth_bcrs=V_earth_bcrs,
-        R_earth_bcrs=R_earth_bcrs,
-        X_J_bcrs=X_J_bcrs,
-        V_J_bcrs=V_J_bcrs,
-        GM_J=GM_J
-    )
-
-
-jax.tree_util.register_pytree_node(
-    BaseFarFieldDelayEngine,
-    base_far_field_delay_flatten,
-    base_far_field_delay_unflatten
-)
+BaseFarFieldDelayEngine.register_pytree()
 
 
 def far_field_delay(

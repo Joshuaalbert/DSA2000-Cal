@@ -9,7 +9,7 @@ import pyrap.tables as pt
 
 from dsa2000_cal.adapter.utils import CASA_CORR_TYPES
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, MeasurementSetMeta, MeasurementSetMetaV0, \
+from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, MeasurementSetMeta, MeasurementSetMeta, \
     VisibilityData
 
 
@@ -116,7 +116,7 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
 
     system_equivalent_flux_density = None
 
-    meta = MeasurementSetMetaV0(
+    meta = MeasurementSetMeta(
         array_name=array_name,
         array_location=array_location,
         phase_tracking=phase_tracking,

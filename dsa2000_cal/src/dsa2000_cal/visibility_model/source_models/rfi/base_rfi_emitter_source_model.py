@@ -1,6 +1,8 @@
 import dataclasses
+import pickle
+import warnings
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, Tuple, List, Any
 
 import jax
 import numpy as np
@@ -243,28 +245,88 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
 
         return mp_policy.cast_to_vis(visibilities)  # [[2,2]]
 
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
 
-def RFIEmitterSourceModel_flatten(m: RFIEmitterSourceModel):
-    return (
-        [m.position_enu, m.delay_acf], (
-            m.convention, m.skip_post_init
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "RFIEmitterSourceModel") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            [this.position_enu, this.delay_acf], (
+                this.convention, this.skip_post_init
+            )
         )
-    )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "RFIEmitterSourceModel":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        convention, skip_post_init = aux_data
+        position_enu, delay_acf = children
+        return RFIEmitterSourceModel(
+            position_enu=position_enu,
+            delay_acf=delay_acf,
+            convention=convention,
+            skip_post_init=skip_post_init
+        )
 
 
-def RFIEmitterSourceModel_unflatten(aux_data, children):
-    convention, skip_post_init = aux_data
-    position_enu, delay_acf = children
-    return RFIEmitterSourceModel(
-        position_enu=position_enu,
-        delay_acf=delay_acf,
-        convention=convention,
-        skip_post_init=skip_post_init
-    )
-
-
-jax.tree_util.register_pytree_node(
-    RFIEmitterSourceModel,
-    RFIEmitterSourceModel_flatten,
-    RFIEmitterSourceModel_unflatten
-)
+RFIEmitterSourceModel.register_pytree()

@@ -1,30 +1,25 @@
 import dataclasses
-import itertools
 from functools import partial
 
 import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
-from astropy import constants
 from jax import lax
 
-from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
-from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
-from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_cal.common.ellipse_utils import Gaussian
-from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_inv
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet
+from dsa2000_cal.imaging.utils import get_image_parameters
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 
 
 @dataclasses.dataclass(eq=False)
@@ -53,53 +48,11 @@ class BaseImagor:
     @staticmethod
     def get_image_parameters(ms: MeasurementSet, field_of_view: au.Quantity | None = None,
                              oversample_factor: float = 5.):
-        wavelengths = quantity_to_np(constants.c / ms.meta.freqs)
-        diameter = np.min(quantity_to_np(ms.meta.antenna_diameters))
-        if field_of_view is not None:
-            field_of_view = field_of_view
-        else:
-            # Try to get HPFW from the actual beam
-            try:
-                fill_registries()
-                antenna_model = array_registry.get_instance(
-                    array_registry.get_match(ms.meta.array_name)).get_antenna_model()
-                _freqs, _beam_widths = get_dish_model_beam_widths(antenna_model)
-                field_of_view = np.max(np.interp(ms.meta.freqs, _freqs, _beam_widths))
-            except NoMatchFound as e:
-                print(f"Failed to get beam width from antenna model: {e}")
-                field_of_view = au.Quantity(
-                    1.22 * np.max(wavelengths) / diameter,
-                    au.rad
-                )
-                print(f"Using diffraction limit: {field_of_view}")
-        # D/ 4F = 1.22 wavelength / D ==> F = D^2 / (4 * 1.22 * wavelength)
-        effective_focal_length = diameter ** 2 / (4 * 1.22 * np.max(wavelengths))
-        print(f"Effective focal length: {effective_focal_length}")
-
-        # Get the maximum baseline length
-        min_wavelength = np.min(wavelengths)
-        antennas_itrs = ms.meta.antennas.get_itrs().cartesian.xyz.to(au.m).value.T
-        antenna1, antenna2 = np.asarray(list(itertools.combinations_with_replacement(range(len(antennas_itrs)), 2)),
-                                        dtype=mp_policy.index_dtype).T
-        uvw = np.linalg.norm(antennas_itrs[antenna2] - antennas_itrs[antenna1], axis=-1)  # [num_baselines]
-        max_baseline = np.max(uvw)
-
-        # Number of pixels
-        diffraction_limit_resolution = 1.22 * min_wavelength / max_baseline
-        pixel_size = (diffraction_limit_resolution / oversample_factor) * au.rad
-        num_pixel = find_optimal_fft_size(
-            int(field_of_view / pixel_size)
+        num_pixel, dl, dm, center_l, center_m = get_image_parameters(
+            meta=ms.meta,
+            field_of_view=field_of_view,
+            oversample_factor=oversample_factor
         )
-
-        dl = pixel_size.to('rad')
-        dm = pixel_size.to('rad')
-
-        center_l = 0. * au.rad
-        center_m = 0. * au.rad
-
-        print(f"Center x: {center_l}, Center y: {center_m}")
-        print(f"Image size: {num_pixel} x {num_pixel}")
-        print(f"Pixel size: {dl} x {dm}")
         return num_pixel, quantity_to_jnp(dl), quantity_to_jnp(dm), quantity_to_jnp(center_l), quantity_to_jnp(center_m)
 
     def image_psf(
@@ -282,8 +235,29 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
     return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)
 
 
-def fit_beam(psf, dl, dm):
-    num_l, num_m = psf.shape[:2]
+def fit_beam(psf, dl, dm, max_central_size: int = 128):
+    """
+    Fit a Gaussian to the PSF.
+
+    Args:
+        psf: [num_l, num_m] the PSF
+        dl: the l spacing
+        dm: the m spacing
+
+    Returns:
+        major: the major FWHM in rad
+        minor: the minor FWHM in rad
+        posang: the position angle in rad
+    """
+    num_l, num_m = np.shape(psf)
+    # Trim equally from both sides until num_l and num_m <= max_central_size
+    trim_size_l = 0
+    while num_l - trim_size_l * 2 > max_central_size:
+        trim_size_l += 1
+    trim_size_m = 0
+    while num_m - trim_size_m * 2 > max_central_size:
+        trim_size_m += 1
+    psf = psf[trim_size_l:-trim_size_l, trim_size_m:-trim_size_m]
     lvec = (-0.5 * num_l + jnp.arange(num_l)) * dl  # [num_l]
     mvec = (-0.5 * num_m + jnp.arange(num_m)) * dm  # [num_m]
     L, M = jnp.meshgrid(lvec, mvec, indexing='ij')  # [num_l, num_m]

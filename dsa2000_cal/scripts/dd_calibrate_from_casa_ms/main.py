@@ -179,7 +179,8 @@ def compute_residuals(
         gains: ComplexArray,
         vis_per_direction: ComplexArray,
         vis_data: ComplexArray,
-        weights: FloatArray, flags: BoolArray,
+        weights: FloatArray,
+        flags: BoolArray,
         antenna1: IntArray,
         antenna2: IntArray,
         weighted: bool = True
