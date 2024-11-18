@@ -129,7 +129,7 @@ def sync_content():
                         destination_path = os.path.dirname(lf_path)
                         asset_root_path = remove_content_prefix(destination_path)
                         ftp_url = f"{FMCAL_FTP_ADDRESS}{asset_root_path}/{line.strip()}"
-                        cmd = ['rsync', '-a', '--partial', ftp_url,
+                        cmd = ['rsync', '-e', '"ssh -o StrictHostKeyChecking=accept-new"', '-a', '--partial', ftp_url,
                                f"{destination_path}/"]
                         subprocess.run(['echo'] + cmd)
                         completed_process = subprocess.run(cmd)
