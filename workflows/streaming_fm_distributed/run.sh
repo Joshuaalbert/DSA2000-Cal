@@ -17,8 +17,11 @@ fi
 # Create a temporary .env file
 TEMP_ENV_FILE="$SCRIPT_DIR/.full_env"
 
-# Start with common .env content
-echo "" > "$TEMP_ENV_FILE"
+# empty the file
+if [ -f "$TEMP_ENV_FILE" ]; then
+  rm "$TEMP_ENV_FILE"
+fi
+
 #cp "$COMMON_ENV_FILE" "$TEMP_ENV_FILE"
 
 # Array to track variable names
