@@ -52,8 +52,13 @@ done
 cat "$TEMP_ENV_FILE"
 
 # Use the temporary .env file in Docker Compose commands
+echo "Tearing down old services..."
 docker compose -f "$SCRIPT_DIR/docker-compose.yaml" down
+
+echo "Building the services..."
 docker compose -f "$SCRIPT_DIR/docker-compose.yaml" build
+
+echo "Configuring the services..."
 docker compose config
 
 echo "Starting the services..."
