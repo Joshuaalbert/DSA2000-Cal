@@ -7,6 +7,8 @@ cd /dsa/run && python /dsa/code/src/main.py \
   --field_of_view=3. \
   --oversample_factor=5. \
   --full_stokes=True \
-  --num_cal_facets=1
+  --num_cal_facets=1 \
+  --root_folder='/dsa/run/working_dir' \
+  --run_name='demo' \
 
 echo "Job done at $(date)"
