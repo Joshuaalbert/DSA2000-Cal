@@ -12,6 +12,11 @@ RUN pip install -r /dsa/code/requirements-notebooks.txt
 # Copy entrypoint
 COPY ./workflows/streaming_fm_distributed/ray/src /dsa/code/src
 
+# Copy credentials to access content. The public key should allow access.
+ARG SSH_PRIVATE_KEY
+RUN mkdir -p /root/.ssh
+COPY $SSH_PRIVATE_KEY /root/.ssh/id_rsa
+
 # For data persistence in the run directory
 RUN mkdir -p /dsa/run
 WORKDIR /dsa/run

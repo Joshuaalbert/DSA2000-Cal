@@ -68,6 +68,7 @@ services:
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
       - RUN_DIR_HOST=${RUN_DIR_HOST}
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
     volumes:
       - /dev/shm:/dev/shm
       - ./:/dsa/run

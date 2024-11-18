@@ -113,7 +113,10 @@ def sync_content():
             return content_path
 
         lf_paths = glob.glob(os.path.join(*content_prefix_path, "**", ".large_files"), recursive=True)
+        CONTENT_SSH_USER = os.environ.get("DSA_CONTENT_SSH_USERNAME", None)
         FMCAL_FTP_ADDRESS = os.environ.get("FMCAL_FTP_ADDRESS", "mario:/safepool/fmcal_data")
+        if CONTENT_SSH_USER is not None:
+            FMCAL_FTP_ADDRESS = f"{CONTENT_SSH_USER}@{FMCAL_FTP_ADDRESS}"
 
         for lf_path in lf_paths:
             # lf_path = os.path.join(*self.content_path, ".large_files")
