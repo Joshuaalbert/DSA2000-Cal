@@ -38,6 +38,9 @@ echo "GIT_BRANCH=${GIT_BRANCH}"
 echo "PACKAGE_DIR=${PACKAGE_DIR}"
 
 # Start Ray
+LARGE_N=99999999999
+export RAY_health_check_initial_delay_ms=$LARGE_N
+export RAY_health_check_period_ms=$LARGE_N
 
 if [ -z "$IS_RAY_HEAD" ]; then
   echo "Error: IS_RAY_HEAD must be specified."
@@ -46,9 +49,9 @@ fi
 
 if [ "$IS_RAY_HEAD" = true ]; then
   echo "Starting Ray head node..."
-  ray start --head \
-    --port=6379 --redis-shard-ports=6380,6381 --object-manager-port=22345 --node-manager-port=22346 \
-    --dashboard-host=0.0.0.0 --metrics-export-port=8090 --temp-dir=$TEMP_DIR
+  ray start --head --port=6379 --dashboard-host=0.0.0.0 --metrics-export-port=8090 --temp-dir=$TEMP_DIR
+
+  ray status
 
   # Start Jupyter Notebook only on the head node
   ROOT_DIR="/dsa/run/${REPO_DIR}/dsa2000_cal/notebooks"
@@ -78,11 +81,8 @@ else
     exit 1
   fi
   echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}:${RAY_REDIS_PORT}..."
-  # ensure we can ping the head node
-  ping -c 4 "$RAY_HEAD_IP"
-  # also try ray_head
-  ping -c 4 "ray_head"
-  ray start --address="ray_head:${RAY_REDIS_PORT}" --object-manager-port=22345 --node-manager-port=22346
+  ray start --address="ray_head:${RAY_REDIS_PORT}"
+  ray status
 fi
 
 tail -f /dev/null
