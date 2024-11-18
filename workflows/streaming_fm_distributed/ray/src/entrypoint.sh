@@ -78,6 +78,10 @@ else
     exit 1
   fi
   echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}:${RAY_REDIS_PORT}..."
+  # ensure we can ping the head node
+  ping -c 4 "$RAY_HEAD_IP"
+  # also try ray_head
+  ping -c 4 "ray_head"
   ray start --address="ray_head:${RAY_REDIS_PORT}" --object-manager-port=22345 --node-manager-port=22346
 fi
 
