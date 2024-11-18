@@ -14,58 +14,24 @@ if [[ ! -f "$COMMON_ENV_FILE" ]]; then
   exit 1
 fi
 
-# Create a temporary .env file
-TEMP_ENV_FILE="$SCRIPT_DIR/.full_env"
-
-# empty the file
-if [ -f "$TEMP_ENV_FILE" ]; then
-  rm "$TEMP_ENV_FILE"
-fi
-
-#cp "$COMMON_ENV_FILE" "$TEMP_ENV_FILE"
-
-# Array to track variable names
-declare -a ENV_VARS=()
-
-# Load common environment variables
-while IFS= read -r LINE; do
-  # Extract key and value
-  KEY="${LINE%%=*}"
-  VALUE="${LINE#*=}"
-  echo "Processing $KEY = $VALUE"
-  # Only append if value is not empty
-  if [[ -z "$VALUE" ]]; then
-    continue
-  fi
-  echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
-  echo "Appended to ${TEMP_ENV_FILE}: $KEY=$VALUE"
-  ENV_VARS+=("$KEY")
-done <"$COMMON_ENV_FILE"
-
-# Append dynamic arguments to the ENV_VARS
-for ARG in "$@"; do
-  # Extract key and value
-  KEY="${ARG%%=*}"
-  VALUE="${ARG#*=}"
-  echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
-  echo "Appended to ${TEMP_ENV_FILE}: $KEY=$VALUE"
-  ENV_VARS+=("$KEY")
+ENV_ARGS=""
+for var in "$@"; do
+  # append -e flag to each variable
+  ENV_ARGS="$ENV_ARGS -e $var"
 done
-
-cat "$TEMP_ENV_FILE"
 
 # Use the temporary .env file in Docker Compose commands
 echo "Tearing down old services..."
-docker compose -f "$SCRIPT_DIR/docker-compose.yaml" down --env-file "$TEMP_ENV_FILE"
+docker compose $ENV_ARGS -f "$SCRIPT_DIR/docker-compose.yaml" down
 
 echo "Building the services..."
-docker compose -f "$SCRIPT_DIR/docker-compose.yaml" build --env-file "$TEMP_ENV_FILE"
+docker compose $ENV_ARGS -f "$SCRIPT_DIR/docker-compose.yaml" build
 
 echo "Configuring the services..."
-docker compose config
+docker compose $ENV_ARGS config
 
 echo "Starting the services..."
-docker compose -f "$SCRIPT_DIR/docker-compose.yaml" up -d --env-file "$TEMP_ENV_FILE"
+docker compose $ENV_ARGS -f "$SCRIPT_DIR/docker-compose.yaml" up -d
 
 docker compose logs -f
 
