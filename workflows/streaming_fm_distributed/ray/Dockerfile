@@ -4,8 +4,8 @@ RUN apt-get update && apt-get install -y gdb lldb sudo
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # requirements rarely change, so install those here
-COPY ./DSA2000-Cal/dsa2000_cal/requirements.txt /dsa/code/requirements.txt
-COPY ./DSA2000-Cal/dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt
+COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
+COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt
 RUN pip install -r /dsa/code/requirements.txt
 RUN pip install -r /dsa/code/requirements-notebooks.txt
 
