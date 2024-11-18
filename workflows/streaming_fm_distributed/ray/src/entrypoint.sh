@@ -38,6 +38,8 @@ echo "GIT_BRANCH=${GIT_BRANCH}"
 echo "PACKAGE_DIR=${PACKAGE_DIR}"
 
 # Start Ray
+
+# This is required to prevent heatbeat timeouts in the Ray cluster: https://github.com/ray-project/ray/issues/45179#issuecomment-2191816159
 LARGE_N=99999999999
 export RAY_health_check_initial_delay_ms=$LARGE_N
 export RAY_health_check_period_ms=$LARGE_N
