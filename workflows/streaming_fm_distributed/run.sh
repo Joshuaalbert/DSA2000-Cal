@@ -4,7 +4,7 @@
 set -e
 
 # Usage: ./script.sh KEY1=VALUE1 KEY2=VALUE2 ...
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 echo "Script dir $SCRIPT_DIR"
 
 # Check if .env file exists
@@ -28,11 +28,11 @@ while IFS='=' read -r KEY _; do
   if [[ -n "$KEY" && ! "$KEY" =~ ^# ]]; then
     ENV_VARS+=("$KEY")
   fi
-done < "$COMMON_ENV_FILE"
+done <"$COMMON_ENV_FILE"
 
 # Append dynamic arguments to the .env file
 for ARG in "$@"; do
-  echo "$ARG" >> "$TEMP_ENV_FILE"
+  echo "$ARG" >>"$TEMP_ENV_FILE"
   # Add the variable name to the array
   KEY=$(echo "$ARG" | cut -d= -f1)
   ENV_VARS+=("$KEY")
@@ -49,9 +49,19 @@ for VAR in "${ENV_VARS[@]}"; do
   fi
 done
 
+# Set up local Docker cache directory
+CACHE_DIR="$SCRIPT_DIR/docker_cache"
+mkdir -p "$CACHE_DIR"
+
+export DOCKER_BUILDKIT=1
+
+
 # Use the temporary .env file in Docker Compose commands
 docker-compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" down
-docker-compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" build
+docker-compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" build \
+  --build-arg BUILDKIT_INLINE_CACHE=1 \
+  --cache-from=type=local,src="$CACHE_DIR" \
+  --cache-to=type=local,dest="$CACHE_DIR"
 docker-compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" up -d
 
 # Clean up the temporary .env file
