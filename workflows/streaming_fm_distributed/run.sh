@@ -18,7 +18,8 @@ fi
 TEMP_ENV_FILE="$SCRIPT_DIR/.env.temp"
 
 # Start with common .env content
-cp "$COMMON_ENV_FILE" "$TEMP_ENV_FILE"
+echo "" >"$TEMP_ENV_FILE"
+#cp "$COMMON_ENV_FILE" "$TEMP_ENV_FILE"
 
 # Array to track variable names
 declare -a ENV_VARS=()
@@ -28,6 +29,7 @@ while IFS= read -r LINE; do
   # Extract key and value
   KEY="${LINE%%=*}"
   VALUE="${LINE#*=}"
+  echo "Processing $KEY = $VALUE"
   # Only append if value is not empty
   if [[ -z "$VALUE" ]]; then
     continue
