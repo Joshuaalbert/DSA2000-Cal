@@ -19,6 +19,7 @@ for var in "$@"; do
 done
 
 export IS_RAY_HEAD=false
+export RUN_DIR_HOST=$PWD
 
 # Use the temporary .env file in Docker Compose commands
 echo "Tearing down old services..."

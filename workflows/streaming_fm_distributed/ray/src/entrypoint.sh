@@ -78,8 +78,7 @@ else
     exit 1
   fi
   echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}:${RAY_REDIS_PORT}..."
-  ray start --address="${RAY_HEAD_IP}:${RAY_REDIS_PORT}" \
-    --object-manager-port=22345 --node-manager-port=22346
+  ray start --address="ray_head:${RAY_REDIS_PORT}" --object-manager-port=22345 --node-manager-port=22346
 fi
 
 tail -f /dev/null
