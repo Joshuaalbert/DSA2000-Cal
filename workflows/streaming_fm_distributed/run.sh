@@ -52,11 +52,9 @@ done
 CACHE_DIR="$SCRIPT_DIR/docker_cache"
 mkdir -p "$CACHE_DIR"
 
-export DOCKER_BUILDKIT=1
-
 # Use the temporary .env file in Docker Compose commands
 docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" down
-docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" build \
+COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1  docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" build \
   --build-arg BUILDKIT_INLINE_CACHE=1 \
   --cache-from=type=local,src="$CACHE_DIR" \
   --cache-to=type=local,dest="$CACHE_DIR"
