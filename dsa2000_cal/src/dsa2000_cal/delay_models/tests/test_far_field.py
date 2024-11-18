@@ -77,11 +77,11 @@ def test_compute_uvw(with_autocorr):
     )
     antennas = antennas.transform_to(ac.ITRS(obstime=times[0], location=array_location)).earth_location
 
-    phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=times[0]).transform_to(ac.ICRS())
+    phase_center = ENU(east=0, north=0, up=1, location=array_location, obstime=times[0]).transform_to(ac.ICRS())
 
     engine = build_far_field_delay_engine(
         antennas=antennas,
-        phase_center=phase_centre,
+        phase_center=phase_center,
         start_time=times[0],
         end_time=times[-1],
         ref_time=times[0],
@@ -102,7 +102,7 @@ def test_compute_uvw(with_autocorr):
     uvw_other = earth_location_to_uvw_approx(
         antennas=antennas[None, :],
         obs_time=times[:, None],
-        phase_tracking=phase_centre
+        phase_center=phase_center
     ) # [T, A, 3]
     if with_autocorr:
         antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations_with_replacement(range(len(antennas)), 2))).T
@@ -145,11 +145,11 @@ def test_resolution_error(baseline: au.Quantity):
     )
     antennas = antennas.transform_to(ac.ITRS(obstime=start_time)).earth_location
 
-    phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=start_time).transform_to(ac.ICRS())
+    phase_center = ENU(east=0, north=0, up=1, location=array_location, obstime=start_time).transform_to(ac.ICRS())
 
     engine = build_far_field_delay_engine(
         antennas=antennas,
-        phase_center=phase_centre,
+        phase_center=phase_center,
         start_time=start_time,
         end_time=end_time,
         ref_time=start_time,
@@ -165,7 +165,7 @@ def test_resolution_error(baseline: au.Quantity):
 
     engine = build_far_field_delay_engine(
         antennas=antennas,
-        phase_center=phase_centre,
+        phase_center=phase_center,
         start_time=start_time,
         end_time=end_time,
         ref_time=start_time,
@@ -189,7 +189,7 @@ def test_resolution_error(baseline: au.Quantity):
     for resolution in [5 * au.s, 10 * au.s, 50 * au.s, 100 * au.s, 200 * au.s]:
         engine = build_far_field_delay_engine(
             antennas=antennas,
-            phase_center=phase_centre,
+            phase_center=phase_center,
             start_time=start_time,
             end_time=end_time,
             ref_time=start_time,

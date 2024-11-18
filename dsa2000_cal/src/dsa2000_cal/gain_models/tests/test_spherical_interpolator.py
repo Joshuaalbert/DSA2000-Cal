@@ -110,10 +110,10 @@ def build_mock_spherical_interpolator_gain_model(tile_antennas, full_stokes):
         tile_antennas=tile_antennas
     )
 
-    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+    phase_center = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
 
     geodesic_model = build_geodesic_model(
-        phase_center=phase_tracking,
+        phase_center=phase_center,
         antennas=antennas,
         array_location=antennas[0],
         obstimes=times,

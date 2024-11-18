@@ -4,6 +4,7 @@ import os
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import jax
 import numpy as np
 import ray
 from ray import serve
@@ -12,6 +13,8 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.forward_models.streaming.distributed.calibrator import CalibrationSolutionCache, Calibrator, \
     CalibrationSolutionCacheParams
 from dsa2000_cal.forward_models.streaming.distributed.caller import Caller
@@ -19,7 +22,9 @@ from dsa2000_cal.forward_models.streaming.distributed.common import ChunkParams,
 from dsa2000_cal.forward_models.streaming.distributed.data_streamer import DataStreamerParams, DataStreamer
 from dsa2000_cal.forward_models.streaming.distributed.gridder import Gridder
 from dsa2000_cal.forward_models.streaming.distributed.model_predictor import ModelPredictor, ModelPredictorParams
-from dsa2000_cal.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulator
+from dsa2000_cal.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulator, \
+    SystemGainSimulatorParams
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.imaging.utils import get_image_parameters
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
 
@@ -66,7 +71,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     num_timesteps = int(observation_duration / integration_interval)
     obstimes = ref_time + np.arange(num_timesteps) * integration_interval
 
-    phase_tracking = pointing = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
+    phase_center = pointing = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
 
     dish_effects_params = array.get_dish_effect_params()
 
@@ -87,7 +92,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     meta = MeasurementSetMeta(
         array_name=array_name,
         array_location=array_location,
-        phase_tracking=phase_tracking,
+        phase_center=phase_center,
         pointings=pointing,
         channel_width=array.get_channel_width(),
         integration_time=integration_interval,
@@ -144,17 +149,58 @@ def main(array_name: str, with_autocorr: bool, field_of_view: au.Quantity | None
     run_params = build_run_params(array_name, with_autocorr, field_of_view, oversample_factor,
                                   full_stokes, num_cal_facets, root_folder, run_name)
 
-    system_gain_simulator = SystemGainSimulator.bind(run_params)
+    geodesic_model = build_geodesic_model(
+        antennas=run_params.ms_meta.antennas,
+        array_location=run_params.ms_meta.array_location,
+        phase_center=run_params.ms_meta.phase_center,
+        obstimes=run_params.ms_meta.times,
+        ref_time=run_params.ms_meta.ref_time,
+        pointings=run_params.ms_meta.pointings
+    )
 
-    data_streamer_params = DataStreamerParams()
-    data_streamer = DataStreamer.bind(run_params, data_streamer_params, system_gain_simulator)
+    far_field_delay_engine = build_far_field_delay_engine(
+        antennas=run_params.ms_meta.antennas,
+        start_time=run_params.ms_meta.times[0],
+        end_time=run_params.ms_meta.times[-1],
+        ref_time=run_params.ms_meta.ref_time,
+        phase_center=run_params.ms_meta.phase_center
+    )
 
-    predict_params = ModelPredictorParams(
-        sky_models=[],
+    near_field_delay_engine = build_near_field_delay_engine(
+        antennas=run_params.ms_meta.antennas,
+        start_time=run_params.ms_meta.times[0],
+        end_time=run_params.ms_meta.times[-1],
+        ref_time=run_params.ms_meta.ref_time
+    )
+
+    system_gain_simulator_params = SystemGainSimulatorParams(
+        geodesic_model=geodesic_model,
+        init_key=jax.random.PRNGKey(0),
+    )
+
+    data_streamer_params = DataStreamerParams(
+        sky_model_id='cas_a',
+        bright_sky_model_id='cas_a',
+        num_facets_per_side=2,
+        crop_box_size=None,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,
         geodesic_model=geodesic_model
     )
+
+    predict_params = ModelPredictorParams(
+        sky_model_id='cas_a',
+        num_facets_per_side=2,
+        crop_box_size=None,
+        near_field_delay_engine=near_field_delay_engine,
+        far_field_delay_engine=far_field_delay_engine,
+        geodesic_model=geodesic_model
+    )
+
+    system_gain_simulator = SystemGainSimulator.bind(run_params, system_gain_simulator_params)
+
+    data_streamer = DataStreamer.bind(run_params, data_streamer_params, system_gain_simulator)
+
     model_predictor = ModelPredictor.bind(run_params, predict_params)
 
     calibration_soluation_cache = CalibrationSolutionCache(params=CalibrationSolutionCacheParams())

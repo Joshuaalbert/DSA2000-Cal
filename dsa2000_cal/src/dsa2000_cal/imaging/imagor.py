@@ -171,7 +171,7 @@ class Imagor:
             plt.savefig(f"{self.plot_folder}/{image_name}_{ms.meta.coherencies[coh]}.png")
             plt.show()
         image_model = ImageModel(
-            phase_tracking=ms.meta.phase_tracking,
+            phase_center=ms.meta.phase_center,
             obs_time=ms.ref_time,
             dl=dl*au.dimensionless_unscaled,
             dm=dm*au.dimensionless_unscaled,

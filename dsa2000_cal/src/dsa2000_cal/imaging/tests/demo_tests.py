@@ -19,16 +19,16 @@ def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan, 
     antennas = array.get_antennas()
 
     obstime = at.Time("2021-01-01T00:00:00", scale='utc')
-    phase_tracking = zenith = ENU(0, 0, 1, obstime=obstime, location=array_location).transform_to(ac.ICRS())
+    phase_center = zenith = ENU(0, 0, 1, obstime=obstime, location=array_location).transform_to(ac.ICRS())
 
     meta = MeasurementSetMeta(
         array_name=array_name,
         array_location=array_location,
-        phase_tracking=phase_tracking,
+        phase_center=phase_center,
         channel_width=array.get_channel_width(),
         integration_time=au.Quantity(1.5, 's'),
         coherencies=corrs if full_stokes else corrs[:1],
-        pointings=phase_tracking,
+        pointings=phase_center,
         times=obstime + 1.5 * np.arange(1) * au.s,
         freqs=au.Quantity(np.linspace(700, 2000, num_chan), unit=au.MHz),
         antennas=antennas,

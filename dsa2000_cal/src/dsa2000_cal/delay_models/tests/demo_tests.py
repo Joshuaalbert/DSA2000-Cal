@@ -42,11 +42,11 @@ def test_aberated_plane_of_sky(time: at.Time, baseline: au.Quantity):
     )
     antennas = antennas.transform_to(ac.ITRS(obstime=time)).earth_location
 
-    phase_centre = ENU(east=0, north=0, up=1, location=array_location, obstime=time).transform_to(ac.ICRS())
+    phase_center = ENU(east=0, north=0, up=1, location=array_location, obstime=time).transform_to(ac.ICRS())
 
     engine = build_far_field_delay_engine(
         antennas=antennas,
-        phase_center=phase_centre,
+        phase_center=phase_center,
         start_time=time,
         end_time=time,
         ref_time=time,

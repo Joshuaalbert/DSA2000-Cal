@@ -31,7 +31,7 @@ def create_makems_config(casa_ms: str,
     step_freq = meta.channel_width.to('Hz').value
     start_time = (meta.times[0] - 0.5 * meta.integration_time).datetime
     step_time = meta.integration_time.to('s').value
-    phase_tracking = meta.pointings
+    phase_center = meta.pointings
     num_freqs = len(meta.freqs)
     num_times = len(meta.x)
 
@@ -58,8 +58,8 @@ def create_makems_config(casa_ms: str,
             f.putcell('NAME', i, antenna_names[i])
             f.putcell('STATION', i, meta.array_name)
 
-    ra = phase_tracking.ra.to_string(unit='hour', sep=':', pad=True)
-    dec = phase_tracking.dec.to_string(unit='deg', sep='.', pad=True, alwayssign=True)
+    ra = phase_center.ra.to_string(unit='hour', sep=':', pad=True)
+    dec = phase_center.dec.to_string(unit='deg', sep='.', pad=True, alwayssign=True)
     start_time_str = start_time.strftime('%Y/%m/%d/%H:%M:%S')
     makems_config = [
         f'StartFreq={start_freq}',

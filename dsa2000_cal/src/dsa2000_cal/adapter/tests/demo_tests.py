@@ -44,7 +44,7 @@ def test_create_makems_config(tmp_path):
     meta = MeasurementSetMeta(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=au.Quantity(1, au.Hz),
         integration_time=au.Quantity(1, au.s),
         coherencies=['XX','XY','YX','YY'],

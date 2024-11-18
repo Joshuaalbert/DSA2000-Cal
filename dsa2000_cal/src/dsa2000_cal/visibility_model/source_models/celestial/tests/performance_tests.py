@@ -186,12 +186,12 @@ def test_benchmark_fits_predict(source, chan: int, ant: int):
     wsclean_fits_files = source_model_registry.get_instance(
         source_model_registry.get_match(source)).get_wsclean_fits_files()
     # -04:00:28.608,40.43.33.595
-    phase_tracking = ac.ICRS(ra=-4 * au.hour, dec=40 * au.deg)
+    phase_center = ac.ICRS(ra=-4 * au.hour, dec=40 * au.deg)
 
     freqs = au.Quantity(np.linspace(55, 70, chan), 'MHz')
 
     fits_sources = FITSSourceModel.from_wsclean_model(wsclean_fits_files=wsclean_fits_files,
-                                                      phase_tracking=phase_tracking, freqs=freqs, full_stokes=False)
+                                                      phase_center=phase_center, freqs=freqs, full_stokes=False)
 
     visibility_coords = build_mock_visibility_coord(ant, 1)
     model_data = fits_sources.get_model_data()

@@ -145,7 +145,7 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
     )
     print(f"Number of model directions: {len(model_directions)}")
     # Convert to lmn
-    model_lmn = icrs_to_lmn(sources=model_directions, phase_tracking=pointing)  # [num_model_dir, 3]
+    model_lmn = icrs_to_lmn(sources=model_directions, phase_center=pointing)  # [num_model_dir, 3]
 
     # Plot model directions
     fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(10, 10))

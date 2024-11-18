@@ -216,24 +216,24 @@ class BaseFITSSourceModel(AbstractSourceModel):
         vis = jax.vmap(apply_gains)(vis, g1, g2)  # [B[,2,2]]
         return vis
 
-    def plot(self, save_file: str = None, phase_tracking: ac.ICRS | None = None):
+    def plot(self, save_file: str = None, phase_center: ac.ICRS | None = None):
         """
         Plot the sky model.
 
         Args:
             save_file: the file to save the plot to
-            phase_tracking: the phase tracking to use for the plot
+            phase_center: the phase tracking to use for the plot
         """
         # Use imshow to plot the sky model evaluated over a LM grid
-        if phase_tracking is None:
+        if phase_center is None:
             # Won't work near poles or RA=0
             ra0 = np.mean(self.ra) * au.rad
             dec0 = np.mean(self.dec) * au.rad
-            phase_tracking = ac.ICRS(ra=ra0, dec=dec0)
+            phase_center = ac.ICRS(ra=ra0, dec=dec0)
 
         # Plot the first facet
-        l, m, n = perley_lmn_from_icrs(self.ra, self.dec, phase_tracking.ra.rad,
-                                       phase_tracking.dec.rad)  # [num_model_freqs, facet]
+        l, m, n = perley_lmn_from_icrs(self.ra, self.dec, phase_center.ra.rad,
+                                       phase_center.dec.rad)  # [num_model_freqs, facet]
         l0 = l[:, 0]
         m0 = m[:, 0]
         dl = self.dl[:, 0]
@@ -412,6 +412,57 @@ def build_fits_source_model(
         epsilon=epsilon,
         convention=convention
     )
+
+
+def build_fits_calibration_source_model_from_wsclean_components(wsclean_fits_files: List[str],
+                                                                model_freqs: au.Quantity,
+                                                                full_stokes: bool = True,
+                                                                repoint_centre: ac.ICRS | None = None,
+                                                                crop_box_size: au.Quantity | None = None,
+                                                                num_facets: int = 1):
+    """
+    Build a calibration source model from wsclean components.
+
+    Args:
+        wsclean_fits_files: the wsclean fits files
+        model_freqs: the model frequencies
+        full_stokes: whether the model should be full stokes
+        repoint_centre: the repoint centre
+        crop_box_size: the crop box size
+        num_facets: the number of facets
+
+    Returns:
+        the calibration source model
+    """
+    sky_model = build_fits_source_model_from_wsclean_components(
+        wsclean_fits_files=wsclean_fits_files,
+        model_freqs=model_freqs,
+        full_stokes=full_stokes,
+        repoint_centre=repoint_centre,
+        crop_box_size=crop_box_size,
+        num_facets_per_side=num_facets
+    )
+    # Turn each facet into a 1 facet sky model
+    sky_models = []
+    for facet_idx in range(num_facets):
+        image = sky_model.image[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs, num_l, num_m, [2,2]]
+        ra = sky_model.ra[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs]
+        dec = sky_model.dec[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs]
+        dl = sky_model.dl[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs]
+        dm = sky_model.dm[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs]
+        sky_models.append(
+            BaseFITSSourceModel(
+                model_freqs=sky_model.model_freqs,
+                image=image,
+                ra=ra,
+                dec=dec,
+                dl=dl,
+                dm=dm,
+                epsilon=sky_model.epsilon,
+                convention=sky_model.convention
+            )
+        )
+    return sky_models
 
 
 def build_fits_source_model_from_wsclean_components(

@@ -80,23 +80,23 @@ def test_orientations(source: str):
 
     # source_file = source_model_registry.get_instance(source_model_registry.get_match('cas_a')).get_wsclean_source_file()
     # -00:36:28.234,58.50.46.396
-    # phase_tracking = ac.SkyCoord("-00h36m28.234s", "58d50m46.396s", frame='icrs')
-    # phase_tracking = ac.SkyCoord("-00h36m28.234s", "78d50m46.396s", frame='icrs')
+    # phase_center = ac.SkyCoord("-00h36m28.234s", "58d50m46.396s", frame='icrs')
+    # phase_center = ac.SkyCoord("-00h36m28.234s", "78d50m46.396s", frame='icrs')
 
     wsclean_fits_files = source_model_registry.get_instance(
         source_model_registry.get_match(source)).get_wsclean_fits_files()
     # -04:00:28.608,40.43.33.595
-    phase_tracking = ac.SkyCoord("-04h00m28.608s", "40d43m33.595s", frame='icrs')
+    phase_center = ac.SkyCoord("-04h00m28.608s", "40d43m33.595s", frame='icrs')
 
     freqs = au.Quantity([65e6, 77e6], 'Hz')
 
     fits_sources = FITSSourceModel.from_wsclean_model(wsclean_fits_files=wsclean_fits_files,
-                                                      phase_tracking=phase_tracking, freqs=freqs)
+                                                      phase_center=phase_center, freqs=freqs)
     assert isinstance(fits_sources, FITSSourceModel)
 
     # Visually verified against ds9, that RA increases over column, and DEC increases over rows.
     fits_sources.plot()
-    image, lmn = get_lm_coords_image(wsclean_fits_files[0], time=time, phase_tracking=phase_tracking)
+    image, lmn = get_lm_coords_image(wsclean_fits_files[0], time=time, phase_center=phase_center)
     print(lmn.shape)
     print(image.shape)  # [Nm, Nl]
     l = lmn[:, :, 0]
@@ -142,14 +142,14 @@ def test_wsclean_component_files():
         source_model_asset = source_model_registry.get_instance(source_model_registry.get_match(source))
         time = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
         freqs = np.linspace(700e6, 2000e6, 1) * au.Hz
-        phase_tracking = ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
+        phase_center = ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
         # source_model = WSCleanSourceModel.from_wsclean_model(
         #     wsclean_clean_component_file=source_model_asset.get_wsclean_clean_component_file(),
         #     time=at.Time('2021-01-01T00:00:00', format='isot', scale='utc'),
         #     freqs=np.linspace(700e6, 2000e6, 2) * au.Hz,
-        #     phase_tracking=ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
+        #     phase_center=ac.ICRS(ra=ac.Angle('0h'), dec=ac.Angle('0d'))
         # )
 
         fits_model = FITSSourceModel.from_wsclean_model(source_model_asset.get_wsclean_fits_files(),
-                                                        phase_tracking, freqs, ignore_out_of_bounds=True)
+                                                        phase_center, freqs, ignore_out_of_bounds=True)
         fits_model.plot()

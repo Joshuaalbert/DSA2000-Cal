@@ -1,0 +1,80 @@
+version: "3"
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    restart: always
+    command:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus'
+        - '--storage.tsdb.retention.time=30d'
+        - '--storage.tsdb.retention.size=5GB'
+    volumes:
+      - ./prometheus/config:/etc/prometheus
+      - prometheus-data:/prometheus
+    env_file:
+      - .env
+    extra_hosts:
+      ray_head: ${RAY_HEAD_IP}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  grafana:
+    image: grafana/grafana-oss:10.2.2 # Consider updating
+    container_name: grafana
+    env_file:
+      - .env
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      ray_head: ${RAY_HEAD_IP}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  ray:
+    image: ray
+    container_name: ray
+    build:
+      context: ../..
+      dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+    ports:
+      - ${RAY_REDIS_PORT}:6379 # External redis for Ray
+      - "8265:8265" # Ray Dashboard
+      - "8890:8888" # Jupyter
+    env_file:
+      - .env
+    cap_add:
+      - SYS_PTRACE
+    extra_hosts:
+      ray_head: ${RAY_HEAD_IP}
+    environment:
+      - IS_RAY_HEAD=${IS_RAY_HEAD}
+      - RAY_GRAFANA_HOST=http://ray_head:3000
+      - RAY_PROMETHEUS_HOST=http://ray_head:9090
+      - RAY_GRAFANA_IFRAME_HOST=http://ray_head:3000
+      - XLA_FLAGS=${XLA_FLAGS}
+      - PYTHONMALLOC=${PYTHONMALLOC}
+    volumes:
+      - /dev/shm:/dev/shm
+      - ${RUN_DIR_HOST}:/dsa/run
+
+networks:
+  safe-tier:
+volumes:
+  grafana-data:
+  prometheus-data:
+
+

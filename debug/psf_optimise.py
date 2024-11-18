@@ -78,13 +78,13 @@ if __name__ == '__main__':
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
     ref_time = obstime
 
-    phase_tracking = ENU(0, 0, 1, obstime=obstime, location=location).transform_to(ac.ICRS())
+    phase_center = ENU(0, 0, 1, obstime=obstime, location=location).transform_to(ac.ICRS())
     engine = build_far_field_delay_engine(
         antennas=antennas,
         start_time=obstime,
         end_time=obstime + (10.3 * 60) * au.s,
         ref_time=ref_time,
-        phase_center=phase_tracking,
+        phase_center=phase_center,
         resolution=60 * au.s,
         verbose=True
     )

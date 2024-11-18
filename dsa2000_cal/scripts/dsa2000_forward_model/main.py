@@ -30,12 +30,12 @@ def main(ms_folder: str):
         antennas = array.get_antennas()
         obstimes = at.Time("2024-08-07T00:00:00", scale='tt') + 1.5 * np.arange(1) * au.s
         freqs = au.Quantity([700], unit=au.MHz)
-        phase_tracking = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
+        phase_center = zenith = ENU(0, 0, 1, obstime=obstimes[0], location=array_location).transform_to(ac.ICRS())
         meta = MeasurementSetMeta(
             array_name='dsa2000W',
             array_location=array_location,
-            phase_tracking=phase_tracking,
-            pointings=phase_tracking,
+            phase_center=phase_center,
+            pointings=phase_center,
             channel_width=array.get_channel_width(),
             integration_time=au.Quantity(1.5, 's'),
             coherencies=['I'],
@@ -51,7 +51,7 @@ def main(ms_folder: str):
         ms = MeasurementSet.create_measurement_set(ms_folder=ms_folder, meta=meta)
 
     sky_model_producer = SyntheticSkyModelProducer(
-        phase_tracking=ms.meta.phase_tracking,
+        phase_center=ms.meta.phase_center,
         freqs=ms.meta.freqs,
         field_of_view=4 * au.deg
     )

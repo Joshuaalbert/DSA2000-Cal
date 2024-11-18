@@ -4,7 +4,7 @@ import astropy.time as at
 from dsa2000_cal.common.coord_utils import lmn_to_icrs
 
 
-def get_lm_coords_image(fits_file, time: at.Time, phase_tracking: ac.ICRS):
+def get_lm_coords_image(fits_file, time: at.Time, phase_center: ac.ICRS):
     import astropy.coordinates as ac
     import astropy.units as au
     import numpy as np
@@ -56,7 +56,7 @@ def get_lm_coords_image(fits_file, time: at.Time, phase_tracking: ac.ICRS):
         pointing_coord = pointing_coord.transform_to(ac.ICRS)
         print(pointing_coord)
 
-        lmn = icrs_to_lmn(pointing_coord, phase_tracking)
+        lmn = icrs_to_lmn(pointing_coord, phase_center)
         Nm, Nl = np.shape(image)
         l = lmn[:, :, 0]
         m = lmn[:, :, 1]
@@ -70,7 +70,7 @@ def get_lm_coords_image(fits_file, time: at.Time, phase_tracking: ac.ICRS):
         M, L = np.meshgrid(mvec, lvec, indexing='ij')
         N = np.sqrt(1. - (L ** 2 + M ** 2))
         LMN = np.stack([L, M, N], axis=-1)  # [Nm, Nl, 3]
-        world_coords_grid = lmn_to_icrs(LMN * au.dimensionless_unscaled, phase_tracking)
+        world_coords_grid = lmn_to_icrs(LMN * au.dimensionless_unscaled, phase_center)
         world_coords_grid = ac.SkyCoord(ra=world_coords_grid.ra, dec=world_coords_grid.dec, frame='icrs')
         print(spectral_coord[0, 0], stokes_coord[0, 0])
         array_indices = w0.world_to_array_index(pointing_coord[-1, 0], spectral_coord[-1, 0], stokes_coord[-1, 0])

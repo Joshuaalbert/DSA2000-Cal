@@ -189,7 +189,7 @@ def test_image_model():
     # Test ImageModel
     obs_time = at.Time.now()
     x = ImageModel(
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
         obs_time=obs_time,
         dl=au.Quantity(1, au.dimensionless_unscaled),
         dm=au.Quantity(1, au.dimensionless_unscaled),
@@ -206,7 +206,7 @@ def test_image_model():
     # dl neg
     with pytest.raises(ValueError):
         _ = ImageModel(
-            phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+            phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
             obs_time=obs_time,
             dl=au.Quantity(-1, au.dimensionless_unscaled),
             dm=au.Quantity(1, au.dimensionless_unscaled),
@@ -222,7 +222,7 @@ def test_image_model():
     # image dim doesn't match coherencies
     with pytest.raises(ValueError):
         _ = ImageModel(
-            phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+            phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
             obs_time=obs_time,
             dl=au.Quantity(-1, au.dimensionless_unscaled),
             dm=au.Quantity(1, au.dimensionless_unscaled),
@@ -238,7 +238,7 @@ def test_image_model():
     # beam_major negative
     with pytest.raises(ValueError):
         _ = ImageModel(
-            phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+            phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
             obs_time=obs_time,
             dl=au.Quantity(-1, au.dimensionless_unscaled),
             dm=au.Quantity(1, au.dimensionless_unscaled),
@@ -257,7 +257,7 @@ def test_save_image_to_fits(tmp_path):
     # Test save_image_to_fits
     obs_time = at.Time.now()
     image_model = ImageModel(
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
         obs_time=obs_time,
         dl=au.Quantity(0.01, au.dimensionless_unscaled),
         dm=au.Quantity(0.01, au.dimensionless_unscaled),

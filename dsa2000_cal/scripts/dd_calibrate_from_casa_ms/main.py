@@ -73,14 +73,14 @@ def read_casa_ms(casa_ms, data_column: str = 'DATA', field_idx=None, spectral_wi
     num_antennas = len(antenna_names)
 
     with pt.table(os.path.join(casa_ms, 'FIELD')) as t:
-        phase_tracking_rad = t.getcol('PHASE_DIR')  # [num_field, 1, 2]
-        num_field, _, _ = phase_tracking_rad.shape
+        phase_center_rad = t.getcol('PHASE_DIR')  # [num_field, 1, 2]
+        num_field, _, _ = phase_center_rad.shape
         if num_field > 1 and field_idx is None:
             raise ValueError("Multiple fields found, please specify field_idx.")
         if field_idx is None:
             field_idx = 0
-        phase_tracking = ac.ICRS(ra=phase_tracking_rad[field_idx, 0, 0] * au.rad,
-                                 dec=phase_tracking_rad[field_idx, 0, 1] * au.rad)
+        phase_center = ac.ICRS(ra=phase_center_rad[field_idx, 0, 0] * au.rad,
+                                 dec=phase_center_rad[field_idx, 0, 1] * au.rad)
 
     with pt.table(os.path.join(casa_ms, 'SPECTRAL_WINDOW')) as t:
         freqs_hz = t.getcol('CHAN_FREQ')  # [num_spectral_windows, num_freqs]

@@ -88,7 +88,7 @@ def test_icrs_to_lmn():
         obstime=obstime,
         location=array_location
     ).transform_to(ac.ICRS())
-    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_tracking=zenith))
+    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_center=zenith))
     np.testing.assert_allclose(lmn_sources, [0, 0, 1], atol=1e-10)
 
     # Another test of L
@@ -99,7 +99,7 @@ def test_icrs_to_lmn():
         obstime=obstime,
         location=array_location
     ).transform_to(ac.ICRS())
-    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_tracking=zenith))
+    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_center=zenith))
     np.testing.assert_allclose(lmn_sources, [1, 0, 0], atol=1e-3)
 
     # Another test of M
@@ -110,49 +110,49 @@ def test_icrs_to_lmn():
         obstime=obstime,
         location=array_location
     ).transform_to(ac.ICRS())
-    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_tracking=zenith))
+    lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_center=zenith))
     np.testing.assert_allclose(lmn_sources, [0, 1, 0], atol=1e-3)
 
-@pytest.mark.parametrize('broadcast_phase_tracking', [False, True])
+@pytest.mark.parametrize('broadcast_phase_center', [False, True])
 @pytest.mark.parametrize('broadcast_lmn', [False, True])
-def test_lmn_to_icrs_vectorised(broadcast_phase_tracking, broadcast_lmn):
+def test_lmn_to_icrs_vectorised(broadcast_phase_center, broadcast_lmn):
     np.random.seed(42)
-    if broadcast_phase_tracking:
-        phase_tracking = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
+    if broadcast_phase_center:
+        phase_center = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
             (1, 4, 1)
         )
     else:
-        phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+        phase_center = ac.ICRS(0 * au.deg, 0 * au.deg)
     if broadcast_lmn:
         lmn = np.random.normal(size=(5, 1, 1, 3)) * au.dimensionless_unscaled
     else:
         lmn = np.random.normal(size=(3,)) * au.dimensionless_unscaled
     lmn /= np.linalg.norm(lmn, axis=-1, keepdims=True)
 
-    expected_shape = np.broadcast_shapes(lmn.shape[:-1], phase_tracking.shape)
+    expected_shape = np.broadcast_shapes(lmn.shape[:-1], phase_center.shape)
 
-    sources = lmn_to_icrs(lmn, phase_tracking)
+    sources = lmn_to_icrs(lmn, phase_center)
     assert sources.shape == expected_shape
 
 
-@pytest.mark.parametrize('broadcast_phase_tracking', [False, True])
+@pytest.mark.parametrize('broadcast_phase_center', [False, True])
 @pytest.mark.parametrize('broadcast_lmn', [False, True])
-def test_icrs_to_lmn_vectorised(broadcast_phase_tracking, broadcast_lmn):
+def test_icrs_to_lmn_vectorised(broadcast_phase_center, broadcast_lmn):
     np.random.seed(42)
-    if broadcast_phase_tracking:
-        phase_tracking = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
+    if broadcast_phase_center:
+        phase_center = ac.ICRS([0, 0, 0, 0] * au.deg, [0, 0, 0, 0] * au.deg).reshape(
             (1, 4, 1)
         )
     else:
-        phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+        phase_center = ac.ICRS(0 * au.deg, 0 * au.deg)
     if broadcast_lmn:
         sources = ac.ICRS([0, 0, 0, 0, 0] * au.deg, [0, 0, 0, 0, 0] * au.deg).reshape((5, 1, 1))
     else:
         sources = ac.ICRS(0 * au.deg, 0 * au.deg)
 
-    expected_shape = np.broadcast_shapes(sources.shape, phase_tracking.shape) + (3,)
+    expected_shape = np.broadcast_shapes(sources.shape, phase_center.shape) + (3,)
 
-    sources = icrs_to_lmn(sources, phase_tracking)
+    sources = icrs_to_lmn(sources, phase_center)
     assert sources.shape == expected_shape
 
 
@@ -246,12 +246,12 @@ def test_lmn_to_icrs_over_year():
 
     lmn = np.stack([L, M, np.sqrt(1 - L ** 2 - M ** 2)], axis=-1)
 
-    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    phase_center = ac.ICRS(0 * au.deg, 0 * au.deg)
     time0 = at.Time("2021-01-01T00:00:00", scale='utc')
-    icrs0 = lmn_to_icrs(lmn, phase_tracking)
+    icrs0 = lmn_to_icrs(lmn, phase_center)
     for offset_dt in np.linspace(0., 1., 10) * au.year:
         time1 = time0 + offset_dt
-        icrs1 = lmn_to_icrs_old(lmn, time1, phase_tracking)
+        icrs1 = lmn_to_icrs_old(lmn, time1, phase_center)
         sep = icrs0.separation(icrs1)
         print(offset_dt.to(au.year).value)
         color = offset_dt.to(au.year).value * np.ones(lvec.size)
@@ -291,15 +291,15 @@ def test_lmn_to_icrs_over_time():
 
     lmn = au.Quantity(np.stack([L, M, np.sqrt(1 - L ** 2 - M ** 2)], axis=-1))
 
-    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    phase_center = ac.ICRS(0 * au.deg, 0 * au.deg)
     time0 = at.Time("2021-01-01T00:00:00", scale='utc')
-    icrs0 = lmn_to_icrs(lmn, phase_tracking)
+    icrs0 = lmn_to_icrs(lmn, phase_center)
 
     fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(10, 10))
     for i, offset_dt in enumerate([1 * au.hour, 10 * au.day, 180 * au.day, 1 * au.year]):
         ax = axs.flatten()[i]
         time1 = time0 + offset_dt
-        icrs1 = lmn_to_icrs_old(lmn, time1, phase_tracking)
+        icrs1 = lmn_to_icrs_old(lmn, time1, phase_center)
         sep = icrs0.separation(icrs1)
         im = ax.imshow(sep.to(au.arcsec).value,
                        origin='lower',
@@ -315,37 +315,37 @@ def test_lmn_to_icrs_over_time():
 
 
 def test_lmn_coords():
-    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    phase_center = ac.ICRS(0 * au.deg, 0 * au.deg)
     distance = 0.1 * au.deg
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     # Offset north
     dnorth_icrs = ac.ICRS(
-        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=0 * au.deg, distance=distance))
-    lmn_dnorth = icrs_to_lmn(dnorth_icrs, phase_tracking)
+        *offset_by(lon=phase_center.ra, lat=phase_center.dec, posang=0 * au.deg, distance=distance))
+    lmn_dnorth = icrs_to_lmn(dnorth_icrs, phase_center)
     m_dnorth = lmn_dnorth[1]
     print('North', dnorth_icrs)
     print(lmn_dnorth)
     assert m_dnorth > 0
     # Offset east
     deast_icrs = ac.ICRS(
-        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=90 * au.deg, distance=distance))
-    lmn_deast = icrs_to_lmn(deast_icrs, phase_tracking)
+        *offset_by(lon=phase_center.ra, lat=phase_center.dec, posang=90 * au.deg, distance=distance))
+    lmn_deast = icrs_to_lmn(deast_icrs, phase_center)
     l_deast = lmn_deast[0]
     print('East', deast_icrs)
     print(lmn_deast)
     assert l_deast > 0
     # Offset south
     dsouth_icrs = ac.ICRS(
-        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=180 * au.deg, distance=distance))
-    lmn_dsouth = icrs_to_lmn(dsouth_icrs, phase_tracking)
+        *offset_by(lon=phase_center.ra, lat=phase_center.dec, posang=180 * au.deg, distance=distance))
+    lmn_dsouth = icrs_to_lmn(dsouth_icrs, phase_center)
     m_dsouth = lmn_dsouth[1]
     print('South', dsouth_icrs)
     print(lmn_dsouth)
     assert m_dsouth < 0
     # Offset west
     dwest_icrs = ac.ICRS(
-        *offset_by(lon=phase_tracking.ra, lat=phase_tracking.dec, posang=270 * au.deg, distance=distance))
-    lmn_dwest = icrs_to_lmn(dwest_icrs, phase_tracking)
+        *offset_by(lon=phase_center.ra, lat=phase_center.dec, posang=270 * au.deg, distance=distance))
+    lmn_dwest = icrs_to_lmn(dwest_icrs, phase_center)
     l_dwest = lmn_dwest[0]
     print('West', dwest_icrs)
     print(lmn_dwest)
@@ -382,10 +382,10 @@ def test_lmn_ellipse_to_sky():
     m = m_rot + m0
 
     # Convert to sky
-    phase_tracking = ac.ICRS(15 * au.deg, 75 * au.deg)
+    phase_center = ac.ICRS(15 * au.deg, 75 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     lmn = au.Quantity(np.stack([l, m, np.sqrt(1 - l ** 2 - m ** 2)], axis=-1))
-    icrs = lmn_to_icrs(lmn, phase_tracking)
+    icrs = lmn_to_icrs(lmn, phase_center)
 
     # plot
 
@@ -419,10 +419,10 @@ def test_lmn_ellipse_to_sky():
 
 
 def test_earth_location_to_uvw():
-    phase_tracking = ac.ICRS(0 * au.deg, 0 * au.deg)
+    phase_center = ac.ICRS(0 * au.deg, 0 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     antennas = ac.EarthLocation.of_site('vla')
-    uvw = earth_location_to_uvw_approx(antennas=antennas, obs_time=time, phase_tracking=phase_tracking)
+    uvw = earth_location_to_uvw_approx(antennas=antennas, obs_time=time, phase_center=phase_center)
     print(uvw)
 
     # TODO: should compare to known values.

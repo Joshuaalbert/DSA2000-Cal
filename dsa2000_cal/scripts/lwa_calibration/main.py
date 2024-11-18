@@ -38,7 +38,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
             wsclean_clean_component_file=source_model_asset.get_wsclean_clean_component_file(),
             time=ms.ref_time,
             freqs=ms.meta.freqs,
-            phase_tracking=ms.meta.pointings
+            phase_center=ms.meta.pointings
         )
         source_models.append(source_model)
 

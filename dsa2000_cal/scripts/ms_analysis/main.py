@@ -40,7 +40,7 @@ def main(ms_folder: str):
         kind='apparent',
         longitude=antennas.reshape((-1, 1)).lon
     )  # [num_ant, num_times]
-    ra = ms.meta.phase_tracking.ra
+    ra = ms.meta.phase_center.ra
     ha = lst - ra
     print(f"Hour angle: {ha}")
 

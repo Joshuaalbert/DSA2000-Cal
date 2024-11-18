@@ -27,7 +27,7 @@ def mock_measurement_set(tmp_path) -> MeasurementSet:
     meta = MeasurementSetMeta(
         array_name='dsa2000W_small',
         array_location=array_location,
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=array.get_channel_width(),
         integration_time=au.Quantity(1, 's'),
         coherencies=('XX', 'XY', 'YX', 'YY'),
@@ -39,7 +39,8 @@ def mock_measurement_set(tmp_path) -> MeasurementSet:
         antenna_diameters=array.get_antenna_diameter(),
         with_autocorr=True,
         mount_types='ALT-AZ',
-        convention='physical'
+        convention='physical',
+        ref_time=at.Time("2021-01-01T00:00:00", scale='utc')
     )
     ms = MeasurementSet.create_measurement_set(ms_folder=str(tmp_path / "test_ms"), meta=meta)
 

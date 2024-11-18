@@ -36,7 +36,7 @@ def main(casa_ms: str, ms_folder: str, array_name: str):
     freqs, field_of_view = get_dish_model_beam_widths(array.get_antenna_model())
     field_of_view = np.mean(field_of_view)
     sky_model_producer = SyntheticSkyModelProducer(
-        phase_tracking=ms.meta.pointings,
+        phase_center=ms.meta.pointings,
         obs_time=ms.ref_time,
         freqs=ms.meta.freqs,
         num_bright_sources=0,

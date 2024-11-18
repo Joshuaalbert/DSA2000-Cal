@@ -19,7 +19,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model
 
 
 def build_mock_fits_source_model(num_model_freqs: int, num_source: int, full_stokes: bool,
-                                 phase_tracking: ac.ICRS, num_facets_per_side):
+                                 phase_center: ac.ICRS, num_facets_per_side):
     model_freqs = np.linspace(700, 2000, num_model_freqs) * au.MHz
 
     # Wgridder test data
@@ -69,8 +69,8 @@ def build_mock_fits_source_model(num_model_freqs: int, num_source: int, full_sto
     else:
         images = np.tile(dirty[None, :, :], (num_model_freqs, 1, 1)) * au.Jy
 
-    ras = au.Quantity(np.tile(phase_tracking.ra[None], (num_model_freqs,)))
-    decs = au.Quantity(np.tile(phase_tracking.dec[None], (num_model_freqs,)))
+    ras = au.Quantity(np.tile(phase_center.ra[None], (num_model_freqs,)))
+    decs = au.Quantity(np.tile(phase_center.dec[None], (num_model_freqs,)))
     dls = au.Quantity(np.tile([dl] * au.rad, (num_model_freqs,)))
     dms = au.Quantity(np.tile([dm] * au.rad, (num_model_freqs,)))
 
@@ -98,7 +98,7 @@ def build_mock_fits_source_model(num_model_freqs: int, num_source: int, full_sto
         dm=dms
     )
 
-    model_data.plot(phase_tracking=phase_tracking)
+    model_data.plot(phase_center=phase_center)
     return model_data, wgridder_data
 
 
@@ -138,10 +138,10 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
     array_location = ac.EarthLocation.of_site('vla')
     ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
     obstimes = ref_time + np.arange(time) * au.s
-    phase_tracking = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
+    phase_center = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
     freqs = np.linspace(700, 2000, num_freqs) * au.MHz
 
-    pointing = phase_tracking
+    pointing = phase_center
     antennas = ENU(
         east=np.random.uniform(low=-10, high=10, size=ant) * au.km,
         north=np.random.uniform(low=-10, high=10, size=ant) * au.km,
@@ -153,7 +153,7 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
     geodesic_model = build_geodesic_model(
         antennas=antennas,
         array_location=array_location,
-        phase_center=phase_tracking,
+        phase_center=phase_center,
         obstimes=obstimes,
         ref_time=ref_time,
         pointings=pointing
@@ -161,7 +161,7 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
 
     far_field_delay_engine = build_far_field_delay_engine(
         antennas=antennas,
-        phase_center=phase_tracking,
+        phase_center=phase_center,
         start_time=obstimes.min(),
         end_time=obstimes.max(),
         ref_time=ref_time
@@ -178,7 +178,7 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
         freqs=quantity_to_jnp(freqs),
         times=time_to_jnp(obstimes, ref_time)
     )
-    return phase_tracking, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine
+    return phase_center, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine
 
 
 @pytest.mark.parametrize("full_stokes", [True, False])
@@ -187,7 +187,7 @@ def test_fits_predict(full_stokes: bool, with_gains: bool):
     time = 15
     ant = 100
     num_freqs = 4
-    phase_tracking, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
+    phase_center, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
         ant, time, num_freqs
     )
     gain_model = build_mock_gain_model(with_gains, full_stokes, antennas)
@@ -197,7 +197,7 @@ def test_fits_predict(full_stokes: bool, with_gains: bool):
     num_sources = 5
     num_facets_per_side = 2
     fits_source_model, wgridder_data = build_mock_fits_source_model(num_model_freqs, num_sources, full_stokes,
-                                                                    phase_tracking, num_facets_per_side)
+                                                                    phase_center, num_facets_per_side)
 
     if full_stokes:
         assert fits_source_model.is_full_stokes()

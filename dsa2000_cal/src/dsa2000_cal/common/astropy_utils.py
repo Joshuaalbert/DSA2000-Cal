@@ -14,7 +14,7 @@ def create_random_spherical_layout(num_sources: int, key=None) -> ac.ICRS:
         key = jax.random.PRNGKey(0)
     lmn = jax.random.normal(key, (num_sources, 3))
     lmn /= np.linalg.norm(lmn, axis=1, keepdims=True)
-    return lmn_to_icrs(lmn=lmn * au.dimensionless_unscaled, phase_tracking=ac.ICRS(ra=0 * au.deg, dec=90 * au.deg))
+    return lmn_to_icrs(lmn=lmn * au.dimensionless_unscaled, phase_center=ac.ICRS(ra=0 * au.deg, dec=90 * au.deg))
 
 
 def choose_dr(field_of_view: au.Quantity, total_n: int) -> au.Quantity:

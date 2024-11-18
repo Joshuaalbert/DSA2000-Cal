@@ -27,17 +27,17 @@ def build_mock_calibrator_source_models(tmp_path, coherencies):
     antennas = array.get_antennas()
 
     # -00:36:29.015,58.45.50.398
-    phase_tracking = ac.SkyCoord("-00h36m29.015s", "58d45m50.398s", frame='icrs')
-    phase_tracking = ac.ICRS(phase_tracking.ra, phase_tracking.dec)
+    phase_center = ac.SkyCoord("-00h36m29.015s", "58d45m50.398s", frame='icrs')
+    phase_center = ac.ICRS(phase_center.ra, phase_center.dec)
 
     meta = MeasurementSetMeta(
         array_name=array_name,
         array_location=array_location,
-        phase_tracking=phase_tracking,
+        phase_center=phase_center,
         channel_width=array.get_channel_width(),
         integration_time=au.Quantity(1.5, 's'),
         coherencies=coherencies,
-        pointings=phase_tracking,
+        pointings=phase_center,
         times=at.Time("2021-01-01T00:00:00", scale='utc') + 1.5 * np.arange(1) * au.s,
         freqs=au.Quantity([700], unit=au.MHz),
         antennas=antennas,

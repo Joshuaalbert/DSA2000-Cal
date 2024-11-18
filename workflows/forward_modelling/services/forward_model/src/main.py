@@ -29,7 +29,7 @@ def main(ms_folder: str):
         meta = MeasurementSetMeta(
             array_name='dsa2000W',
             array_location=array_location,
-            phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+            phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
             channel_width=array.get_channel_width(),
             integration_time=au.Quantity(1.5, 's'),
             coherencies=['XX', 'XY', 'YX', 'YY'],
@@ -46,7 +46,7 @@ def main(ms_folder: str):
         ms = MeasurementSet.create_measurement_set(ms_folder=ms_folder, meta=meta)
 
     sky_model_producer = SyntheticSkyModelProducer(
-        phase_tracking=ms.meta.pointings,
+        phase_center=ms.meta.pointings,
         obs_time=ms.ref_time,
         freqs=ms.meta.freqs,
         num_bright_sources=7,

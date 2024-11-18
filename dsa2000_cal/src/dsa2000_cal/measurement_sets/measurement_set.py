@@ -52,7 +52,7 @@ class MeasurementSetMeta(SerialisableBaseModel):
     array_location: ac.EarthLocation = Field(
         description="Location of the array, from which UVW frame is defined."
     )
-    phase_tracking: ac.ICRS = Field(
+    phase_center: ac.ICRS = Field(
         description="Phase tracking direction, against which UVW coordinates are defined."
     )
     channel_width: au.Quantity = Field(
@@ -127,8 +127,8 @@ def _check_measurement_set_meta_v0(meta: MeasurementSetMeta):
 
     if not meta.array_location.isscalar:
         raise ValueError(f"Expected a scalar EarthLocation, got {meta.array_location}")
-    if not meta.phase_tracking.isscalar:
-        raise ValueError(f"Expected a scalar ICRS, got {meta.phase_tracking}")
+    if not meta.phase_center.isscalar:
+        raise ValueError(f"Expected a scalar ICRS, got {meta.phase_center}")
     if not meta.channel_width.isscalar:
         raise ValueError(f"Expected a scalar Quantity, got {meta.channel_width}")
     if not meta.integration_time.isscalar:
@@ -353,7 +353,7 @@ class MeasurementSet:
         """
         return build_far_field_delay_engine(
             antennas=self.meta.antennas,
-            phase_center=self.meta.phase_tracking,
+            phase_center=self.meta.phase_center,
             start_time=self.meta.times[0],
             end_time=self.meta.times[-1],
             ref_time=self.ref_time,
@@ -387,7 +387,7 @@ class MeasurementSet:
         return build_geodesic_model(
             antennas=self.meta.antennas,
             array_location=self.meta.array_location,
-            phase_center=self.meta.phase_tracking,
+            phase_center=self.meta.phase_center,
             obstimes=self.meta.times,
             ref_time=self.ref_time,
             pointings=self.meta.pointings
@@ -447,7 +447,7 @@ class MeasurementSet:
 
         engine = build_far_field_delay_engine(
             antennas=meta.antennas,
-            phase_center=meta.phase_tracking,
+            phase_center=meta.phase_center,
             start_time=meta.times[0],
             end_time=meta.times[-1],
             ref_time=meta.times[0],

@@ -26,7 +26,7 @@ def test_product_gain_model():
     gain = np.arange(num_sources * num_ant * num_freq * 2 * 2).reshape((num_sources, num_ant, num_freq, 2, 2))
     gain_model = MockGainModel(gain)
     product_gain_model = ProductGainModel([gain_model, gain_model])
-    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+    phase_center = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     array_location = ac.EarthLocation(lat=0, lon=0, height=0)
     obstimes = at.Time(['2021-01-01T00:00:00', '2021-01-01T00:00:30'], scale='utc')
     antennas = ac.EarthLocation.from_geocentric([0] * num_ant * au.m, [0] * num_ant * au.m, [0] * num_ant * au.m)
@@ -34,7 +34,7 @@ def test_product_gain_model():
     lmn_sources = jnp.zeros((num_sources, 3))
 
     geodesic_model = build_geodesic_model(
-        phase_center=phase_tracking,
+        phase_center=phase_center,
         antennas=antennas,
         array_location=array_location,
         obstimes=obstimes,

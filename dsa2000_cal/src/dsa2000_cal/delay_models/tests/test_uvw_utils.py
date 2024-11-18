@@ -43,19 +43,19 @@ def test_lm_to_k_bcrs(ra0, dec0):
 
 
 def test_icrs_to_lmn_against_perley():
-    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+    phase_center = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
 
     source = ac.ICRS(ra=[0., 1., 10] * au.deg, dec=[0., 1., 10] * au.deg)
-    lmn_ours = icrs_to_lmn(source, phase_tracking=phase_tracking)
+    lmn_ours = icrs_to_lmn(source, phase_center=phase_center)
     lmn_perley = np.stack(
-        perley_lmn_from_icrs(source.ra.rad, source.dec.rad, phase_tracking.ra.rad, phase_tracking.dec.rad), axis=-1)
+        perley_lmn_from_icrs(source.ra.rad, source.dec.rad, phase_center.ra.rad, phase_center.dec.rad), axis=-1)
     np.testing.assert_allclose(lmn_ours, lmn_perley, atol=2e-5)
 
 
 
 def test_lmn_to_icrs_against_perley():
-    phase_tracking = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+    phase_center = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
     time = at.Time("2021-01-01T00:00:00", scale='utc')
 
     lmn = np.asarray([
@@ -64,8 +64,8 @@ def test_lmn_to_icrs_against_perley():
         [0.2, 0.2, np.sqrt(1. - 0.2 ** 2 - 0.2 ** 2)],
         [0.5, 0.5, np.sqrt(1. - 0.5 ** 2 - 0.5 ** 2)],
     ]) * au.dimensionless_unscaled
-    icrs_ours = lmn_to_icrs(lmn, phase_tracking=phase_tracking)
-    ra, dec = perley_icrs_from_lmn(lmn[..., 0], lmn[..., 1], lmn[..., 2], phase_tracking.ra.rad, phase_tracking.dec.rad)
+    icrs_ours = lmn_to_icrs(lmn, phase_center=phase_center)
+    ra, dec = perley_icrs_from_lmn(lmn[..., 0], lmn[..., 1], lmn[..., 2], phase_center.ra.rad, phase_center.dec.rad)
     icrs_perley = ac.ICRS(ra * au.rad, dec * au.rad)
 
     def wrap(angle):

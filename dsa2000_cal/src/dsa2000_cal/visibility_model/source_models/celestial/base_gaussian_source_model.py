@@ -256,23 +256,23 @@ class BaseGaussianSourceModel(AbstractSourceModel):
             raise ValueError("order_approx must be 0 or 1")
         return mp_policy.cast_to_vis(vis)
 
-    def plot(self, save_file: str = None, phase_tracking: ac.ICRS | None = None):
+    def plot(self, save_file: str = None, phase_center: ac.ICRS | None = None):
         """
         Plot the sky model.
 
         Args:
             save_file: the file to save the plot to
-            phase_tracking: the phase tracking to use for the plot
+            phase_center: the phase tracking to use for the plot
         """
 
         # Use imshow to plot the sky model evaluated over a LM grid
-        if phase_tracking is None:
+        if phase_center is None:
             # Won't work near poles or RA=0
             ra0 = np.mean(self.ra) * au.rad
             dec0 = np.mean(self.dec) * au.rad
-            phase_tracking = ac.ICRS(ra=ra0, dec=dec0)
+            phase_center = ac.ICRS(ra=ra0, dec=dec0)
 
-        l, m, n = perley_lmn_from_icrs(self.ra, self.dec, phase_tracking.ra.rad, phase_tracking.dec.rad)
+        l, m, n = perley_lmn_from_icrs(self.ra, self.dec, phase_center.ra.rad, phase_center.dec.rad)
 
         lvec = np.linspace(np.min(l), np.max(l), 256)
         mvec = np.linspace(np.min(m), np.max(m), 256)

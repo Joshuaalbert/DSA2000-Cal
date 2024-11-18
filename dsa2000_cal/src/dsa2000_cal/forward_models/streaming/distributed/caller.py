@@ -90,7 +90,7 @@ class Caller:
         )
 
         image_model = ImageModel(
-            phase_tracking=self.params.ms_meta.phase_tracking,
+            phase_center=self.params.ms_meta.phase_center,
             obs_time=self.params.ms_meta.ref_time,
             dl=self.params.image_params.dl,
             dm=self.params.image_params.dm,

@@ -40,7 +40,7 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
     meta = MeasurementSetMeta(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=au.Quantity(1, au.Hz),
         integration_time=au.Quantity(1, au.s),
         coherencies=('XX', 'XY', 'YX', 'YY'),
@@ -80,7 +80,7 @@ def test_measurement_setting(tmp_path, with_autocorr, convention, num_blocks):
     meta = MeasurementSetMeta(
         array_name="test_array",
         array_location=ac.EarthLocation.from_geodetic(0 * au.deg, 0 * au.deg, 0 * au.m),
-        phase_tracking=ac.ICRS(0 * au.deg, 0 * au.deg),
+        phase_center=ac.ICRS(0 * au.deg, 0 * au.deg),
         channel_width=au.Quantity(1, au.Hz),
         integration_time=au.Quantity(1, au.s),
         coherencies=('XX', 'XY', 'YX', 'YY'),

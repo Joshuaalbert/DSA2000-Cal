@@ -311,7 +311,7 @@ def write_diagonal_a_term_correction_file(a_term_file: str, diagonal_gain_fits_f
 
 
 class ImageModel(SerialisableBaseModel):
-    phase_tracking: ac.ICRS
+    phase_center: ac.ICRS
     obs_time: at.Time
     dl: au.Quantity
     dm: au.Quantity
@@ -361,8 +361,8 @@ def _check_image_model(image_model: ImageModel):
     if not image_model.beam_pa.unit.is_equivalent(au.deg):
         raise ValueError("beam_pa must be in degrees")
     # Check shapes
-    if not image_model.phase_tracking.isscalar:
-        raise ValueError("phase_tracking must be scalar")
+    if not image_model.phase_center.isscalar:
+        raise ValueError("phase_center must be scalar")
     if not image_model.dl.isscalar:
         raise ValueError("dl must be scalar")
     if not image_model.dm.isscalar:
@@ -477,8 +477,8 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
         1
     ]
     w.wcs.crval = [
-        image_model.phase_tracking.ra.deg,
-        image_model.phase_tracking.dec.deg,
+        image_model.phase_center.ra.deg,
+        image_model.phase_center.dec.deg,
         image_model.freqs[0].to('Hz').value,
         1 # {1: I, 2: Q, 3: U, 4: V}
     ]

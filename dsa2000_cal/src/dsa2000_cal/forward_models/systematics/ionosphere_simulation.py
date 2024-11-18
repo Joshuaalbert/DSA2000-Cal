@@ -225,7 +225,7 @@ class IonosphereSimulation:
                 lmn=self.model_lmn,
                 array_location=self.array_location,
                 time=time,
-                phase_tracking=self.pointing
+                phase_center=self.pointing
             ).cartesian.xyz.T
             ref_ant = earth_location_to_enu(
                 self.ref_ant,
