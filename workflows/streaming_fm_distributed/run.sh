@@ -14,26 +14,22 @@ if [[ ! -f "$COMMON_ENV_FILE" ]]; then
   exit 1
 fi
 
-ENV_ARGS=""
 for var in "$@"; do
-  # append -e flag to each variable
-  ENV_ARGS="$ENV_ARGS -e $var"
+  export "${var%=*}"="${var#*=}"
 done
-
-echo "Args passed: $ENV_ARGS"
 
 # Use the temporary .env file in Docker Compose commands
 echo "Tearing down old services..."
-docker compose $ENV_ARGS -f "$SCRIPT_DIR/docker-compose.yaml" down
+docker compose -f "$SCRIPT_DIR/docker-compose.yaml" down
 
 echo "Building the services..."
-docker compose $ENV_ARGS -f "$SCRIPT_DIR/docker-compose.yaml" build
+docker compose -f "$SCRIPT_DIR/docker-compose.yaml" build
 
 echo "Configuring the services..."
-docker compose $ENV_ARGS config
+docker compose config
 
 echo "Starting the services..."
-docker compose $ENV_ARGS -f "$SCRIPT_DIR/docker-compose.yaml" up -d
+docker compose -f "$SCRIPT_DIR/docker-compose.yaml" up -d
 
 docker compose logs -f
 
