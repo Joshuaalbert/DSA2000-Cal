@@ -20,6 +20,8 @@ for var in "$@"; do
   ENV_ARGS="$ENV_ARGS -e $var"
 done
 
+echo "Args passed: $ENV_ARGS"
+
 # Use the temporary .env file in Docker Compose commands
 echo "Tearing down old services..."
 docker compose $ENV_ARGS -f "$SCRIPT_DIR/docker-compose.yaml" down
