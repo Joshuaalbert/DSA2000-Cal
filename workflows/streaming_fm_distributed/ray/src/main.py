@@ -144,7 +144,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: au.Quantity | None
          oversample_factor: float, full_stokes: bool, num_cal_facets: int,
          root_folder: str, run_name: str):
     # Connect to Ray.
-    ray.init(address=os.environ.get("RAY_HEAD_IP", "auto"))
+    ray.init(address="auto")
 
     run_params = build_run_params(array_name, with_autocorr, field_of_view, oversample_factor,
                                   full_stokes, num_cal_facets, root_folder, run_name)
