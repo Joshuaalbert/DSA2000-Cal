@@ -44,7 +44,7 @@ if [ "$IS_RAY_HEAD" = true ]; then
   echo "Starting Ray head node..."
   RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING=0 ray start --head \
     --port=6379 --redis-shard-ports=6380,6381 --object-manager-port=22345 --node-manager-port=22346 \
-    --dashboard-host=0.0.0.0 --metrics-export-port=8090
+    --dashboard-host=0.0.0.0 --metrics-export-port=8090 --log-dir=./logs --temp-dir=./temp
 
   # Start Jupyter Notebook only on the head node
   ROOT_DIR="/dsa/run/${REPO_DIR}/dsa2000_cal/notebooks"
@@ -75,7 +75,7 @@ else
   fi
   echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}:${RAY_REDIS_PORT}..."
   RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING=0 ray start --address="${RAY_HEAD_IP}:${RAY_REDIS_PORT}" \
-    --object-manager-port=22345 --node-manager-port=22346
+    --object-manager-port=22345 --node-manager-port=22346 --log-dir=./logs --temp-dir=./temp
 fi
 
 tail -f /dev/null
