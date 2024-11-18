@@ -23,35 +23,28 @@ cp "$COMMON_ENV_FILE" "$TEMP_ENV_FILE"
 # Array to track variable names
 declare -a ENV_VARS=()
 
-# Append dynamic arguments to the .env file
-for ARG in "$@"; do
-  if [[ "$ARG" == *=* ]]; then
-    # Extract key and value
-    KEY="${ARG%%=*}"
-    VALUE="${ARG#*=}"
-    echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
-    echo "Appended to .env.temp: $KEY=$VALUE"
-    ENV_VARS+=("$KEY")
-  else
-    echo "Error: Argument '$ARG' is not in KEY=VALUE format"
-    rm -f "$TEMP_ENV_FILE"
-    exit 1
-  fi
-done
-
-# Debug: Print ENV_VARS array
-echo "ENV_VARS: " "${ENV_VARS[@]}"
-
-# Ensure all environment variables passed via arguments are non-empty
-for VAR in "${ENV_VARS[@]}"; do
-  # Use grep to find the last occurrence of the variable in the .env file
-  VALUE=$(grep -E "^${VAR}=" "$TEMP_ENV_FILE" | tail -n1 | cut -d= -f2-)
-  echo "Checking variable '$VAR' with value '$VALUE'"
+# Load common environment variables
+while IFS= read -r LINE; do
+  # Extract key and value
+  KEY="${LINE%%=*}"
+  VALUE="${LINE#*=}"
+  # Only append if value is not empty
   if [[ -z "$VALUE" ]]; then
-    echo "Error: Environment variable '$VAR' is not set or empty in $TEMP_ENV_FILE"
-    rm -f "$TEMP_ENV_FILE"
-    exit 1
+    continue
   fi
+  echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
+  echo "Appended to .env.temp: $KEY=$VALUE"
+  ENV_VARS+=("$KEY")
+done <"$COMMON_ENV_FILE"
+
+# Append dynamic arguments to the ENV_VARS
+for ARG in "$@"; do
+  # Extract key and value
+  KEY="${ARG%%=*}"
+  VALUE="${ARG#*=}"
+  echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
+  echo "Appended to .env.temp: $KEY=$VALUE"
+  ENV_VARS+=("$KEY")
 done
 
 # Proceed with Docker Compose commands
