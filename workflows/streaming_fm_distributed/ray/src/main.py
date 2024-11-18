@@ -248,13 +248,13 @@ if __name__ == '__main__':
 
 
     parser = argparse.ArgumentParser(description='Run the forward modelling pipeline.')
-    parser.add_argument('array_name', type=str, help='Name of the array to use.')
-    parser.add_argument('field_of_view', default=None, type=none_or_float, help='Field of view in degrees.')
-    parser.add_argument('oversample_factor', default=5., type=float, help='Oversample factor for the image.')
-    parser.add_argument('full_stokes', default=True, type=str2bool, help='Use full stokes.')
-    parser.add_argument('num_cal_facets', default=1, type=int, help='Number of calibration facets.')
-    parser.add_argument('root_folder', type=str, help='Root folder to save output plots.')
-    parser.add_argument('run_name', type=str, help='Name of the run.')
+    parser.add_argument('--array_name', type=str, help='Name of the array to use.')
+    parser.add_argument('--field_of_view', default=None, type=none_or_float, help='Field of view in degrees.')
+    parser.add_argument('--oversample_factor', default=5., type=float, help='Oversample factor for the image.')
+    parser.add_argument('--full_stokes', default=True, type=str2bool, help='Use full stokes.')
+    parser.add_argument('--num_cal_facets', default=1, type=int, help='Number of calibration facets.')
+    parser.add_argument('--root_folder', type=str, help='Root folder to save output plots.')
+    parser.add_argument('--run_name', type=str, help='Name of the run.')
     args = parser.parse_args()
 
     main(
