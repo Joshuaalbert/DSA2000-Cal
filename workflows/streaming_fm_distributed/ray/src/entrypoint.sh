@@ -6,6 +6,10 @@
 REPO_DIR="DSA2000-Cal"
 PACKAGE_DIR="${REPO_DIR}/dsa2000_cal"
 PLOT_FOLDER="plots"
+TEMP_DIR="/dsa/run/temp"
+mkdir -p "$TEMP_DIR"
+
+# make absolution
 
 if [ -d "$REPO_DIR/.git" ]; then
   echo "Repository already exists. Pulling latest changes from branch $GIT_BRANCH..."
@@ -44,7 +48,7 @@ if [ "$IS_RAY_HEAD" = true ]; then
   echo "Starting Ray head node..."
   ray start --head \
     --port=6379 --redis-shard-ports=6380,6381 --object-manager-port=22345 --node-manager-port=22346 \
-    --dashboard-host=0.0.0.0 --metrics-export-port=8090 --temp-dir=./temp
+    --dashboard-host=0.0.0.0 --metrics-export-port=8090 --temp-dir=$TEMP_DIR
 
   # Start Jupyter Notebook only on the head node
   ROOT_DIR="/dsa/run/${REPO_DIR}/dsa2000_cal/notebooks"
