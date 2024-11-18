@@ -14,9 +14,8 @@ mkdir -p "$TEMP_DIR"
 if [ -d "$REPO_DIR/.git" ]; then
   echo "Repository already exists. Pulling latest changes from branch $GIT_BRANCH..."
   cd "$REPO_DIR" || exit 1
-  git fetch origin
-  git checkout "$GIT_BRANCH" || exit 1
-  git pull origin "$GIT_BRANCH"
+  git fetch origin && git checkout "$GIT_BRANCH" && git pull origin "$GIT_BRANCH"
+  cd - || exit 1
 else
   echo "Cloning repository from branch $GIT_BRANCH..."
   git clone --branch "$GIT_BRANCH" https://github.com/Joshuaalbert/DSA2000-Cal.git "$REPO_DIR"
