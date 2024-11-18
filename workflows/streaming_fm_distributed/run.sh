@@ -18,7 +18,7 @@ fi
 TEMP_ENV_FILE="$SCRIPT_DIR/.full_env"
 
 # Start with common .env content
-echo "" >"$TEMP_ENV_FILE"
+echo "" > "$TEMP_ENV_FILE"
 #cp "$COMMON_ENV_FILE" "$TEMP_ENV_FILE"
 
 # Array to track variable names
@@ -55,6 +55,8 @@ cat "$TEMP_ENV_FILE"
 docker compose -f "$SCRIPT_DIR/docker-compose.yaml" down
 docker compose -f "$SCRIPT_DIR/docker-compose.yaml" build
 docker compose config
+
+echo "Starting the services..."
 docker compose -f "$SCRIPT_DIR/docker-compose.yaml" up -d
 
 docker compose logs -f
