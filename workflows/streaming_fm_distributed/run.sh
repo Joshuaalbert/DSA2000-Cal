@@ -31,11 +31,20 @@ while IFS='=' read -r KEY _; do
 done <"$COMMON_ENV_FILE"
 
 # Append dynamic arguments to the .env file
+
+# Append dynamic arguments to the .env file
 for ARG in "$@"; do
-  echo "$ARG" >>"$TEMP_ENV_FILE"
-  # Add the variable name to the array
-  KEY=$(echo "$ARG" | cut -d= -f1)
-  ENV_VARS+=("$KEY")
+  if [[ "$ARG" == *=* ]]; then
+    # Extract key and value
+    KEY=$(echo "$ARG" | cut -d= -f1)
+    VALUE=$(echo "$ARG" | cut -d= -f2-)
+    echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
+    ENV_VARS+=("$KEY")
+  else
+    echo "Error: Argument '$ARG' is not in KEY=VALUE format"
+    rm -f "$TEMP_ENV_FILE"
+    exit 1
+  fi
 done
 
 # Ensure all environment variables are non-empty
