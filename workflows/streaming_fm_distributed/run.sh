@@ -15,7 +15,7 @@ if [[ ! -f "$COMMON_ENV_FILE" ]]; then
 fi
 
 # Create a temporary .env file
-TEMP_ENV_FILE="$SCRIPT_DIR/.env.temp"
+TEMP_ENV_FILE="$SCRIPT_DIR/.full_env"
 
 # Start with common .env content
 echo "" >"$TEMP_ENV_FILE"
@@ -35,7 +35,7 @@ while IFS= read -r LINE; do
     continue
   fi
   echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
-  echo "Appended to .env.temp: $KEY=$VALUE"
+  echo "Appended to ${TEMP_ENV_FILE}: $KEY=$VALUE"
   ENV_VARS+=("$KEY")
 done <"$COMMON_ENV_FILE"
 
@@ -45,7 +45,7 @@ for ARG in "$@"; do
   KEY="${ARG%%=*}"
   VALUE="${ARG#*=}"
   echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
-  echo "Appended to .env.temp: $KEY=$VALUE"
+  echo "Appended to ${TEMP_ENV_FILE}: $KEY=$VALUE"
   ENV_VARS+=("$KEY")
 done
 
@@ -56,7 +56,9 @@ docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" 
 docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" build
 docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" up -d
 
-# Clean up the temporary .env file
-rm -f "$TEMP_ENV_FILE"
+
 
 docker compose logs -f
+
+## Clean up the temporary .env file
+#rm -f "$TEMP_ENV_FILE"
