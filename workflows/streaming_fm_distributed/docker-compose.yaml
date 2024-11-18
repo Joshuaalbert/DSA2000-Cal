@@ -50,6 +50,8 @@ services:
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+      args:
+        SSH_PRIVATE_KEY: ${SSH_PRIVATE_KEY}
     ports:
       - ${RAY_REDIS_PORT}:6379 # External redis for Ray
       - "8265:8265" # Ray Dashboard
