@@ -67,12 +67,10 @@ services:
       - RAY_GRAFANA_IFRAME_HOST=http://ray_head:3033
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
+      - RUN_DIR_HOST=${RUN_DIR_HOST}
     volumes:
       - /dev/shm:/dev/shm
       - ${RUN_DIR_HOST}:/dsa/run
-
-networks:
-  safe-tier:
 volumes:
   grafana-data:
   prometheus-data:
