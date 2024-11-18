@@ -4,7 +4,7 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-    url: http://ray_head:90901
+    url: http://ray_head:9099
     isDefault: true
     version: 1
     editable: true

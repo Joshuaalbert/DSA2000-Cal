@@ -4,7 +4,7 @@ services:
     image: prom/prometheus
     container_name: prometheus
     ports:
-      - "90901:9090"
+      - "9099:9090"
     restart: always
     command:
         - '--config.file=/etc/prometheus/prometheus.yml'
@@ -63,7 +63,7 @@ services:
     environment:
       - IS_RAY_HEAD=${IS_RAY_HEAD}
       - RAY_GRAFANA_HOST=http://ray_head:3000
-      - RAY_PROMETHEUS_HOST=http://ray_head:90901
+      - RAY_PROMETHEUS_HOST=http://ray_head:9099
       - RAY_GRAFANA_IFRAME_HOST=http://ray_head:3000
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
