@@ -9,6 +9,6 @@ cd /dsa/run && python /dsa/code/src/main.py \
   --full_stokes=True \
   --num_cal_facets=1 \
   --root_folder='/dsa/run/working_dir' \
-  --run_name='demo' \
+  --run_name='demo'
 
 echo "Job done at $(date)"
