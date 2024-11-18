@@ -3,13 +3,13 @@
 # Fail on first error
 set -e
 
-# Usage: ./script.sh KEY1=VALUE1 KEY2=VALUE2 ...
+# Usage: ./run.sh KEY1=VALUE1 KEY2=VALUE2 ...
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 echo "Script dir $SCRIPT_DIR"
 
 # Check if .env file exists
 COMMON_ENV_FILE="$SCRIPT_DIR/.env"
-if [ ! -f "$COMMON_ENV_FILE" ]; then
+if [[ ! -f "$COMMON_ENV_FILE" ]]; then
   echo "Error: .env file not found at $COMMON_ENV_FILE"
   exit 1
 fi
@@ -21,24 +21,16 @@ TEMP_ENV_FILE="$SCRIPT_DIR/.env.temp"
 cp "$COMMON_ENV_FILE" "$TEMP_ENV_FILE"
 
 # Array to track variable names
-declare -a ENV_VARS
-
-# Collect variable names from the common .env file
-while IFS='=' read -r KEY _; do
-  if [[ -n "$KEY" && ! "$KEY" =~ ^# ]]; then
-    ENV_VARS+=("$KEY")
-  fi
-done <"$COMMON_ENV_FILE"
-
-# Append dynamic arguments to the .env file
+declare -a ENV_VARS=()
 
 # Append dynamic arguments to the .env file
 for ARG in "$@"; do
   if [[ "$ARG" == *=* ]]; then
     # Extract key and value
-    KEY=$(echo "$ARG" | cut -d= -f1)
-    VALUE=$(echo "$ARG" | cut -d= -f2-)
+    KEY="${ARG%%=*}"
+    VALUE="${ARG#*=}"
     echo "$KEY=$VALUE" >>"$TEMP_ENV_FILE"
+    echo "Appended to .env.temp: $KEY=$VALUE"
     ENV_VARS+=("$KEY")
   else
     echo "Error: Argument '$ARG' is not in KEY=VALUE format"
@@ -47,10 +39,14 @@ for ARG in "$@"; do
   fi
 done
 
-# Ensure all environment variables are non-empty
+# Debug: Print ENV_VARS array
+echo "ENV_VARS: " "${ENV_VARS[@]}"
+
+# Ensure all environment variables passed via arguments are non-empty
 for VAR in "${ENV_VARS[@]}"; do
-  # Use `grep` to find the last occurrence of the variable in the .env file
-  VALUE=$(grep -oE "^$VAR=.*" "$TEMP_ENV_FILE" | tail -n1 | cut -d= -f2-)
+  # Use grep to find the last occurrence of the variable in the .env file
+  VALUE=$(grep -E "^${VAR}=" "$TEMP_ENV_FILE" | tail -n1 | cut -d= -f2-)
+  echo "Checking variable '$VAR' with value '$VALUE'"
   if [[ -z "$VALUE" ]]; then
     echo "Error: Environment variable '$VAR' is not set or empty in $TEMP_ENV_FILE"
     rm -f "$TEMP_ENV_FILE"
@@ -58,12 +54,12 @@ for VAR in "${ENV_VARS[@]}"; do
   fi
 done
 
+# Proceed with Docker Compose commands
 # Set up local Docker cache directory
 CACHE_DIR="$SCRIPT_DIR/docker_cache"
 mkdir -p "$CACHE_DIR"
 
 export DOCKER_BUILDKIT=1
-
 
 # Use the temporary .env file in Docker Compose commands
 docker-compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" down
