@@ -7,27 +7,27 @@ services:
       - "9099:9090"
     restart: always
     command:
-        - '--config.file=/etc/prometheus/prometheus.yml'
-        - '--storage.tsdb.path=/prometheus'
-        - '--storage.tsdb.retention.time=30d'
-        - '--storage.tsdb.retention.size=5GB'
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=5GB'
     volumes:
       - ./prometheus/config:/etc/prometheus
       - prometheus-data:/prometheus
-#    env_file:
-#      - .env
+    env_file:
+      - .full_env
     extra_hosts:
       ray_head: ${RAY_HEAD_IP}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:9090/-/healthy"]
+      test: [ "CMD", "wget", "--spider", "http://localhost:9090/-/healthy" ]
       interval: 30s
       timeout: 10s
       retries: 3
   grafana:
     image: grafana/grafana-oss:10.2.2 # Consider updating
     container_name: grafana
-#    env_file:
-#      - .env
+    env_file:
+      - .full_env
     environment:
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
       - GF_SECURITY_ADMIN_USER=admin
@@ -40,7 +40,7 @@ services:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -54,8 +54,8 @@ services:
       - ${RAY_REDIS_PORT}:6379 # External redis for Ray
       - "8265:8265" # Ray Dashboard
       - "8890:8888" # Jupyter
-#    env_file:
-#      - .env
+    env_file:
+      - .full_env
     cap_add:
       - SYS_PTRACE
     extra_hosts:

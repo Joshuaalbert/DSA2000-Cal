@@ -52,12 +52,10 @@ done
 cat "$TEMP_ENV_FILE"
 
 # Use the temporary .env file in Docker Compose commands
-docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" down
-docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" build --no-cache
-docker compose --env-file "$TEMP_ENV_FILE" config
-docker compose --env-file "$TEMP_ENV_FILE" -f "$SCRIPT_DIR/docker-compose.yaml" up -d
-
-
+docker compose -f "$SCRIPT_DIR/docker-compose.yaml" down
+docker compose -f "$SCRIPT_DIR/docker-compose.yaml" build
+docker compose config
+docker compose -f "$SCRIPT_DIR/docker-compose.yaml" up -d
 
 docker compose logs -f
 
