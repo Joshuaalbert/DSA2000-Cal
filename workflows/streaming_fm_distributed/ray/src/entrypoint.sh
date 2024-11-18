@@ -34,6 +34,12 @@ echo "GIT_BRANCH=${GIT_BRANCH}"
 echo "PACKAGE_DIR=${PACKAGE_DIR}"
 
 # Start Ray
+
+if [ -z "$IS_RAY_HEAD" ]; then
+  echo "Error: IS_RAY_HEAD must be specified."
+  exit 1
+fi
+
 if [ "$IS_RAY_HEAD" = true ]; then
   echo "Starting Ray head node..."
   RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING=0 ray start --head \
