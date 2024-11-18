@@ -1,6 +1,6 @@
 FROM python:3.11.7
 
-RUN apt-get update && apt-get install -y gdb lldb sudo
+RUN apt-get update && apt-get install -y gdb lldb sudo rsync
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # requirements rarely change, so install those here
