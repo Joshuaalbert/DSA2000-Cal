@@ -33,7 +33,7 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
     ports:
-      - "3000:3000"
+      - "3033:3000"
     extra_hosts:
       ray_head: ${RAY_HEAD_IP}
     volumes:
@@ -62,9 +62,9 @@ services:
       ray_head: ${RAY_HEAD_IP}
     environment:
       - IS_RAY_HEAD=${IS_RAY_HEAD}
-      - RAY_GRAFANA_HOST=http://ray_head:3000
+      - RAY_GRAFANA_HOST=http://ray_head:3033
       - RAY_PROMETHEUS_HOST=http://ray_head:9099
-      - RAY_GRAFANA_IFRAME_HOST=http://ray_head:3000
+      - RAY_GRAFANA_IFRAME_HOST=http://ray_head:3033
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
     volumes:
