@@ -70,7 +70,7 @@ services:
       - RUN_DIR_HOST=${RUN_DIR_HOST}
     volumes:
       - /dev/shm:/dev/shm
-      - ${RUN_DIR_HOST}:/dsa/run
+      - ./:/dsa/run
 volumes:
   grafana-data:
   prometheus-data:
