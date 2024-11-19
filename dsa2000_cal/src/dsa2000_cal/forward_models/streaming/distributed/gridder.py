@@ -167,7 +167,7 @@ class Gridder:
             jnp.asarray(self.weights, mp_policy.weight_dtype),
             jnp.asarray(self.freqs, mp_policy.freq_dtype)
         )
-        yield GridderResponse(
+        return GridderResponse(
             image=np.asarray(image),  # [npix_l, npix_m[,2,2]]
             psf=np.asarray(psf)  # [npix_l, npix_m[,2,2]]
         )
