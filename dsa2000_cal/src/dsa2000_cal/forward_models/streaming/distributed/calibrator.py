@@ -164,6 +164,7 @@ class Calibration:
     full_stokes: bool
     num_ant: int
     num_backgroun_source_models: int = 0
+    verbose: bool = False
 
     def step(self, vis_model: ComplexArray, vis_data: ComplexArray, weights: FloatArray, flags: BoolArray,
              freqs: FloatArray, times: FloatArray, antenna1: IntArray, antenna2: IntArray,
@@ -222,7 +223,7 @@ class Calibration:
             residual_fn=residual_fn,
             num_approx_steps=0,
             num_iterations=100,
-            verbose=True,
+            verbose=self.verbose,
             gtol=1e-4
         )
 
