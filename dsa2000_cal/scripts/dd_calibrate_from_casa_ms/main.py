@@ -170,7 +170,7 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
         # Set
         if store_response:
             new_vis, = response
-            ms.putcol('DATA_RESIDUALS', new_vis, startrow=row_idx, nrow=rows_per_chunk)
+            ms.putcol('DATA', new_vis, startrow=row_idx, nrow=rows_per_chunk)
 
 
 def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[str], times_per_chunk: int):
@@ -184,7 +184,7 @@ def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[st
         if not os.path.exists(ms):
             raise ValueError(f"Model measurement Set {ms} does not exist.")
     # Add a column to the data Measurement Set "DATA_RESIDUALS" to store the residuals
-    add_residual_column(data_ms)
+    # add_residual_column(data_ms)
 
     # Read the data
     data_gen = read_casa_ms(data_ms, data_column='DATA', times_per_chunk=times_per_chunk)
