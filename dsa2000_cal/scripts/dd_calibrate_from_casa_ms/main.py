@@ -174,6 +174,10 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
 
 
 def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[str], times_per_chunk: int):
+    print(data_ms)
+    print(subtract_ms_list)
+    print(no_subtract_ms_list)
+
     if not os.path.exists(data_ms):
         raise ValueError(f"Data Measurement Set {data_ms} does not exist.")
     for ms in subtract_ms_list + no_subtract_ms_list:
