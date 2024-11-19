@@ -11,4 +11,4 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - 'ray_head:8090'
+          - 'ray:8090'
