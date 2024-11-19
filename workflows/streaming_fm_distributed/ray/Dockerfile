@@ -15,6 +15,10 @@ COPY ./workflows/streaming_fm_distributed/ray/src /dsa/code/src
 # Mask ssh dir
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
+# Make a writable directory for ssh
+RUN mkdir -p /tmp/ssh && chmod 700 /tmp/ssh
+
+
 # For data persistence in the run directory
 RUN mkdir -p /dsa/run
 WORKDIR /dsa/run
