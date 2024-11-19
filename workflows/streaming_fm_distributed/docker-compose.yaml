@@ -72,7 +72,7 @@ services:
     volumes:
       - /dev/shm:/dev/shm
       - ./:/dsa/run
-      - ${SSH_FOLDER}:/root/.ssh:ro
+      - ~/.ssh:/root/.ssh:ro
 volumes:
   grafana-data:
   prometheus-data:
