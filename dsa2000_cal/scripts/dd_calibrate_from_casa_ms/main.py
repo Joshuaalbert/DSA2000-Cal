@@ -65,7 +65,6 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
 
     with pt.table(os.path.join(casa_ms, 'FIELD')) as t:
         phase_center_rad = t.getcol('PHASE_DIR')  # [num_field, 1, 2]
-        print(phase_center_rad.shape)
         num_field, _, _ = phase_center_rad.shape
         if num_field > 1 and field_idx is None:
             raise ValueError("Multiple fields found, please specify field_idx.")
@@ -101,6 +100,7 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
             pointings = None
         else:
             pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
+            print(pointing_rad.shape)
             pointings = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 0, 1] * au.rad)  # [num_ant]
 
     with pt.table(casa_ms, readonly=False) as ms:
