@@ -20,6 +20,8 @@ done
 
 export IS_RAY_HEAD=true
 export RUN_DIR_HOST=$PWD
+DSA_CONTENT_SSH_USERNAME=$(whoami)
+export DSA_CONTENT_SSH_USERNAME
 
 # Use the temporary .env file in Docker Compose commands
 echo "Tearing down old services..."
