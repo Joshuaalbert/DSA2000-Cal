@@ -190,7 +190,6 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
 
 
 def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[str], times_per_chunk: int):
-
     if not os.path.exists(data_ms):
         raise ValueError(f"Data Measurement Set {data_ms} does not exist.")
     for ms in subtract_ms_list + no_subtract_ms_list:
@@ -240,8 +239,12 @@ def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[st
         del subtract_vis
         del no_subtract_vis
 
-        calibration = Calibration(full_stokes=True, num_ant=num_antennas,
-                                  num_backgroun_source_models=len(no_subtract_ms_list))
+        calibration = Calibration(
+            full_stokes=True,
+            num_ant=num_antennas,
+            num_backgroun_source_models=len(no_subtract_ms_list),
+            verbose=True
+        )
         calibrate_and_subtract_jit = jax.jit(calibration.step)
 
         args = jax.tree.map(
