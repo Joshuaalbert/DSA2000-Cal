@@ -11,6 +11,7 @@ from ray import serve
 from ray.serve.handle import DeploymentHandle, DeploymentResponseGenerator
 from tomographic_kernel.frames import ENU
 
+from dsa2000_cal.actors.namespace import NAMESPACE
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
@@ -143,8 +144,9 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
          oversample_factor: float, full_stokes: bool, num_cal_facets: int,
          root_folder: str, run_name: str):
+
     # Connect to Ray.
-    ray.init(address=f"ray:{os.environ['RAY_REDIS_PORT']}")
+    ray.init(address="auto", namespace=NAMESPACE) # ray:{os.environ['RAY_REDIS_PORT']}
 
     field_of_view = field_of_view * au.deg if field_of_view is not None else None
 
