@@ -144,7 +144,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
          oversample_factor: float, full_stokes: bool, num_cal_facets: int,
          root_folder: str, run_name: str):
     # Connect to Ray.
-    ray.init(address="auto")
+    ray.init(address=f"ray_head:{os.environ['RAY_REDIS_PORT']}")
 
     field_of_view = field_of_view * au.deg if field_of_view is not None else None
 
