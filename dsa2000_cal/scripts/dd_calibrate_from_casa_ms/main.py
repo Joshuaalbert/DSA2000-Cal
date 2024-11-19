@@ -1,11 +1,9 @@
 import os
 
-from jax._src.partition_spec import PartitionSpec
-from jax.experimental.shard_map import shard_map
+from dsa2000_cal.forward_models.streaming.distributed.calibrator import Calibration
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
-from functools import partial
 from typing import NamedTuple, List
 
 import astropy.coordinates as ac
@@ -13,21 +11,13 @@ import astropy.time as at
 import astropy.units as au
 import jax.numpy as jnp
 import jax.random
-import jaxns.framework.context as ctx
 import numpy as np
 import pyrap.tables as pt
-from jaxns.framework.ops import simulate_prior_model
-from tqdm import tqdm
 
 from dsa2000_cal.adapter.utils import CASA_CORR_TYPES, broadcast_translate_corrs
-from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt, MultiStepLevenbergMarquardtState
-from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.common.jax_utils import multi_vmap, create_mesh
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
-from dsa2000_cal.common.vec_utils import kron_product
 
 
 class MSData(NamedTuple):
@@ -42,7 +32,8 @@ class MSData(NamedTuple):
     original_coherencies: List[str | int] = None
 
 
-def read_casa_ms(casa_ms, data_column: str = 'DATA', field_idx=None, spectral_window_idx=None):
+def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field_idx=None, spectral_window_idx=None,
+                 store_response: bool = False):
     with pt.table(os.path.join(casa_ms, 'ANTENNA')) as t:
         antenna_position_m = t.getcol('POSITION')  # [num_ant, 3]
         # The exact frame should be specified in the MEASURE_REFERENCE keyword (ITRF or WGS84)
@@ -80,7 +71,7 @@ def read_casa_ms(casa_ms, data_column: str = 'DATA', field_idx=None, spectral_wi
         if field_idx is None:
             field_idx = 0
         phase_center = ac.ICRS(ra=phase_center_rad[field_idx, 0, 0] * au.rad,
-                                 dec=phase_center_rad[field_idx, 0, 1] * au.rad)
+                               dec=phase_center_rad[field_idx, 0, 1] * au.rad)
 
     with pt.table(os.path.join(casa_ms, 'SPECTRAL_WINDOW')) as t:
         freqs_hz = t.getcol('CHAN_FREQ')  # [num_spectral_windows, num_freqs]
@@ -111,185 +102,78 @@ def read_casa_ms(casa_ms, data_column: str = 'DATA', field_idx=None, spectral_wi
             pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
             pointings = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 0, 1] * au.rad)  # [num_ant]
 
-    with pt.table(casa_ms, readonly=True) as ms:
+    with pt.table(casa_ms, readonly=False) as ms:
+        num_rows = ms.nrows()
+
+        ref_time = at.Time(ms.getcol('TIME', startrow=0, nrow=1)[0] / 86400., format='mjd', scale='tt')  # [1]
         # Get the shape of the antenna1
-        antenna1 = ms.getcol('ANTENNA1')
-        antenna2 = ms.getcol('ANTENNA2')
-        if antenna1[0] == antenna2[0]:
+        antenna10 = ms.getcol('ANTENNA1', startrow=0, nrow=1)
+        antenna20 = ms.getcol('ANTENNA2', startrow=0, nrow=1)
+        if antenna10[0] == antenna20[0]:
             with_autocorr = True
         else:
             with_autocorr = False
 
-        # Get the times where UVW is defined (We take not on the effective interval)
-        times_tai_mjs = ms.getcol('TIME')[:]
-        times = at.Time(np.unique(times_tai_mjs) / 86400., format='mjd', scale='utc')  # [T]
-
-        # Get integration time, before averaging and flagging
-        interval = ms.getcol('INTERVAL')[:]  # [num_rows]
-        if not np.all(interval == interval[0]):
-            raise ValueError("Integration time is not constant.")
-        integration_time = interval[0] * au.s
-
-        ref_time = times[0]
-
-        times = time_to_jnp(times, ref_time)  # [T]
-        T = len(times)
-        antenna1 = np.reshape(antenna1, (T, -1))
-        antenna2 = np.reshape(antenna2, (T, -1))
-        _, B = np.shape(antenna1)
-
-        vis_data = ms.getcol(data_column)  # [num_rows, num_chan, coh ]
-        vis_data = np.reshape(vis_data, (T, B, num_freqs, len(coherencies)))
-        vis_data = broadcast_translate_corrs(vis_data, from_corrs=tuple(coherencies),
-                                             to_corrs=(("XX", "XY"), ("YX", "YY")))
-        weights = ms.getcol('WEIGHT')  # [num_rows, num_chan, coh]
-        weights = np.reshape(weights, (T, B, num_freqs, len(coherencies)))
-        weights = broadcast_translate_corrs(weights, from_corrs=tuple(coherencies),
-                                            to_corrs=(("XX", "XY"), ("YX", "YY"))).astype(np.float32)
-        flags = ms.getcol('FLAG')  # [num_rows, num_chan, coh]
-        flags = np.reshape(flags, (T, B, num_freqs, len(coherencies)))
-        flags = broadcast_translate_corrs(flags.astype(np.float32), from_corrs=tuple(coherencies),
-                                          to_corrs=(("XX", "XY"), ("YX", "YY"))).astype(np.bool_)
-    return MSData(
-        vis_data=vis_data,
-        weights=weights,
-        flags=flags,
-        antenna1=antenna1,
-        antenna2=antenna2,
-        times=times,
-        freqs=quantity_to_jnp(freqs),
-        num_antennas=len(antenna_names),
-        original_coherencies=coherencies
-    )
-
-
-# all devices work on channels
-mesh = create_mesh((1, 1, len(jax.devices())), ('T', 'B', 'F'), devices=jax.devices())
-
-
-@partial(
-    shard_map,
-    mesh=mesh,
-    in_specs=(PartitionSpec(), PartitionSpec('T', 'B', 'F'), PartitionSpec('T', 'B', 'F'),
-              PartitionSpec('T', 'B', 'F'), PartitionSpec('T', 'B', 'F'),
-              PartitionSpec('B'), PartitionSpec('B')),
-    out_specs=PartitionSpec('T', 'B', 'F')
-)
-def compute_residuals(
-        gains: ComplexArray,
-        vis_per_direction: ComplexArray,
-        vis_data: ComplexArray,
-        weights: FloatArray,
-        flags: BoolArray,
-        antenna1: IntArray,
-        antenna2: IntArray,
-        weighted: bool = True
-):
-    """
-    Compute the residual between the model visibilities and the observed visibilities.
-
-    Args:
-        gains: [A, F, D, 2, 2]
-        vis_per_direction: [T, B, F, D, 2, 2]
-        vis_data: [T, B, F, 2, 2]
-        weights: [T, B, F, 2, 2]
-        flags: [T, B, F, 2, 2]
-        antenna1: [B]
-        antenna2: [B]
-
-    Returns:
-        residuals: [T, B, F, 2, 2]
-    """
-
-    if np.shape(weights) != np.shape(flags):
-        raise ValueError(f"Visibilities shape {np.shape(vis_per_direction)} must match flags shape {np.shape(flags)}.")
-
-    # Compute the model visibilities
-    g1 = gains[antenna1]  # [B, F, D, 2, 2]
-    g2 = gains[antenna2]  # [B, F, D, 2, 2]
-
-    @partial(
-        multi_vmap,
-        in_mapping="[B,F,D,2,2],[B,F,D,2,2],[T,B,F,D,2,2]",
-        out_mapping="[T,B,F,D,~P,~Q]",
-        verbose=True
-    )
-    def apply_gains(g1, g2, vis):
-        if np.shape(g1) != np.shape(g1):
-            raise ValueError("Gains must have the same shape.")
-        if np.shape(vis) != np.shape(g1):
-            raise ValueError("Gains and visibilities must have the same shape.")
-        if np.shape(g1) == (2, 2):
-            return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
-        elif np.shape(g1) == ():
-            return mp_policy.cast_to_vis(g1 * vis * g2.conj())
+        if with_autocorr:
+            num_baselines = num_antennas * (num_antennas + 1) // 2
         else:
-            raise ValueError(f"Invalid shape: {np.shape(g1)}")
+            num_baselines = num_antennas * (num_antennas - 1) // 2
 
-    model_vis = apply_gains(g1, g2, vis_per_direction)  # [T, B, F, D, 2, 2]
-    model_vis = jnp.sum(model_vis, axis=-3)  # [T, B, F, 2, 2]
-    residuals = model_vis - vis_data  # [T, B, F, 2, 2]
-    if weighted:
-        weights = jnp.where(flags, jnp.zeros_like(weights), weights)  # [T, B, F, 2, 2]
-        residuals = residuals * weights  # [T, B, F, 2, 2]
-    return residuals
+        rows_per_chunk = times_per_chunk * num_baselines
+        for row_idx in range(0, num_rows, rows_per_chunk):
 
+            # Get the shape of the antenna1
+            antenna1 = ms.getcol('ANTENNA1', startrow=row_idx, nrow=rows_per_chunk)
+            antenna2 = ms.getcol('ANTENNA2', startrow=row_idx, nrow=rows_per_chunk)
 
-def calibrate_and_subtract(state: MultiStepLevenbergMarquardtState | None, vis_per_direction: ComplexArray,
-                           vis_data: ComplexArray,
-                           weights: FloatArray,
-                           flags: BoolArray,
-                           antenna1: IntArray, antenna2: IntArray,
-                           freqs: FloatArray, times: FloatArray, num_antennas: int, num_subtract: int):
-    T, B, F, D, _, _ = np.shape(vis_per_direction)
-    key = jax.random.PRNGKey(0)
+            antenna1 = np.reshape(antenna1, (times_per_chunk, num_baselines))[0]  # [B]
+            antenna2 = np.reshape(antenna2, (times_per_chunk, num_baselines))[0]  # [B]
+            B = np.shape(antenna1)[0]
 
-    # Create gain prior model
-    def get_gains():
-        gain_probabilistic_model = UnconstrainedGain()
-        mean_time = jnp.mean(times)
-        prior_model = gain_probabilistic_model.build_prior_model(
-            num_source=D,
-            num_ant=num_antennas,
-            freqs=freqs,
-            times=mean_time[None]
+            # Get the times where UVW is defined (We take not on the effective interval)
+            times_tai_mjs = ms.getcol('TIME', startrow=row_idx, nrow=rows_per_chunk)
+            times = np.reshape(times_tai_mjs, (times_per_chunk, num_baselines))[:, 0]  # [T]
+            times = at.Time(times / 86400., format='mjd', scale='tt')  # [T]
+
+            # Get integration time, before averaging and flagging
+            interval = ms.getcol('INTERVAL', startrow=row_idx, nrow=rows_per_chunk)[:]  # [num_rows]
+            if not np.all(interval == interval[0]):
+                raise ValueError("Integration time is not constant.")
+            integration_time = interval[0] * au.s
+
+            times = time_to_jnp(times, ref_time)  # [T]
+            T = len(times)
+
+            vis_data = ms.getcol(data_column)  # [num_rows, num_chan, coh ]
+            vis_data = jnp.asarray(np.reshape(vis_data, (T, B, num_freqs, len(coherencies))))
+            vis_data = broadcast_translate_corrs(vis_data, from_corrs=tuple(coherencies),
+                                                 to_corrs=(("XX", "XY"), ("YX", "YY")))
+            weights = ms.getcol('WEIGHT', startrow=row_idx, nrow=rows_per_chunk)  # [num_rows, num_chan, coh]
+            weights = jnp.asarray(np.reshape(weights, (T, B, num_freqs, len(coherencies))))
+            weights = broadcast_translate_corrs(weights, from_corrs=tuple(coherencies),
+                                                to_corrs=(("XX", "XY"), ("YX", "YY"))).astype(np.float32)
+            flags = ms.getcol('FLAG', startrow=row_idx, nrow=rows_per_chunk)  # [num_rows, num_chan, coh]
+            flags = jnp.asarray(np.reshape(flags, (T, B, num_freqs, len(coherencies))))
+            flags = broadcast_translate_corrs(flags.astype(np.float32), from_corrs=tuple(coherencies),
+                                              to_corrs=(("XX", "XY"), ("YX", "YY"))).astype(np.bool_)
+        response = yield MSData(
+            vis_data=vis_data,
+            weights=weights,
+            flags=flags,
+            antenna1=antenna1,
+            antenna2=antenna2,
+            times=times,
+            freqs=quantity_to_jnp(freqs),
+            num_antennas=num_antennas,
+            original_coherencies=coherencies
         )
-        (gains,), _ = simulate_prior_model(key, prior_model)  # [1, A, F, D, 2, 2]
-        return gains[0]
-
-    get_gains_transformed = ctx.transform(get_gains)
-
-    # Create residual_fn
-    def residual_fn(params: ComplexArray) -> ComplexArray:
-        gains = get_gains_transformed.apply(params, key).fn_val
-        return compute_residuals(gains, vis_per_direction, vis_data, weights, flags, antenna1, antenna2)
-
-    solver: MultiStepLevenbergMarquardt = MultiStepLevenbergMarquardt(
-        residual_fn=residual_fn,
-        num_approx_steps=0,
-        num_iterations=100,
-        verbose=True,
-        gtol=1e-4
-    )
-
-    # Get solver state
-    if state is None:
-        init_params = get_gains_transformed.init(key).params
-        state = solver.create_initial_state(init_params)
-    else:
-        state = solver.update_initial_state(state)
-    state, diagnostics = solver.solve(state)
-
-    gains = get_gains_transformed.apply(state.x, key).fn_val
-
-    vis_data_residuals = compute_residuals(gains, vis_per_direction[..., :num_subtract, :, :],
-                                           vis_data, weights, flags, antenna1,
-                                           antenna2, weighted=False)
-
-    return gains, vis_data_residuals, state, diagnostics
+        # Set
+        if store_response:
+            new_vis, = response
+            ms.putcol('DATA_RESIDUALS', new_vis, startrow=row_idx, nrow=rows_per_chunk)
 
 
-def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[str], block_size: int):
+def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[str], times_per_chunk: int):
     if not os.path.exists(data_ms):
         raise ValueError(f"Data Measurement Set {data_ms} does not exist.")
     for ms in subtract_ms_list + no_subtract_ms_list:
@@ -297,62 +181,66 @@ def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[st
             raise ValueError(f"Model measurement Set {ms} does not exist.")
     # Add a column to the data Measurement Set "DATA_RESIDUALS" to store the residuals
     add_residual_column(data_ms)
+
     # Read the data
-    ms_data = read_casa_ms(data_ms, data_column='DATA')
-    vis_data = ms_data.vis_data
-    weights = ms_data.weights
-    flags = ms_data.flags
-    antenna1 = ms_data.antenna1
-    antenna2 = ms_data.antenna2
-    freqs = ms_data.freqs
-    times = ms_data.times
-    num_antennas = ms_data.num_antennas
-    original_coherencies = ms_data.original_coherencies
-    del ms_data
+    data_gen = read_casa_ms(data_ms, data_column='DATA', times_per_chunk=times_per_chunk)
+    subtract_gen_list = [read_casa_ms(ms, data_column='DATA', times_per_chunk=times_per_chunk) for ms in
+                         subtract_ms_list]
+    no_subtract_gen_list = [read_casa_ms(ms, data_column='DATA', times_per_chunk=times_per_chunk) for ms in
+                            no_subtract_ms_list]
 
-    if len(freqs) % len(jax.devices()) != 0:
-        raise ValueError("Number of channels must be divisible by the number of devices to shard.")
+    response = None
+    last_solver_state = None
+    while True:
+        try:
+            ms_data = data_gen.send(response)
+            subtract_ms_data = [next(gen) for gen in subtract_gen_list]
+            no_subtract_ms_data = [next(gen) for gen in no_subtract_gen_list]
+        except StopIteration:
+            break
 
-    T, B, F, _, _ = np.shape(vis_data)
+        vis_data = ms_data.vis_data
+        weights = ms_data.weights
+        flags = ms_data.flags
+        antenna1 = ms_data.antenna1
+        antenna2 = ms_data.antenna2
+        freqs = ms_data.freqs
+        times = ms_data.times
+        num_antennas = ms_data.num_antennas
+        original_coherencies = ms_data.original_coherencies
+        del ms_data
 
-    # Get model visibilities
-    subtract_ms_data = [read_casa_ms(ms, data_column='DATA') for ms in subtract_ms_list]
-    no_subtract_ms_data = [read_casa_ms(ms, data_column='DATA') for ms in no_subtract_ms_list]
+        if len(freqs) % len(jax.devices()) != 0:
+            raise ValueError("Number of channels must be divisible by the number of devices to shard.")
 
-    num_subtract = len(subtract_ms_data)
-    vis_per_direction = jnp.stack([ms.vis_data for ms in no_subtract_ms_data], axis=-3)  # [T, B, F, D, 2, 2]
-    del subtract_ms_data
-    del no_subtract_ms_data
+        T, B, F, _, _ = np.shape(vis_data)
 
-    calibrate_and_subtract_jit = jax.jit(calibrate_and_subtract, static_argnames=['num_antennas'])
+        # Get model visibilities
+        subtract_vis = [ms.vis_data for ms in subtract_ms_data]
+        no_subtract_vis = [ms.vis_data for ms in no_subtract_ms_data]
+        vis_model = jnp.stack(subtract_vis + no_subtract_vis, axis=0)  # [D, T, B, F, 2, 2]
 
-    # Let's go one step at a time
-    init_state = None
-    for time_idx in tqdm(range(0, len(times), block_size)):
-        time_slice = slice(time_idx, time_idx + block_size)
-        # Calibrate
-        gains, vis_data_residuals, state, diagnostics = calibrate_and_subtract_jit(
-            init_state, vis_per_direction[time_slice],
-            vis_data[time_slice], weights[time_slice],
-            flags[time_slice], antenna1, antenna2,
-            freqs, times[time_slice],
-            num_antennas, num_subtract
-        )
+        del subtract_vis
+        del no_subtract_vis
 
-        init_state = state
+        calibration = Calibration(full_stokes=True, num_ant=num_antennas,
+                                  num_backgroun_source_models=len(no_subtract_ms_list))
+        calibrate_and_subtract_jit = jax.jit(calibration.step)
+
+        gains, vis_data_residuals, solver_state, diagnostics = calibrate_and_subtract_jit(
+            vis_model, vis_data, weights, flags, freqs, times, antenna1, antenna2, last_solver_state)
+
+        last_solver_state = solver_state
+
         # Convert the residuals to the original coherencies
         vis_data_residuals = broadcast_translate_corrs(
             vis_data_residuals, from_corrs=(("XX", "XY"), ("YX", "YY")),
             to_corrs=tuple(original_coherencies)
-        )  # [T, B, F, 4]
+        )  # [T, B, F, coh]
 
-        # Write the residuals to the data Measurement Set
-        with pt.table(data_ms, readonly=False) as ms:
-            start_row = time_idx * B
-            end_row = (time_idx + block_size) * B
-            # set slice
-            vis_data_residuals = np.reshape(vis_data_residuals, (T * B, F, -1))
-            ms.putcol('DATA_RESIDUALS', vis_data_residuals, startrow=start_row, nrow=end_row - start_row)
+        vis_data_residuals = np.reshape(vis_data_residuals, (T * B, F, -1))
+
+        response = (vis_data_residuals,)
 
 
 def add_residual_column(data_ms):
@@ -382,16 +270,22 @@ if __name__ == '__main__':
     # create arg parser
     import argparse
 
+
+    def parse_list_str(list_str):
+        return list_str.split(',')
+
+
     parser = argparse.ArgumentParser(
         description='DD Calibrate CASA Measurement Set against several other model Measurement Sets, and subtract.')
     parser.add_argument('--data_ms', type=str, help='The data Measurement Set to calibrate.')
-    parser.add_argument('--subtract_ms_list', type=str, nargs='+', help='The list of Measurement Sets to subtract.')
-    parser.add_argument('--no_subtract_ms_list', type=str, nargs='+',
+    parser.add_argument('--subtract_ms_list', type=parse_list_str, nargs='+',
+                        help='The list of Measurement Sets to subtract.')
+    parser.add_argument('--no_subtract_ms_list', type=parse_list_str, nargs='+',
                         help='The list of Measurement Sets to not subtract.')
-    parser.add_argument('--block_size', type=int, default=100, help='The block size to process the data in.')
+    parser.add_argument('--times_per_chunk', type=int, default=100, help='The block size to process the data in.')
 
     # Example usage:
     # python main.py --data_ms /path/to/data.ms --subtract_ms_list /path/to/subtract1.ms /path/to/subtract2.ms --no_subtract_ms_list /path/to/no_subtract1.ms /path/to/no_subtract2.ms --block_size 100
 
     args = parser.parse_args()
-    main(args.data_ms, args.subtract_ms_list, args.no_subtract_ms_list, args.block_size)
+    main(args.data_ms, args.subtract_ms_list, args.no_subtract_ms_list, args.times_per_chunk)
