@@ -5,7 +5,6 @@
 # Clone or pull the repository
 REPO_DIR="DSA2000-Cal"
 PACKAGE_DIR="${REPO_DIR}/dsa2000_cal"
-PLOT_FOLDER="plots"
 TEMP_DIR="/dsa/run/temp"
 mkdir -p "$TEMP_DIR"
 
@@ -24,9 +23,6 @@ fi
 # Install the code
 echo "Installing the $REPO_DIR package..."
 pip install -e "$PACKAGE_DIR"
-
-# Create plot folder if it doesn't exist
-mkdir -p "$PLOT_FOLDER"
 
 # Launch the Python process
 echo "Launching process with:"

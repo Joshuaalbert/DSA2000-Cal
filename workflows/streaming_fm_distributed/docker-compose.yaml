@@ -64,7 +64,7 @@ services:
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
     volumes:
       - /dev/shm:/dev/shm
-      - ${RUN_DIR_HOST}:/dsa/run
+      - ./:/dsa/run
       - ~/.ssh:/root/.ssh:ro
 volumes:
   grafana-data:

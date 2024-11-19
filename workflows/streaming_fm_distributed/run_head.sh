@@ -19,7 +19,6 @@ for var in "$@"; do
 done
 
 export IS_RAY_HEAD=true
-export RUN_DIR_HOST=$PWD
 DSA_CONTENT_SSH_USERNAME=$(whoami)
 export DSA_CONTENT_SSH_USERNAME
 
