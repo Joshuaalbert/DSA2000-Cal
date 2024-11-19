@@ -145,11 +145,21 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
             T = len(times)
 
             vis_data = ms.getcol(data_column)  # [num_rows, num_chan, coh ]
-            weights = ms.getcol('WEIGHT', startrow=row_idx, nrow=rows_per_chunk)  # [num_rows, num_chan, coh]
             flags = ms.getcol('FLAG', startrow=row_idx, nrow=rows_per_chunk)  # [num_rows, num_chan, coh]
+
+            if 'WEIGHT_SPECTRUM' not in ms.colnames():
+                # Use WEIGHT and broadcast to all coherencies
+                print("Using WEIGHT column for weights.")
+                weights = ms.getcol('WEIGHT', startrow=row_idx, nrow=rows_per_chunk)  # [rows, num_corrs]
+                weights = np.repeat(weights[:, None, :], len(freqs), axis=1)  # [rows, num_freqs, num_corrs]
+            else:
+                weights = ms.getcol('WEIGHT_SPECTRUM', startrow=row_idx,
+                                    nrow=rows_per_chunk)  # [rows, num_freqs, num_corrs]
+
             print(vis_data.shape)
             print(weights.shape)
             print(flags.shape)
+
             vis_data = jnp.asarray(np.reshape(vis_data, (T, B, num_freqs, len(coherencies))))
             vis_data = broadcast_translate_corrs(vis_data, from_corrs=tuple(coherencies),
                                                  to_corrs=(("XX", "XY"), ("YX", "YY")))
