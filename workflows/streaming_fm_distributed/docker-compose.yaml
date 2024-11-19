@@ -50,8 +50,6 @@ services:
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
-      args:
-        SSH_PRIVATE_KEY: ${SSH_PRIVATE_KEY}
     ports:
       - ${RAY_REDIS_PORT}:6379 # External redis for Ray
       - "8265:8265" # Ray Dashboard
@@ -74,6 +72,7 @@ services:
     volumes:
       - /dev/shm:/dev/shm
       - ./:/dsa/run
+      - ${SSH_PRIVATE_KEY}:/root/.ssh:ro
 volumes:
   grafana-data:
   prometheus-data:
