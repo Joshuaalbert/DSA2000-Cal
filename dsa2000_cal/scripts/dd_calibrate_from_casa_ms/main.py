@@ -149,6 +149,7 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
             vis_data = broadcast_translate_corrs(vis_data, from_corrs=tuple(coherencies),
                                                  to_corrs=(("XX", "XY"), ("YX", "YY")))
             weights = ms.getcol('WEIGHT', startrow=row_idx, nrow=rows_per_chunk)  # [num_rows, num_chan, coh]
+            print(weights.shape)
             weights = jnp.asarray(np.reshape(weights, (T, B, num_freqs, len(coherencies))))
             weights = broadcast_translate_corrs(weights, from_corrs=tuple(coherencies),
                                                 to_corrs=(("XX", "XY"), ("YX", "YY"))).astype(np.float32)
