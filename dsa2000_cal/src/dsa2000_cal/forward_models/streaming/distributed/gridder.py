@@ -154,11 +154,11 @@ class Gridder:
             )
             for sol_idx, cal_response in enumerate(responses):
                 sol_int_time_idx, sol_int_freq_idx = sol_slice_map[sol_idx]
-                self.visibilities[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.visibilities # [Ts,B,Fs[2,2]]
-                self.weights[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.weights# [Ts,B,Fs[2,2]]
-                self.flags[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.flags# [Ts,B,Fs[2,2]]
-                self.uvw[sol_int_time_idx, :, :] = cal_response.uvw # [Ts,B,3]
-                self.freqs[sol_int_freq_idx, :] = cal_response.freqs # [Fs]
+                self.visibilities[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.visibilities  # [Ts,B,Fs[2,2]]
+                self.weights[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.weights  # [Ts,B,Fs[2,2]]
+                self.flags[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.flags  # [Ts,B,Fs[2,2]]
+                self.uvw[sol_int_time_idx, :, :] = cal_response.uvw  # [Ts,B,3]
+                self.freqs[sol_int_freq_idx, :] = cal_response.freqs  # [Fs]
 
         await get_cal_results(sol_idxs, key)
         image, psf = self.compute_image_jit(

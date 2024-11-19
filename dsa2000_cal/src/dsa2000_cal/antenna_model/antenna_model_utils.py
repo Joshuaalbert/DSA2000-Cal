@@ -198,14 +198,15 @@ def plot_beam_profile(antenna_model: AbstractAntennaModel, threshold: float = 0.
     """
 
     amplitude = antenna_model.get_amplitude()[..., 0, 0]  # [theta, phi, freq]
-    circular_mean = np.mean(amplitude, axis=1)  # [theta, freq]
+    power = amplitude**2
+    circular_mean = np.mean(power, axis=1)  # [theta, freq]
     circular_mean /= np.max(circular_mean, axis=0, keepdims=True)
     theta = antenna_model.get_theta()
     norm = plt.Normalize(vmin=antenna_model.get_freqs().value.min(), vmax=antenna_model.get_freqs().value.max())
     freqs, beam_widths = get_dish_model_beam_widths(antenna_model, threshold=threshold)
     for i, freq in enumerate(freqs):
         k = int(np.interp(beam_widths[i].value / 2., theta.value, np.arange(len(theta))))
-        plt.plot(theta[:k], circular_mean[:k, i],
+        plt.plot(theta[:k].to('deg'), circular_mean[:k, i],
                  label=freq, color=plt.get_cmap('PuOr_r')(norm(freq.value)))
         print(f"Freq: {i}, {freq}, theta: {beam_widths[i] / 2.}")
     plt.xlabel('Theta (deg)')
