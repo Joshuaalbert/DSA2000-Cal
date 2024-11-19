@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import logging
 import os
 from functools import partial
@@ -158,73 +159,162 @@ class _CalibrationSolutionCache:
         return self.cache.get(tuple(freq_idxs), CalibrationSolution(solver_state=None))
 
 
-def build_compute_residuals():
-    def compute_residuals(
-            gains: ComplexArray,
-            vis_per_direction: ComplexArray,
-            vis_data: ComplexArray,
-            weights: FloatArray,
-            flags: BoolArray,
-            antenna1: IntArray,
-            antenna2: IntArray,
-            weighted: bool = True
-    ):
+@dataclasses.dataclass(eq=False)
+class Calibration:
+    full_stokes: bool
+    num_ant: int
+    num_backgroun_source_models: int = 0
+
+    def step(self, vis_model: ComplexArray, vis_data: ComplexArray, weights: FloatArray, flags: BoolArray,
+             freqs: FloatArray, times: FloatArray, antenna1: IntArray, antenna2: IntArray,
+             state: MultiStepLevenbergMarquardtState | None = None):
         """
-        Compute the residual between the model visibilities and the observed visibilities.
+        Calibrate and subtract model visibilities from data visibilities.
 
         Args:
-            gains: [D, A, F, 2, 2]
-            vis_per_direction: [D, T, B, F, 2, 2]
-            vis_data: [T, B, F, 2, 2]
-            weights: [T, B, F, 2, 2]
-            flags: [T, B, F, 2, 2]
-            antenna1: [B]
-            antenna2: [B]
+            vis_model: [D, T, B, F, 2, 2] the model visibilities per direction
+            vis_data: [T, B, F, 2, 2] the data visibilities
+            weights: [T, B, F, 2, 2] the weights
+            flags: [T, B, F, 2, 2] the flags
+            freqs: [F] the frequencies
+            times: [T] the times
+            antenna1: [B] the antenna1
+            antenna2: [B] the antenna2
+            state: MultiStepLevenbergMarquardtState the state of the solver (optional)
 
         Returns:
-            residuals: [T, B, F, 2, 2]
+            gains: [D, A, F, 2, 2] the gains
+            vis_data_residuals: [T, B, F, 2, 2] the residuals
+            state: MultiStepLevenbergMarquardtState the state of the solver
+            diagnostics: the diagnostics of the solver
         """
+        # calibrate and subtract
+        key = jax.random.PRNGKey(0)
 
-        if np.shape(weights) != np.shape(flags):
-            raise ValueError(
-                f"Visibilities shape {np.shape(vis_per_direction)} must match flags shape {np.shape(flags)}.")
+        D, T, B, C = np.shape(vis_model)[:4]
 
-        def body_fn(accumulate, x):
-            gains, vis_per_direction = x
-            # Compute the model visibilities
-            g1 = gains[antenna1]  # [B, F, 2, 2]
-            g2 = gains[antenna2]  # [B, F, 2, 2]
-
-            @partial(
-                multi_vmap,
-                in_mapping="[B,F,2,2],[B,F,2,2],[T,B,F,2,2]",
-                out_mapping="[T,B,F,~P,~Q]",
-                verbose=True
+        # Create gain prior model
+        def get_gains():
+            gain_probabilistic_model = UnconstrainedGain(
+                full_stokes=self.full_stokes,
+                dof=2
             )
-            def apply_gains(g1, g2, vis):
-                if np.shape(g1) != np.shape(g1):
-                    raise ValueError("Gains must have the same shape.")
-                if np.shape(vis) != np.shape(g1):
-                    raise ValueError("Gains and visibilities must have the same shape.")
-                if np.shape(g1) == (2, 2):
-                    return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
-                elif np.shape(g1) == ():
-                    return mp_policy.cast_to_vis(g1 * vis * g2.conj())
-                else:
-                    raise ValueError(f"Invalid shape: {np.shape(g1)}")
+            mean_time = jnp.mean(times)
+            prior_model = gain_probabilistic_model.build_prior_model(
+                num_source=D,
+                num_ant=self.num_ant,
+                freqs=freqs,
+                times=mean_time[None]
+            )
+            (gains,), _ = simulate_prior_model(key, prior_model)  # [D, 1, A, F, 2, 2]
+            return gains[:, 0]  # [D, A, F, 2, 2]
 
-            delta_vis = apply_gains(g1, g2, vis_per_direction)  # [T, B, F, 2, 2]
-            return accumulate + delta_vis, ()
+        get_gains_transformed = ctx.transform(get_gains)
 
-        accumulate = jnp.zeros_like(vis_data)
-        model_vis, _ = jax.lax.scan(body_fn, accumulate, (gains, vis_per_direction))
-        residuals = model_vis - vis_data  # [T, B, F, 2, 2]
-        if weighted:
-            weights = jnp.where(flags, jnp.zeros_like(weights), weights)  # [T, B, F, 2, 2]
-            residuals = residuals * weights  # [T, B, F, 2, 2]
-        return residuals
+        compute_residuals = self.build_compute_residuals()
 
-    return compute_residuals
+        # Create residual_fn
+        def residual_fn(params: ComplexArray) -> ComplexArray:
+            gains = get_gains_transformed.apply(params, key).fn_val
+            return compute_residuals(gains, vis_model, vis_data, weights, flags, antenna1, antenna2)
+
+        solver = MultiStepLevenbergMarquardt(
+            residual_fn=residual_fn,
+            num_approx_steps=0,
+            num_iterations=100,
+            verbose=True,
+            gtol=1e-4
+        )
+
+        # Get solver state
+        if state is None:
+            init_params = get_gains_transformed.init(key).params
+            state = solver.create_initial_state(init_params)
+        else:
+            state = solver.update_initial_state(state)
+        state, diagnostics = solver.solve(state)
+
+        gains = get_gains_transformed.apply(state.x, key).fn_val
+
+        vis_data_residuals = compute_residuals(gains, vis_model,
+                                               vis_data, weights, flags, antenna1,
+                                               antenna2, weighted=False,
+                                               num_no_subtract=self.num_backgroun_source_models)
+
+        return gains, vis_data_residuals, state, diagnostics
+
+    def build_compute_residuals(self):
+        def compute_residuals(
+                gains: ComplexArray,
+                vis_per_direction: ComplexArray,
+                vis_data: ComplexArray,
+                weights: FloatArray,
+                flags: BoolArray,
+                antenna1: IntArray,
+                antenna2: IntArray,
+                weighted: bool = True,
+                num_no_subtract: int = 0
+        ):
+            """
+            Compute the residual between the model visibilities and the observed visibilities.
+
+            Args:
+                gains: [D, A, F, 2, 2]
+                vis_per_direction: [D, T, B, F, 2, 2]
+                vis_data: [T, B, F, 2, 2]
+                weights: [T, B, F, 2, 2]
+                flags: [T, B, F, 2, 2]
+                antenna1: [B]
+                antenna2: [B]
+
+            Returns:
+                residuals: [T, B, F, 2, 2]
+            """
+
+            if num_no_subtract > 0:
+                gains = gains[:-num_no_subtract]
+                vis_per_direction = vis_per_direction[:-num_no_subtract]
+
+            if np.shape(weights) != np.shape(flags):
+                raise ValueError(
+                    f"Visibilities shape {np.shape(vis_per_direction)} must match flags shape {np.shape(flags)}.")
+
+            def body_fn(accumulate, x):
+                gains, vis_per_direction = x
+                # Compute the model visibilities
+                g1 = gains[antenna1]  # [B, F, 2, 2]
+                g2 = gains[antenna2]  # [B, F, 2, 2]
+
+                @partial(
+                    multi_vmap,
+                    in_mapping="[B,F,2,2],[B,F,2,2],[T,B,F,2,2]",
+                    out_mapping="[T,B,F,~P,~Q]",
+                    verbose=True
+                )
+                def apply_gains(g1, g2, vis):
+                    if np.shape(g1) != np.shape(g1):
+                        raise ValueError("Gains must have the same shape.")
+                    if np.shape(vis) != np.shape(g1):
+                        raise ValueError("Gains and visibilities must have the same shape.")
+                    if np.shape(g1) == (2, 2):
+                        return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
+                    elif np.shape(g1) == ():
+                        return mp_policy.cast_to_vis(g1 * vis * g2.conj())
+                    else:
+                        raise ValueError(f"Invalid shape: {np.shape(g1)}")
+
+                delta_vis = apply_gains(g1, g2, vis_per_direction)  # [T, B, F, 2, 2]
+                return accumulate + delta_vis, ()
+
+            accumulate = jnp.zeros_like(vis_data)
+            model_vis, _ = jax.lax.scan(body_fn, accumulate, (gains, vis_per_direction))
+            residuals = model_vis - vis_data  # [T, B, F, 2, 2]
+            if weighted:
+                weights = jnp.where(flags, jnp.zeros_like(weights), weights)  # [T, B, F, 2, 2]
+                residuals = residuals * weights  # [T, B, F, 2, 2]
+            return residuals
+
+        return compute_residuals
 
 
 class CalibratorResponse(NamedTuple):
@@ -271,62 +361,12 @@ class Calibrator:
         self.times = np.zeros((params.chunk_params.num_times_per_sol_int,), dtype=np.float64)
         self.freqs = np.zeros((params.chunk_params.num_freqs_per_sol_int,), dtype=np.float64)
 
-        def calibrate(vis_model, vis_data, weights, flags, freqs, times, antenna1, antenna2, state):
-            # calibrate and subtract
-            key = jax.random.PRNGKey(0)
+        calibration = Calibration(
+            full_stokes=self.params.full_stokes,
+            num_ant=len(self.params.ms_meta.antennas)
+        )
 
-            D, T, B, C = np.shape(vis_model)[:4]
-
-            # Create gain prior model
-            def get_gains():
-                gain_probabilistic_model = UnconstrainedGain(
-                    full_stokes=self.params.full_stokes,
-                    dof=2
-                )
-                mean_time = jnp.mean(times)
-                prior_model = gain_probabilistic_model.build_prior_model(
-                    num_source=D,
-                    num_ant=len(self.params.ms_meta.antennas),
-                    freqs=freqs,
-                    times=mean_time[None]
-                )
-                (gains,), _ = simulate_prior_model(key, prior_model)  # [D, 1, A, F, 2, 2]
-                return gains[:, 0]  # [D, A, F, 2, 2]
-
-            get_gains_transformed = ctx.transform(get_gains)
-
-            compute_residuals = build_compute_residuals()
-
-            # Create residual_fn
-            def residual_fn(params: ComplexArray) -> ComplexArray:
-                gains = get_gains_transformed.apply(params, key).fn_val
-                return compute_residuals(gains, vis_model, vis_data, weights, flags, antenna1, antenna2)
-
-            solver = MultiStepLevenbergMarquardt(
-                residual_fn=residual_fn,
-                num_approx_steps=0,
-                num_iterations=100,
-                verbose=True,
-                gtol=1e-4
-            )
-
-            # Get solver state
-            if state is None:
-                init_params = get_gains_transformed.init(key).params
-                state = solver.create_initial_state(init_params)
-            else:
-                state = solver.update_initial_state(state)
-            state, diagnostics = solver.solve(state)
-
-            gains = get_gains_transformed.apply(state.x, key).fn_val
-
-            vis_data_residuals = compute_residuals(gains, vis_model,
-                                                   vis_data, weights, flags, antenna1,
-                                                   antenna2, weighted=False)
-
-            return gains, vis_data_residuals, state, diagnostics
-
-        self.calibrate_jit = jax.jit(calibrate)
+        self.calibrate_jit = jax.jit(calibration.step)
 
     async def __call__(self, sol_idx: int, key) -> CalibratorResponse:
 

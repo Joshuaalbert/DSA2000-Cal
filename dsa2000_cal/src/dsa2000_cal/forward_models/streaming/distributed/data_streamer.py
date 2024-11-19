@@ -21,7 +21,7 @@ from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
-from dsa2000_cal.gain_models.gain_model import GainModel
+from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
     build_fits_source_model_from_wsclean_components
@@ -29,6 +29,16 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_mode
     build_point_source_model_from_wsclean_components
 
 logger = logging.getLogger('ray')
+
+
+def test_bug():
+    class A:
+        def f(self, x):
+            return x
+
+    a = A()
+    f_jit = jax.jit(a.f)
+    print(f_jit(0))
 
 
 class DataStreamerParams(SerialisableBaseModel):
@@ -72,7 +82,7 @@ class DataStreamer:
             with_autocorr=self.params.ms_meta.with_autocorr,
             convention=self.params.ms_meta.convention
         )
-        self.state = predict_and_sample
+        self.state = predict_and_sample.get_state()
         self._step_jit = jax.jit(predict_and_sample.step)
 
     async def __call__(self, time_idx: int, freq_idx: int, key) -> DataStreamerResponse:
@@ -161,7 +171,7 @@ class PredictAndSample:
     def step(self, key,
              freq: FloatArray,
              time: FloatArray,
-             gain_model: GainModel | None,
+             gain_model: BaseSphericalInterpolatorGainModel | None,
              near_field_delay_engine: BaseNearFieldDelayEngine,
              far_field_delay_engine: BaseFarFieldDelayEngine,
              geodesic_model: BaseGeodesicModel,

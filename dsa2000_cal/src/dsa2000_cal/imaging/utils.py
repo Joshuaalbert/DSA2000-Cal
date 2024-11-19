@@ -99,7 +99,7 @@ def get_array_image_parameters(array_name: str, field_of_view: au.Quantity | Non
 
     print(f"Center x: {center_l}, Center y: {center_m}")
     print(f"Image size: {num_pixel} x {num_pixel}")
-    print(f"Pixel size: {dl} x {dm}")
+    print(f"Pixel size: {dl.to('arcsec')} x {dm.to('arcsec')}")
     return num_pixel, dl, dm, center_l, center_m
 
 
