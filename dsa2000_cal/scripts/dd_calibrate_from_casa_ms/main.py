@@ -282,9 +282,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='DD Calibrate CASA Measurement Set against several other model Measurement Sets, and subtract.')
     parser.add_argument('--data_ms', type=str, help='The data Measurement Set to calibrate.')
-    parser.add_argument('--subtract_ms_list', type=parse_list_str, nargs='+',
+    parser.add_argument('--subtract_ms_list', type=parse_list_str,
                         help='The list of Measurement Sets to subtract.')
-    parser.add_argument('--no_subtract_ms_list', type=parse_list_str, nargs='+',
+    parser.add_argument('--no_subtract_ms_list', type=parse_list_str,
                         help='The list of Measurement Sets to not subtract.')
     parser.add_argument('--times_per_chunk', type=int, default=100, help='The block size to process the data in.')
 
