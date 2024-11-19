@@ -99,9 +99,9 @@ def read_casa_ms(casa_ms, times_per_chunk: int, data_column: str = 'DATA', field
             # Assuming there are no pointings, so all antennas point at zenith
             pointings = None
         else:
-            pointing_rad = t.getcol('DIRECTION')  # [num_ant, 1, 2]
+            pointing_rad = t.getcol('DIRECTION')  # [num_ant, 2, 1] # Sometimes [num_ant, 1, 2]
             print(pointing_rad.shape)
-            pointings = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 0, 1] * au.rad)  # [num_ant]
+            pointings = ac.ICRS(ra=pointing_rad[:, 0, 0] * au.rad, dec=pointing_rad[:, 1, 0] * au.rad)  # [num_ant]
 
     with pt.table(casa_ms, readonly=False) as ms:
         num_rows = ms.nrows()
