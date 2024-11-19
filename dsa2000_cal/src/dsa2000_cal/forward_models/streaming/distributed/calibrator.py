@@ -144,6 +144,13 @@ class _CalibrationSolutionCache:
         self.params = params
         self.cache: Dict[Tuple[int, ...], CalibrationSolution] = {}  # tuple(freq_idxs) -> solution
 
+    async def health_check(self):
+        """
+        Announce health check.
+        """
+        logger.info(f"Healthy {self.__class__.__name__}")
+        return
+
     async def store_calibration_solution(self, freq_idxs: List[int], solution: CalibrationSolution):
         self.cache[tuple(freq_idxs)] = solution
 
