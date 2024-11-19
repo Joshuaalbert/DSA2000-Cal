@@ -46,10 +46,10 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     else:
         num_baselines = (num_antennas * (num_antennas - 1)) // 2
 
-    freqs = array.get_channels()
+    freqs = array.get_channels()[:40]
 
     num_channels = len(freqs)
-    num_sub_bands_per_image = 10
+    num_sub_bands_per_image = 1
     num_freqs_per_sol_int = 40
 
     channel_width = array.get_channel_width()
