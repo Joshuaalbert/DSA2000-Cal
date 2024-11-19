@@ -12,6 +12,9 @@ RUN pip install -r /dsa/code/requirements-notebooks.txt
 # Copy entrypoint
 COPY ./workflows/streaming_fm_distributed/ray/src /dsa/code/src
 
+# Mask ssh dir
+RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
+
 # For data persistence in the run directory
 RUN mkdir -p /dsa/run
 WORKDIR /dsa/run
