@@ -247,8 +247,9 @@ def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[st
         )
         calibrate_and_subtract_jit = jax.jit(calibration.step)
 
+        device = jax.devices()[0]
         args = jax.tree.map(
-            jnp.asarray,
+            lambda x: jax.device_put(x, device),
             (vis_model, vis_data, weights, flags, freqs, times, antenna1, antenna2, last_solver_state)
         )
 
