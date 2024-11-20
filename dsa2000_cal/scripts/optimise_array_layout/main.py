@@ -473,7 +473,7 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         (x,) = model(params).prepare_input(U)
         obj = (
                 compute_obj_fn(x, lmn, freq, latitude)
-                + compute_obj_fn(x, lmn, lower_freq, latitude)
+                # + compute_obj_fn(x, lmn, lower_freq, latitude)
                 # + compute_obj_fn(x, lmn, upper_freq, latitude)
         )
         return obj
