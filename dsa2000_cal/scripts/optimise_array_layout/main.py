@@ -482,7 +482,9 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         obj_fn=objective,
         num_approx_steps=2,
         num_iterations=10,
-        verbose=True
+        verbose=True,
+        min_cg_maxiter=100,
+        init_cg_maxiter=100
     )
 
     # solver = MultiStepLevenbergMarquardt(

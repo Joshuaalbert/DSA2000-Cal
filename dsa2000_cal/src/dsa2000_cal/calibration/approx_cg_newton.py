@@ -323,11 +323,7 @@ class ApproxCGNewton(Generic[X]):
                         jnp.maximum(state.cg_maxiter * 0.5, self.min_cg_maxiter).astype(state.cg_maxiter),
                         state.cg_maxiter
                     ),
-                    jnp.where(
-                        state.cg_maxiter == self.min_cg_maxiter,
-                        jnp.asarray(x_size, state.cg_maxiter.dtype),
-                        jnp.minimum(state.cg_maxiter * 2, x_size).astype(state.cg_maxiter)
-                    )
+                    jnp.minimum(state.cg_maxiter * 2, x_size).astype(state.cg_maxiter)
                 )
             else:
                 cg_maxiter = state.cg_maxiter
