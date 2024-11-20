@@ -6,8 +6,9 @@ from jaxns.framework.special_priors import SpecialPrior
 from scipy.spatial import KDTree
 
 from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
-from dsa2000_cal.common.astropy_utils import mean_itrs
+from dsa2000_cal.calibration.approx_cg_newton import ApproxCGNewton
 from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.astropy_utils import mean_itrs
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
@@ -18,7 +19,6 @@ import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import jax
-from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
 from jaxns import save_pytree
 import jax.numpy as jnp
 import numpy as np
@@ -182,6 +182,35 @@ def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
     other_residual_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
 
     return residual_fwhm, residual_sidelobes, other_residual_sidelobes
+
+
+def compute_obj_fn(antenna_locations: jax.Array, lmn: jax.Array,
+                   freq: jax.Array, latitude: jax.Array):
+    psf = compute_psf(antenna_locations, lmn, freq, latitude)  # [Nr, Nt]
+    fwhm_ring = psf[0, :]  # [Nt]
+    sidelobes = psf[1:, :]  # [Nr-1, Nt]
+    # Only positive psf values can be optimised by configuration
+    residual_fwhm = (jnp.log(fwhm_ring) - jnp.log(0.5)) / 0.02
+    residual_fwhm = jnp.where(jnp.isnan(residual_fwhm), 0., residual_fwhm)
+    log_sidelobe = jnp.log(sidelobes)
+    log_sidelobe = jnp.where(sidelobes > 0., log_sidelobe, 0.)
+
+    def single_dec_residuals(delta_dec):
+        # Also take into account zenith but only consider sidelobes
+        psf = compute_psf(antenna_locations, lmn, freq, latitude - delta_dec)  # [Nr, Nt]
+        sidelobes = psf[1:, :]  # [Nr-1, Nt]
+        log_sidelobes = jnp.log(sidelobes)
+        log_sidelobes = jnp.where(sidelobes > 0., log_sidelobes, 0.)
+        return log_sidelobes
+
+    delta_decs = jnp.asarray(np.asarray([-30., -16., 10., 23., 36., 50., 64., 76., 90.]) * np.pi / 180.)
+
+    # other_residual_sidelobes = [single_dec_residuals(d) for d in delta_decs]
+
+    other_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
+
+    return jnp.mean(jnp.square(residual_fwhm)) + jnp.mean(jnp.square(log_sidelobe)) + jnp.mean(
+        jnp.square(other_sidelobes))
 
 
 def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance):
@@ -436,21 +465,36 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
         (x,) = model(params).prepare_input(U)
         return (
             compute_residuals(x, lmn, freq, latitude),
-            # compute_residuals(x, lmn, lower_freq, latitude),
-            # compute_residuals(x, lmn, upper_freq, latitude)
+            compute_residuals(x, lmn, lower_freq, latitude),
+            compute_residuals(x, lmn, upper_freq, latitude)
         )
 
-    solver = MultiStepLevenbergMarquardt(
-        residual_fn=residuals,
+    def objective(params):
+        obj = (
+                compute_obj_fn(params, lmn, freq, latitude)
+                + compute_obj_fn(params, lmn, lower_freq, latitude)
+                + compute_obj_fn(params, lmn, upper_freq, latitude)
+        )
+        return obj
+
+    solver = ApproxCGNewton(
+        obj_fn=objective,
+        num_approx_steps=2,
         num_iterations=10,
-        num_approx_steps=0,
-        p_any_improvement=0.01,
-        p_less_newton=0.25,
-        p_more_newton=0.8,
-        c_more_newton=0.2,
-        c_less_newton=1.5,
         verbose=True
     )
+
+    # solver = MultiStepLevenbergMarquardt(
+    #     residual_fn=residuals,
+    #     num_iterations=10,
+    #     num_approx_steps=0,
+    #     p_any_improvement=0.01,
+    #     p_less_newton=0.25,
+    #     p_more_newton=0.8,
+    #     c_more_newton=0.2,
+    #     c_less_newton=1.5,
+    #     verbose=True
+    # )
     state = solver.create_initial_state(model.params)
     state, diagnostics = solver.solve(state)
     return model(state.x).prepare_input(U)[0], state, diagnostics
@@ -566,6 +610,7 @@ def main(init_config: str | None = None):
         x_init = x
         # Save state and solution
         save_pytree(state, 'state.json')
+        save_pytree(diagnostics, f'diagnostics_{iteration}.json')
         with open(f'solution_{iteration}.txt', 'w') as f:
             f.write("#X_ITRS,Y_ITRS,Z_ITRS\n")
             antenna_locs = ENU(
