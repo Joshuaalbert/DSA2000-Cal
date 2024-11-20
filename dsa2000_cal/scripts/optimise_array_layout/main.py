@@ -209,8 +209,7 @@ def compute_obj_fn(antenna_locations: jax.Array, lmn: jax.Array,
 
     other_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
 
-    return jnp.mean(jnp.square(residual_fwhm)) + jnp.mean(jnp.square(log_sidelobe)) + jnp.mean(
-        jnp.square(other_sidelobes))
+    return jnp.mean(jnp.square(residual_fwhm)) + jnp.mean(log_sidelobe) + jnp.mean(other_sidelobes)
 
 
 def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance):
@@ -472,9 +471,9 @@ def solve(ball_origin, ball_radius, lmn, freq, latitude):
     def objective(params):
         (x,) = model(params).prepare_input(U)
         obj = (
-                compute_obj_fn(x, lmn, freq, latitude)
-                # + compute_obj_fn(x, lmn, lower_freq, latitude)
-                # + compute_obj_fn(x, lmn, upper_freq, latitude)
+            compute_obj_fn(x, lmn, freq, latitude)
+            # + compute_obj_fn(x, lmn, lower_freq, latitude)
+            # + compute_obj_fn(x, lmn, upper_freq, latitude)
         )
         return obj
 
