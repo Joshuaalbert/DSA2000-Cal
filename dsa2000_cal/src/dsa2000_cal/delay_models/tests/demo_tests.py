@@ -54,8 +54,8 @@ def test_aberated_plane_of_sky(time: at.Time, baseline: au.Quantity):
     )
     uvw = engine.compute_uvw(
         times=time_to_jnp(time[None], time),
-        antenna_1=jnp.asarray([0]),
-        antenna_2=jnp.asarray([1])
+        antenna1=jnp.asarray([0]),
+        antenna2=jnp.asarray([1])
     )
     uvw = uvw * au.m
 
@@ -209,13 +209,13 @@ def prepare_standard_test():
 
     antennas = ac.concatenate(antennas).earth_location
 
-    antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
+    antenna1, antenna2 = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
 
-    return obstime, array_location, antennas, antenna_1, antenna_2, phase_centers
+    return obstime, array_location, antennas, antenna1, antenna2, phase_centers
 
 
 def test_standard_test_dsa2000():
-    obstime, array_location, antennas, antenna_1, antenna_2, phase_centers = prepare_standard_test()
+    obstime, array_location, antennas, antenna1, antenna2, phase_centers = prepare_standard_test()
 
     # For each phase center produce the UVW coordinates ordered by the antenna1 and antenna2, and save to file
 
@@ -230,11 +230,11 @@ def test_standard_test_dsa2000():
             ref_time=obstime,
             verbose=True
         )
-        times = jnp.repeat(time_to_jnp(obstime, obstime), len(antenna_1))
+        times = jnp.repeat(time_to_jnp(obstime, obstime), len(antenna1))
         uvw = far_field_engine.compute_uvw(
             times=times,
-            antenna_1=antenna_1,
-            antenna_2=antenna_2
+            antenna1=antenna1,
+            antenna2=antenna2
         )  # [N, 3] in meters
         results[str(i)] = uvw.tolist()
 
@@ -248,12 +248,12 @@ def test_compare_to_calc():
     with open('pycalc_results_noatmo.json', 'r') as f:
         results_calc = json.load(f)
 
-    obstime, array_location, antennas, antenna_1, antenna_2, phase_centers = prepare_standard_test()
+    obstime, array_location, antennas, antenna1, antenna2, phase_centers = prepare_standard_test()
 
     antennas_gcrs = antennas.get_gcrs(obstime)
     antennas_gcrs = antennas_gcrs.cartesian.xyz.T  # [N, 3]
 
-    baselines = antennas_gcrs[antenna_2, :] - antennas_gcrs[antenna_1, :]
+    baselines = antennas_gcrs[antenna2, :] - antennas_gcrs[antenna1, :]
     baselines_norm = np.linalg.norm(baselines, axis=1).to('m').value
 
     diffs = []
@@ -266,7 +266,7 @@ def test_compare_to_calc():
         value_dsa = np.asarray(results_dsa[str(key)])
         value_dsa_norm = np.linalg.norm(value_dsa, axis=1)
         value_calc_norm = np.linalg.norm(value_calc, axis=1)
-        for i1, i2, b_norm, dsa_norm, calc_norm in zip(antenna_1, antenna_2, baselines_norm, value_dsa_norm,
+        for i1, i2, b_norm, dsa_norm, calc_norm in zip(antenna1, antenna2, baselines_norm, value_dsa_norm,
                                                        value_calc_norm):
             if np.abs(dsa_norm - calc_norm) > 10:
                 print(
@@ -278,7 +278,7 @@ def test_compare_to_calc():
         print(
             f"alt: {alt}, phase center: {phase_center.ra} {phase_center.dec} Mean diff: {mean_diff}, Std diff: {std_diff}")
 
-        b_norm = np.repeat(np.linalg.norm(baselines[antenna_2] - baselines[antenna_1], axis=1, keepdims=True), 3,
+        b_norm = np.repeat(np.linalg.norm(baselines[antenna2] - baselines[antenna1], axis=1, keepdims=True), 3,
                            axis=1).flatten().to('m').value
         baseline_norms.extend(b_norm)
         diffs.extend((diff).tolist())
@@ -329,13 +329,13 @@ def test_uvw_coverage():
     )
 
     baseline_pairs = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2)))
-    antenna_1 = baseline_pairs[:, 0]
-    antenna_2 = baseline_pairs[:, 1]
+    antenna1 = baseline_pairs[:, 0]
+    antenna2 = baseline_pairs[:, 1]
 
     data_dict = dict(
-        times=jnp.repeat(time_to_jnp(obstime, obstime)[None], len(antenna_1), axis=0),
-        antenna_1=jnp.asarray(antenna_1),
-        antenna_2=jnp.asarray(antenna_2)
+        times=jnp.repeat(time_to_jnp(obstime, obstime)[None], len(antenna1), axis=0),
+        antenna1=jnp.asarray(antenna1),
+        antenna2=jnp.asarray(antenna2)
     )
     data_dict = jax.device_put(data_dict)
 
@@ -347,9 +347,9 @@ def test_uvw_coverage():
     uvws = []
     for t in obstime + np.arange(0, 10.3 * 60, 60) * au.s:
         data_dict = dict(
-            times=jnp.repeat(time_to_jnp(t, obstime)[None], len(antenna_1), axis=0),
-            antenna_1=jnp.asarray(antenna_1),
-            antenna_2=jnp.asarray(antenna_2)
+            times=jnp.repeat(time_to_jnp(t, obstime)[None], len(antenna1), axis=0),
+            antenna1=jnp.asarray(antenna1),
+            antenna2=jnp.asarray(antenna2)
         )
         data_dict = jax.device_put(data_dict)
         t0 = time.time()

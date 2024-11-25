@@ -136,23 +136,23 @@ class BaseFarFieldDelayEngine:
         w, (u, v) = jax.value_and_grad(self.compute_delay_from_lm_jax, argnums=(0, 1))(l, m, t1, i1, i2)
         return jnp.stack([u, v, w], axis=-1)  # [3]
 
-    def compute_uvw(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array,
+    def compute_uvw(self, times: jax.Array, antenna1: jax.Array, antenna2: jax.Array,
                     convention: str = 'physical') -> jax.Array:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model.
 
         Args:
             times: [N] Time of observation, in tt scale in seconds, relative to the first time.
-            antenna_1: [N] Index of the first antenna.
-            antenna_2: [N] Index of the second antenna.
+            antenna1: [N] Index of the first antenna.
+            antenna2: [N] Index of the second antenna.
 
         Returns:
             uvw: [N, 3] UVW coordinates in meters.
         """
         if convention == 'physical':
-            return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
+            return jax.vmap(self._single_compute_uvw)(times, antenna1, antenna2)
         elif convention == 'engineering':
-            return jax.vmap(self._single_compute_uvw)(times, antenna_2, antenna_1)
+            return jax.vmap(self._single_compute_uvw)(times, antenna2, antenna1)
         else:
             raise ValueError(f"Unknown convention {convention}")
 
@@ -171,21 +171,21 @@ class BaseFarFieldDelayEngine:
             visibility_coords: the visibility coordinates.
         """
         if with_autocorr:
-            antenna_1, antenna_2 = jnp.asarray(
+            antenna1, antenna2 = jnp.asarray(
                 list(itertools.combinations_with_replacement(range(self.x_antennas_gcrs.shape[0]), 2))).T
         else:
-            antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(self.x_antennas_gcrs.shape[0]), 2))).T
+            antenna1, antenna2 = jnp.asarray(list(itertools.combinations(range(self.x_antennas_gcrs.shape[0]), 2))).T
 
         if convention == 'physical':
-            antenna_1, antenna_2 = antenna_1, antenna_2
+            antenna1, antenna2 = antenna1, antenna2
         elif convention == 'engineering':
-            antenna_1, antenna_2 = antenna_2, antenna_1
+            antenna1, antenna2 = antenna2, antenna1
         else:
             raise ValueError(f"Unknown convention {convention}")
 
         times = mp_policy.cast_to_time(times)
-        antenna_1 = mp_policy.cast_to_index(antenna_1)
-        antenna_2 = mp_policy.cast_to_index(antenna_2)
+        antenna1 = mp_policy.cast_to_index(antenna1)
+        antenna2 = mp_policy.cast_to_index(antenna2)
 
         @partial(multi_vmap, in_mapping="[T],[B],[B]", out_mapping="[T,B,...]",
                  verbose=True)
@@ -193,13 +193,13 @@ class BaseFarFieldDelayEngine:
                                        ):
             return mp_policy.cast_to_length(self._single_compute_uvw(t1, i1, i2))
 
-        uvw = _compute_visibility_coords(times, antenna_1, antenna_2)
+        uvw = _compute_visibility_coords(times, antenna1, antenna2)
         return VisibilityCoords(
             uvw=uvw,
             times=times,
             freqs=freqs,
-            antenna_1=antenna_1,
-            antenna_2=antenna_2
+            antenna1=antenna1,
+            antenna2=antenna2
         )
 
     def save(self, filename: str):
@@ -436,9 +436,9 @@ def build_far_field_delay_engine(
 
     if resolution is None:
         # compute max baseline
-        antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
+        antenna1, antenna2 = np.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
         antennas_itrs = antennas.get_itrs().cartesian.xyz.T
-        max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna_2] - antennas_itrs[antenna_1], axis=-1))
+        max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna2] - antennas_itrs[antenna1], axis=-1))
         # Select resolution to keep interpolation error below 1 mm
         if max_baseline <= 10 * au.km:
             resolution = 10 * au.s

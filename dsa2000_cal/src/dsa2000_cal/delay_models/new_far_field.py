@@ -77,8 +77,8 @@ class VisibilityCoords(NamedTuple):
     """
     uvw: FloatArray  # [rows, 3] the uvw coordinates
     time_obs: FloatArray  # [rows] the time relative to the reference time (observation start)
-    antenna_1: IntArray  # [rows] the first antenna
-    antenna_2: IntArray  # [rows] the second antenna
+    antenna1: IntArray  # [rows] the first antenna
+    antenna2: IntArray  # [rows] the second antenna
     time_idx: IntArray  # [rows] the time index
 
 
@@ -140,9 +140,9 @@ class FarFieldDelayEngine:
     verbose: bool = False
 
     def _choose_resolution(self) -> au.Quantity:
-        antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
+        antenna1, antenna2 = np.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
         antennas_itrs = self.antennas.get_itrs().cartesian.xyz.T
-        max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna_2] - antennas_itrs[antenna_1], axis=-1))
+        max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna2] - antennas_itrs[antenna1], axis=-1))
         # Select resolution to keep interpolation error below 1 mm
         if max_baseline <= 10 * au.km:
             return 10 * au.s
@@ -439,19 +439,19 @@ class FarFieldDelayEngine:
         w, (u, v) = jax.value_and_grad(self.compute_delay_from_lm_jax, argnums=(0, 1))(l, m, t1, i1, i2)
         return jnp.stack([u, v, w], axis=-1)  # [3]
 
-    def compute_uvw_jax(self, times: jax.Array, antenna_1: jax.Array, antenna_2: jax.Array) -> jax.Array:
+    def compute_uvw_jax(self, times: jax.Array, antenna1: jax.Array, antenna2: jax.Array) -> jax.Array:
         """
         Compute the UVW coordinates for a given phase center, using VLBI delay model.
 
         Args:
             times: [N] Time of observation, in tt scale in seconds, relative to the first time.
-            antenna_1: [N] Index of the first antenna.
-            antenna_2: [N] Index of the second antenna.
+            antenna1: [N] Index of the first antenna.
+            antenna2: [N] Index of the second antenna.
 
         Returns:
             uvw: [N, 3] UVW coordinates in meters.
         """
-        return jax.vmap(self._single_compute_uvw)(times, antenna_1, antenna_2)
+        return jax.vmap(self._single_compute_uvw)(times, antenna1, antenna2)
 
     def compute_visibility_coords(self, times: jax.Array, with_autocorr: bool = True,
                                   convention: str = 'physical') -> VisibilityCoords:
@@ -467,15 +467,15 @@ class FarFieldDelayEngine:
             visibility_coords: [T*B] stacked time-wise
         """
         if with_autocorr:
-            antenna_1, antenna_2 = jnp.asarray(
+            antenna1, antenna2 = jnp.asarray(
                 list(itertools.combinations_with_replacement(range(len(self.antennas)), 2))).T
         else:
-            antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
+            antenna1, antenna2 = jnp.asarray(list(itertools.combinations(range(len(self.antennas)), 2))).T
 
         if convention == 'physical':
-            antenna_1, antenna_2 = antenna_1, antenna_2
+            antenna1, antenna2 = antenna1, antenna2
         elif convention == 'engineering':
-            antenna_1, antenna_2 = antenna_2, antenna_1
+            antenna1, antenna2 = antenna2, antenna1
         else:
             raise ValueError(f"Unknown convention {convention}")
 
@@ -485,17 +485,17 @@ class FarFieldDelayEngine:
                                  ) -> Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
             return self._single_compute_uvw(t1, i1, i2), time_idx, t1, i1, i2
 
-        num_baselines = len(antenna_2)
+        num_baselines = len(antenna2)
         num_times = len(times)
         num_rows = num_baselines * num_times
-        uvw, time_idx, time_obs, antenna_1, antenna_2 = _compute_uvw_batched(
-            jnp.arange(num_times), times, antenna_1, antenna_2)
+        uvw, time_idx, time_obs, antenna1, antenna2 = _compute_uvw_batched(
+            jnp.arange(num_times), times, antenna1, antenna2)
         return VisibilityCoords(
             uvw=lax.reshape(uvw, (num_rows, 3)),
             time_idx=lax.reshape(time_idx, (num_rows,)),
             time_obs=lax.reshape(time_obs, (num_rows,)),
-            antenna_1=lax.reshape(antenna_1, (num_rows,)),
-            antenna_2=lax.reshape(antenna_2, (num_rows,))
+            antenna1=lax.reshape(antenna1, (num_rows,)),
+            antenna2=lax.reshape(antenna2, (num_rows,))
         )
 
 

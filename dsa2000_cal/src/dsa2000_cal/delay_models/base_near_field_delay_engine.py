@@ -306,9 +306,9 @@ def build_near_field_delay_engine(
 
     if resolution is None:
         # compute max baseline
-        antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
+        antenna1, antenna2 = np.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
         antennas_itrs = antennas.get_itrs().cartesian.xyz.T
-        max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna_2] - antennas_itrs[antenna_1], axis=-1))
+        max_baseline = np.max(np.linalg.norm(antennas_itrs[antenna2] - antennas_itrs[antenna1], axis=-1))
         # Select resolution to keep interpolation error below 1 mm
         if max_baseline <= 10 * au.km:
             resolution = 10 * au.s

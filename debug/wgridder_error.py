@@ -34,10 +34,10 @@ def test_wrong_w(center_offset: float, negate_w: str, convention: str, negate_wg
     lmn1 = pixel_to_lmn(N // 2, N // 2)
     lmn2 = pixel_to_lmn(N // 4, N // 4)
 
-    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
+    antenna1, antenna2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
     antennas = 10e3 * np.random.normal(size=(num_ants, 3))
     antennas[:, 2] *= 0.001
-    uvw = antennas[antenna_2] - antennas[antenna_1]
+    uvw = antennas[antenna2] - antennas[antenna1]
 
     freqs = np.linspace(700e6, 2000e6, num_freqs)
 

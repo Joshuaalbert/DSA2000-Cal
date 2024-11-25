@@ -15,8 +15,8 @@ class VisibilityCoords(NamedTuple):
     uvw: FloatArray | PartitionSpec  # [num_times, num_baselines, 3] the uvw coordinates
     times: FloatArray | PartitionSpec  # [num_times] the time relative to the reference time in TT scale (typically observation start)
     freqs: FloatArray | PartitionSpec  # [num_freqs] the frequency of the visibility
-    antenna_1: IntArray | PartitionSpec  # [num_baselines] the first antenna
-    antenna_2: IntArray | PartitionSpec  # [num_baselines] the second antenna
+    antenna1: IntArray | PartitionSpec  # [num_baselines] the first antenna
+    antenna2: IntArray | PartitionSpec  # [num_baselines] the second antenna
 
 
 class SystemGains(SerialisableBaseModel):

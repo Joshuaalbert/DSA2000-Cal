@@ -16,7 +16,8 @@ from ray.serve.handle import DeploymentHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.actors.namespace import NAMESPACE
-from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
+    MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import UnconstrainedGain
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_cal.common.jax_utils import multi_vmap
@@ -163,12 +164,15 @@ class _CalibrationSolutionCache:
 class Calibration:
     full_stokes: bool
     num_ant: int
-    num_backgroun_source_models: int = 0
+    num_background_source_models: int = 0
     verbose: bool = False
 
     def step(self, vis_model: ComplexArray, vis_data: ComplexArray, weights: FloatArray, flags: BoolArray,
              freqs: FloatArray, times: FloatArray, antenna1: IntArray, antenna2: IntArray,
-             state: MultiStepLevenbergMarquardtState | None = None):
+             state: MultiStepLevenbergMarquardtState | None = None) -> Tuple[
+        ComplexArray, ComplexArray,
+        MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic
+    ]:
         """
         Calibrate and subtract model visibilities from data visibilities.
 
@@ -224,7 +228,7 @@ class Calibration:
             num_approx_steps=0,
             num_iterations=100,
             verbose=self.verbose,
-            gtol=1e-4
+            gtol=1e-6
         )
 
         # Get solver state
@@ -240,7 +244,7 @@ class Calibration:
         vis_data_residuals = compute_residuals(gains, vis_model,
                                                vis_data, weights, flags, antenna1,
                                                antenna2, weighted=False,
-                                               num_no_subtract=self.num_backgroun_source_models)
+                                               num_no_subtract=self.num_background_source_models)
 
         return gains, vis_data_residuals, state, diagnostics
 
@@ -312,8 +316,8 @@ class Calibration:
             residuals = model_vis - vis_data  # [T, B, F, 2, 2]
             if weighted:
                 weights = jnp.where(flags, jnp.zeros_like(weights), weights)  # [T, B, F, 2, 2]
-                residuals = residuals * weights  # [T, B, F, 2, 2]
-            return residuals
+                residuals = residuals * jnp.sqrt(weights)  # [T, B, F, 2, 2]
+            return residuals.real, residuals.imag
 
         return compute_residuals
 
@@ -403,8 +407,8 @@ class Calibrator:
                 self.freqs[freq_idx] = data_response.visibility_coords.freqs[0]
                 self.times[time_idx] = data_response.visibility_coords.times[0]
                 self.uvw[time_idx, :, :] = data_response.visibility_coords.uvw[0]
-                self.antenna1 = data_response.visibility_coords.antenna_1
-                self.antenna2 = data_response.visibility_coords.antenna_2
+                self.antenna1 = data_response.visibility_coords.antenna1
+                self.antenna2 = data_response.visibility_coords.antenna2
 
         async def get_model_data(time_idxs: List[int], freq_idxs: List[int]):
             model_responses = await asyncio.gather(

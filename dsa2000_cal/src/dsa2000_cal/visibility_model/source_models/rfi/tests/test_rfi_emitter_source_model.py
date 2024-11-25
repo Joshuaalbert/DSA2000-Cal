@@ -62,15 +62,15 @@ def build_mock_visibility_coord(rows: int, ant: int, time: int) -> VisibilityCoo
     uvw = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (rows, 3))
     uvw = uvw.at[:, 2].mul(1e-3)
     time_obs = jnp.zeros((rows,))
-    antenna_1 = jax.random.randint(jax.random.PRNGKey(42), (rows,), 0, ant)
-    antenna_2 = jax.random.randint(jax.random.PRNGKey(43), (rows,), 0, ant)
+    antenna1 = jax.random.randint(jax.random.PRNGKey(42), (rows,), 0, ant)
+    antenna2 = jax.random.randint(jax.random.PRNGKey(43), (rows,), 0, ant)
     time_idx = jax.random.randint(jax.random.PRNGKey(44), (rows,), 0, time)
 
     visibility_coords = VisibilityCoords(
         uvw=mp_policy.cast_to_length(uvw),
         time_obs=mp_policy.cast_to_time(time_obs),
-        antenna_1=mp_policy.cast_to_index(antenna_1),
-        antenna_2=mp_policy.cast_to_index(antenna_2),
+        antenna1=mp_policy.cast_to_index(antenna1),
+        antenna2=mp_policy.cast_to_index(antenna2),
         time_idx=mp_policy.cast_to_index(time_idx)
     )
     return visibility_coords

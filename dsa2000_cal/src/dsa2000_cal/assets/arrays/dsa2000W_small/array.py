@@ -89,6 +89,9 @@ class DSA2000WSmallArray(DSA2000WArray):
     DSA2000W array class, smaller for testing
     """
 
+    def get_channels(self) -> au.Quantity:
+        return au.Quantity(np.linspace(700, 2000, 20) * au.MHz)
+
     @cached_property
     def _get_antenna_model(self) -> AbstractAntennaModel:
         return MockAntennaModel()

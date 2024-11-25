@@ -85,8 +85,8 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
                 near_field_delay_engine: BaseNearFieldDelayEngine, far_field_delay_engine: BaseFarFieldDelayEngine,
                 geodesic_model: BaseGeodesicModel) -> ComplexArray:
 
-        _a1 = visibility_coords.antenna_1  # [B]
-        _a2 = visibility_coords.antenna_2  # [B]
+        _a1 = visibility_coords.antenna1  # [B]
+        _a2 = visibility_coords.antenna2  # [B]
 
         if self.is_full_stokes():
             out_mapping = "[T,~B,C,~P,~Q]"
@@ -130,8 +130,8 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
                     times=time[None],
                     lmn_geodesic=lmn_geodesic,
                 )  # [1, num_ant, 1, num_sources,[, 2, 2]]
-                g1 = gains[0, visibility_coords.antenna_1, 0, :, ...]  # [B, num_sources[, 2, 2]]
-                g2 = gains[0, visibility_coords.antenna_2, 0, :, ...]  # [B, num_sources[, 2, 2]]
+                g1 = gains[0, visibility_coords.antenna1, 0, :, ...]  # [B, num_sources[, 2, 2]]
+                g2 = gains[0, visibility_coords.antenna2, 0, :, ...]  # [B, num_sources[, 2, 2]]
             else:
                 g1 = g2 = None
 

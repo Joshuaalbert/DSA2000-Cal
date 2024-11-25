@@ -69,7 +69,7 @@ def test_measurement_set_shapes(tmp_path, with_autocorr):
     assert ms.num_rows % ms.block_size == 0
 
     with tb.open_file(ms.data_file, 'r') as f:
-        rows = ms.get_rows(f.root.antenna_1[:], f.root.antenna_2[:], f.root.time_idx[:])
+        rows = ms.get_rows(f.root.antenna1[:], f.root.antenna2[:], f.root.time_idx[:])
         assert np.all(rows == np.arange(ms.num_rows))
 
 
@@ -111,20 +111,20 @@ def test_measurement_setting(tmp_path, with_autocorr, convention, num_blocks):
 
         assert coords.uvw.shape == (num_blocks, ms.block_size, 3)
         assert coords.times.shape == (num_blocks,)
-        assert coords.antenna_1.shape == (ms.block_size,)
-        assert coords.antenna_2.shape == (ms.block_size,)
+        assert coords.antenna1.shape == (ms.block_size,)
+        assert coords.antenna2.shape == (ms.block_size,)
         if meta.convention == 'physical':
-            assert np.all(coords.antenna_1 <= coords.antenna_2)
+            assert np.all(coords.antenna1 <= coords.antenna2)
         elif meta.convention == 'engineering':
-            assert np.all(coords.antenna_1 >= coords.antenna_2)
+            assert np.all(coords.antenna1 >= coords.antenna2)
         assert data.vis.shape == (num_blocks, ms.block_size, 3, 1)
         assert data.weights.shape == (num_blocks, ms.block_size, 3, 1)
         assert data.flags.shape == (num_blocks, ms.block_size, 3, 1)
 
-        assert np.all(coords.antenna_1 >= 0)
-        assert np.all(coords.antenna_1 < len(meta.antennas))
-        assert np.all(coords.antenna_2 >= 0)
-        assert np.all(coords.antenna_2 < len(meta.antennas))
+        assert np.all(coords.antenna1 >= 0)
+        assert np.all(coords.antenna1 < len(meta.antennas))
+        assert np.all(coords.antenna2 >= 0)
+        assert np.all(coords.antenna2 < len(meta.antennas))
 
         ti += 1
 

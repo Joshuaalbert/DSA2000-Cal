@@ -17,14 +17,14 @@ def test_transfer_from_casa(tmp_path):
     # Compare UVW with MS
     with pt.table('visibilities.ms') as t:
         uvw = t.getcol('UVW')[:]
-        antenna_1 = t.getcol('ANTENNA1')[:]
-        antenna_2 = t.getcol('ANTENNA2')[:]
+        antenna1 = t.getcol('ANTENNA1')[:]
+        antenna2 = t.getcol('ANTENNA2')[:]
         times_mjs = t.getcol('TIME')[:]
         times = at.Time(times_mjs / 86400., format='mjd', scale='utc')
         with tb.open_file(ms.data_file, 'r') as f:
             uvw_ms = f.root.uvw[:]
-            antenna_1_ms = f.root.antenna_1[:]
-            antenna_2_ms = f.root.antenna_2[:]
+            antenna1_ms = f.root.antenna1[:]
+            antenna2_ms = f.root.antenna2[:]
             time_idx_ms = f.root.time_idx[:]
             times_ms = ms.meta.times[time_idx_ms]
 
@@ -33,8 +33,8 @@ def test_transfer_from_casa(tmp_path):
         print("UVW Diff StdDev", np.std(uvw - uvw_ms))
         print("UVW Diff Max", np.max(np.abs(uvw - uvw_ms)))
 
-        assert np.all(antenna_1 == antenna_1_ms)
-        assert np.all(antenna_2 == antenna_2_ms)
+        assert np.all(antenna1 == antenna1_ms)
+        assert np.all(antenna2 == antenna2_ms)
         assert np.all((times - times_ms).sec < 1e-6)  # 1 us error
         assert np.std(uvw - uvw_ms) < 0.019  # 1.9 cm error
         assert np.max(np.abs(uvw - uvw_ms)) < 0.11  # 11 cm error

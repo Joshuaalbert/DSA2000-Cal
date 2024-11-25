@@ -37,10 +37,10 @@ def test_against_explicit(center_offset: float):
     lmn = [pixel_to_lmn(xi, yi) for xi, yi in zip(x, y)]
     pixel_fluxes = [dirty[xi, yi] for xi, yi in zip(x, y)]
 
-    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
+    antenna1, antenna2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
     antennas = 10e3 * np.random.normal(size=(num_ants, 3))
     antennas[:, 2] *= 0.001
-    uvw = jnp.asarray(antennas[antenna_2] - antennas[antenna_1])
+    uvw = jnp.asarray(antennas[antenna2] - antennas[antenna1])
 
     freqs = jnp.linspace(700e6, 2000e6, num_freqs)
 
@@ -115,12 +115,12 @@ def test_normalisation():
     dl = pixsize
     dm = pixsize
 
-    antenna_1, antenna_2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
+    antenna1, antenna2 = np.asarray(list(itertools.combinations(range(num_ants), 2))).T
 
-    num_rows = len(antenna_1)
+    num_rows = len(antenna1)
     antennas = 10e3 * np.random.normal(size=(num_ants, 3))
     antennas[:, 2] *= 0.001
-    uvw = jnp.asarray(antennas[antenna_2] - antennas[antenna_1])
+    uvw = jnp.asarray(antennas[antenna2] - antennas[antenna1])
 
     freqs = np.linspace(700e6, 2000e6, num_freqs)
 

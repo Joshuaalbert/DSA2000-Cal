@@ -47,13 +47,13 @@ def test_uvw_performance(n: int):
 
     baseline_pairs = np.asarray(list(itertools.combinations_with_replacement(range(n), 2)),
                                 dtype=np.int32)
-    antenna_1 = baseline_pairs[:, 0]
-    antenna_2 = baseline_pairs[:, 1]
+    antenna1 = baseline_pairs[:, 0]
+    antenna2 = baseline_pairs[:, 1]
 
     data_dict = dict(
-        times=jnp.repeat(time_to_jnp(obstime, obstime)[None], len(antenna_1), axis=0),
-        antenna_1=jnp.asarray(antenna_1),
-        antenna_2=jnp.asarray(antenna_2)
+        times=jnp.repeat(time_to_jnp(obstime, obstime)[None], len(antenna1), axis=0),
+        antenna1=jnp.asarray(antenna1),
+        antenna2=jnp.asarray(antenna2)
     )
     data_dict = jax.device_put(data_dict)
 

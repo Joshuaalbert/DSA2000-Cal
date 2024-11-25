@@ -108,9 +108,9 @@ class MeasurementSetMeta(SerialisableBaseModel):
 
     convention: Literal['physical', 'engineering'] = Field(
         default='physical',
-        description="Convention of the data, 'physical' means uvw are computed for antennas_2 - antenna_1. "
+        description="Convention of the data, 'physical' means uvw are computed for antennas_2 - antenna1. "
                     "The RIME model should use the same convention to model visibilities. "
-                    "Using 'engineering' means uvw are computed for antenna_1 - antenna_2."
+                    "Using 'engineering' means uvw are computed for antenna1 - antenna2."
     )
 
     def __init__(self, **data) -> None:
@@ -249,14 +249,14 @@ class MeasurementSet:
         self.meta = MeasurementSetMeta.parse_file(self.meta_file)
         _check_measurement_set_meta(self.meta)
 
-    def get_rows(self, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int,
+    def get_rows(self, antenna1: np.ndarray | int, antenna2: np.ndarray | int,
                  time_idx: np.ndarray | int) -> np.ndarray:
         """
         Get the row index for the given antenna pair and time index.
 
         Args:
-            antenna_1: [num_rows] the first antenna
-            antenna_2: [num_rows] the second antenna
+            antenna1: [num_rows] the first antenna
+            antenna2: [num_rows] the second antenna
             time_idx: [num_rows] the time index
 
         Returns:
@@ -269,7 +269,7 @@ class MeasurementSet:
 
         time_offset = time_idx * self.block_size
 
-        return get_antenna_index(antenna_1, antenna_2) + time_offset
+        return get_antenna_index(antenna1, antenna2) + time_offset
 
     @cached_property
     def num_rows(self) -> int:
@@ -420,8 +420,8 @@ class MeasurementSet:
 
         # Data are:
         # uvw: [num_rows, 3]
-        # antenna_1: [num_rows]
-        # antenna_2: [num_rows]
+        # antenna1: [num_rows]
+        # antenna2: [num_rows]
         # time_idx: [num_rows]
         # vis: [num_rows, num_freqs, 4]
         # weight: [num_rows, num_freqs, 4]
@@ -437,8 +437,8 @@ class MeasurementSet:
         num_rows = block_size * num_times
         with tb.open_file(data_file, "w") as f:
             f.create_array("/", "uvw", atom=tb.Float32Atom(), shape=(num_rows, 3))
-            f.create_array("/", "antenna_1", atom=tb.Int16Atom(), shape=(num_rows,))
-            f.create_array("/", "antenna_2", atom=tb.Int16Atom(), shape=(num_rows,))
+            f.create_array("/", "antenna1", atom=tb.Int16Atom(), shape=(num_rows,))
+            f.create_array("/", "antenna2", atom=tb.Int16Atom(), shape=(num_rows,))
             f.create_array("/", "time_idx", atom=tb.Int16Atom(), shape=(num_rows,))
             f.create_array("/", "vis", atom=tb.ComplexAtom(itemsize=16),
                            shape=(num_rows, num_freqs, len(meta.coherencies)))
@@ -460,24 +460,24 @@ class MeasurementSet:
         else:
             baseline_pairs = np.asarray(list(itertools.combinations(range(num_antennas), 2)),
                                         dtype=np.int32)
-        antenna_1 = baseline_pairs[:, 0]
-        antenna_2 = baseline_pairs[:, 1]
+        antenna1 = baseline_pairs[:, 0]
+        antenna2 = baseline_pairs[:, 1]
 
         start_row = 0
 
         compute_uvw_jax = jax.jit(partial(engine.compute_uvw, convention=meta.convention))
         for time_idx in range(num_times):
-            # UVW are position(antenna_2) - position(antenna_1)
-            # antenna_1, antenna_2 are all possible baselines
+            # UVW are position(antenna2) - position(antenna1)
+            # antenna1, antenna2 are all possible baselines
             time = meta.times[time_idx]
 
-            time_idx = np.full(antenna_1.shape, time_idx, dtype=np.int32)
+            time_idx = np.full(antenna1.shape, time_idx, dtype=np.int32)
 
             # Don't use interpolation, so precise.
             uvw = compute_uvw_jax(
-                times=jnp.repeat(time_to_jnp(time, meta.times[0])[None], len(antenna_1), axis=0),
-                antenna_1=jnp.asarray(antenna_1),
-                antenna_2=jnp.asarray(antenna_2)
+                times=jnp.repeat(time_to_jnp(time, meta.times[0])[None], len(antenna1), axis=0),
+                antenna1=jnp.asarray(antenna1),
+                antenna2=jnp.asarray(antenna2)
             )  # [num_baselines, 3]
 
             uvw = np.asarray(uvw)
@@ -486,8 +486,8 @@ class MeasurementSet:
 
             with tb.open_file(data_file, "r+") as f:
                 f.root.uvw[start_row:end_row] = uvw
-                f.root.antenna_1[start_row:end_row] = antenna_1
-                f.root.antenna_2[start_row:end_row] = antenna_2
+                f.root.antenna1[start_row:end_row] = antenna1
+                f.root.antenna2[start_row:end_row] = antenna2
                 f.root.time_idx[start_row:end_row] = time_idx
                 f.root.vis[start_row:end_row] = 0.
                 f.root.weights[start_row:end_row] = 0.
@@ -496,15 +496,15 @@ class MeasurementSet:
 
         return MeasurementSet(ms_folder=ms_folder)
 
-    def put(self, data: VisibilityData, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int, times: at.Time,
+    def put(self, data: VisibilityData, antenna1: np.ndarray | int, antenna2: np.ndarray | int, times: at.Time,
             freqs: au.Quantity | None = None):
         """
         Put the visibility data for the given antenna pair and time index.
 
         Args:
             data: the visibility data being put
-            antenna_1: [num_rows] the first antenna
-            antenna_2: [num_rows] the second antenna
+            antenna1: [num_rows] the first antenna
+            antenna2: [num_rows] the second antenna
             times: the times
             freqs: the frequencies, if None, all frequencies are returned
         """
@@ -516,7 +516,7 @@ class MeasurementSet:
         else:
             freqs_idx = slice(None, None, None)
 
-        rows = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=time_idx)
+        rows = self.get_rows(antenna1=antenna1, antenna2=antenna2, time_idx=time_idx)
 
         num_rows = len(rows)
 
@@ -566,15 +566,15 @@ class MeasurementSet:
         with tb.open_file(self.data_file, 'r') as f:
             return f.root.uvw[row_slice]
 
-    def match(self, antenna_1: np.ndarray | int, antenna_2: np.ndarray | int, times: at.Time,
+    def match(self, antenna1: np.ndarray | int, antenna2: np.ndarray | int, times: at.Time,
               freqs: au.Quantity | None = None) -> VisibilityData:
         """
         Get the visibility data for the given antenna pair, times and frequencies. The shapes of inputs must broadcast.
         I.e. scalars will broadcast.
 
         Args:
-            antenna_1: [num_ant] the first antenna
-            antenna_2: [num_ant] the second antenna
+            antenna1: [num_ant] the first antenna
+            antenna2: [num_ant] the second antenna
             times: [num_times] the times
             freqs: [num_freqs] the frequencies, if None, all frequencies are returned
 
@@ -589,8 +589,8 @@ class MeasurementSet:
         (i0_time, alpha0_time, i1_time, alpha1_time) = jax.tree.map(
             np.asarray, (i0_time, alpha0_time, i1_time, alpha1_time)
         )
-        rows0 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i0_time)
-        rows1 = self.get_rows(antenna_1=antenna_1, antenna_2=antenna_2, time_idx=i1_time)
+        rows0 = self.get_rows(antenna1=antenna1, antenna2=antenna2, time_idx=i0_time)
+        rows1 = self.get_rows(antenna1=antenna1, antenna2=antenna2, time_idx=i1_time)
 
         # For accessing HDF5 slices are faster
         rows0, inverse_map0 = np.unique(rows0, return_inverse=True)
@@ -682,18 +682,18 @@ class MeasurementSet:
         if num_blocks <= 0:
             raise ValueError(f"Number of blocks {num_blocks} must be positive.")
         if self.meta.with_autocorr:
-            start_antenna_1 = 0
-            start_antenna_2 = 0
+            start_antenna1 = 0
+            start_antenna2 = 0
         else:
-            start_antenna_1 = 0
-            start_antenna_2 = 1
+            start_antenna1 = 0
+            start_antenna2 = 1
 
-        start_row = self.get_rows(start_antenna_1, start_antenna_2, start_time_idx)
+        start_row = self.get_rows(start_antenna1, start_antenna2, start_time_idx)
 
         if end_time_idx is None:
             end_row = self.num_rows
         else:
-            end_row = self.get_rows(start_antenna_1, start_antenna_2, end_time_idx) + self.block_size
+            end_row = self.get_rows(start_antenna1, start_antenna2, end_time_idx) + self.block_size
 
         total_rows = end_row - start_row
         if total_rows % (self.block_size * num_blocks) != 0:

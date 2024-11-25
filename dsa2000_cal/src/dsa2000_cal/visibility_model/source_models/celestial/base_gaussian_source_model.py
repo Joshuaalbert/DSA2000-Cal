@@ -99,7 +99,7 @@ class BaseGaussianSourceModel(AbstractSourceModel):
                 scan_dims={'C', 'T'},
                 verbose=True
             )
-            def compute_visibilities_gaussian_single_source(freq, time, uvw, antenna_1, antenna_2):
+            def compute_visibilities_gaussian_single_source(freq, time, uvw, antenna1, antenna2):
                 lmn, elevation = geodesic_model.compute_far_field_lmn(ra, dec, time, return_elevation=True)  # [3]
                 interp = InterpolatedArray(x=self.model_freqs, values=image, axis=0, regular_grid=True,
                                            check_spacing=False)
@@ -107,7 +107,7 @@ class BaseGaussianSourceModel(AbstractSourceModel):
                 lmn_geodesic = geodesic_model.compute_far_field_geodesic(
                     times=time[None],
                     lmn_sources=lmn[None, :],
-                    antenna_indices=jnp.stack([antenna_1, antenna_2])
+                    antenna_indices=jnp.stack([antenna1, antenna2])
                 )  # [1, num_ant=2, 1, 3]
                 if gain_model is not None:
                     # Compute the gains
@@ -127,15 +127,15 @@ class BaseGaussianSourceModel(AbstractSourceModel):
                 visibility_coords.freqs,
                 visibility_coords.times,
                 visibility_coords.uvw,
-                visibility_coords.antenna_1,
-                visibility_coords.antenna_2
+                visibility_coords.antenna1,
+                visibility_coords.antenna2
             )
 
             accumulate += mp_policy.cast_to_vis(delta)
             return accumulate, ()
 
         T = np.shape(visibility_coords.times)[0]
-        B = np.shape(visibility_coords.antenna_1)[0]
+        B = np.shape(visibility_coords.antenna1)[0]
         C = np.shape(visibility_coords.freqs)[0]
         if self.is_full_stokes():
             init_accumulate = jnp.zeros((T, B, C, 2, 2), dtype=mp_policy.vis_dtype)

@@ -60,10 +60,10 @@ def test_rfi_emitter_predict(is_gains: bool, direction_dependent_gains: bool, fu
     row = ant * (ant - 1) // 2
 
     antennas = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (ant, 3))
-    antenna_1 = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, ant)
-    antenna_2 = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, ant)
+    antenna1 = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, ant)
+    antenna2 = jax.random.randint(jax.random.PRNGKey(42), (row,), 0, ant)
 
-    uvw = antennas[antenna_2] - antennas[antenna_1]
+    uvw = antennas[antenna2] - antennas[antenna1]
     uvw = uvw.at[:, 2].mul(1e-3)
 
     times = jnp.linspace(0, 1, num_times)
@@ -72,8 +72,8 @@ def test_rfi_emitter_predict(is_gains: bool, direction_dependent_gains: bool, fu
     visibility_coords = VisibilityCoords(
         uvw=uvw,
         time_obs=time_obs,
-        antenna_1=antenna_1,
-        antenna_2=antenna_2,
+        antenna1=antenna1,
+        antenna2=antenna2,
         time_idx=time_idx
     )
 

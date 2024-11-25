@@ -140,8 +140,8 @@ class PredictAndSampleStep(AbstractCoreStep[PredictAndSampleOutput, PredictAndSa
                         uvw=PartitionSpec('T', 'B'),
                         times=PartitionSpec('T'),
                         freqs=PartitionSpec('C'),
-                        antenna_1=PartitionSpec('B'),
-                        antenna_2=PartitionSpec('B')
+                        antenna1=PartitionSpec('B'),
+                        antenna2=PartitionSpec('B')
                     ),
             ),
             out_specs=PartitionSpec('T', 'B', 'C')

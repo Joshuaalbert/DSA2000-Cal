@@ -32,12 +32,12 @@ def test_benchmark_gaussian_performance(di_gains):
                 freqs = jnp.linspace(700e6, 2000e6, num_chan)
 
                 antennas = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (num_ant, 3))
-                antenna_1, antenna_2 = jnp.asarray(
+                antenna1, antenna2 = jnp.asarray(
                     list(itertools.combinations_with_replacement(range(num_ant), 2))).T
 
-                num_rows = len(antenna_1)
+                num_rows = len(antenna1)
 
-                uvw = antennas[antenna_2] - antennas[antenna_1]
+                uvw = antennas[antenna2] - antennas[antenna1]
                 uvw = uvw.at[:, 2].mul(1e-3)
 
                 times = jnp.arange(num_time) * 1.5
@@ -75,8 +75,8 @@ def test_benchmark_gaussian_performance(di_gains):
                 visibility_coords = VisibilityCoords(
                     uvw=uvw,
                     time_obs=time_obs,
-                    antenna_1=antenna_1,
-                    antenna_2=antenna_2,
+                    antenna1=antenna1,
+                    antenna2=antenna2,
                     time_idx=time_idx
                 )
 
@@ -103,12 +103,12 @@ def test_benchmark_performance_point_sources(di_gains):
                 freqs = jnp.linspace(700e6, 2000e6, num_chan)
 
                 antennas = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (num_ant, 3))
-                antenna_1, antenna_2 = jnp.asarray(
+                antenna1, antenna2 = jnp.asarray(
                     list(itertools.combinations_with_replacement(range(num_ant), 2))).T
 
-                num_rows = len(antenna_1)
+                num_rows = len(antenna1)
 
-                uvw = antennas[antenna_2] - antennas[antenna_1]
+                uvw = antennas[antenna2] - antennas[antenna1]
                 uvw = uvw.at[:, 2].mul(1e-3)
 
                 times = jnp.arange(num_time) * 1.5
@@ -143,8 +143,8 @@ def test_benchmark_performance_point_sources(di_gains):
                 visibility_coords = VisibilityCoords(
                     uvw=uvw,
                     time_obs=time_obs,
-                    antenna_1=antenna_1,
-                    antenna_2=antenna_2,
+                    antenna1=antenna1,
+                    antenna2=antenna2,
                     time_idx=time_idx
                 )
 
@@ -162,15 +162,15 @@ def build_mock_visibility_coord(ant: int, time: int) -> VisibilityCoords:
     uvw = 20e3 * jax.random.normal(jax.random.PRNGKey(42), (rows, 3))
     uvw = uvw.at[:, 2].mul(1e-3)
     time_obs = jnp.zeros((rows,))
-    antenna_1 = jax.random.randint(jax.random.PRNGKey(42), (rows,), 0, ant)
-    antenna_2 = jax.random.randint(jax.random.PRNGKey(43), (rows,), 0, ant)
+    antenna1 = jax.random.randint(jax.random.PRNGKey(42), (rows,), 0, ant)
+    antenna2 = jax.random.randint(jax.random.PRNGKey(43), (rows,), 0, ant)
     time_idx = jax.random.randint(jax.random.PRNGKey(44), (rows,), 0, time)
 
     visibility_coords = VisibilityCoords(
         uvw=mp_policy.cast_to_length(uvw),
         time_obs=mp_policy.cast_to_time(time_obs),
-        antenna_1=mp_policy.cast_to_index(antenna_1),
-        antenna_2=mp_policy.cast_to_index(antenna_2),
+        antenna1=mp_policy.cast_to_index(antenna1),
+        antenna2=mp_policy.cast_to_index(antenna2),
         time_idx=mp_policy.cast_to_index(time_idx)
     )
     return visibility_coords

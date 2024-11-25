@@ -170,8 +170,8 @@ def transfer_from_casa(ms_folder: str,
             # Times are MJS in tai scale
             time_mjs = output_ms.getcol('TIME', startrow=start_row, nrow=end_row - start_row)
             times = at.Time(time_mjs / 86400., format='mjd', scale='utc')
-            antenna_1 = output_ms.getcol('ANTENNA1', startrow=start_row, nrow=end_row - start_row)
-            antenna_2 = output_ms.getcol('ANTENNA2', startrow=start_row, nrow=end_row - start_row)
+            antenna1 = output_ms.getcol('ANTENNA1', startrow=start_row, nrow=end_row - start_row)
+            antenna2 = output_ms.getcol('ANTENNA2', startrow=start_row, nrow=end_row - start_row)
 
             if 'WEIGHT_SPECTRUM' not in output_ms.colnames():
                 # Use WEIGHT and broadcast to all coherencies
@@ -192,8 +192,8 @@ def transfer_from_casa(ms_folder: str,
             )
             ms.put(
                 data=data,
-                antenna_1=antenna_1,
-                antenna_2=antenna_2,
+                antenna1=antenna1,
+                antenna2=antenna2,
                 times=times
             )
             start_row = end_row

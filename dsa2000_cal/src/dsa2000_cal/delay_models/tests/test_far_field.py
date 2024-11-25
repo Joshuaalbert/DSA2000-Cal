@@ -105,10 +105,10 @@ def test_compute_uvw(with_autocorr):
         phase_center=phase_center
     ) # [T, A, 3]
     if with_autocorr:
-        antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations_with_replacement(range(len(antennas)), 2))).T
+        antenna1, antenna2 = jnp.asarray(list(itertools.combinations_with_replacement(range(len(antennas)), 2))).T
     else:
-        antenna_1, antenna_2 = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
-    uvw_other = uvw_other[:, antenna_2, :] - uvw_other[:, antenna_1, :] # [T, B, 3]
+        antenna1, antenna2 = jnp.asarray(list(itertools.combinations(range(len(antennas)), 2))).T
+    uvw_other = uvw_other[:, antenna2, :] - uvw_other[:, antenna1, :] # [T, B, 3]
 
     if with_autocorr:
         np.testing.assert_allclose(uvw_other[0, 1, 0], 10 * au.km, atol=1 * au.m)

@@ -242,7 +242,7 @@ def main(data_ms: str, subtract_ms_list: List[str], no_subtract_ms_list: List[st
         calibration = Calibration(
             full_stokes=True,
             num_ant=num_antennas,
-            num_backgroun_source_models=len(no_subtract_ms_list),
+            num_background_source_models=len(no_subtract_ms_list),
             verbose=True
         )
         calibrate_and_subtract_jit = jax.jit(calibration.step)

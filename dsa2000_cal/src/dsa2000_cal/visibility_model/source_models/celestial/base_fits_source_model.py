@@ -90,7 +90,7 @@ class BaseFITSSourceModel(AbstractSourceModel):
                 scan_dims={'C', 'T'},
                 verbose=True
             )
-            def compute_visibilities_fits_single_source(freq, time, uvw, antenna_1, antenna_2):
+            def compute_visibilities_fits_single_source(freq, time, uvw, antenna1, antenna2):
 
                 interp = InterpolatedArray(x=self.model_freqs, values=(image, ra, dec, dl, dm),
                                            axis=0)
@@ -125,8 +125,8 @@ class BaseFITSSourceModel(AbstractSourceModel):
                         times=time[None],
                         lmn_geodesic=lmn_geodesic,
                     )  # [1, num_ant, 1, 1,[, 2, 2]]
-                    g1 = gains[0, antenna_1, 0, 0, ...]  # [[, 2, 2]]
-                    g2 = gains[0, antenna_2, 0, 0, ...]  # [[, 2, 2]]
+                    g1 = gains[0, antenna1, 0, 0, ...]  # [[, 2, 2]]
+                    g2 = gains[0, antenna2, 0, 0, ...]  # [[, 2, 2]]
                 else:
                     g1 = g2 = None
                 return self._single_compute_visibilty(uvw, g1, g2, freq, masked_image, l0, m0, _dl, _dm)  # [B[,2, 2]]
@@ -135,15 +135,15 @@ class BaseFITSSourceModel(AbstractSourceModel):
                 visibility_coords.freqs,
                 visibility_coords.times,
                 visibility_coords.uvw,
-                visibility_coords.antenna_1,
-                visibility_coords.antenna_2
+                visibility_coords.antenna1,
+                visibility_coords.antenna2
             )
 
             accumulate += mp_policy.cast_to_vis(delta)
             return accumulate, ()
 
         T = np.shape(visibility_coords.times)[0]
-        B = np.shape(visibility_coords.antenna_1)[0]
+        B = np.shape(visibility_coords.antenna1)[0]
         C = np.shape(visibility_coords.freqs)[0]
         if self.is_full_stokes():
             init_accumulate = jnp.zeros((T, B, C, 2, 2), dtype=mp_policy.vis_dtype)
