@@ -383,7 +383,7 @@ def build_fits_source_model(
 
     Args:
         model_freqs: [num_model_freq] Frequencies
-        image: [ facets,num_model_freqs, [,2,2]] Flux amplitude of the source
+        image: [facets,num_model_freqs, num_l, num_m, [2,2]] in [[xx, xy], [yx, yy]] Flux amplitude of the source
         ra: [facets,num_model_freqs] central ra coordinate of the facet
         dec: [facets,num_model_freqs] central dec coordinate of the facet
         dl: [facets,num_model_freqs] width of pixel in l
