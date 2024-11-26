@@ -8,6 +8,7 @@ import numpy as np
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
+from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
@@ -83,17 +84,21 @@ def main(num_directions: int, num_ant: int, num_times: int, num_channels: int, n
         num_freqs=num_channels
     )
 
-    def predict(visibility_coords,
+    def predict(visibility_coords: VisibilityCoords,
                 near_field_delay_engine,
                 far_field_delay_engine,
                 geodesic_model):
-        return fits_source_model.predict(
-            visibility_coords=visibility_coords,
-            gain_model=None,
-            near_field_delay_engine=near_field_delay_engine,
-            far_field_delay_engine=far_field_delay_engine,
-            geodesic_model=geodesic_model
-        )
+        def single_freq(freq):
+            vis_coords = visibility_coords._replace(freqs=freq[None])
+            return fits_source_model.predict(
+                visibility_coords=vis_coords,
+                gain_model=None,
+                near_field_delay_engine=near_field_delay_engine,
+                far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model
+            )
+
+        return jax.vmap(single_freq)(visibility_coords.freqs)
 
     predict_jit = jax.jit(predict).lower(visibility_coords,
                                          near_field_delay_engine,

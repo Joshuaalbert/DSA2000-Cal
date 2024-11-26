@@ -142,7 +142,21 @@ def construct_threaded_pure_callback(cb_kernel: Callable, result_shape_dtypes: A
     batch_shape_determiner = _build_batch_shape_determiner(*args_shape_size)
     cb = _build_callback_from_kernel(wrapped_cb_kernel, batch_shape_determiner, num_threads=num_threads)
 
-    def callback(*args):
+    def callback(*args, vmap_method=vmap_method):
         return jax.pure_callback(cb, result_shape_dtypes, *args, vmap_method=vmap_method)
 
     return callback
+
+
+def test_construct_threaded_pure_callback():
+    import jax.numpy as jnp
+
+    def cb_kernel(x, y):
+        return x + y
+
+    result_shape_dtypes = jax.ShapeDtypeStruct((), np.float32)
+
+    cb = jax.vmap(jax.vmap(construct_threaded_pure_callback(cb_kernel, result_shape_dtypes, 0, 0)))
+    x = jnp.ones((2, 3), np.float32)
+    y = jnp.ones((2, 3), np.float32)
+    res = jax.jit(cb)(x, y)
