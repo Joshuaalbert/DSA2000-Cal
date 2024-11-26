@@ -73,7 +73,7 @@ def main(num_ant: int, num_times: int, num_channels: int):
 
     num_rows = visibility_coords.uvw.shape[0] * visibility_coords.uvw.shape[1]
     num_freqs = visibility_coords.freqs.shape[0]
-    vis = jnp.ones((num_rows, num_freqs))
+    vis = jnp.ones((num_rows, num_freqs), dtype=jnp.complex64)
 
     def grid(freqs, uvw, visibilities):
         def single_freq(freq, vis):
