@@ -12,7 +12,8 @@ from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInt
 
 def build_beam_gain_model(array_name: str, times: at.Time | None = None, ref_time: at.Time | None = None,
                           freqs: au.Quantity | None = None,
-                          full_stokes: bool = True) -> BaseSphericalInterpolatorGainModel:
+                          full_stokes: bool = True,
+                          resolution:int=257) -> BaseSphericalInterpolatorGainModel:
     """
     Build a beam gain model for an array.
 
@@ -96,7 +97,8 @@ def build_beam_gain_model(array_name: str, times: at.Time | None = None, ref_tim
         model_phi=model_phi,
         model_gains=gains,
         ref_time=ref_time,
-        tile_antennas=True
+        tile_antennas=True,
+        resolution=resolution
     )
 
 

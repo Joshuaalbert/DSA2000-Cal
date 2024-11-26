@@ -295,15 +295,15 @@ class BaseDishGainModel:
         model_wavelengths = quantity_to_jnp(constants.c) / freqs
         compute_dish_aperture_fn = ctx.transform(self.compute_dish_aperture)
         model_gains_aperture = compute_dish_aperture_fn.init(key,
-            beam_aperture=beam_aperture,
-            elevation_rad=elevation_rad,
-            dish_effect_params=state.dish_effect_params,
-            full_stokes=self.full_stokes,
-            X=state.X,
-            Y=state.Y,
-            model_wavelengths=model_wavelengths,
-            static_system_params=state.static_system_params
-        ).fn_val  # [num_times, lres, mres, num_ant, num_freqs[, 2, 2]]
+                                                             beam_aperture=beam_aperture,
+                                                             elevation_rad=elevation_rad,
+                                                             dish_effect_params=state.dish_effect_params,
+                                                             full_stokes=self.full_stokes,
+                                                             X=state.X,
+                                                             Y=state.Y,
+                                                             model_wavelengths=model_wavelengths,
+                                                             static_system_params=state.static_system_params
+                                                             ).fn_val  # [num_times, lres, mres, num_ant, num_freqs[, 2, 2]]
 
         model_gains_image = self.compute_dish_image(
             model_gains_aperture=model_gains_aperture,
@@ -521,3 +521,30 @@ def plot_aperture_model_callback(beam_aperture: ComplexArray, dl: FloatArray, dm
         jax.ShapeDtypeStruct((), jnp.bool_), beam_aperture, dl, dm,
         ordered=False
     )
+
+
+def test_aperture_transform():
+    am = ApertureTransform(convention='physical')
+    beam_gain_model = build_beam_gain_model(array_name='dsa2000W_small', resolution=513)
+    beam_image = beam_gain_model.model_gains  # [num_model_times, lres, mres, num_model_freqs, 2, 2]
+    beam_image = beam_image[0, :, :, 0, 0, 0]
+    dl = beam_gain_model.lvec[1] - beam_gain_model.lvec[0]
+    dm = beam_gain_model.mvec[1] - beam_gain_model.mvec[0]
+    beam_aperture = am.to_aperture(beam_image, axes=(-1, -2), dl=dl, dm=dm)
+    print(beam_aperture)
+    import pylab as plt
+    plt.imshow(np.abs(beam_image), origin='lower')
+    plt.show()
+    plt.imshow(np.angle(beam_image), origin='lower')
+    plt.show()
+    plt.imshow(np.abs(beam_aperture), origin='lower')
+    plt.show()
+    plt.imshow(np.angle(beam_aperture), origin='lower')
+    plt.show()
+    dx = 1. / (dm * np.shape(beam_aperture)[0])
+    dy = 1. / (dl * np.shape(beam_aperture)[1])
+    beam_image_rec = am.to_image(beam_aperture, axes=(-1, -2), dx=dx, dy=dy)
+    plt.imshow(np.abs(beam_image_rec), origin='lower')
+    plt.show()
+    plt.imshow(np.angle(beam_image_rec), origin='lower')
+    plt.show()

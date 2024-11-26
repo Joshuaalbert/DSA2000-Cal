@@ -123,9 +123,8 @@ def sync_content():
             if os.path.exists(lf_path):
                 with open(lf_path, 'r') as f:
                     for line in f:
-                        # line examples:
-                        # Tau-sources.txt
-                        # fits_models/*.fits
+                        if line.startswith("#"):
+                            continue
                         destination_path = os.path.dirname(lf_path)
                         asset_root_path = remove_content_prefix(destination_path)
                         ftp_url = f"{FMCAL_FTP_ADDRESS}{asset_root_path}/{line.strip()}"

@@ -55,7 +55,7 @@ class BasePointSourceModel(AbstractSourceModel):
             raise ValueError("ra and dec must have the same shape")
         if np.shape(self.A)[:2] != (len(self.ra), len(self.model_freqs)):
             raise ValueError(
-                f"A must have shape [{np.shape(self.model_freqs)[0]}, {np.shape(self.ra)[0]}[,2,2]], got {np.shape(self.A)}")
+                f"A must have shape [{len(self.ra)}, {len(self.model_freqs)}[,2,2]], got {np.shape(self.A)}")
 
     def is_full_stokes(self) -> bool:
         return len(np.shape(self.A)) == 4 and np.shape(self.A)[-2:] == (2, 2)
