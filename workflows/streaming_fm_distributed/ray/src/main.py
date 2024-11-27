@@ -369,7 +369,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     for sol_int_time_idx in range(run_params.chunk_params.num_times_per_sol_int):
         run_key, key = jax.random.split(key, 2)
         save_to_disk = True
-        aggregator_response = ray.get(aggregator(key, sol_int_time_idx, save_to_disk))
+        aggregator_response = aggregator(key, sol_int_time_idx, save_to_disk)
         logger.info(
             f"Image {sol_int_time_idx} done. Saved to:\n"
             f"Image: {aggregator_response.image_path}\n"

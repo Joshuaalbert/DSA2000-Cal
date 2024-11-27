@@ -123,8 +123,8 @@ class Aggregator:
     def actor_name(node_id: str) -> str:
         return f"AGGREGATOR#{node_id}"
 
-    async def __call__(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
-        return await self._actor.call.remote(key, sol_int_time_idx, save_to_disk)
+    def __call__(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
+        return ray.get(self._actor.call.remote(key, sol_int_time_idx, save_to_disk))
 
 
 class _Aggregator:
@@ -244,6 +244,7 @@ class _Aggregator:
         while len(result_refs) > 0:
             ready_refs, result_refs = ray.wait(result_refs, num_returns=1, fetch_local=False)
             for response_ref in ready_refs:
+                print(response_ref)
                 response: GridderResponse = ray.get(response_ref)
                 self._image += response.image
                 self._psf += response.psf
