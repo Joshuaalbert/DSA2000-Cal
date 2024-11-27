@@ -11,7 +11,6 @@ from ray import serve
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
@@ -75,9 +74,9 @@ class ModelPredictor:
 
         self._step_jit = jax.jit(model_predict.step)
 
-    async def __call__(self, time_idx: int, freq_idx: int) -> ModelPredictorResponse:
-        time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
-        freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
+    async def __call__(self, time: FloatArray, freq: FloatArray) -> ModelPredictorResponse:
+        logger.info(f"Predicting visibilities for time {time} and freq {freq}")
+
         vis = self._step_jit(
             freq=freq,
             time=time,

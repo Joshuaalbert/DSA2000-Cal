@@ -85,9 +85,10 @@ class DataStreamer:
         self.state = predict_and_sample.get_state()
         self._step_jit = jax.jit(predict_and_sample.step)
 
-    async def __call__(self, time_idx: int, freq_idx: int, key) -> DataStreamerResponse:
+    async def __call__(self, key, time_idx: int, freq_idx: int) -> DataStreamerResponse:
+        logger.info(f"Sampling visibilities for time {time_idx} and freq {freq_idx}")
         gain_key, noise_key = jax.random.split(key)
-        system_gain_main = await self._system_gain_simulator.remote(time_idx, freq_idx, gain_key)
+        system_gain_main = await self._system_gain_simulator.remote(key, time_idx, freq_idx)
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         vis, weights, flags, visibility_coords = self._step_jit(

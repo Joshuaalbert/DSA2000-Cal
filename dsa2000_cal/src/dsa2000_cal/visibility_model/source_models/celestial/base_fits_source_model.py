@@ -414,12 +414,14 @@ def build_fits_source_model(
     )
 
 
-def build_fits_calibration_source_model_from_wsclean_components(wsclean_fits_files: List[str],
-                                                                model_freqs: au.Quantity,
-                                                                full_stokes: bool = True,
-                                                                repoint_centre: ac.ICRS | None = None,
-                                                                crop_box_size: au.Quantity | None = None,
-                                                                num_facets: int = 1):
+def build_fits_calibration_source_model_from_wsclean_components(
+        wsclean_fits_files: List[str],
+        model_freqs: au.Quantity,
+        full_stokes: bool = True,
+        repoint_centre: ac.ICRS | None = None,
+        crop_box_size: au.Quantity | None = None,
+        num_facets: int = 1
+):
     """
     Build a calibration source model from wsclean components.
 

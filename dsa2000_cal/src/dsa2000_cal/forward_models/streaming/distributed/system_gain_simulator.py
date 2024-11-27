@@ -124,6 +124,7 @@ class SystemGainSimulator:
         self.compute_dish_model_jit = jax.jit(dish_gain_model.step)
 
     async def __call__(self, time_idx: int, freq_idx: int, key) -> SystemGainSimulatorResponse:
+        logger.info(f"Simulating dish gains for time {time_idx} and freq {freq_idx}")
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         gain_model, model_gains_aperture = self.compute_dish_model_jit(time[None], freq[None], self.state, key)

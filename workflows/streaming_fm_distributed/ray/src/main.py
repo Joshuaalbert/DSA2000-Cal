@@ -1,5 +1,7 @@
 import logging
+import logging
 import os
+from uuid import uuid4
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -8,7 +10,7 @@ import jax
 import numpy as np
 import ray
 from ray import serve
-from ray.serve.handle import DeploymentHandle, DeploymentResponseGenerator
+from ray.serve.handle import DeploymentHandle
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.actors.namespace import NAMESPACE
@@ -16,9 +18,9 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_cal.forward_models.streaming.distributed.aggregator import Aggregator, AggregatorParams
 from dsa2000_cal.forward_models.streaming.distributed.calibrator import CalibrationSolutionCache, Calibrator, \
     CalibrationSolutionCacheParams
-from dsa2000_cal.forward_models.streaming.distributed.caller import Caller
 from dsa2000_cal.forward_models.streaming.distributed.common import ChunkParams, ForwardModellingRunParams, ImageParams
 from dsa2000_cal.forward_models.streaming.distributed.data_streamer import DataStreamerParams, DataStreamer
 from dsa2000_cal.forward_models.streaming.distributed.gridder import Gridder
@@ -87,7 +89,9 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         num_sub_bands_per_image=num_sub_bands_per_image,
         num_times_per_sol_int=num_times_per_sol_int,
         num_sol_ints_per_accumlate=num_sol_ints_per_accumlate,
-        num_accumulates_per_image=num_accumulates_per_image
+        num_accumulates_per_image=num_accumulates_per_image,
+        num_model_times_per_solution_interval=1,
+        num_model_freqs_per_solution_interval=1
     )
 
     meta = MeasurementSetMeta(
@@ -135,7 +139,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         chunk_params=chunk_params,
         image_params=image_params,
         full_stokes=full_stokes,
-        num_facets=num_cal_facets,
+        num_cal_facets=num_cal_facets,
         plot_folder=plot_folder,
         run_name=run_name
     )
@@ -144,9 +148,8 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
          oversample_factor: float, full_stokes: bool, num_cal_facets: int,
          root_folder: str, run_name: str):
-
     # Connect to Ray.
-    ray.init(address="auto", namespace=NAMESPACE) # ray:{os.environ['RAY_REDIS_PORT']}
+    ray.init(address="auto", namespace=NAMESPACE)  # ray:{os.environ['RAY_REDIS_PORT']}
 
     field_of_view = field_of_view * au.deg if field_of_view is not None else None
 
@@ -201,32 +204,176 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         geodesic_model=geodesic_model
     )
 
-    system_gain_simulator = SystemGainSimulator.bind(run_params, system_gain_simulator_params)
+    def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams):
+        # memory is 2 * n * n * A * num_coh * itemsize(gains)
+        num_coh = 4 if run_params.full_stokes else 1
+        n = 257
+        A = len(run_params.ms_meta.antennas)
+        itemsize_gains = np.dtype(np.complex64).itemsize
+        memory = 2 * n * n * A * num_coh * itemsize_gains
+        return {
+            "num_cpus": 1,
+            "num_gpus": 0,
+            'memory': 1.1 * memory
+        }
 
-    data_streamer = DataStreamer.bind(run_params, data_streamer_params, system_gain_simulator)
+    system_gain_simulator = SystemGainSimulator.options(
+        num_replicas=1,
+        ray_actor_options=compute_system_gain_simulator_options(run_params)
+    ).bind(run_params, system_gain_simulator_params)
 
-    model_predictor = ModelPredictor.bind(run_params, predict_params)
+    def compute_data_streamer_options(run_params: ForwardModellingRunParams):
+        # memory is 2 * B * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+        num_coh = 4 if run_params.full_stokes else 1
+        B = run_params.chunk_params.num_baselines
+        itemsize_vis = np.dtype(np.complex64).itemsize
+        itemsize_weights = np.dtype(np.float16).itemsize
+        itemsize_flags = np.dtype(np.bool_).itemsize
+        memory = 2 * B * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags)
+        return {
+            "num_cpus": 1,
+            "num_gpus": 0,
+            'memory': 1.1 * memory
+        }
 
-    calibration_soluation_cache = CalibrationSolutionCache(params=CalibrationSolutionCacheParams())
+    data_streamer = DataStreamer.options(
+        num_replicas=1,
+        ray_actor_options=compute_data_streamer_options(run_params)
+    ).bind(run_params, data_streamer_params, system_gain_simulator)
 
-    calibrator = Calibrator.bind(run_params, data_streamer, model_predictor, calibration_soluation_cache)
+    def compute_model_predictor_options(run_params: ForwardModellingRunParams):
+        # memory is 2 * D * B * num_coh * itemsize(vis)
+        # 2 is for buffer in predict
+        num_coh = 4 if run_params.full_stokes else 1
+        D = run_params.num_cal_facets
+        B = run_params.chunk_params.num_baselines
+        itemsize_vis = np.dtype(np.complex64).itemsize
+        memory = 2 * D * B * num_coh * itemsize_vis
+        return {
+            "num_cpus": 1,
+            "num_gpus": 0,
+            'memory': 1.1 * memory
+        }
 
-    gridder = Gridder.bind(run_params, calibrator)
+    model_predictor = ModelPredictor.options(
+        num_replicas=1,
+        ray_actor_options=compute_model_predictor_options(run_params)
+    ).bind(run_params, predict_params)
 
-    app = Caller.bind(run_params, gridder)
+    def compuate_calibration_solution_cache_options(run_params: ForwardModellingRunParams):
+        # memory os Tm * A * Cm * num_coh * itemsize(gains)
+        num_coh = 4 if run_params.full_stokes else 1
+        Tm = run_params.chunk_params.num_model_times_per_solution_interval
+        Cm = run_params.chunk_params.num_model_freqs_per_solution_interval
+        A = len(run_params.ms_meta.antennas)
+        itemsize_gains = np.dtype(np.complex64).itemsize
+        memory = Tm * A * Cm * num_coh * itemsize_gains
+        return {
+            'memory': 1.1 * memory
+        }
 
-    handle: DeploymentHandle = serve.run(app).options(
-        stream=True
+    calibration_soluation_cache = CalibrationSolutionCache(params=CalibrationSolutionCacheParams(),
+                                                           **compuate_calibration_solution_cache_options(run_params))
+
+    def compute_calibrator_options(run_params: ForwardModellingRunParams):
+        # memory for inputs from stream:
+        # Ts * B * Cs * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+
+        # memory for averaged data:
+        # Tm * B * Cm * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+
+        # memory for model:
+        # D * Tm * B * Cm * num_coh * itemsize(vis)
+
+        # memory for solution:
+        # D * Tm * A * Cm * num_coh * itemsize(gains)
+
+        num_coh = 4 if run_params.full_stokes else 1
+        Ts = run_params.chunk_params.num_times_per_sol_int
+        B = run_params.chunk_params.num_baselines
+        Cs = run_params.chunk_params.num_freqs_per_sol_int
+        D = run_params.num_cal_facets
+        Tm = 1
+        Cm = 1
+        A = len(run_params.ms_meta.antennas)
+        itemsize_vis = np.dtype(np.complex64).itemsize
+        itemsize_weights = np.dtype(np.float16).itemsize
+        itemsize_flags = np.dtype(np.bool_).itemsize
+        itemsize_gains = np.dtype(np.complex64).itemsize
+        memory = Ts * B * Cs * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
+                 Tm * B * Cm * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
+                 D * Tm * B * Cm * num_coh * itemsize_vis + \
+                 D * Tm * A * Cm * num_coh * itemsize_gains
+        # TODO: flip to GPU once we standardise the GPU's per device. This would need different resources for varying GPU's
+        return {
+            "num_cpus": 1,
+            "num_gpus": 0,
+            'memory': 1.1 * memory
+        }
+
+    calibrator = Calibrator.options(
+        num_replicas=1,
+        ray_actor_options=compute_calibrator_options(run_params)
+    ).bind(run_params, data_streamer, model_predictor, calibration_soluation_cache)
+
+    def compute_gridder_options(run_params: ForwardModellingRunParams):
+        # Memory is 2 * num_pix^2 * num_coh * itemsize(image)
+        num_coh = 4 if run_params.full_stokes else 1
+        num_pix_l = run_params.image_params.num_l
+        num_pix_m = run_params.image_params.num_m
+        # image is f64
+        itemsize_image = np.dtype(np.float64).itemsize
+        memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
+        return {
+            "num_cpus": run_params.chunk_params.num_freqs_per_sol_int,  # 1 thread per channel * (num coh)
+            "num_gpus": 0,  # Doesn't use GPU
+            'memory': 1.1 * memory
+        }
+
+    gridder = Gridder.options(
+        num_replicas=1,
+        ray_actor_options=compute_gridder_options(run_params)
+    ).bind(run_params, calibrator)
+
+    gridder_handle: DeploymentHandle = serve.run(gridder)
+
+    # TODO: merge into Caller and run simultaneously over all subbands
+    # TODO: remove beam before saving image
+
+    def compute_aggregator_options(run_params: ForwardModellingRunParams):
+        # memory is 2 * num_pix^2 * num_coh * itemsize(image)
+        num_coh = 4 if run_params.full_stokes else 1
+        num_pix_l = run_params.image_params.num_l
+        num_pix_m = run_params.image_params.num_m
+        # image is f64
+        itemsize_image = np.dtype(np.float64).itemsize
+        memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
+        return {
+            "num_cpus": 0,  # Doesn't use CPU
+            "num_gpus": 0,  # Doesn't use GPU
+            'memory': 1.1 * memory
+        }
+
+    aggregator = Aggregator(
+        worker_id=str(uuid4()),
+        params=AggregatorParams(
+            sol_int_freq_idxs=[0],
+            fm_run_params=run_params,
+            gridder=gridder_handle,
+            image_suffix='sb0',
+        ),
+        **compute_aggregator_options(run_params)
     )
 
-    # Response generator can also be used as a regular generator in a sync context.
-    responses: DeploymentResponseGenerator = handle.remote()
-
-    for response in responses:
+    key = jax.random.PRNGKey(0)
+    for sol_int_time_idx in range(run_params.chunk_params.num_times_per_sol_int):
+        run_key, key = jax.random.split(key, 2)
+        save_to_disk = True
+        aggregator_response = ray.get(aggregator(key, sol_int_time_idx, save_to_disk))
         logger.info(
-            f"Image {response.image_idx} done. Saved to:\n"
-            f"Image: {response.image_path}\n"
-            f"PSF: {response.psf_path}"
+            f"Image {sol_int_time_idx} done. Saved to:\n"
+            f"Image: {aggregator_response.image_path}\n"
+            f"PSF: {aggregator_response.psf_path}"
         )
 
 

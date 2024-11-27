@@ -18,6 +18,10 @@ class ChunkParams(SerialisableBaseModel):
     num_sol_ints_per_accumlate: int
     num_accumulates_per_image: int
 
+    # Calibration average rules
+    num_model_times_per_solution_interval: int
+    num_model_freqs_per_solution_interval: int
+
     num_sol_ints_freq: int | None = None
     num_sub_bands: int | None = None
     num_images_freq: int | None = None
@@ -67,6 +71,13 @@ def _check_chunk_params(chunk_params: ChunkParams):
         raise ValueError(
             f"Number of accumulates {num_accumulates} not divisible by num_accumulates_per_image {chunk_params.num_accumulates_per_image}")
     num_images_time = num_accumulates // chunk_params.num_accumulates_per_image
+
+    if chunk_params.num_times_per_sol_int % chunk_params.num_model_times_per_solution_interval != 0:
+        raise ValueError(f"Number of times per sol int {chunk_params.num_times_per_sol_int} not divisible by "
+                         f"num_model_times_per_solution_interval {chunk_params.num_model_times_per_solution_interval}")
+    if chunk_params.num_freqs_per_sol_int % chunk_params.num_model_freqs_per_solution_interval != 0:
+        raise ValueError(f"Number of freqs per sol int {chunk_params.num_freqs_per_sol_int} not divisible by "
+                         f"num_model_freqs_per_solution_interval {chunk_params.num_model_freqs_per_solution_interval}")
     # Set derived values
     chunk_params.num_sol_ints_freq = num_sol_ints_freq
     chunk_params.num_sub_bands = num_sub_bands
@@ -100,6 +111,6 @@ class ForwardModellingRunParams(SerialisableBaseModel):
     chunk_params: ChunkParams
     image_params: ImageParams
     full_stokes: bool
-    num_facets: int
+    num_cal_facets: int
     plot_folder: str
     run_name: str

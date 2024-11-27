@@ -1,19 +1,17 @@
-import asyncio
+import itertools
 import logging
 import os
-from functools import partial
-from typing import NamedTuple, List
+from concurrent.futures import ThreadPoolExecutor
+from typing import NamedTuple
 
-import jax
 import numpy as np
-from jax import numpy as jnp
+import ray
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.wgridder import vis_to_image
+from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
+from dsa2000_cal.common.quantity_utils import quantity_to_np
+from dsa2000_cal.common.wgridder import vis_to_image_np
 from dsa2000_cal.forward_models.streaming.distributed.calibrator import CalibratorResponse
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
 
@@ -28,10 +26,7 @@ class GridderResponse(NamedTuple):
 @serve.deployment
 class Gridder:
     """
-    Performs gridding of visibilities per sub-band. Grid a number of solution intervals per image.
-
-    A single output image is formed from (sol_int_time_per_image, sol_int_freq_per_sub_band) solution interval chunks.
-    The output shape is [num_l, num_m, num_corrs].
+    Performs gridding of visibilities per solution interval.
     """
 
     def __init__(self, params: ForwardModellingRunParams, calibrator: DeploymentHandle):
@@ -40,134 +35,103 @@ class Gridder:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'gridder')
         os.makedirs(self.params.plot_folder, exist_ok=True)
 
-        self.uvw = np.zeros(
-            (
-                params.chunk_params.num_sol_ints_per_accumlate,
-                params.chunk_params.num_times_per_sol_int,
-                params.chunk_params.num_baselines,
-                3
-            ),
-            dtype=np.float64
-        )
+    def _grid_vis(self, sol_int_freq_idx: int, uvw: FloatArray, visibilities: ComplexArray, weights: FloatArray,
+                  flags: BoolArray) -> GridderResponse:
+        """
+        Grids the visibilities for a single solution interval.
 
-        self.freqs = np.zeros(
-            (
-                params.chunk_params.num_sol_ints_per_sub_band,
-                params.chunk_params.num_freqs_per_sol_int
-            ),
-            dtype=np.float64
-        )
+        Args:
+            sol_int_freq_idx: the solution interval frequency index
+            uvw: [Ts, B, 3] the uvw coordinates
+            visibilities: [Ts, B, F[,2,2]] the visibilities
+            weights: [Ts, B, F[,2,2]] the weights
+            flags: [Ts, B, F[,2,2]] the flags, True means flagged, don't grid.
 
-        vis_shape = (
-            params.chunk_params.num_sol_ints_per_accumlate,
-            params.chunk_params.num_times_per_sol_int,
-            params.chunk_params.num_baselines,
-            params.chunk_params.num_sol_ints_per_sub_band,
-            params.chunk_params.num_freqs_per_sol_int
+        Returns:
+            the gridded image and psf
+        """
+        freq_idxs = np.arange(
+            self.params.chunk_params.num_freqs_per_sol_int
+        ) + sol_int_freq_idx * self.params.chunk_params.num_freqs_per_sol_int
+        freqs = quantity_to_np(
+            self.params.ms_meta.freqs[freq_idxs]
         )
+        num_rows = self.params.chunk_params.num_times_per_sol_int * self.params.chunk_params.num_baselines
+        num_chan = self.params.chunk_params.num_freqs_per_sol_int
         if self.params.full_stokes:
-            vis_shape = vis_shape + (2, 2)
-
-        self.visibilities = np.zeros(vis_shape, dtype=np.complex128)
-        self.weights = np.zeros(vis_shape, dtype=np.float16)
-        self.flags = np.zeros(vis_shape, dtype=np.bool_)
-
-        if self.params.full_stokes:
-            vis_mapping = "[Sa,Ts,B,Sb,Fs,P,Q]"
-            output_mapping = "[~Nl,~Nm,P,Q]"
+            image_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 2, 2),
+                                    dtype=np.float32, order='F')
+            psf_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 2, 2),
+                                  dtype=np.float32, order='F')
+            pq_array = itertools.product(range(2), range(2))
         else:
-            vis_mapping = "[Sa,Ts,B,Sb,Fs]"
-            output_mapping = "[~Nl,~Nm]"
+            image_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 1, 1),
+                                    dtype=np.float32, order='F')
+            psf_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 1, 1),
+                                  dtype=np.float32, order='F')
+            pq_array = itertools.product(range(1), range(1))
 
-        @partial(
-            multi_vmap,
-            in_mapping=f"[Sa,Ts,B,3],{vis_mapping},{vis_mapping},{vis_mapping},[Sb,Fs]",
-            out_mapping=f"{output_mapping}",
-            verbose=True
-        )
-        def compute_image(uvw, vis, weights, flags, freqs):
-            weights = jnp.where(flags, 0.0, weights)
-
-            num_rows = self.params.chunk_params.num_times_per_accumulate * self.params.chunk_params.num_baselines
-            num_chan = self.params.chunk_params.num_freqs_per_sub_band
-
-            uvw = uvw.reshape((num_rows, 3))
-            vis = vis.reshape((num_rows, num_chan))
-            wgt = weights.reshape((num_rows, num_chan))
-            freqs = freqs.reshape((num_chan,))
-
-            image = vis_to_image(
-                uvw=uvw,
-                vis=vis,
-                wgt=wgt,
+        def single_run(p_idx, q_idx):
+            vis_to_image_np(
+                uvw=uvw.reshape((num_rows, 3)),
                 freqs=freqs,
-                pixsize_l=quantity_to_jnp(self.params.image_params.dl, 'rad'),
-                pixsize_m=quantity_to_jnp(self.params.image_params.dm, 'rad'),
-                center_l=quantity_to_jnp(self.params.image_params.l0, 'rad'),
-                center_m=quantity_to_jnp(self.params.image_params.m0, 'rad'),
-                epsilon=self.params.image_params.epsilon,
+                vis=visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan)),
+                pixsize_m=quantity_to_np(self.params.image_params.dm, 'rad'),
+                pixsize_l=quantity_to_np(self.params.image_params.dl, 'rad'),
+                center_l=quantity_to_np(self.params.image_params.l0, 'rad'),
+                center_m=quantity_to_np(self.params.image_params.m0, 'rad'),
                 npix_l=self.params.image_params.num_l,
-                npix_m=self.params.image_params.num_m
+                npix_m=self.params.image_params.num_m,
+                wgt=weights[..., p_idx, q_idx].reshape((num_rows, num_chan)),
+                mask=np.logical_not(flags[..., p_idx, q_idx]).reshape((num_rows, num_chan)),
+                epsilon=self.params.image_params.epsilon,
+                double_precision_accumulation=False,
+                scale_by_n=True,
+                normalise=True,
+                output_buffer=image_buffer[:, :, p_idx, q_idx],
+                num_threads=num_chan
             )
-
-            # Can't use the shortcut here because of weighting.
-            psf = vis_to_image(
-                uvw=uvw,
-                vis=jnp.ones_like(vis),
-                wgt=wgt,
+            vis_to_image_np(
+                uvw=uvw.reshape((num_rows, 3)),
                 freqs=freqs,
-                pixsize_l=quantity_to_jnp(self.params.image_params.dl, 'rad'),
-                pixsize_m=quantity_to_jnp(self.params.image_params.dm, 'rad'),
-                center_l=quantity_to_jnp(self.params.image_params.l0, 'rad'),
-                center_m=quantity_to_jnp(self.params.image_params.m0, 'rad'),
-                epsilon=self.params.image_params.epsilon,
+                vis=visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan)),
+                pixsize_m=quantity_to_np(self.params.image_params.dm, 'rad'),
+                pixsize_l=quantity_to_np(self.params.image_params.dl, 'rad'),
+                center_l=quantity_to_np(self.params.image_params.l0, 'rad'),
+                center_m=quantity_to_np(self.params.image_params.m0, 'rad'),
                 npix_l=self.params.image_params.num_l,
-                npix_m=self.params.image_params.num_m
+                npix_m=self.params.image_params.num_m,
+                wgt=weights[..., p_idx, q_idx].reshape((num_rows, num_chan)),
+                mask=np.logical_not(flags[..., p_idx, q_idx]).reshape((num_rows, num_chan)),
+                epsilon=self.params.image_params.epsilon,
+                double_precision_accumulation=False,
+                scale_by_n=True,
+                normalise=True,
+                output_buffer=psf_buffer[:, :, p_idx, q_idx],
+                num_threads=num_chan
             )
 
-            return image, psf
+        # TODO: Tune size of thread pool executor.
+        #  Note, that each thread internally uses self.params.chunk_params.num_freqs_per_sol_int threads.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            results = executor.map(single_run, *zip(*pq_array))
+        # Get all results (None's)
+        list(results)
+        if self.params.full_stokes:
+            return GridderResponse(image=image_buffer, psf=psf_buffer)
+        else:
+            # remove the last dimensions
+            return GridderResponse(image=image_buffer[..., 0, 0], psf=psf_buffer[..., 0, 0])
 
-        self.compute_image_jit = jax.jit(compute_image)
+    def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> GridderResponse:
 
-    async def __call__(self, accumulate_idx: int, sub_band_idx: int, key) -> GridderResponse:
+        cal_response: CalibratorResponse = ray.get(
+            self._calibrator.remote(key, sol_int_time_idx, sol_int_freq_idx))
 
-        # Get sol_ints in image_idx and sub_band_idx
-        sol_int_time_idxs = accumulate_idx * self.params.chunk_params.num_sol_ints_per_accumlate + np.arange(
-            self.params.chunk_params.num_sol_ints_per_accumlate)
-        sol_int_freq_idxs = sub_band_idx * self.params.chunk_params.num_sol_ints_per_sub_band + np.arange(
-            self.params.chunk_params.num_sol_ints_per_sub_band)
-        T, F = np.meshgrid(sol_int_time_idxs, sol_int_freq_idxs, indexing='ij')
-        sol_idxs = np.ravel_multi_index(
-            (T, F),
-            (self.params.chunk_params.num_sol_ints_time_per_image, self.params.chunk_params.num_sol_ints_freq_per_image)
-        ).flatten().tolist()
-
-        sol_slice_map = dict(
-            (s, (t, f))
-            for s, t, f in zip(sol_idxs, T.flatten(), F.flatten())
-        )  # sol_idx -> (sol_int_time_idx, sol_int_freq_idx)
-
-        async def get_cal_results(sol_idxs: List[int], key):
-            keys = jax.random.split(key, len(sol_idxs))
-            responses: List[CalibratorResponse] = await asyncio.gather(
-                *[self._calibrator.remote(sol_idx, key) for sol_idx, key in zip(sol_idxs, keys)]
-            )
-            for sol_idx, cal_response in enumerate(responses):
-                sol_int_time_idx, sol_int_freq_idx = sol_slice_map[sol_idx]
-                self.visibilities[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.visibilities  # [Ts,B,Fs[2,2]]
-                self.weights[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.weights  # [Ts,B,Fs[2,2]]
-                self.flags[sol_int_time_idx, :, :, sol_int_freq_idx, :, ...] = cal_response.flags  # [Ts,B,Fs[2,2]]
-                self.uvw[sol_int_time_idx, :, :] = cal_response.uvw  # [Ts,B,3]
-                self.freqs[sol_int_freq_idx, :] = cal_response.freqs  # [Fs]
-
-        await get_cal_results(sol_idxs, key)
-        image, psf = self.compute_image_jit(
-            jnp.asarray(self.uvw, mp_policy.length_dtype),
-            jnp.asarray(self.visibilities, mp_policy.vis_dtype),
-            jnp.asarray(self.weights, mp_policy.weight_dtype),
-            jnp.asarray(self.freqs, mp_policy.freq_dtype)
-        )
-        return GridderResponse(
-            image=np.asarray(image),  # [npix_l, npix_m[,2,2]]
-            psf=np.asarray(psf)  # [npix_l, npix_m[,2,2]]
+        return self._grid_vis(
+            sol_int_freq_idx=sol_int_freq_idx,
+            uvw=cal_response.uvw,
+            visibilities=cal_response.visibilities,
+            weights=cal_response.weights,
+            flags=cal_response.flags
         )

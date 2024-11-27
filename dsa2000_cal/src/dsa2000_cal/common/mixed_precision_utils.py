@@ -3,6 +3,7 @@ import warnings
 from typing import TypeVar
 
 import jax
+import numpy as np
 from jax import numpy as jnp
 
 if not jax.config.read('jax_enable_x64'):
@@ -88,16 +89,16 @@ X = TypeVar("X")
 @dataclasses.dataclass(frozen=True)
 class Policy:
     """Encapsulates casting for inputs, outputs and parameters."""
-    vis_dtype: jnp.dtype = jnp.complex64
-    weight_dtype: jnp.dtype = jnp.float32
-    flag_dtype: jnp.dtype = jnp.bool_
-    image_dtype: jnp.dtype = jnp.float32
-    gain_dtype: jnp.dtype = jnp.complex64
-    index_dtype: jnp.dtype = jnp.int64
-    freq_dtype: jnp.dtype = jnp.float64
-    time_dtype: jnp.dtype = jnp.float64
-    length_dtype: jnp.dtype = jnp.float64
-    angle_dtype: jnp.dtype = jnp.float64
+    vis_dtype: jnp.dtype = np.complex64
+    weight_dtype: jnp.dtype = np.float32
+    flag_dtype: jnp.dtype = np.bool_
+    image_dtype: jnp.dtype = np.float32
+    gain_dtype: jnp.dtype = np.complex64
+    index_dtype: jnp.dtype = np.int64
+    freq_dtype: jnp.dtype = np.float64
+    time_dtype: jnp.dtype = np.float64
+    length_dtype: jnp.dtype = np.float64
+    angle_dtype: jnp.dtype = np.float64
 
     def cast_to_vis(self, x: X, quiet: bool = False) -> X:
         """Converts visibility values to the visibility dtype."""
