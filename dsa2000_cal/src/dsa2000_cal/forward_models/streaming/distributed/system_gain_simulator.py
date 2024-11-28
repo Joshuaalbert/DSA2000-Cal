@@ -322,6 +322,8 @@ class BaseDishGainModel:
             full_stokes=self.full_stokes
         )
 
+        print(gain_model)
+
         return gain_model, model_gains_aperture
 
     def compute_dish_image(self, model_gains_aperture: jax.Array, dx: FloatArray, dy: FloatArray) -> jax.Array:
