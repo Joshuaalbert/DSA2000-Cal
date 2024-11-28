@@ -123,10 +123,9 @@ class Gridder:
             # remove the last dimensions
             return GridderResponse(image=image_buffer[..., 0, 0], psf=psf_buffer[..., 0, 0])
 
-    def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> GridderResponse:
+    async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> GridderResponse:
 
-        cal_response: CalibratorResponse = ray.get(
-            self._calibrator.remote(key, sol_int_time_idx, sol_int_freq_idx))
+        cal_response: CalibratorResponse = await self._calibrator.remote(key, sol_int_time_idx, sol_int_freq_idx)
 
         return self._grid_vis(
             sol_int_freq_idx=sol_int_freq_idx,

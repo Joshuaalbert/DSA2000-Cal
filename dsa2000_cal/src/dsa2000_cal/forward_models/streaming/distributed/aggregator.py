@@ -156,7 +156,7 @@ class _Aggregator:
             ) + sol_int_freq_idx * self.params.fm_run_params.chunk_params.num_freqs_per_sol_int
             self._freq_idxs.extend(freq_idxs.tolist())
 
-    async def health_check(self):
+    def health_check(self):
         """
         Announce health check.
         """
