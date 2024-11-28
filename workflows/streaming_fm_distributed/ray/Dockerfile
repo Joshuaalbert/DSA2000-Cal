@@ -9,7 +9,7 @@ COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.t
 RUN pip install -r /dsa/code/requirements.txt
 RUN pip install -r /dsa/code/requirements-notebooks.txt
 # Download the ephem data for astropy
-RUN python -c 'import astropy.coordinates as ac; import astropy.time as at; ac.get_sun(at.Time.now())'
+RUN python -c 'import astropy.time as at; at.Time.now().ut1'
 
 # Copy entrypoint
 COPY ./workflows/streaming_fm_distributed/ray/src /dsa/code/src

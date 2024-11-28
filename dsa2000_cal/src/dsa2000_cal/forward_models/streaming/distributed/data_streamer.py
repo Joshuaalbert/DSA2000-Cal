@@ -91,6 +91,7 @@ class DataStreamer:
         noise_key, sim_gain_key = jax.random.split(key)
         system_gain_main: SystemGainSimulatorResponse = await self._system_gain_simulator.remote(sim_gain_key, time_idx,
                                                                                                  freq_idx)
+        print(system_gain_main.gain_model)
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         vis, weights, flags, visibility_coords = self._step_jit(

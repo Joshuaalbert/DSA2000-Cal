@@ -75,29 +75,30 @@ def test_phi_theta_from_lmn():
     np.testing.assert_allclose([phi, theta], [np.pi, np.pi / 2.], atol=1e-7)
 
 
-def build_mock_spherical_interpolator_gain_model(tile_antennas, full_stokes):
-    num_time = 2
-    num_freq = 3
+def build_mock_spherical_interpolator_gain_model(tile_antennas, full_stokes, num_model_times, num_model_freqs):
     num_dir = 4
     num_ant = 5
 
-    freqs = au.Quantity(np.linspace(1000, 2000, num_freq), unit=au.MHz)
+    freqs = au.Quantity(np.linspace(1000, 2000, num_model_freqs), unit=au.MHz)
     theta = au.Quantity(np.linspace(0., 180., num_dir), unit=au.deg)
     phi = au.Quantity(np.linspace(0., 360., num_dir), unit=au.deg)
-    times = at.Time.now() + np.zeros((num_time,)) * au.s
+    times = at.Time.now() + np.zeros((num_model_times,)) * au.s
     antennas = ac.EarthLocation.from_geocentric([0] * num_ant * au.m, [0] * num_ant * au.m, [0] * num_ant * au.m)
 
     if full_stokes:
         if tile_antennas:
-            model_gains = au.Quantity(np.ones((num_time, num_dir, num_freq, 2, 2)), unit=au.dimensionless_unscaled)
+            model_gains = au.Quantity(np.ones((num_model_times, num_dir, num_model_freqs, 2, 2)),
+                                      unit=au.dimensionless_unscaled)
         else:
-            model_gains = au.Quantity(np.ones((num_time, num_dir, num_ant, num_freq, 2, 2)),
+            model_gains = au.Quantity(np.ones((num_model_times, num_dir, num_ant, num_model_freqs, 2, 2)),
                                       unit=au.dimensionless_unscaled)
     else:
         if tile_antennas:
-            model_gains = au.Quantity(np.ones((num_time, num_dir, num_freq)), unit=au.dimensionless_unscaled)
+            model_gains = au.Quantity(np.ones((num_model_times, num_dir, num_model_freqs)),
+                                      unit=au.dimensionless_unscaled)
         else:
-            model_gains = au.Quantity(np.ones((num_time, num_dir, num_ant, num_freq)), unit=au.dimensionless_unscaled)
+            model_gains = au.Quantity(np.ones((num_model_times, num_dir, num_ant, num_model_freqs)),
+                                      unit=au.dimensionless_unscaled)
 
     gain_model = build_spherical_interpolator(
         antennas=antennas,
@@ -126,46 +127,55 @@ def build_mock_spherical_interpolator_gain_model(tile_antennas, full_stokes):
 
 @pytest.mark.parametrize('full_stokes', [True, False])
 @pytest.mark.parametrize('tile_antennas', [True, False])
-def test_beam_gain_model_shape(full_stokes, tile_antennas):
-    mock_gain_model, geodesic_model = build_mock_spherical_interpolator_gain_model(tile_antennas=tile_antennas,
-                                                                                   full_stokes=full_stokes)
+@pytest.mark.parametrize('num_model_times', [1, 2])
+@pytest.mark.parametrize('num_model_freqs', [1, 4])
+@pytest.mark.parametrize('num_sources', [1, 3])
+def test_spherical_interpolator(full_stokes, tile_antennas, num_model_times, num_model_freqs, num_sources):
+    mock_gain_model, geodesic_model = build_mock_spherical_interpolator_gain_model(
+        tile_antennas=tile_antennas,
+        full_stokes=full_stokes,
+        num_model_freqs=num_model_freqs,
+        num_model_times=num_model_times
+    )
 
     print(f"Tiled: {mock_gain_model.tile_antennas}")
-    # Near field source
-    freqs = mock_gain_model.model_freqs
-    num_sources = 3
-    obstimes = mock_gain_model.model_times
 
     for near_sources in [True, False]:
-        print(f'Near field sources: {near_sources}')
-        if near_sources:
-            geodesics = geodesic_model.compute_near_field_geodesics(
-                times=obstimes,
-                source_positions_enu=jnp.zeros((num_sources, 3))
-            )
-        else:
-            geodesics = geodesic_model.compute_far_field_geodesic(
-                times=obstimes,
-                lmn_sources=jnp.zeros((num_sources, 3))
-            )
 
-        gains = mock_gain_model.compute_gain(
-            mock_gain_model.model_freqs,
-            obstimes,
-            geodesics
-        )
-        if full_stokes:
-            assert mock_gain_model.is_full_stokes()
-            if tile_antennas:
-                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources, 2, 2)
+        for freqs, obstimes in [
+            (mock_gain_model.model_freqs, mock_gain_model.model_times),
+            (mock_gain_model.model_freqs[:1], mock_gain_model.model_times[:1]),
+        ]:
+
+            print(f'Near field sources: {near_sources}')
+            if near_sources:
+                geodesics = geodesic_model.compute_near_field_geodesics(
+                    times=obstimes,
+                    source_positions_enu=jnp.zeros((num_sources, 3))
+                )
             else:
-                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources, 2, 2)
-        else:
-            assert not mock_gain_model.is_full_stokes()
-            if tile_antennas:
-                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources,)
+                geodesics = geodesic_model.compute_far_field_geodesic(
+                    times=obstimes,
+                    lmn_sources=jnp.zeros((num_sources, 3))
+                )
+
+            gains = mock_gain_model.compute_gain(
+                freqs,
+                obstimes,
+                geodesics
+            )
+            if full_stokes:
+                assert mock_gain_model.is_full_stokes()
+                if tile_antennas:
+                    assert gains.shape == (len(obstimes), 5, len(freqs), num_sources, 2, 2)
+                else:
+                    assert gains.shape == (len(obstimes), 5, len(freqs), num_sources, 2, 2)
             else:
-                assert gains.shape == (len(obstimes), 5, len(freqs), num_sources,)
+                assert not mock_gain_model.is_full_stokes()
+                if tile_antennas:
+                    assert gains.shape == (len(obstimes), 5, len(freqs), num_sources,)
+                else:
+                    assert gains.shape == (len(obstimes), 5, len(freqs), num_sources,)
 
 
 def test_regrid_to_regular_grid():
