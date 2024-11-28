@@ -123,11 +123,11 @@ class SystemGainSimulator:
 
         self.compute_dish_model_jit = jax.jit(dish_gain_model.step)
 
-    async def __call__(self, time_idx: int, freq_idx: int, key) -> SystemGainSimulatorResponse:
+    async def __call__(self, key, time_idx: int, freq_idx: int) -> SystemGainSimulatorResponse:
         logger.info(f"Simulating dish gains for time {time_idx} and freq {freq_idx}")
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
-        gain_model, model_gains_aperture = self.compute_dish_model_jit(time[None], freq[None], self.state, key)
+        gain_model, model_gains_aperture = self.compute_dish_model_jit(key, time[None], freq[None], self.state)
         gain_model = jax.tree.map(np.asarray, gain_model)
         model_gains_aperture = jax.tree_map(np.asarray, model_gains_aperture)
         plot_aperture_model_host(
@@ -276,7 +276,7 @@ class BaseDishGainModel:
             axial_focus_error=axial_focus_error
         )
 
-    def step(self, times: FloatArray, freqs: FloatArray, state: SimulateDishState, key):
+    def step(self, key, times: FloatArray, freqs: FloatArray, state: SimulateDishState):
         # Compute the aperture field
         _, elevation_rad = self.geodesic_model.compute_far_field_geodesic(
             times=times,

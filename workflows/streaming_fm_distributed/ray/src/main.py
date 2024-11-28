@@ -218,6 +218,8 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         }
 
     system_gain_simulator = SystemGainSimulator.options(
+        max_queued_requests=-1,  # no queue limit
+        max_ongoing_requests=1,  # only one request at a time
         num_replicas=1,
         ray_actor_options=compute_system_gain_simulator_options(run_params)
     ).bind(run_params, system_gain_simulator_params)
@@ -237,6 +239,8 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         }
 
     data_streamer = DataStreamer.options(
+        max_queued_requests=-1,  # no queue limit
+        max_ongoing_requests=1,  # only one request at a time
         num_replicas=1,
         ray_actor_options=compute_data_streamer_options(run_params)
     ).bind(run_params, data_streamer_params, system_gain_simulator)
@@ -256,6 +260,8 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         }
 
     model_predictor = ModelPredictor.options(
+        max_queued_requests=-1,  # no queue limit
+        max_ongoing_requests=1,  # only one request at a time
         num_replicas=1,
         ray_actor_options=compute_model_predictor_options(run_params)
     ).bind(run_params, predict_params)
@@ -312,6 +318,8 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         }
 
     calibrator = Calibrator.options(
+        max_queued_requests=-1,  # no queue limit
+        max_ongoing_requests=1,  # only one request at a time
         num_replicas=1,
         ray_actor_options=compute_calibrator_options(run_params)
     ).bind(run_params, data_streamer, model_predictor, calibration_soluation_cache)
@@ -331,6 +339,8 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         }
 
     gridder = Gridder.options(
+        max_queued_requests=-1,  # no queue limit
+        max_ongoing_requests=1,  # only one request at a time
         num_replicas=1,
         ray_actor_options=compute_gridder_options(run_params)
     ).bind(run_params, calibrator)
