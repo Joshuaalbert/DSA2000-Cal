@@ -5,6 +5,7 @@ from typing import List, NamedTuple
 
 import astropy.units as au
 import jax
+import jax.numpy as jnp
 import numpy as np
 from ray import serve
 
@@ -160,6 +161,6 @@ class ModelPredict:
             vis = sky_vis  # [T=1, B, C=1, 2, 2]
             vis = vis[0, :, 0]  # [B, 2, 2]
             vis_list.append(vis)
-        vis = np.stack(vis_list, axis=0)  # [D, B, 2, 2]
+        vis = jnp.stack(vis_list, axis=0)  # [D, B, 2, 2]
 
         return vis, visibility_coords
