@@ -97,6 +97,7 @@ class BasePointSourceModel(AbstractSourceModel):
                 )  # [1, num_ant=2, 1, 3]
                 if gain_model is not None:
                     # Compute the gains
+                    print(freq, time, lmn_geodesic)
                     gains = gain_model.compute_gain(
                         freqs=freq[None],
                         times=time[None],
