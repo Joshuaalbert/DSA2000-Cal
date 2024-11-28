@@ -239,11 +239,13 @@ class _Aggregator:
         # Submit them and get one at a time, to avoid memory issues.
         result_refs = []
         for sol_int_freq_idx, key in zip(self.params.sol_int_freq_idxs, keys):
-            result_refs.append(self.params.gridder.remote(key, sol_int_time_idx, sol_int_freq_idx))
+            result_refs.append(self.params.gridder.remote(key, sol_int_time_idx, sol_int_freq_idx)._to_object_ref_sync())
 
         while len(result_refs) > 0:
             ready_refs, result_refs = ray.wait(result_refs, num_returns=1, fetch_local=False)
-            for response_ref in ready_refs:
+            print(ready_refs)
+            for i in range(len(ready_refs)):
+                response_ref = ready_refs[i]
                 print(response_ref)
                 response: GridderResponse = ray.get(response_ref)
                 self._image += response.image
