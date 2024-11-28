@@ -21,6 +21,7 @@ from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
+from dsa2000_cal.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulatorResponse
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
@@ -88,14 +89,15 @@ class DataStreamer:
     async def __call__(self, key, time_idx: int, freq_idx: int) -> DataStreamerResponse:
         logger.info(f"Sampling visibilities for time {time_idx} and freq {freq_idx}")
         noise_key, sim_gain_key = jax.random.split(key)
-        system_gain_main = await self._system_gain_simulator.remote(sim_gain_key, time_idx, freq_idx)
+        system_gain_main: SystemGainSimulatorResponse = await self._system_gain_simulator.remote(sim_gain_key, time_idx,
+                                                                                                 freq_idx)
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         vis, weights, flags, visibility_coords = self._step_jit(
             key=noise_key,
             freq=freq,
             time=time,
-            gain_model=system_gain_main,
+            gain_model=system_gain_main.gain_model,
             near_field_delay_engine=self.predict_params.near_field_delay_engine,
             far_field_delay_engine=self.predict_params.far_field_delay_engine,
             geodesic_model=self.predict_params.geodesic_model,
