@@ -148,7 +148,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
                 gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [[, 2, 2]]
 
             return mp_policy.cast_to_gain(gains)
-
+        print(self)
         print(times,
             lmn_geodesic[..., 0],
             lmn_geodesic[..., 1],

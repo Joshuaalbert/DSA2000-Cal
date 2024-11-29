@@ -20,9 +20,9 @@ from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model
 
 
-def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stokes: bool,
+def build_mock_gaussian_source_model(num_model_freqs: int, num_source: int, full_stokes: bool,
                                      phase_center: ac.ICRS, order):
-    model_freqs = np.linspace(700, 2000, num_freqs) * au.MHz
+    model_freqs = np.linspace(700, 2000, num_model_freqs) * au.MHz
 
     # Wgridder test data
 
@@ -73,9 +73,9 @@ def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stoke
     ## Mock model data
 
     if full_stokes:
-        A = np.ones((num_source, num_freqs, 2, 2)) * au.Jy
+        A = np.ones((num_source, num_model_freqs, 2, 2)) * au.Jy
     else:
-        A = np.ones((num_source, num_freqs)) * au.Jy
+        A = np.ones((num_source, num_model_freqs)) * au.Jy
     model_data = build_gaussian_source_model(
         model_freqs=model_freqs,
         ra=ra,
@@ -91,13 +91,13 @@ def build_mock_gaussian_source_model(num_freqs: int, num_source: int, full_stoke
     return model_data, wgridder_data
 
 
-def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation):
+def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation, num_model_freqs, num_model_times):
     if with_gains:
-        model_freqs = np.linspace(700, 2000, 5) * au.MHz
+        model_freqs = np.linspace(700, 2000, num_model_freqs) * au.MHz
         model_theta = np.linspace(0, np.pi, 5) * au.rad
         model_phi = np.linspace(0, 2 * np.pi, 5) * au.rad
         ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
-        model_times = ref_time + np.arange(2) * au.s
+        model_times = ref_time + np.arange(num_model_times) * au.s
         if full_stokes:
             model_gains = np.ones(
                 (len(model_times), len(model_theta), len(model_freqs), 2, 2)
@@ -172,18 +172,22 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
 @pytest.mark.parametrize("full_stokes", [True, False])
 @pytest.mark.parametrize("with_gains", [True, False])
 @pytest.mark.parametrize("order", [0, 1])
-def test_gaussian_predict(full_stokes: bool, with_gains: bool, order):
+@pytest.mark.parametrize("num_freqs", [1, 5])
+@pytest.mark.parametrize("num_model_freqs", [1, 4])
+@pytest.mark.parametrize("num_times", [1, 3])
+@pytest.mark.parametrize("num_model_times", [1, 2])
+def test_gaussian_predict(full_stokes: bool, with_gains: bool, order, num_freqs: int, num_model_freqs: int,
+                          num_times: int,
+                          num_model_times: int):
     time = 2
     ant = 100
-    num_freqs = 4
 
     phase_center, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
         ant, time, num_freqs
     )
-    gain_model = build_mock_gain_model(with_gains, full_stokes, antennas)
+    gain_model = build_mock_gain_model(with_gains, full_stokes, antennas, num_model_freqs, num_model_times)
     num_times, num_baselines, _ = np.shape(visibility_coords.uvw)
 
-    num_model_freqs = 3
     num_sources = 5
     gaussian_source_model, wgridder_data = build_mock_gaussian_source_model(num_model_freqs, num_sources, full_stokes,
                                                                             phase_center, order)
