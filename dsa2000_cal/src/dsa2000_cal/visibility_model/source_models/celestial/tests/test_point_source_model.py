@@ -73,7 +73,8 @@ def build_mock_point_source_model(num_model_freqs: int, num_source: int, full_st
     return model_data, wgridder_data
 
 
-def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation, num_model_freqs, num_model_times):
+def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation, num_model_freqs, num_model_times,
+                          tile_antennas):
     if with_gains:
         model_freqs = np.linspace(700, 2000, num_model_freqs) * au.MHz
         model_theta = np.linspace(0, np.pi, 5) * au.rad
@@ -81,16 +82,27 @@ def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation, n
         ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
         model_times = ref_time + np.arange(num_model_times) * au.s
         if full_stokes:
-            model_gains = np.ones(
-                (len(model_times), len(model_theta), len(model_freqs), 2, 2)
-            ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
+            if tile_antennas:
+                model_gains = np.ones(
+                    (len(model_times), len(model_theta), len(model_freqs), 2, 2)
+                ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
+            else:
+                model_gains = np.ones(
+                    (len(model_times), len(model_theta), len(antennas), len(model_freqs), 2, 2)
+                ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, num_ant, num_model_freqs, 2, 2]
             model_gains[..., 0, 1] *= 0.
             model_gains[..., 1, 0] *= 0.
 
         else:
-            model_gains = np.ones(
-                (len(model_times), len(model_theta), len(model_freqs))
-            ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs]
+            if tile_antennas:
+                model_gains = np.ones(
+                    (len(model_times), len(model_theta), len(model_freqs))
+                ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs]
+            else:
+                model_gains = np.ones(
+                    (len(model_times), len(model_theta), len(antennas), len(model_freqs))
+                ) * au.dimensionless_unscaled  # [num_model_times, num_model_dir, num_ant, num_model_freqs]
+
         return build_spherical_interpolator(
             antennas=antennas,
             model_freqs=model_freqs,
@@ -99,7 +111,7 @@ def build_mock_gain_model(with_gains, full_stokes, antennas: ac.EarthLocation, n
             model_times=model_times,
             model_gains=model_gains,
             ref_time=ref_time,
-            tile_antennas=True,
+            tile_antennas=tile_antennas,
         )
     else:
         return None
@@ -154,18 +166,21 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
 
 @pytest.mark.parametrize("full_stokes", [True, False])
 @pytest.mark.parametrize("with_gains", [True, False])
+@pytest.mark.parametrize("tile_antennas", [False, True])
 @pytest.mark.parametrize("num_freqs", [1, 5])
 @pytest.mark.parametrize("num_model_freqs", [1, 4])
 @pytest.mark.parametrize("num_times", [1, 3])
 @pytest.mark.parametrize("num_model_times", [1, 2])
-def test_point_predict(full_stokes: bool, with_gains: bool, num_freqs: int, num_model_freqs: int, num_times: int,
+def test_point_predict(full_stokes: bool, with_gains: bool, tile_antennas: bool, num_freqs: int, num_model_freqs: int,
+                       num_times: int,
                        num_model_times: int):
     time = 15
     ant = 100
     phase_center, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
         ant, time, num_freqs
     )
-    gain_model = build_mock_gain_model(with_gains, full_stokes, antennas, num_model_freqs, num_model_times)
+    gain_model = build_mock_gain_model(with_gains, full_stokes, antennas, num_model_freqs, num_model_times,
+                                       tile_antennas)
     num_times, num_baselines, _ = np.shape(visibility_coords.uvw)
 
     num_sources = 5

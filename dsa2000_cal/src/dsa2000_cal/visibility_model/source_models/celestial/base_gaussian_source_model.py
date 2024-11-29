@@ -104,10 +104,11 @@ class BaseGaussianSourceModel(AbstractSourceModel):
                 interp = InterpolatedArray(x=self.model_freqs, values=image, axis=0, regular_grid=True,
                                            check_spacing=False)
                 masked_image = jnp.where(elevation <= 0, 0, interp(freq))  # [2, 2]
+                antenna_indices = jnp.stack([antenna1, antenna2])
                 lmn_geodesic = geodesic_model.compute_far_field_geodesic(
                     times=time[None],
                     lmn_sources=lmn[None, :],
-                    antenna_indices=jnp.stack([antenna1, antenna2])
+                    antenna_indices=antenna_indices
                 )  # [1, num_ant=2, 1, 3]
                 if gain_model is not None:
                     # Compute the gains
@@ -115,6 +116,7 @@ class BaseGaussianSourceModel(AbstractSourceModel):
                         freqs=freq[None],
                         times=time[None],
                         lmn_geodesic=lmn_geodesic,
+                        antenna_indices=antenna_indices
                     )  # [1, num_ant=2, 1, 1,[, 2, 2]]
                     g1 = gains[0, 0, 0, 0, ...]  # [[, 2, 2]]
                     g2 = gains[0, 1, 0, 0, ...]  # [[, 2, 2]]

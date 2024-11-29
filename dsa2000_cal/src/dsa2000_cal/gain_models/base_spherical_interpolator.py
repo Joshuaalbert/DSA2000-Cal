@@ -10,6 +10,7 @@ from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
 
+from dsa2000_cal.common.array_types import FloatArray, IntArray
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
@@ -70,18 +71,31 @@ class BaseSphericalInterpolatorGainModel(GainModel):
     def is_full_stokes(self) -> bool:
         return self.full_stokes
 
-    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array):
+    def compute_gain(self, freqs: FloatArray, times: FloatArray, lmn_geodesic: FloatArray,
+                     antenna_indices: IntArray | None = None):
 
+        model_gains = self.model_gains
         if self.tile_antennas:
+            if antenna_indices is not None:
+                raise ValueError(
+                    "Cannot specify antenna indices when tile_antennas=True. Assumes all antennas as equal.")
             if self.full_stokes:
                 gain_mapping = "[T,lres,mres,F,2,2]"
             else:
                 gain_mapping = "[T,lres,mres,F]"
         else:
+            if antenna_indices is not None:
+                model_gains = model_gains[:, :, :, antenna_indices,
+                              ...]  # [num_times, lres, mres, num_ant, num_freqs, 2, 2]
             if self.full_stokes:
                 gain_mapping = "[T,lres,mres,a,F,2,2]"
             else:
                 gain_mapping = "[T,lres,mres,a,F]"
+            if np.shape(model_gains)[3] != np.shape(lmn_geodesic)[1]:
+                raise ValueError(
+                    f"lmn_geodesic antenna dim {np.shape(lmn_geodesic)[1]} "
+                    f"does not matcher model gains antenna dim {np.shape(model_gains)[3]}."
+                )
 
         @partial(
             multi_vmap,
@@ -148,19 +162,13 @@ class BaseSphericalInterpolatorGainModel(GainModel):
                 gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=0)  # [[, 2, 2]]
 
             return mp_policy.cast_to_gain(gains)
-        print(self)
-        print(times,
-            lmn_geodesic[..., 0],
-            lmn_geodesic[..., 1],
-            freqs,
-            self.model_gains)
 
         gains = interp_model_gains(
             times,
             lmn_geodesic[..., 0],
             lmn_geodesic[..., 1],
             freqs,
-            self.model_gains
+            model_gains
         )  # [num_times, num_ant, num_freq, num_sources, [, 2, 2]]
 
         return gains
@@ -312,6 +320,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
             model_freqs, model_times, lvec, mvec, model_gains, tile_antennas, full_stokes,
             skip_post_init=True
         )
+
 
 BaseSphericalInterpolatorGainModel.register_pytree()
 

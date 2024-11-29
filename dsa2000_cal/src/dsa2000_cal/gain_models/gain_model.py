@@ -8,6 +8,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from dsa2000_cal.common.array_types import IntArray, FloatArray
+
 
 @dataclasses.dataclass(eq=False)
 class GainModel(ABC):
@@ -30,7 +32,8 @@ class GainModel(ABC):
         ...
 
     @abstractmethod
-    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array) -> jax.Array:
+    def compute_gain(self, freqs: FloatArray, times: FloatArray, lmn_geodesic: FloatArray,
+                     antenna_indices: IntArray | None = None) -> jax.Array:
         """
         Compute the beam gain at the given pointing direction.
 
@@ -38,6 +41,7 @@ class GainModel(ABC):
             freqs: [num_freqs] the frequency values
             times: [num_times] the time values
             lmn_geodesic: [num_time, num_ant, num_sources, 3] the lmn coordinates of the source in frame of the antennas.
+            antenna_indices: [num_ant] the antenna indices to compute the gain for. If None, compute for all antennas.
 
         Returns:
             [num_time, num_ant, num_freq, num_sources,[, 2, 2]] The beam gain at the given source coordinates.
@@ -85,9 +89,11 @@ class ProductGainModel(GainModel):
     def is_full_stokes(self) -> bool:
         return self._is_full_stokes
 
-    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array) -> jax.Array:
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array,
+                     antenna_indices: IntArray | None = None) -> jax.Array:
         gains = [
-            gain_model.compute_gain(freqs=freqs, times=times, lmn_geodesic=lmn_geodesic) for gain_model in
+            gain_model.compute_gain(freqs=freqs, times=times, lmn_geodesic=lmn_geodesic,
+                                    antenna_indices=antenna_indices) for gain_model in
             self.gain_models
         ]
 

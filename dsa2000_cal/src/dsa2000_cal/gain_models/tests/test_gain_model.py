@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 from astropy import coordinates as ac, time as at, units as au
 
+from dsa2000_cal.common.array_types import IntArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel, ProductGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
@@ -12,7 +13,7 @@ class MockGainModel(GainModel):
     def __init__(self, gain):
         self.gain = gain
 
-    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array) -> jax.Array:
+    def compute_gain(self, freqs: jax.Array, times: jax.Array, lmn_geodesic: jax.Array, antenna_indices: IntArray | None = None) -> jax.Array:
         return self.gain
 
     def is_full_stokes(self) -> bool:
