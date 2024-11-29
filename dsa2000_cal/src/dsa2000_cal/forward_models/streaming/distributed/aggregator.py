@@ -243,10 +243,8 @@ class _Aggregator:
 
         while len(result_refs) > 0:
             ready_refs, result_refs = ray.wait(result_refs, num_returns=1, fetch_local=False)
-            print(ready_refs)
             for i in range(len(ready_refs)):
                 response_ref = ready_refs[i]
-                print(response_ref)
                 response: GridderResponse = ray.get(response_ref)
                 self._image += response.image
                 self._psf += response.psf
