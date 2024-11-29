@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import datetime
 import logging
 import os
@@ -211,3 +212,17 @@ class MemoryLogger(ContextDecorator):
         # Wait for the thread to finish
         if self.logging_thread is not None:
             self.logging_thread.join()
+
+@dataclasses.dataclass
+class TimerLog:
+    msg: str
+
+    def __post_init__(self):
+        self.t0 = time.time()
+
+    def __enter__(self):
+        logger.info(f"{self.msg}")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        logger.info(f"... took {time.time() - self.t0:.2f} seconds")
+        return False

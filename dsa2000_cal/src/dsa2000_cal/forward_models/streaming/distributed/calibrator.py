@@ -23,7 +23,7 @@ from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, 
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.ray_utils import get_head_node_id
+from dsa2000_cal.common.ray_utils import get_head_node_id, TimerLog
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -459,11 +459,15 @@ class Calibrator:
         return array
 
     async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> CalibratorResponse:
+        logger.info(f"Calibrating and subtracting model visibilities for sol_int_time_idx={sol_int_time_idx} and "
+                    f"sol_int_freq_idx={sol_int_freq_idx}")
 
         time_idxs = sol_int_time_idx * self.params.chunk_params.num_times_per_sol_int + np.arange(
             self.params.chunk_params.num_times_per_sol_int)
         freq_idxs = sol_int_freq_idx * self.params.chunk_params.num_freqs_per_sol_int + np.arange(
             self.params.chunk_params.num_freqs_per_sol_int)
+        logger.info(f"Time indices: {time_idxs}")
+        logger.info(f"Freq indices: {freq_idxs}")
 
         times = time_to_jnp(self.params.ms_meta.times[time_idxs], self.params.ms_meta.ref_time)
         freqs = quantity_to_jnp(self.params.ms_meta.freqs[freq_idxs], 'Hz')
@@ -481,7 +485,7 @@ class Calibrator:
             # Submit them and get one at a time, to avoid memory issues.
             data_tasks = []
             for (key, time_idx, freq_idx) in zip(keys, time_idxs, freq_idxs):
-                data_tasks.append(self._data_streamer.remote(key, sol_int_time_idx, sol_int_freq_idx))
+                data_tasks.append(self._data_streamer.remote(key, time_idx, freq_idx))
             data_gather: List[DataStreamerResponse] = await asyncio.gather(*data_tasks)
             # stack, reshape, and transpose to [Ts, B, Cs, 2, 2]
 
@@ -531,72 +535,79 @@ class Calibrator:
 
             return vis_model
 
-        (vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2), vis_model = await asyncio.gather(
-            gather_data(key, time_idxs, freq_idxs),
-            model_gather(model_times, model_freqs)
-        )
+        with TimerLog("Gathering data and model visibilities"):
+            (vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2), vis_model = await asyncio.gather(
+                gather_data(key, time_idxs, freq_idxs),
+                model_gather(model_times, model_freqs)
+            )
 
         # Response generator can be used in an `async for` block.
-        previous_state = self._calibration_solution_cache.get_calibration_solution_snapshot(
-            sol_int_time_idx, sol_int_freq_idx)
+        with TimerLog("Getting previous state..."):
+            previous_state = self._calibration_solution_cache.get_calibration_solution_snapshot(
+                sol_int_time_idx, sol_int_freq_idx)
 
-        # vis_model, vis_data, weights, flags, freqs, times, antenna1, antenna2, state
-        # average data to match model
-        vis_data_avg = average_rule(
-            average_rule(
-                vis_data,
-                num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
+        with TimerLog("Averaging data and model visibilities"):
+            # vis_model, vis_data, weights, flags, freqs, times, antenna1, antenna2, state
+            # average data to match model
+            vis_data_avg = average_rule(
+                average_rule(
+                    vis_data,
+                    num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
+                    axis=0
+                ),
+                num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
                 axis=0
-            ),
-            num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
-            axis=0
-        )
-        weights_avg = 1. / average_rule(
-            average_rule(
-                1. / weights,
-                num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
-                axis=0
-            ),
-            num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
-            axis=0
-        )
-        flags_avg = average_rule(
-            average_rule(
-                flags.astype(np.float16),
-                num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
-                axis=0
-            ),
-            num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
-            axis=0
-        ).astype(np.bool_)
-
-        gains, solver_state, diagnostics = self.calibrate_jit(
-            vis_model=vis_model,
-            vis_data=vis_data_avg,
-            weights=weights_avg,
-            flags=flags_avg,
-            freqs=model_freqs,
-            times=model_times,
-            antenna1=antenna1,
-            antenna2=antenna2,
-            state=previous_state.solver_state
-        )
-        vis_residual = np.asarray(
-            self._compute_residual_jit(
-                vis_model=vis_model,
-                vis_data=vis_data,
-                weights=weights,
-                flags=flags,
-                gains=gains,
-                antenna1=antenna1,
-                antenna2=antenna2
             )
-        )
-        self._calibration_solution_cache.store_calibration_solution(
-            sol_int_time_idx, sol_int_freq_idx,
-            CalibrationSolution(
-                solver_state=solver_state
-            ))
+            weights_avg = 1. / average_rule(
+                average_rule(
+                    1. / weights,
+                    num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
+                    axis=0
+                ),
+                num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
+                axis=0
+            )
+            flags_avg = average_rule(
+                average_rule(
+                    flags.astype(np.float16),
+                    num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
+                    axis=0
+                ),
+                num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
+                axis=0
+            ).astype(np.bool_)
+
+        with TimerLog("Calibrating..."):
+            gains, solver_state, diagnostics = self.calibrate_jit(
+                vis_model=vis_model,
+                vis_data=vis_data_avg,
+                weights=weights_avg,
+                flags=flags_avg,
+                freqs=model_freqs,
+                times=model_times,
+                antenna1=antenna1,
+                antenna2=antenna2,
+                state=previous_state.solver_state
+            )
+
+        with TimerLog("Computing residuals..."):
+            vis_residual = np.asarray(
+                self._compute_residual_jit(
+                    vis_model=vis_model,
+                    vis_data=vis_data,
+                    weights=weights,
+                    flags=flags,
+                    gains=gains,
+                    antenna1=antenna1,
+                    antenna2=antenna2
+                )
+            )
+        with TimerLog("Storing solving state..."):
+            self._calibration_solution_cache.store_calibration_solution(
+                sol_int_time_idx, sol_int_freq_idx,
+                CalibrationSolution(
+                    solver_state=solver_state
+                ))
 
         return CalibratorResponse(
             visibilities=np.asarray(vis_residual),

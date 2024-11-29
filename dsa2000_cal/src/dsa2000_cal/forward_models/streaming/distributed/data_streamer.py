@@ -16,6 +16,7 @@ from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
+from dsa2000_cal.common.ray_utils import TimerLog
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -87,22 +88,25 @@ class DataStreamer:
         self._step_jit = jax.jit(predict_and_sample.step)
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> DataStreamerResponse:
-        logger.info(f"Sampling visibilities for time {time_idx} and freq {freq_idx}")
+        logger.info(f"Sampling visibilities for time_idx={time_idx} and freq_idx={freq_idx}")
         noise_key, sim_gain_key = jax.random.split(key)
-        system_gain_main: SystemGainSimulatorResponse = await self._system_gain_simulator.remote(sim_gain_key, time_idx,
-                                                                                                 freq_idx)
+        with TimerLog("Getting system gains"):
+            system_gain_main: SystemGainSimulatorResponse = await self._system_gain_simulator.remote(sim_gain_key,
+                                                                                                     time_idx,
+                                                                                                     freq_idx)
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
-        vis, weights, flags, visibility_coords = self._step_jit(
-            key=noise_key,
-            freq=freq,
-            time=time,
-            gain_model=system_gain_main.gain_model,
-            near_field_delay_engine=self.predict_params.near_field_delay_engine,
-            far_field_delay_engine=self.predict_params.far_field_delay_engine,
-            geodesic_model=self.predict_params.geodesic_model,
-            state=self.state
-        )
+        with TimerLog("Predicting and sampling visibilities"):
+            vis, weights, flags, visibility_coords = self._step_jit(
+                key=noise_key,
+                freq=freq,
+                time=time,
+                gain_model=system_gain_main.gain_model,
+                near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                geodesic_model=self.predict_params.geodesic_model,
+                state=self.state
+            )
         vis = np.asarray(vis)
         weights = np.asarray(weights)
         flags = np.asarray(flags)
