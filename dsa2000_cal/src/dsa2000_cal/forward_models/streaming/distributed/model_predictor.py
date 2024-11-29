@@ -163,4 +163,4 @@ class ModelPredict:
             vis_list.append(vis)
         vis = jnp.stack(vis_list, axis=0)  # [D, B, 2, 2]
 
-        return vis, visibility_coords
+        return vis

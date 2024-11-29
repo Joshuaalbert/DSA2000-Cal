@@ -149,7 +149,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
          oversample_factor: float, full_stokes: bool, num_cal_facets: int,
          root_folder: str, run_name: str):
     # Set slower start up, because some deployments take a bit longer to start up.
-    os.environ['SLOW_STARTUP_WARNING_PERIOD_S'] = "60"
+    # os.environ['SLOW_STARTUP_WARNING_PERIOD_S'] = "60"
     # Connect to Ray.
     ray.init(address="auto", namespace=NAMESPACE)  # ray:{os.environ['RAY_REDIS_PORT']}
 
