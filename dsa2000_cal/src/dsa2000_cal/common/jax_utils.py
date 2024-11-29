@@ -664,3 +664,15 @@ def convert_to_ufunc(f: CUF, tile: bool = True) -> CUF:
 
     return f
 
+
+def print_nans(args):
+    def print_args(args):
+        if any(np.any(np.isnan(a)) for a in jax.tree.leaves(args)):
+            print(args)
+        return args
+
+    return jax.pure_callback(
+        print_args,
+        jax.tree.map(lambda x: jax.ShapeDtypeStruct(jnp.shape(x), jnp.dtype(x)), args),
+        args
+    )

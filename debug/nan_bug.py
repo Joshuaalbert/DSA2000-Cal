@@ -4,7 +4,7 @@ import astropy.time as at
 import astropy.units as au
 import jax
 import numpy as np
-import pytest
+# import pytest
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
@@ -166,16 +166,16 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
     return phase_center, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine
 
 
-@pytest.mark.parametrize("full_stokes", [False, True])
-@pytest.mark.parametrize("with_gains", [True, False])
-@pytest.mark.parametrize("tile_antennas", [False, True])
-@pytest.mark.parametrize("num_freqs", [5, 1])
-@pytest.mark.parametrize("num_model_freqs", [1, 4])
-@pytest.mark.parametrize("num_times", [1, 3])
-@pytest.mark.parametrize("num_model_times", [1, 2])
-def test_point_predict(full_stokes: bool, with_gains: bool, tile_antennas: bool, num_freqs: int, num_model_freqs: int,
-                       num_times: int,
-                       num_model_times: int):
+# @pytest.mark.parametrize("full_stokes", [False, True])
+# @pytest.mark.parametrize("with_gains", [True, False])
+# @pytest.mark.parametrize("tile_antennas", [False, True])
+# @pytest.mark.parametrize("num_freqs", [5, 1])
+# @pytest.mark.parametrize("num_model_freqs", [1, 4])
+# @pytest.mark.parametrize("num_times", [1, 3])
+# @pytest.mark.parametrize("num_model_times", [1, 2])
+def _test_point_predict(full_stokes: bool, with_gains: bool, tile_antennas: bool, num_freqs: int, num_model_freqs: int,
+                        num_times: int,
+                        num_model_times: int):
     time = 15
     ant = 100
     phase_center, antennas, visibility_coords, geodesic_model, far_field_delay_engine, near_field_delay_engine = build_mock_obs_setup(
@@ -228,3 +228,15 @@ def test_point_predict(full_stokes: bool, with_gains: bool, tile_antennas: bool,
     f_jit = jax.jit(f).lower(point_source_model).compile()
 
     jax.block_until_ready(f_jit(point_source_model))
+
+
+if __name__ == '__main__':
+    _test_point_predict(
+        full_stokes=False,
+        with_gains=True,
+        tile_antennas=False,
+        num_freqs=5,
+        num_model_freqs=1,
+        num_times=1,
+        num_model_times=1
+    )

@@ -120,15 +120,17 @@ class BaseSphericalInterpolatorGainModel(GainModel):
 
             # interpolating along last is always better, for memory contiguity
             # ==> order: F, mres, lres, T
-
             # freq
-            (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
-                x=freq,
-                xp=self.model_freqs,
-                regular_grid=True
-            )
-            # jax.debug.print("freq: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
-            gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=3)  # [T, lres, mres, [2, 2]]
+            if len(self.model_freqs) == 1:
+                gains = gains[..., 3]  # [T, lres, mres, [2, 2]]
+            else:
+                (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(
+                    x=freq,
+                    xp=self.model_freqs,
+                    regular_grid=True
+                )
+                # jax.debug.print("freq: {i0} {alpha0} {i1} {alpha1}", i0=i0, alpha0=alpha0, i1=i1, alpha1=alpha1)
+                gains = apply_interp(gains, i0, alpha0, i1, alpha1, axis=3)  # [T, lres, mres, [2, 2]]
 
             # mres
             (i0, alpha0, i1, alpha1) = get_interp_indices_and_weights(

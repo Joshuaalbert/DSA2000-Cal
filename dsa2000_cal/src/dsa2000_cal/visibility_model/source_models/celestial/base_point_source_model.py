@@ -90,8 +90,8 @@ class BasePointSourceModel(AbstractSourceModel):
                     times=visibility_coords.times,
                     lmn_geodesic=lmn_geodesic
                 )  # [T, A, C, 1,[, 2, 2]]
-                g1 = gains[:, visibility_coords.antenna1, 0, ...]  # [T, B, C, [, 2, 2]]
-                g2 = gains[:, visibility_coords.antenna2, 0, ...]  # [T, B, C, [, 2, 2]]
+                g1 = gains[:, :, :, 0][:, visibility_coords.antenna1, ...]  # [T, B, C, [, 2, 2]]
+                g2 = gains[:, :, :, 0][:, visibility_coords.antenna2, ...]  # [T, B, C, [, 2, 2]]
                 gains_mapping = '[T,B,C,...]'
             else:
                 gains_mapping = '[]'
@@ -114,7 +114,12 @@ class BasePointSourceModel(AbstractSourceModel):
                 interp = InterpolatedArray(x=self.model_freqs, values=image, axis=0, regular_grid=True,
                                            check_spacing=False)
                 masked_image = jnp.where(elevation <= 0, 0, interp(freq))  # [2, 2]
-                return self._single_compute_visibilty(lmn, uvw, g1, g2, freq, masked_image)  # [] or [2, 2]
+
+                vis = self._single_compute_visibilty(lmn, uvw, g1, g2, freq, masked_image)  # [] or [2, 2]
+
+                return vis
+
+            # g1, g2 = _print((g1, g2))
 
             delta = compute_visibilities_point_single_source(
                 visibility_coords.freqs,
