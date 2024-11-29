@@ -9,6 +9,7 @@ from ray import serve
 from ray.serve.handle import DeploymentHandle
 
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
+from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_np
 from dsa2000_cal.common.ray_utils import TimerLog
 from dsa2000_cal.common.wgridder import vis_to_image_np
@@ -130,10 +131,10 @@ class Gridder:
             cal_response: CalibratorResponse = await self._calibrator.remote(key, sol_int_time_idx, sol_int_freq_idx)
 
         with TimerLog("Gridding..."):
-            return self._grid_vis(
+            return block_until_ready(self._grid_vis(
                 sol_int_freq_idx=sol_int_freq_idx,
                 uvw=cal_response.uvw,
                 visibilities=cal_response.visibilities,
                 weights=cal_response.weights,
                 flags=cal_response.flags
-            )
+            ))

@@ -13,6 +13,7 @@ from ray.serve.handle import DeploymentHandle
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
@@ -97,7 +98,7 @@ class DataStreamer:
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         with TimerLog("Predicting and sampling visibilities"):
-            vis, weights, flags, visibility_coords = self._step_jit(
+            vis, weights, flags, visibility_coords = block_until_ready(self._step_jit(
                 key=noise_key,
                 freq=freq,
                 time=time,
@@ -106,7 +107,7 @@ class DataStreamer:
                 far_field_delay_engine=self.predict_params.far_field_delay_engine,
                 geodesic_model=self.predict_params.geodesic_model,
                 state=self.state
-            )
+            ))
         vis = np.asarray(vis)
         weights = np.asarray(weights)
         flags = np.asarray(flags)

@@ -16,6 +16,7 @@ import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, IntArray
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np, time_to_jnp
 from dsa2000_cal.common.ray_utils import TimerLog
@@ -129,7 +130,8 @@ class SystemGainSimulator:
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         with TimerLog("Simulating dish gains..."):
-            gain_model, model_gains_aperture = self.compute_dish_model_jit(key, time[None], freq[None], self.state)
+            gain_model, model_gains_aperture = block_until_ready(
+                self.compute_dish_model_jit(key, time[None], freq[None], self.state))
         gain_model = jax.tree.map(np.asarray, gain_model)
         model_gains_aperture = jax.tree_map(np.asarray, model_gains_aperture)
         plot_aperture_model_host(

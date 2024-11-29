@@ -224,5 +224,5 @@ class TimerLog:
         logger.info(f"{self.msg}")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        logger.info(f"... took {time.time() - self.t0:.2f} seconds")
+        logger.info(f"... took {time.time() - self.t0:.3f} seconds")
         return False

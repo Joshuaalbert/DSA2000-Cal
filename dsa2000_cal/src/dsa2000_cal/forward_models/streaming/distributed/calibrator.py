@@ -20,7 +20,7 @@ from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardtSta
     MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, UnconstrainedGain
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
-from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.jax_utils import multi_vmap, block_until_ready
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_cal.common.ray_utils import get_head_node_id, TimerLog
@@ -578,7 +578,7 @@ class Calibrator:
             ).astype(np.bool_)
 
         with TimerLog("Calibrating..."):
-            gains, solver_state, diagnostics = self.calibrate_jit(
+            gains, solver_state, diagnostics = block_until_ready(self.calibrate_jit(
                 vis_model=vis_model,
                 vis_data=vis_data_avg,
                 weights=weights_avg,
@@ -588,7 +588,7 @@ class Calibrator:
                 antenna1=antenna1,
                 antenna2=antenna2,
                 state=previous_state.solver_state
-            )
+            ))
 
         with TimerLog("Computing residuals..."):
             vis_residual = np.asarray(

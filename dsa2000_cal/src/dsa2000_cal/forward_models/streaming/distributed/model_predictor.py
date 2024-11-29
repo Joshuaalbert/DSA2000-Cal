@@ -12,6 +12,7 @@ from ray import serve
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import TimerLog
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -80,7 +81,7 @@ class ModelPredictor:
         logger.info(f"Predicting visibilities for time {time} and freq {freq}")
 
         with TimerLog("Predicting..."):
-            vis = self._step_jit(
+            vis = block_until_ready(self._step_jit(
                 freq=freq,
                 time=time,
                 gain_model=self.beam_model,
@@ -88,7 +89,7 @@ class ModelPredictor:
                 far_field_delay_engine=self.predict_params.far_field_delay_engine,
                 geodesic_model=self.predict_params.geodesic_model,
                 state=self.state
-            )
+            ))
         vis = np.asarray(vis)
         return ModelPredictorResponse(
             vis=vis
