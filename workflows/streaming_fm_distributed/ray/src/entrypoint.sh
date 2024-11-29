@@ -39,6 +39,7 @@ LARGE_N=99999999999
 export RAY_health_check_initial_delay_ms=$LARGE_N
 export RAY_health_check_period_ms=$LARGE_N
 export RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S=$LARGE_N
+export RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S=$LARGE_N
 export SLOW_STARTUP_WARNING_PERIOD_S=$LARGE_N
 
 if [ -z "$IS_RAY_HEAD" ]; then
