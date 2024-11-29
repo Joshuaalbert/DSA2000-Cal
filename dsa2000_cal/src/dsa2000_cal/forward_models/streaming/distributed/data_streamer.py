@@ -195,6 +195,7 @@ class PredictAndSample:
             far_field_delay_engine=far_field_delay_engine,
             geodesic_model=geodesic_model
         )
+        print(visibility_coords)
         bright_vis = state.bright_sky_model.predict(
             visibility_coords=visibility_coords,
             gain_model=gain_model,

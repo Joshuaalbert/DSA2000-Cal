@@ -76,7 +76,7 @@ class ModelPredictor:
         self._step_jit = jax.jit(model_predict.step)
 
     async def __call__(self, time: FloatArray, freq: FloatArray) -> ModelPredictorResponse:
-        logger.info(f"Predicting visibilities for time {time} and freq {freq}")
+        print(f"Predicting visibilities for time {time} and freq {freq}")
 
         vis = self._step_jit(
             freq=freq,
