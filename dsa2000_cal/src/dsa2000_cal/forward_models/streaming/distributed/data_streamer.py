@@ -34,16 +34,6 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_mode
 logger = logging.getLogger('ray')
 
 
-def test_bug():
-    class A:
-        def f(self, x):
-            return x
-
-    a = A()
-    f_jit = jax.jit(a.f)
-    print(f_jit(0))
-
-
 class DataStreamerParams(SerialisableBaseModel):
     sky_model_id: str
     bright_sky_model_id: str

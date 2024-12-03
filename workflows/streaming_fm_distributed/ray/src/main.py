@@ -212,13 +212,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         system_gain_simulator_remote, 'system_gain_simulator', 1,
         run_params, system_gain_simulator_params
     )
-    data_streamer_remote = DataStreamer.options(
-        **compute_data_streamer_options(run_params)
-    )
-    data_streamer = create_supervisor(
-        data_streamer_remote, 'data_streamer', 1,
-        run_params, data_streamer_params, system_gain_simulator
-    )
+
     model_predictor_remote = ModelPredictor.options(
         **compute_model_predictor_options(run_params)
     )
@@ -226,6 +220,15 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         model_predictor_remote, 'model_predictor', 1,
         run_params, predict_params
     )
+
+    data_streamer_remote = DataStreamer.options(
+        **compute_data_streamer_options(run_params)
+    )
+    data_streamer = create_supervisor(
+        data_streamer_remote, 'data_streamer', 1,
+        run_params, data_streamer_params, system_gain_simulator
+    )
+
     calibration_soluation_cache = CalibrationSolutionCache(
         params=CalibrationSolutionCacheParams(),
         **compuate_calibration_solution_cache_options(run_params)
