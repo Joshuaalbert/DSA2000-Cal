@@ -55,14 +55,11 @@ class Supervisor(Generic[T]):
             placement_node_id = ray.get_runtime_context().get_node_id()
 
             actor_options = {
-                "num_cpus": 0,
-                "num_gpus": 0,
-                "memory": 0,
                 "name": actor_name,
                 # "lifetime": "detached",
                 "max_restarts": -1,
                 "max_task_retries": -1,
-                # Schedule the controller on the head node with a soft constraint. This
+                # Schedule the controller on the same node with a soft constraint. This
                 # prefers it to run on the head node in most cases, but allows it to be
                 # restarted on other nodes in an HA cluster.
                 "scheduling_strategy": NodeAffinitySchedulingStrategy(placement_node_id, soft=True),

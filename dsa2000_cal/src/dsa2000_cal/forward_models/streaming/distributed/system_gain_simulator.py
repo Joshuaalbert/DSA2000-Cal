@@ -88,6 +88,7 @@ class SystemGainSimulatorParams(SerialisableBaseModel):
 class SystemGainSimulatorResponse(NamedTuple):
     gain_model: GainModel
 
+
 def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams):
     # memory is 2 * n * n * A * num_coh * itemsize(gains)
     num_coh = 4 if run_params.full_stokes else 1
@@ -110,7 +111,12 @@ class SystemGainSimulator:
         self.system_gain_simulator_params = system_gain_simulator_params
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'system_gain_simulator')
         os.makedirs(self.params.plot_folder, exist_ok=True)
+        self._initialised = False
 
+    def init(self):
+        if self._initialised:
+            return
+        self._initialised = True
         beam_model = build_beam_gain_model(
             array_name=self.params.ms_meta.array_name,
             times=self.params.ms_meta.times,
@@ -119,7 +125,7 @@ class SystemGainSimulator:
             full_stokes=self.params.full_stokes
         )
         dish_gain_model = BaseDishGainModel(
-            geodesic_model=system_gain_simulator_params.geodesic_model,
+            geodesic_model=self.system_gain_simulator_params.geodesic_model,
             full_stokes=self.params.full_stokes,
             num_antennas=len(self.params.ms_meta.antennas),
             freqs=self.params.ms_meta.freqs,
@@ -127,7 +133,7 @@ class SystemGainSimulator:
             convention=self.params.ms_meta.convention
         )
 
-        self.state = dish_gain_model.get_state(beam_model=beam_model, key=system_gain_simulator_params.init_key)
+        self.state = dish_gain_model.get_state(beam_model=beam_model, key=self.system_gain_simulator_params.init_key)
         plot_aperture_model_host(
             beam_aperture=self.state.beam_aperture,
             dl=self.state.dl,
@@ -140,6 +146,7 @@ class SystemGainSimulator:
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> SystemGainSimulatorResponse:
         logger.info(f"Simulating dish gains for time {time_idx} and freq {freq_idx}")
+        self.init()
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         with TimerLog("Simulating dish gains..."):

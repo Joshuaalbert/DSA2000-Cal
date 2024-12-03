@@ -478,6 +478,13 @@ class Calibrator:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'calibrator')
         os.makedirs(self.params.plot_folder, exist_ok=True)
 
+        self._initialised = False
+
+    def init(self):
+        if self._initialised:
+            return
+        self._initialised = True
+
         calibration = Calibration(
             full_stokes=self.params.full_stokes,
             num_ant=len(self.params.ms_meta.antennas),
@@ -495,6 +502,7 @@ class Calibrator:
     async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> CalibratorResponse:
         logger.info(f"Calibrating and subtracting model visibilities for sol_int_time_idx={sol_int_time_idx} and "
                     f"sol_int_freq_idx={sol_int_freq_idx}")
+        self.init()
 
         time_idxs = sol_int_time_idx * self.params.chunk_params.num_times_per_sol_int + np.arange(
             self.params.chunk_params.num_times_per_sol_int)

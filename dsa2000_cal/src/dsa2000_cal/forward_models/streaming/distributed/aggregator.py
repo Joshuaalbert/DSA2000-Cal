@@ -52,6 +52,7 @@ def compute_aggregator_options(run_params: ForwardModellingRunParams):
         'memory': 1.1 * memory
     }
 
+
 class Aggregator:
     """
     Collects images from the gridder and aggregates them into a single image for a sub-band.
@@ -146,9 +147,15 @@ class _Aggregator:
         self.params = params
         self.params.fm_run_params.plot_folder = os.path.join(self.params.fm_run_params.plot_folder, 'aggregator')
         os.makedirs(self.params.fm_run_params.plot_folder, exist_ok=True)
+        self._initialised = False
 
-        shape = (params.fm_run_params.image_params.num_l, params.fm_run_params.image_params.num_m)
-        if params.fm_run_params.full_stokes:
+    def init(self):
+        if self._initialised:
+            return
+        self._initialised = True
+
+        shape = (self.params.fm_run_params.image_params.num_l, self.params.fm_run_params.image_params.num_m)
+        if self.params.fm_run_params.full_stokes:
             shape += (2, 2)
 
         self._image = np.zeros(
@@ -248,6 +255,8 @@ class _Aggregator:
 
     async def call(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
         logger.info(f"Aggregating {sol_int_time_idx}")
+        self.init()
+
         keys = jax.random.split(key, len(self.params.sol_int_freq_idxs))
 
         # Submit them and get one at a time, to avoid memory issues.

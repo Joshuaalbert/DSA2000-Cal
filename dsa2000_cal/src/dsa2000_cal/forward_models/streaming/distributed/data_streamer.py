@@ -8,8 +8,6 @@ import jax
 import numpy as np
 import ray
 from jax import numpy as jnp
-from ray import serve
-from ray.serve.handle import DeploymentHandle
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
@@ -62,6 +60,7 @@ class DataStreamerResponse(NamedTuple):
     flags: np.ndarray  # [B, [, 2, 2]]
     visibility_coords: VisibilityCoords
 
+
 def compute_data_streamer_options(run_params: ForwardModellingRunParams):
     # memory is 2 * B * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
     num_coh = 4 if run_params.full_stokes else 1
@@ -76,6 +75,7 @@ def compute_data_streamer_options(run_params: ForwardModellingRunParams):
         'memory': 1.1 * memory
     }
 
+
 @ray.remote
 class DataStreamer:
     def __init__(self, params: ForwardModellingRunParams, predict_params: DataStreamerParams,
@@ -86,6 +86,12 @@ class DataStreamer:
 
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'data_streamer')
         os.makedirs(self.params.plot_folder, exist_ok=True)
+        self._initialised = False
+
+    def init(self):
+        if self._initialised:
+            return
+        self._initialised = True
 
         predict_and_sample = PredictAndSample(
             faint_sky_model_id=self.predict_params.sky_model_id,
@@ -105,11 +111,12 @@ class DataStreamer:
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> DataStreamerResponse:
         logger.info(f"Sampling visibilities for time_idx={time_idx} and freq_idx={freq_idx}")
+        self.init()
         noise_key, sim_gain_key = jax.random.split(key)
         with TimerLog("Getting system gains"):
             system_gain_main = await self._system_gain_simulator(sim_gain_key,
-                                                                                                     time_idx,
-                                                                                                     freq_idx)
+                                                                 time_idx,
+                                                                 freq_idx)
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         with TimerLog("Predicting and sampling visibilities"):

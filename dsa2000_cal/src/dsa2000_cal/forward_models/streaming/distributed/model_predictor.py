@@ -62,7 +62,12 @@ class ModelPredictor:
         self.predict_params = predict_params
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'model_predictor')
         os.makedirs(self.params.plot_folder, exist_ok=True)
+        self._initialised = False
 
+    def init(self):
+        if self._initialised:
+            return
+        self._initialised = True
         if self.predict_params.num_facets_per_side == 0:
             raise ValueError("At least one sky model is required.")
 
@@ -94,6 +99,7 @@ class ModelPredictor:
 
     async def __call__(self, time: FloatArray, freq: FloatArray) -> ModelPredictorResponse:
         logger.info(f"Predicting visibilities for time {time} and freq {freq}")
+        self.init()
 
         with TimerLog("Predicting..."):
             vis = block_until_ready(self._step_jit(

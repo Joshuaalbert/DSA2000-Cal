@@ -38,6 +38,8 @@ def compute_gridder_options(run_params: ForwardModellingRunParams):
         "num_gpus": 0,  # Doesn't use GPU
         'memory': 1.1 * memory
     }
+
+
 @ray.remote
 class Gridder:
     """
@@ -49,6 +51,12 @@ class Gridder:
         self._calibrator = calibrator
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'gridder')
         os.makedirs(self.params.plot_folder, exist_ok=True)
+        self._initialised = False
+
+    def init(self):
+        if self._initialised:
+            return
+        self._initialised = True
 
     def _grid_vis(self, sol_int_freq_idx: int, uvw: FloatArray, visibilities: ComplexArray, weights: FloatArray,
                   flags: BoolArray) -> GridderResponse:
@@ -154,7 +162,7 @@ class Gridder:
 
     async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> GridderResponse:
         logger.info(f"Gridding visibilities for time_idx={sol_int_time_idx} and freq_idx={sol_int_freq_idx}")
-
+        self.init()
         with TimerLog("Getting bright source subtracted data..."):
             cal_response = await self._calibrator(key, sol_int_time_idx, sol_int_freq_idx)
 
