@@ -20,7 +20,7 @@ services:
       timeout: 10s
       retries: 3
   grafana:
-    image: grafana/grafana-oss:10.2.2 # Consider updating
+    image: grafana/grafana-oss:10.2.2 # TODO: Consider updating
     container_name: grafana
     env_file:
       - .env
@@ -28,11 +28,13 @@ services:
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_PATHS_CONFIG=/etc/grafana/grafana.ini
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
     ports:
       - "3033:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana:/etc/grafana
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
       interval: 30s

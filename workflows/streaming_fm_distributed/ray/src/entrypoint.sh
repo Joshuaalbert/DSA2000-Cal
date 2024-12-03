@@ -40,7 +40,9 @@ export RAY_health_check_initial_delay_ms=$LARGE_N
 export RAY_health_check_period_ms=$LARGE_N
 export RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S=$LARGE_N
 export RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S=$LARGE_N
-export SERVE_SLOW_STARTUP_WARNING_PERIOD_S=$LARGE_N
+
+# Let's see if removing helps time to start up
+#export SERVE_SLOW_STARTUP_WARNING_PERIOD_S=$LARGE_N
 
 if [ -z "$IS_RAY_HEAD" ]; then
   echo "Error: IS_RAY_HEAD must be specified."
