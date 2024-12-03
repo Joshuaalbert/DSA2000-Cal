@@ -59,13 +59,6 @@ def _check_chunk_params(chunk_params: ChunkParams):
         )
     chunk_params.num_sol_ints_time = chunk_params.num_integrations // chunk_params.num_times_per_sol_int
 
-    # Set derived values
-    if chunk_params.num_integrations % chunk_params.num_times_per_sol_int != 0:
-        raise ValueError(
-            f"Number of integrations {chunk_params.num_integrations} not divisible by num_times_per_sol_int {chunk_params.num_times_per_sol_int}"
-        )
-    chunk_params.num_sol_ints_time_per_image = chunk_params.num_integrations // chunk_params.num_times_per_sol_int
-
 
 class ImageParams(SerialisableBaseModel):
     l0: au.Quantity
