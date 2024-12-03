@@ -6,6 +6,7 @@ from typing import NamedTuple
 import astropy.units as au
 import jax
 import numpy as np
+import ray
 from jax import numpy as jnp
 from ray import serve
 from ray.serve.handle import DeploymentHandle
@@ -23,6 +24,7 @@ from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
+from dsa2000_cal.forward_models.streaming.distributed.supervisor import Supervisor
 from dsa2000_cal.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulatorResponse
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
@@ -60,11 +62,24 @@ class DataStreamerResponse(NamedTuple):
     flags: np.ndarray  # [B, [, 2, 2]]
     visibility_coords: VisibilityCoords
 
+def compute_data_streamer_options(run_params: ForwardModellingRunParams):
+    # memory is 2 * B * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+    num_coh = 4 if run_params.full_stokes else 1
+    B = run_params.chunk_params.num_baselines
+    itemsize_vis = np.dtype(np.complex64).itemsize
+    itemsize_weights = np.dtype(np.float16).itemsize
+    itemsize_flags = np.dtype(np.bool_).itemsize
+    memory = 2 * B * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags)
+    return {
+        "num_cpus": 1,
+        "num_gpus": 0,
+        'memory': 1.1 * memory
+    }
 
-@serve.deployment
+@ray.remote
 class DataStreamer:
     def __init__(self, params: ForwardModellingRunParams, predict_params: DataStreamerParams,
-                 system_gain_simulator: DeploymentHandle):
+                 system_gain_simulator: Supervisor[SystemGainSimulatorResponse]):
         self.params = params
         self.predict_params = predict_params
         self._system_gain_simulator = system_gain_simulator
@@ -92,7 +107,7 @@ class DataStreamer:
         logger.info(f"Sampling visibilities for time_idx={time_idx} and freq_idx={freq_idx}")
         noise_key, sim_gain_key = jax.random.split(key)
         with TimerLog("Getting system gains"):
-            system_gain_main: SystemGainSimulatorResponse = await self._system_gain_simulator.remote(sim_gain_key,
+            system_gain_main = await self._system_gain_simulator(sim_gain_key,
                                                                                                      time_idx,
                                                                                                      freq_idx)
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)

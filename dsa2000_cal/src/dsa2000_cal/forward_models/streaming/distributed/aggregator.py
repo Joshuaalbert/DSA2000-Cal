@@ -9,7 +9,6 @@ import ray
 from astropy import units as au
 from jax import numpy as jnp
 from pydantic import Field
-from ray.serve.handle import DeploymentHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.actors.namespace import NAMESPACE
@@ -19,6 +18,7 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_cal.forward_models.streaming.distributed.gridder import GridderResponse
+from dsa2000_cal.forward_models.streaming.distributed.supervisor import Supervisor
 from dsa2000_cal.imaging.base_imagor import fit_beam
 
 logger = logging.getLogger('ray')
@@ -29,7 +29,7 @@ class AggregatorParams(SerialisableBaseModel):
         description="The solution interval frequency indices to use for the aggregation into this sub-band."
     )
     fm_run_params: ForwardModellingRunParams
-    gridder: DeploymentHandle
+    gridder: Supervisor[GridderResponse]
     image_suffix: str
 
 
@@ -37,6 +37,20 @@ class AggregatorResponse(NamedTuple):
     image_path: str | None
     psf_path: str | None
 
+
+def compute_aggregator_options(run_params: ForwardModellingRunParams):
+    # memory is 2 * num_pix^2 * num_coh * itemsize(image)
+    num_coh = 4 if run_params.full_stokes else 1
+    num_pix_l = run_params.image_params.num_l
+    num_pix_m = run_params.image_params.num_m
+    # image is f64
+    itemsize_image = np.dtype(np.float64).itemsize
+    memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
+    return {
+        "num_cpus": 0,  # Doesn't use CPU
+        "num_gpus": 0,  # Doesn't use GPU
+        'memory': 1.1 * memory
+    }
 
 class Aggregator:
     """
@@ -232,26 +246,20 @@ class _Aggregator:
             psf_path=psf_path
         )
 
-    def call(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
+    async def call(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
         logger.info(f"Aggregating {sol_int_time_idx}")
         keys = jax.random.split(key, len(self.params.sol_int_freq_idxs))
 
         # Submit them and get one at a time, to avoid memory issues.
-        result_refs = []
         for sol_int_freq_idx, key in zip(self.params.sol_int_freq_idxs, keys):
-            result_refs.append(self.params.gridder.remote(key, sol_int_time_idx, sol_int_freq_idx)._to_object_ref_sync())
-
-        while len(result_refs) > 0:
-            ready_refs, result_refs = ray.wait(result_refs, num_returns=1, fetch_local=False)
-            for i in range(len(ready_refs)):
-                response_ref = ready_refs[i]
-                response: GridderResponse = ray.get(response_ref)
-                self._image += response.image
-                self._psf += response.psf
+            response = await self.params.gridder(key, sol_int_time_idx, sol_int_freq_idx)
+            self._image += response.image
+            self._psf += response.psf
 
         if save_to_disk:
             logger.info(f"Saving image to disk")
             return self.save_image_to_fits()
+
         return AggregatorResponse(
             image_path=None,
             psf_path=None

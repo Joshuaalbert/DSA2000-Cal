@@ -7,7 +7,7 @@ import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
-from ray import serve
+import ray
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
@@ -40,7 +40,22 @@ class ModelPredictorResponse(NamedTuple):
     vis: np.ndarray  # [D,  B, [, 2, 2]]
 
 
-@serve.deployment
+def compute_model_predictor_options(run_params: ForwardModellingRunParams):
+    # memory is 2 * D * B * num_coh * itemsize(vis)
+    # 2 is for buffer in predict
+    num_coh = 4 if run_params.full_stokes else 1
+    D = run_params.num_cal_facets
+    B = run_params.chunk_params.num_baselines
+    itemsize_vis = np.dtype(np.complex64).itemsize
+    memory = 2 * D * B * num_coh * itemsize_vis
+    return {
+        "num_cpus": 1,
+        "num_gpus": 0,
+        'memory': 1.1 * memory
+    }
+
+
+@ray.remote
 class ModelPredictor:
     def __init__(self, params: ForwardModellingRunParams, predict_params: ModelPredictorParams):
         self.params = params

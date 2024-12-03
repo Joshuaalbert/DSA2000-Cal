@@ -11,8 +11,6 @@ import numpy as np
 import ray
 from jax import numpy as jnp
 from jaxns.framework.ops import simulate_prior_model
-from ray import serve
-from ray.serve.handle import DeploymentHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.actors.namespace import NAMESPACE
@@ -28,6 +26,8 @@ from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_cal.forward_models.streaming.distributed.data_streamer import DataStreamerResponse
+from dsa2000_cal.forward_models.streaming.distributed.model_predictor import ModelPredictorResponse
+from dsa2000_cal.forward_models.streaming.distributed.supervisor import Supervisor
 
 logger = logging.getLogger('ray')
 
@@ -38,6 +38,19 @@ class CalibrationSolution(NamedTuple):
 
 class CalibrationSolutionCacheParams(SerialisableBaseModel):
     ...
+
+
+def compuate_calibration_solution_cache_options(run_params: ForwardModellingRunParams):
+    # memory os Tm * A * Cm * num_coh * itemsize(gains)
+    num_coh = 4 if run_params.full_stokes else 1
+    Tm = run_params.chunk_params.num_model_times_per_solution_interval
+    Cm = run_params.chunk_params.num_model_freqs_per_solution_interval
+    A = len(run_params.ms_meta.antennas)
+    itemsize_gains = np.dtype(np.complex64).itemsize
+    memory = Tm * A * Cm * num_coh * itemsize_gains
+    return {
+        'memory': 1.1 * memory
+    }
 
 
 class CalibrationSolutionCache:
@@ -410,7 +423,44 @@ def test_average_rule():
     assert np.allclose(result, np.array([1., 4, 7])[:, None])
 
 
-@serve.deployment
+def compute_calibrator_options(run_params: ForwardModellingRunParams):
+    # memory for inputs from stream:
+    # Ts * B * Cs * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+
+    # memory for averaged data:
+    # Tm * B * Cm * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+
+    # memory for model:
+    # D * Tm * B * Cm * num_coh * itemsize(vis)
+
+    # memory for solution:
+    # D * Tm * A * Cm * num_coh * itemsize(gains)
+
+    num_coh = 4 if run_params.full_stokes else 1
+    Ts = run_params.chunk_params.num_times_per_sol_int
+    B = run_params.chunk_params.num_baselines
+    Cs = run_params.chunk_params.num_freqs_per_sol_int
+    D = run_params.num_cal_facets
+    Tm = 1
+    Cm = 1
+    A = len(run_params.ms_meta.antennas)
+    itemsize_vis = np.dtype(np.complex64).itemsize
+    itemsize_weights = np.dtype(np.float16).itemsize
+    itemsize_flags = np.dtype(np.bool_).itemsize
+    itemsize_gains = np.dtype(np.complex64).itemsize
+    memory = Ts * B * Cs * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
+             Tm * B * Cm * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
+             D * Tm * B * Cm * num_coh * itemsize_vis + \
+             D * Tm * A * Cm * num_coh * itemsize_gains
+    # TODO: flip to GPU once we standardise the GPU's per device. This would need different resources for varying GPU's
+    return {
+        "num_cpus": 1,
+        "num_gpus": 0,
+        'memory': 1.1 * memory
+    }
+
+
+@ray.remote
 class Calibrator:
     """
     Calibrates and subtracts model visibilities from data vis and streams results, per sol_idx.
@@ -418,8 +468,8 @@ class Calibrator:
     The total dataset is (num_times_per_obs, num_freqs_per_obs) or in terms of sol_ints (num_times_per_obs//num_times_per_sol_int, num_freqs_per_obs//num_freqs_per_sol_int).
     """
 
-    def __init__(self, params: ForwardModellingRunParams, data_streamer: DeploymentHandle,
-                 model_predictor: DeploymentHandle,
+    def __init__(self, params: ForwardModellingRunParams, data_streamer: Supervisor[DataStreamerResponse],
+                 model_predictor: Supervisor[ModelPredictorResponse],
                  calibration_solution_cache: CalibrationSolutionCache):
         self.params = params
         self._calibration_solution_cache = calibration_solution_cache
@@ -441,22 +491,6 @@ class Calibrator:
         self.calibrate_jit = jax.jit(calibration.step)
 
         self._compute_residual_jit = jax.jit(compute_residual)
-
-    def average_rule(self, array, axis_time: int, axis_freq: int):
-        """
-        Block average array along axis.
-
-        Args:
-            array: [Ts, B, Cs, 2, 2]
-            axis_time: the time axis
-            axis_freq: the frequency axis
-
-        Returns:
-            [Tm, B, Cm, 2, 2]
-        """
-        array = average_rule(array, self.params.chunk_params.num_model_times_per_solution_interval, axis=axis_time)
-        array = average_rule(array, self.params.chunk_params.num_model_freqs_per_solution_interval, axis=axis_freq)
-        return array
 
     async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> CalibratorResponse:
         logger.info(f"Calibrating and subtracting model visibilities for sol_int_time_idx={sol_int_time_idx} and "
@@ -485,7 +519,7 @@ class Calibrator:
             # Submit them and get one at a time, to avoid memory issues.
             data_tasks = []
             for (key, time_idx, freq_idx) in zip(keys, time_idxs, freq_idxs):
-                data_tasks.append(self._data_streamer.remote(key, time_idx, freq_idx))
+                data_tasks.append(self._data_streamer(key, time_idx, freq_idx))
             data_gather: List[DataStreamerResponse] = await asyncio.gather(*data_tasks)
             # stack, reshape, and transpose to [Ts, B, Cs, 2, 2]
 
@@ -526,7 +560,7 @@ class Calibrator:
             model_freqs = model_freqs.flatten().tolist()
             model_tasks = []
             for (time, freq) in zip(model_times, model_freqs):
-                model_tasks.append(self._model_predictor.remote(time, freq))
+                model_tasks.append(self._model_predictor(time, freq))
             model_gather = await asyncio.gather(*model_tasks)
 
             vis_model = np.stack([data.vis for data in model_gather], axis=0)  # [Tm * Cm, B[2,2]]

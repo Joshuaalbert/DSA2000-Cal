@@ -6,8 +6,7 @@ from typing import NamedTuple
 
 import numpy as np
 import pylab as plt
-from ray import serve
-from ray.serve.handle import DeploymentHandle
+import ray
 
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
 from dsa2000_cal.common.jax_utils import block_until_ready
@@ -16,6 +15,7 @@ from dsa2000_cal.common.ray_utils import TimerLog
 from dsa2000_cal.common.wgridder import vis_to_image_np
 from dsa2000_cal.forward_models.streaming.distributed.calibrator import CalibratorResponse
 from dsa2000_cal.forward_models.streaming.distributed.common import ForwardModellingRunParams
+from dsa2000_cal.forward_models.streaming.distributed.supervisor import Supervisor
 
 logger = logging.getLogger('ray')
 
@@ -25,13 +25,26 @@ class GridderResponse(NamedTuple):
     psf: np.ndarray  # [npix_l, npix_m[,2,2]]
 
 
-@serve.deployment
+def compute_gridder_options(run_params: ForwardModellingRunParams):
+    # Memory is 2 * num_pix^2 * num_coh * itemsize(image)
+    num_coh = 4 if run_params.full_stokes else 1
+    num_pix_l = run_params.image_params.num_l
+    num_pix_m = run_params.image_params.num_m
+    # image is f64
+    itemsize_image = np.dtype(np.float64).itemsize
+    memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
+    return {
+        "num_cpus": run_params.chunk_params.num_freqs_per_sol_int,  # 1 thread per channel * (num coh)
+        "num_gpus": 0,  # Doesn't use GPU
+        'memory': 1.1 * memory
+    }
+@ray.remote
 class Gridder:
     """
     Performs gridding of visibilities per solution interval.
     """
 
-    def __init__(self, params: ForwardModellingRunParams, calibrator: DeploymentHandle):
+    def __init__(self, params: ForwardModellingRunParams, calibrator: Supervisor[CalibratorResponse]):
         self.params = params
         self._calibrator = calibrator
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'gridder')
@@ -143,7 +156,7 @@ class Gridder:
         logger.info(f"Gridding visibilities for time_idx={sol_int_time_idx} and freq_idx={sol_int_freq_idx}")
 
         with TimerLog("Getting bright source subtracted data..."):
-            cal_response: CalibratorResponse = await self._calibrator.remote(key, sol_int_time_idx, sol_int_freq_idx)
+            cal_response = await self._calibrator(key, sol_int_time_idx, sol_int_freq_idx)
 
         with TimerLog("Gridding..."):
             return block_until_ready(self._grid_vis(

@@ -6,36 +6,25 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
 
 
 class ChunkParams(SerialisableBaseModel):
-    num_channels: int
-    num_integrations: int
-    num_baselines: int
     # Freq dimension
+    num_channels: int
+    num_sub_bands: int
     num_freqs_per_sol_int: int
-    num_sol_ints_per_sub_band: int
-    num_sub_bands_per_image: int
+
     # Time dimension
+    num_integrations: int
     num_times_per_sol_int: int
-    num_sol_ints_per_accumlate: int
-    num_accumulates_per_image: int
+
+    num_baselines: int
 
     # Calibration average rules
     num_model_times_per_solution_interval: int
     num_model_freqs_per_solution_interval: int
 
     num_sol_ints_freq: int | None = None
-    num_sub_bands: int | None = None
-    num_images_freq: int | None = None
-    num_sol_ints_time: int | None = None
-    num_accumulates: int | None = None
-    num_images_time: int | None = None
-
-    num_sol_ints_freq_per_image: int | None = None
-    num_sol_ints_time_per_image: int | None = None
-
-    num_baselines_per_sol_int: int | None = None
-
+    num_sol_ints_per_sub_band: int | None = None
     num_freqs_per_sub_band: int | None = None
-    num_times_per_accumulate: int | None = None
+    num_sol_ints_time: int | None = None
 
     def __init__(self, **data) -> None:
         # Call the superclass __init__ to perform the standard validation
@@ -46,53 +35,36 @@ class ChunkParams(SerialisableBaseModel):
 
 def _check_chunk_params(chunk_params: ChunkParams):
     # Check divisibility
+    if chunk_params.num_channels % chunk_params.num_sub_bands != 0:
+        raise ValueError(
+            f"Number of channels {chunk_params.num_channels} not divisible by num_sub_bands {chunk_params.num_sub_bands}"
+        )
+    chunk_params.num_freqs_per_sub_band = chunk_params.num_channels // chunk_params.num_sub_bands
+
     if chunk_params.num_channels % chunk_params.num_freqs_per_sol_int != 0:
         raise ValueError(
-            f"Number of channels {chunk_params.num_channels} not divisible by num_freqs_per_sol_int {chunk_params.num_freqs_per_sol_int}")
-    num_sol_ints_freq = chunk_params.num_channels // chunk_params.num_freqs_per_sol_int
-    if num_sol_ints_freq % chunk_params.num_sol_ints_per_sub_band != 0:
+            f"Number of channels {chunk_params.num_channels} not divisible by num_freqs_per_sol_int {chunk_params.num_freqs_per_sol_int}"
+        )
+    chunk_params.num_sol_ints_freq = chunk_params.num_channels // chunk_params.num_freqs_per_sol_int
+
+    if chunk_params.num_sol_ints_freq % chunk_params.num_sub_bands != 0:
         raise ValueError(
-            f"Number of sol ints {num_sol_ints_freq} not divisible by num_sol_ints_per_sub_band {chunk_params.num_sol_ints_per_sub_band}")
-    num_sub_bands = num_sol_ints_freq // chunk_params.num_sol_ints_per_sub_band
-    if num_sub_bands % chunk_params.num_sub_bands_per_image != 0:
-        raise ValueError(
-            f"Number of sub bands {num_sub_bands} not divisible by num_sub_bands_per_image {chunk_params.num_sub_bands_per_image}")
-    num_images_freq = num_sub_bands // chunk_params.num_sub_bands_per_image
+            f"Number of solution integrations per frequency {chunk_params.num_sol_ints_freq} not divisible by num_sub_bands {chunk_params.num_sub_bands}"
+        )
+    chunk_params.num_sol_ints_per_sub_band = chunk_params.num_sol_ints_freq // chunk_params.num_sub_bands
 
     if chunk_params.num_integrations % chunk_params.num_times_per_sol_int != 0:
         raise ValueError(
-            f"Number of integrations {chunk_params.num_integrations} not divisible by num_times_per_sol_int {chunk_params.num_times_per_sol_int}")
-    num_sol_ints_time = chunk_params.num_integrations // chunk_params.num_times_per_sol_int
-    if num_sol_ints_time % chunk_params.num_sol_ints_per_accumlate != 0:
-        raise ValueError(
-            f"Number of sol ints {num_sol_ints_time} not divisible by num_sol_ints_per_accumlate {chunk_params.num_sol_ints_per_accumlate}")
-    num_accumulates = num_sol_ints_time // chunk_params.num_sol_ints_per_accumlate
-    if num_accumulates % chunk_params.num_accumulates_per_image != 0:
-        raise ValueError(
-            f"Number of accumulates {num_accumulates} not divisible by num_accumulates_per_image {chunk_params.num_accumulates_per_image}")
-    num_images_time = num_accumulates // chunk_params.num_accumulates_per_image
+            f"Number of integrations {chunk_params.num_integrations} not divisible by num_times_per_sol_int {chunk_params.num_times_per_sol_int}"
+        )
+    chunk_params.num_sol_ints_time = chunk_params.num_integrations // chunk_params.num_times_per_sol_int
 
-    if chunk_params.num_times_per_sol_int % chunk_params.num_model_times_per_solution_interval != 0:
-        raise ValueError(f"Number of times per sol int {chunk_params.num_times_per_sol_int} not divisible by "
-                         f"num_model_times_per_solution_interval {chunk_params.num_model_times_per_solution_interval}")
-    if chunk_params.num_freqs_per_sol_int % chunk_params.num_model_freqs_per_solution_interval != 0:
-        raise ValueError(f"Number of freqs per sol int {chunk_params.num_freqs_per_sol_int} not divisible by "
-                         f"num_model_freqs_per_solution_interval {chunk_params.num_model_freqs_per_solution_interval}")
     # Set derived values
-    chunk_params.num_sol_ints_freq = num_sol_ints_freq
-    chunk_params.num_sub_bands = num_sub_bands
-    chunk_params.num_images_freq = num_images_freq
-    chunk_params.num_sol_ints_time = num_sol_ints_time
-    chunk_params.num_accumulates = num_accumulates
-    chunk_params.num_images_time = num_images_time
-
-    chunk_params.num_sol_ints_freq_per_image = chunk_params.num_sol_ints_per_sub_band * chunk_params.num_sub_bands_per_image
-    chunk_params.num_sol_ints_time_per_image = chunk_params.num_sol_ints_per_accumlate * chunk_params.num_accumulates_per_image
-
-    chunk_params.num_baselines_per_sol_int = chunk_params.num_baselines * chunk_params.num_times_per_sol_int
-
-    chunk_params.num_freqs_per_sub_band = chunk_params.num_freqs_per_sol_int * chunk_params.num_sol_ints_per_sub_band
-    chunk_params.num_times_per_accumulate = chunk_params.num_times_per_sol_int * chunk_params.num_sol_ints_per_accumlate
+    if chunk_params.num_integrations % chunk_params.num_times_per_sol_int != 0:
+        raise ValueError(
+            f"Number of integrations {chunk_params.num_integrations} not divisible by num_times_per_sol_int {chunk_params.num_times_per_sol_int}"
+        )
+    chunk_params.num_sol_ints_time_per_image = chunk_params.num_integrations // chunk_params.num_times_per_sol_int
 
 
 class ImageParams(SerialisableBaseModel):

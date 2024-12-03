@@ -1,4 +1,4 @@
-import logging
+import asyncio
 import logging
 import os
 from uuid import uuid4
@@ -9,8 +9,6 @@ import astropy.units as au
 import jax
 import numpy as np
 import ray
-from ray import serve
-from ray.serve.handle import DeploymentHandle
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.actors.namespace import NAMESPACE
@@ -18,15 +16,19 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
-from dsa2000_cal.forward_models.streaming.distributed.aggregator import Aggregator, AggregatorParams
+from dsa2000_cal.forward_models.streaming.distributed.aggregator import Aggregator, AggregatorParams, \
+    compute_aggregator_options
 from dsa2000_cal.forward_models.streaming.distributed.calibrator import CalibrationSolutionCache, Calibrator, \
-    CalibrationSolutionCacheParams
+    CalibrationSolutionCacheParams, compuate_calibration_solution_cache_options, compute_calibrator_options
 from dsa2000_cal.forward_models.streaming.distributed.common import ChunkParams, ForwardModellingRunParams, ImageParams
-from dsa2000_cal.forward_models.streaming.distributed.data_streamer import DataStreamerParams, DataStreamer
-from dsa2000_cal.forward_models.streaming.distributed.gridder import Gridder
-from dsa2000_cal.forward_models.streaming.distributed.model_predictor import ModelPredictor, ModelPredictorParams
+from dsa2000_cal.forward_models.streaming.distributed.data_streamer import DataStreamerParams, DataStreamer, \
+    compute_data_streamer_options
+from dsa2000_cal.forward_models.streaming.distributed.gridder import Gridder, compute_gridder_options
+from dsa2000_cal.forward_models.streaming.distributed.model_predictor import ModelPredictor, ModelPredictorParams, \
+    compute_model_predictor_options
+from dsa2000_cal.forward_models.streaming.distributed.supervisor import create_supervisor
 from dsa2000_cal.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulator, \
-    SystemGainSimulatorParams
+    SystemGainSimulatorParams, compute_system_gain_simulator_options
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.imaging.utils import get_image_parameters
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
@@ -49,25 +51,22 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     else:
         num_baselines = (num_antennas * (num_antennas - 1)) // 2
 
-    freqs = array.get_channels()[:40]
+    freqs = array.get_channels()
 
     num_channels = len(freqs)
-    num_sub_bands_per_image = 1
+    num_sub_bands = 1
     num_freqs_per_sol_int = 40
 
     channel_width = array.get_channel_width()
     solution_interval_freq = num_freqs_per_sol_int * channel_width
-    sub_band_interval = channel_width * num_channels / num_sub_bands_per_image
+    sub_band_interval = channel_width * num_channels / num_sub_bands
     num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
 
     integration_interval = array.integration_time()
     solution_interval = 6 * au.s
-    validity_interval = 12 * au.s
     observation_duration = 624 * au.s
 
     num_times_per_sol_int = int(solution_interval / integration_interval)
-    num_sol_ints_per_accumlate = int(validity_interval / solution_interval)
-    num_accumulates_per_image = int(observation_duration / validity_interval)
     num_integrations = int(observation_duration / integration_interval)
 
     ref_time = at.Time("2021-01-01T00:00:00", scale="utc")
@@ -86,10 +85,8 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         num_baselines=num_baselines,
         num_freqs_per_sol_int=num_freqs_per_sol_int,
         num_sol_ints_per_sub_band=num_sol_ints_per_sub_band,
-        num_sub_bands_per_image=num_sub_bands_per_image,
+        num_sub_bands=num_sub_bands,
         num_times_per_sol_int=num_times_per_sol_int,
-        num_sol_ints_per_accumlate=num_sol_ints_per_accumlate,
-        num_accumulates_per_image=num_accumulates_per_image,
         num_model_times_per_solution_interval=1,
         num_model_freqs_per_solution_interval=1
     )
@@ -148,10 +145,8 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
          oversample_factor: float, full_stokes: bool, num_cal_facets: int,
          root_folder: str, run_name: str):
-    # Set slower start up, because some deployments take a bit longer to start up.
-    # os.environ['SLOW_STARTUP_WARNING_PERIOD_S'] = "60"
     # Connect to Ray.
-    ray.init(address="auto", namespace=NAMESPACE)  # ray:{os.environ['RAY_REDIS_PORT']}
+    ray.init(address="auto", namespace=NAMESPACE)
 
     field_of_view = field_of_view * au.deg if field_of_view is not None else None
 
@@ -206,187 +201,85 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         geodesic_model=geodesic_model
     )
 
-    def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams):
-        # memory is 2 * n * n * A * num_coh * itemsize(gains)
-        num_coh = 4 if run_params.full_stokes else 1
-        n = 257
-        A = len(run_params.ms_meta.antennas)
-        itemsize_gains = np.dtype(np.complex64).itemsize
-        memory = 2 * n * n * A * num_coh * itemsize_gains
-        return {
-            "num_cpus": 1,
-            "num_gpus": 0,
-            'memory': 1.1 * memory
-        }
+    asyncio.run(run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params))
 
-    system_gain_simulator = SystemGainSimulator.options(
-        max_queued_requests=1024,  # no queue limit
-        max_ongoing_requests=1,  # only one request at a time
-        num_replicas=1,
-        ray_actor_options=compute_system_gain_simulator_options(run_params)
-    ).bind(run_params, system_gain_simulator_params)
 
-    def compute_data_streamer_options(run_params: ForwardModellingRunParams):
-        # memory is 2 * B * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
-        num_coh = 4 if run_params.full_stokes else 1
-        B = run_params.chunk_params.num_baselines
-        itemsize_vis = np.dtype(np.complex64).itemsize
-        itemsize_weights = np.dtype(np.float16).itemsize
-        itemsize_flags = np.dtype(np.bool_).itemsize
-        memory = 2 * B * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags)
-        return {
-            "num_cpus": 1,
-            "num_gpus": 0,
-            'memory': 1.1 * memory
-        }
-
-    data_streamer = DataStreamer.options(
-        max_queued_requests=1024,  # no queue limit
-        max_ongoing_requests=1,  # only one request at a time
-        num_replicas=1,
-        ray_actor_options=compute_data_streamer_options(run_params)
-    ).bind(run_params, data_streamer_params, system_gain_simulator)
-
-    def compute_model_predictor_options(run_params: ForwardModellingRunParams):
-        # memory is 2 * D * B * num_coh * itemsize(vis)
-        # 2 is for buffer in predict
-        num_coh = 4 if run_params.full_stokes else 1
-        D = run_params.num_cal_facets
-        B = run_params.chunk_params.num_baselines
-        itemsize_vis = np.dtype(np.complex64).itemsize
-        memory = 2 * D * B * num_coh * itemsize_vis
-        return {
-            "num_cpus": 1,
-            "num_gpus": 0,
-            'memory': 1.1 * memory
-        }
-
-    model_predictor = ModelPredictor.options(
-        max_queued_requests=1024,  # no queue limit
-        max_ongoing_requests=1,  # only one request at a time
-        num_replicas=1,
-        ray_actor_options=compute_model_predictor_options(run_params)
-    ).bind(run_params, predict_params)
-
-    def compuate_calibration_solution_cache_options(run_params: ForwardModellingRunParams):
-        # memory os Tm * A * Cm * num_coh * itemsize(gains)
-        num_coh = 4 if run_params.full_stokes else 1
-        Tm = run_params.chunk_params.num_model_times_per_solution_interval
-        Cm = run_params.chunk_params.num_model_freqs_per_solution_interval
-        A = len(run_params.ms_meta.antennas)
-        itemsize_gains = np.dtype(np.complex64).itemsize
-        memory = Tm * A * Cm * num_coh * itemsize_gains
-        return {
-            'memory': 1.1 * memory
-        }
-
-    calibration_soluation_cache = CalibrationSolutionCache(params=CalibrationSolutionCacheParams(),
-                                                           **compuate_calibration_solution_cache_options(run_params))
-
-    def compute_calibrator_options(run_params: ForwardModellingRunParams):
-        # memory for inputs from stream:
-        # Ts * B * Cs * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
-
-        # memory for averaged data:
-        # Tm * B * Cm * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
-
-        # memory for model:
-        # D * Tm * B * Cm * num_coh * itemsize(vis)
-
-        # memory for solution:
-        # D * Tm * A * Cm * num_coh * itemsize(gains)
-
-        num_coh = 4 if run_params.full_stokes else 1
-        Ts = run_params.chunk_params.num_times_per_sol_int
-        B = run_params.chunk_params.num_baselines
-        Cs = run_params.chunk_params.num_freqs_per_sol_int
-        D = run_params.num_cal_facets
-        Tm = 1
-        Cm = 1
-        A = len(run_params.ms_meta.antennas)
-        itemsize_vis = np.dtype(np.complex64).itemsize
-        itemsize_weights = np.dtype(np.float16).itemsize
-        itemsize_flags = np.dtype(np.bool_).itemsize
-        itemsize_gains = np.dtype(np.complex64).itemsize
-        memory = Ts * B * Cs * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
-                 Tm * B * Cm * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
-                 D * Tm * B * Cm * num_coh * itemsize_vis + \
-                 D * Tm * A * Cm * num_coh * itemsize_gains
-        # TODO: flip to GPU once we standardise the GPU's per device. This would need different resources for varying GPU's
-        return {
-            "num_cpus": 1,
-            "num_gpus": 0,
-            'memory': 1.1 * memory
-        }
-
-    calibrator = Calibrator.options(
-        max_queued_requests=1024,  # no queue limit
-        max_ongoing_requests=1,  # only one request at a time
-        num_replicas=1,
-        ray_actor_options=compute_calibrator_options(run_params)
-    ).bind(run_params, data_streamer, model_predictor, calibration_soluation_cache)
-
-    def compute_gridder_options(run_params: ForwardModellingRunParams):
-        # Memory is 2 * num_pix^2 * num_coh * itemsize(image)
-        num_coh = 4 if run_params.full_stokes else 1
-        num_pix_l = run_params.image_params.num_l
-        num_pix_m = run_params.image_params.num_m
-        # image is f64
-        itemsize_image = np.dtype(np.float64).itemsize
-        memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
-        return {
-            "num_cpus": run_params.chunk_params.num_freqs_per_sol_int,  # 1 thread per channel * (num coh)
-            "num_gpus": 0,  # Doesn't use GPU
-            'memory': 1.1 * memory
-        }
-
-    gridder = Gridder.options(
-        max_queued_requests=1024,  # no queue limit
-        max_ongoing_requests=1,  # only one request at a time
-        num_replicas=1,
-        ray_actor_options=compute_gridder_options(run_params)
-    ).bind(run_params, calibrator)
-
-    gridder_handle: DeploymentHandle = serve.run(gridder)
-
-    # TODO: merge into Caller and run simultaneously over all subbands
-    # TODO: remove beam before saving image
-
-    def compute_aggregator_options(run_params: ForwardModellingRunParams):
-        # memory is 2 * num_pix^2 * num_coh * itemsize(image)
-        num_coh = 4 if run_params.full_stokes else 1
-        num_pix_l = run_params.image_params.num_l
-        num_pix_m = run_params.image_params.num_m
-        # image is f64
-        itemsize_image = np.dtype(np.float64).itemsize
-        memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
-        return {
-            "num_cpus": 0,  # Doesn't use CPU
-            "num_gpus": 0,  # Doesn't use GPU
-            'memory': 1.1 * memory
-        }
-
-    aggregator = Aggregator(
-        worker_id=str(uuid4()),
-        params=AggregatorParams(
-            sol_int_freq_idxs=[0],
-            fm_run_params=run_params,
-            gridder=gridder_handle,
-            image_suffix='sb0',
-        ),
-        **compute_aggregator_options(run_params)
+async def run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params):
+    system_gain_simulator_remote = SystemGainSimulator.options(
+        **compute_system_gain_simulator_options(run_params)
+    )
+    system_gain_simulator = create_supervisor(
+        system_gain_simulator_remote, 'system_gain_simulator', 1,
+        run_params, system_gain_simulator_params
+    )
+    data_streamer_remote = DataStreamer.options(
+        **compute_data_streamer_options(run_params)
+    )
+    data_streamer = create_supervisor(
+        data_streamer_remote, 'data_streamer', 1,
+        run_params, data_streamer_params, system_gain_simulator
+    )
+    model_predictor_remote = ModelPredictor.options(
+        **compute_model_predictor_options(run_params)
+    )
+    model_predictor = create_supervisor(
+        model_predictor_remote, 'model_predictor', 1,
+        run_params, predict_params
+    )
+    calibration_soluation_cache = CalibrationSolutionCache(
+        params=CalibrationSolutionCacheParams(),
+        **compuate_calibration_solution_cache_options(run_params)
+    )
+    calibrator_remote = Calibrator.options(
+        **compute_calibrator_options(run_params)
+    )
+    calibrator = create_supervisor(
+        calibrator_remote, 'calibrator', 1,
+        run_params, data_streamer, model_predictor, calibration_soluation_cache
+    )
+    gridder_remote = Gridder.options(
+        **compute_gridder_options(run_params)
+    )
+    gridder = create_supervisor(
+        gridder_remote, 'gridder', 1,
+        run_params, calibrator
     )
 
-    key = jax.random.PRNGKey(0)
-    for sol_int_time_idx in range(run_params.chunk_params.num_times_per_sol_int):
-        run_key, key = jax.random.split(key, 2)
-        save_to_disk = True
-        aggregator_response = aggregator(key, sol_int_time_idx, save_to_disk)
-        logger.info(
-            f"Image {sol_int_time_idx} done. Saved to:\n"
-            f"Image: {aggregator_response.image_path}\n"
-            f"PSF: {aggregator_response.psf_path}"
+    # This is the Caller
+    async def run_aggregator(key, sub_band_idx: int):
+        sol_int_freq_idxs = (
+                np.arange(run_params.chunk_params.num_sol_ints_per_sub_band)
+                + sub_band_idx * run_params.chunk_params.num_sol_ints_per_sub_band
         )
+        aggregator = Aggregator(
+            worker_id=str(uuid4()),
+            params=AggregatorParams(
+                sol_int_freq_idxs=sol_int_freq_idxs.tolist(),
+                fm_run_params=run_params,
+                gridder=gridder,
+                image_suffix=f'SB{sub_band_idx:01d}',
+            ),
+            **compute_aggregator_options(run_params)
+        )
+        for sol_int_time_idx in range(run_params.chunk_params.num_sol_ints_time):
+            run_key, key = jax.random.split(key, 2)
+            save_to_disk = True  # Save every iteration cumulatively
+            aggregator_response = aggregator(key, sol_int_time_idx, save_to_disk)
+            logger.info(
+                f"Image {sol_int_time_idx} done. Saved to:\n"
+                f"Image: {aggregator_response.image_path}\n"
+                f"PSF: {aggregator_response.psf_path}"
+            )
+
+    async def run_all(key):
+        tasks = []
+        for sub_band_idx in range(run_params.chunk_params.num_sub_bands):
+            aggregator_key, key = jax.random.split(key, 2)
+            tasks.append(asyncio.create_task(run_aggregator(aggregator_key, sub_band_idx)))
+        await asyncio.gather(*tasks)
+
+    # Submit with PRNG key
+    asyncio.run(run_all(jax.random.PRNGKey(0)))
 
 
 if __name__ == '__main__':

@@ -9,8 +9,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pylab as plt
+import ray
 from astropy import constants
-from ray import serve
 
 import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, IntArray
@@ -88,8 +88,21 @@ class SystemGainSimulatorParams(SerialisableBaseModel):
 class SystemGainSimulatorResponse(NamedTuple):
     gain_model: GainModel
 
+def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams):
+    # memory is 2 * n * n * A * num_coh * itemsize(gains)
+    num_coh = 4 if run_params.full_stokes else 1
+    n = 257
+    A = len(run_params.ms_meta.antennas)
+    itemsize_gains = np.dtype(np.complex64).itemsize
+    memory = 2 * n * n * A * num_coh * itemsize_gains
+    return {
+        "num_cpus": 1,
+        "num_gpus": 0,
+        'memory': 1.1 * memory
+    }
 
-@serve.deployment
+
+@ray.remote
 class SystemGainSimulator:
 
     def __init__(self, params: ForwardModellingRunParams, system_gain_simulator_params: SystemGainSimulatorParams):
