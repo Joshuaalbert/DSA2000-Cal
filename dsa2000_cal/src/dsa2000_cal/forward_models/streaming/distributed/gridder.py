@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 import numpy as np
+import pylab as plt
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
@@ -117,7 +118,21 @@ class Gridder:
         with ThreadPoolExecutor(max_workers=1) as executor:
             results = executor.map(single_run, *zip(*pq_array))
         # Get all results (None's)
-        list(results)
+        results = list(results)
+        if np.all(image_buffer == 0) or not np.all(np.isfinite(image_buffer)):
+            logger.warning(f"Image buffer is all zeros or contains NaNs/Infs for freq_idx={sol_int_freq_idx}")
+        if np.all(psf_buffer == 0) or not np.all(np.isfinite(psf_buffer)):
+            logger.warning(f"PSF buffer is all zeros or contains NaNs/Infs for freq_idx={sol_int_freq_idx}")
+
+        # Plot histogram of image
+        fig, ax = plt.subplots(1, 1)
+        ax.hist(image_buffer.flatten(), bins='auto')
+        ax.set_title(f"Image buffer histogram for freq_idx={sol_int_freq_idx}")
+        ax.set_xlabel("Value")
+        ax.set_ylabel("Frequency")
+        fig.savefig(os.path.join(self.params.plot_folder, f"image_buffer_hist_{sol_int_freq_idx}.png"))
+        plt.close(fig)
+
         if self.params.full_stokes:
             return GridderResponse(image=image_buffer, psf=psf_buffer)
         else:
