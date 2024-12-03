@@ -6,7 +6,7 @@ from typing import Type
 from uuid import uuid4
 
 import ray
-from ray.util.metrics import Histogram, Counter
+from ray.util.metrics import Histogram, Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.actors.namespace import NAMESPACE
@@ -115,21 +115,24 @@ class _Supervisor:
             self._actor_queue.put_nowait(i)
         self._run_time_histogram = Histogram(
             name=f"run_time_histogram_s",
-            boundaries=[0] + [2 ** i for i in range(16)],
+            description="The time taken to run a task",
+            boundaries=[0.1] + [2 ** i for i in range(16)],
             tag_keys=("task",)
         )
         self._queue_time_histogram = Histogram(
             name=f"queue_time_histogram_s",
-            boundaries=[0] + [2 ** i for i in range(16)],
+            description="The time taken to queue a task",
+            boundaries=[0.1] + [2 ** i for i in range(16)],
             tag_keys=("task",)
         )
-        self._num_running_counter = Counter(
-            name=f"num_running_counter",
+        self._num_running_gauge = Gauge(
+            name=f"num_running_gauge",
+            description="The number of running tasks",
             tag_keys=("task",)
         )
         self._run_time_histogram.set_default_tags({"task": params.name})
         self._queue_time_histogram.set_default_tags({"task": params.name})
-        self._num_running_counter.set_default_tags({"task": params.name})
+        self._num_running_gauge.set_default_tags({"task": params.name})
 
     def health_check(self):
         """
@@ -145,17 +148,20 @@ class _Supervisor:
         return self._actor_queue.qsize()
 
     async def call(self, *args, **kwargs):
+        # Get the next available actor
         t0 = time.time()
         actor_idx = await self._actor_queue.get()
         t1 = time.time()
         self._queue_time_histogram.observe(t1 - t0)
+
+        # Call the actor
         actor = self.params.actors[actor_idx]
-        self._num_running_counter.inc(1)
+        self._num_running_gauge.set(self.num_running())
         t0 = time.time()
         response = await actor.__call__.remote(*args, **kwargs)
         t1 = time.time()
-        self._num_running_counter.inc(-1)
         self._actor_queue.put_nowait(actor_idx)
+        self._num_running_gauge.set(self.num_running())
         self._run_time_histogram.observe(t1 - t0)
         return response
 
