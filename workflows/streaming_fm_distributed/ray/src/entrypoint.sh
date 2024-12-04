@@ -64,7 +64,7 @@ if [ "$IS_RAY_HEAD" = true ]; then
     --min-worker-port=20000 \
     --max-worker-port=20100 \
     --node-ip-address=$NODE_IP_ADDRESS \
-    -dashboard-host=0.0.0.0 \
+    --dashboard-host=0.0.0.0 \
     --temp-dir=$TEMP_DIR
 
   ray status
