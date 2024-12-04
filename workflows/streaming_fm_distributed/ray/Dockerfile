@@ -1,22 +1,23 @@
 FROM python:3.11.7
 
-RUN add-apt-repository ppa:ska-sa/main && add-apt-repository ppa:ska-sa/beta
-
-
-
 RUN apt-get update && apt-get install -y gdb lldb sudo rsync \
-    libcasacore-dev build-essential cmake ninja-build \
-    casacore-data python3-numpy python3-nose \
-    python3-setuptools libboost-python-dev \
-    libcfitsio-dev
-
+    build-essential cmake g++ gcc python3 python3-pip \
+    python3-numpy python3-nose python3-setuptools libcfitsio-dev \
+    libhdf5-dev libboost-dev
 
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
+
+# install CASA
+RUN git clone https://github.com/casacore/casacore.git \
+    && cd casacore && mkdir build && cd build \
+    && cmake -DUSE_FFTW=OFF -DUSE_HDF5=ON -DCMAKE_INSTALL_PREFIX=/usr/local .. \
+    && make -j$(nproc) && sudo make install \
+    && cd ../..
 
 # requirements rarely change, so install those here
 COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
 COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt
-RUN pip install -r /dsa/code/requirements.txt
+RUN CASACORE_ROOT_DIR=/usr/local pip install -r /dsa/code/requirements.txt
 RUN pip install -r /dsa/code/requirements-notebooks.txt
 
 # Install the ducc0 package from source for performance
