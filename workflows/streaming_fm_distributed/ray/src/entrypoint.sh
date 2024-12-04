@@ -45,6 +45,11 @@ fi
 
 #NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}') # Gives docker container IP, not host IP which is needed for routing
 
+if [ -z "$NODE_IP_ADDRESS" ]; then
+  echo "Error: NODE_IP_ADDRESS must be specified."
+  exit 1
+fi
+
 echo "Node IP address: $NODE_IP_ADDRESS"
 
 if [ "$IS_RAY_HEAD" = true ]; then

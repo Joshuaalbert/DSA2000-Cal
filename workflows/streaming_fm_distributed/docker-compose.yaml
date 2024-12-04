@@ -46,7 +46,6 @@ services:
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
-    #    network_mode: "host"
     ports:
       - "6379:6379"        # GCS server port
       - "8265:8265"        # Dashboard UI port
@@ -86,7 +85,6 @@ services:
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
-    #    network_mode: "host"
     ports:
       - "12345:12345"      # Node manager port
       - "12346:12346"      # Object manager port
