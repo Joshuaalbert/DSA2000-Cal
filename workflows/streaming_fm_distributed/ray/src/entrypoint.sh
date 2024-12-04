@@ -46,6 +46,8 @@ fi
 
 NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}')
 
+echo "Node IP address: $NODE_IP_ADDRESS"
+
 if [ "$IS_RAY_HEAD" = true ]; then
   echo "Starting Ray head node..."
 
@@ -63,9 +65,9 @@ if [ "$IS_RAY_HEAD" = true ]; then
     --metrics-export-port=8090 \
     --min-worker-port=20000 \
     --max-worker-port=20100 \
-    --node-ip-address=$NODE_IP_ADDRESS \
     --dashboard-host=0.0.0.0 \
-    --temp-dir=$TEMP_DIR
+    --temp-dir=$TEMP_DIR #\
+  #    --node-ip-address=$NODE_IP_ADDRESS \
 
   ray status
 
@@ -102,8 +104,8 @@ else
     --dashboard-agent-listen-port=52365 \
     --metrics-export-port=22349 \
     --min-worker-port=20000 \
-    --max-worker-port=20100 \
-    --node-ip-address=$NODE_IP_ADDRESS
+    --max-worker-port=20100 #\
+  #    --node-ip-address=$NODE_IP_ADDRESS
 
   ray status
 fi
