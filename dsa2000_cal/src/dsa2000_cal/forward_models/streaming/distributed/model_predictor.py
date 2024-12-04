@@ -182,9 +182,9 @@ class ModelPredict:
                 far_field_delay_engine=far_field_delay_engine,
                 geodesic_model=geodesic_model
             )
-            vis = sky_vis  # [T=1, B, C=1, 2, 2]
-            vis = vis[0, :, 0]  # [B, 2, 2]
+            vis = sky_vis  # [T=1, B, C=1[, 2, 2]]
+            vis = vis[0, :, 0]  # [B[, 2, 2]]
             vis_list.append(vis)
-        vis = jnp.stack(vis_list, axis=0)  # [D, B, 2, 2]
+        vis = jnp.stack(vis_list, axis=0)  # [D, B[, 2, 2]]
 
         return vis

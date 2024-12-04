@@ -7,7 +7,7 @@ import pytest
 from jax import numpy as jnp
 
 from dsa2000_cal.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, auto_multi_vmap, \
-    convert_to_ufunc, _get_permutation
+    convert_to_ufunc, _get_permutation, simple_broadcast
 
 
 @pytest.mark.parametrize('use_scan', [True, False])
@@ -272,3 +272,16 @@ def test_get_permutation():
 
     with pytest.raises(ValueError, match="Dimension e not found in input axes"):
         _get_permutation(4, ['a', 'b', 'c', 'd'], ['d', 'c', 'b', 'a', 'e'])
+
+
+def test_simple_broadcast():
+    def f(x, y):
+        return x + y
+
+    x = jnp.ones((3, 4, 5))
+    y = jnp.ones((3, 4, 5))
+
+    res = simple_broadcast(f, 1, x, y)
+
+    assert np.all(res == 2)
+    assert np.shape(res) == (3, 4, 5)

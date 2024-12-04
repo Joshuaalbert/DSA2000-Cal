@@ -9,7 +9,7 @@ __all__ = [
 
 import warnings
 
-from functools import partial
+from functools import partial, wraps
 
 from typing import TypeVar, Callable, Tuple, Set, List, Dict, Union, Any
 
@@ -676,3 +676,39 @@ def print_nans(args):
         jax.tree.map(lambda x: jax.ShapeDtypeStruct(jnp.shape(x), jnp.dtype(x)), args),
         args
     )
+
+
+U = TypeVar('U')
+
+
+def simple_broadcast(f: Callable[..., U], leading_dims: int) -> U:
+    """
+    Simple broadcast function which reshapes the inputs to have the same leading dimensions, and then reshapes the output
+    to have the original leading dimensions.
+
+    Args:
+        f: function to apply
+        leading_dims: the leading dimensions to broadcast over
+
+    Returns:
+        the result of the function applied to the arguments with single vmap
+    """
+
+    @wraps(f)
+    def _f(*args):
+        leading_shapes = jax.tree.map(lambda x: np.shape(x)[:leading_dims], jax.tree.leaves(args))
+        if len(leading_shapes) == 0:
+            raise ValueError("No args given.")
+
+        if len(set(leading_shapes)) != 1:
+            raise ValueError(f"Leading dimensions mis-match, got these different ones {leading_shapes}.")
+
+        leading_dims = leading_shapes[0]
+        leading_size = np.prod(leading_dims)
+        args = jax.tree.map(lambda x: jax.lax.reshape(x, (leading_size,) + np.shape(x)[leading_dims:]), args)
+        out = f(*args)
+        # reshape
+        out = jax.tree.map(lambda x: jax.lax.reshape(x, leading_dims + np.shape(x)[1:]), out)
+        return out
+
+    return _f
