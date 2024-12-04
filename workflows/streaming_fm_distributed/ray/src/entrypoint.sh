@@ -54,18 +54,18 @@ if [ "$IS_RAY_HEAD" = true ]; then
     --port=6379 \
     --metrics-export-port=8090 \
     --dashboard-host=0.0.0.0 \
-    --temp-dir=$TEMP_DIR #\
-  #    --ray-client-server-port=10001 \
-  #    --redis-shard-ports=6380,6381 \
-  #    --node-manager-port=12345 \
-  #    --object-manager-port=12346 \
-  #    --runtime-env-agent-port=12347 \
-  #    --dashboard-agent-grpc-port=12348 \
-  #    --dashboard-agent-listen-port=52365 \
-  #    --dashboard-port=8265 \
-  #    --dashboard-grpc-port=50052 \
-  #    --min-worker-port=20000 \
-  #    --max-worker-port=20100 \
+    --temp-dir=$TEMP_DIR \
+    --ray-client-server-port=10001 \
+    --redis-shard-ports=6380,6381 \
+    --node-manager-port=12345 \
+    --object-manager-port=12346 \
+    --runtime-env-agent-port=12347 \
+    --dashboard-agent-grpc-port=12348 \
+    --dashboard-agent-listen-port=52365 \
+    --dashboard-port=8265 \
+    --dashboard-grpc-port=50052 \
+    --min-worker-port=20000 \
+    --max-worker-port=20100
 
   #    --node-ip-address=$NODE_IP_ADDRESS \
 
@@ -97,14 +97,14 @@ else
   echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}..."
 
   ray start --address="${RAY_HEAD_IP}:6379" \
-    --metrics-export-port=8090 #\
-  #    --node-manager-port=12345 \
-  #    --object-manager-port=12346 \
-  #    --runtime-env-agent-port=12347 \
-  #    --dashboard-agent-grpc-port=12348 \
-  #    --dashboard-agent-listen-port=52365 \
-  #    --min-worker-port=20000 \
-  #    --max-worker-port=20100 #\
+    --metrics-export-port=8090 \
+    --node-manager-port=12345 \
+    --object-manager-port=12346 \
+    --runtime-env-agent-port=12347 \
+    --dashboard-agent-grpc-port=12348 \
+    --dashboard-agent-listen-port=52365 \
+    --min-worker-port=20000 \
+    --max-worker-port=20100
   #    --node-ip-address=$NODE_IP_ADDRESS
 
   ray status
