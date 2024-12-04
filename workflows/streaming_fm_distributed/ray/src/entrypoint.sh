@@ -96,12 +96,12 @@ else
   echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}..."
 
   ray start --address="${RAY_HEAD_IP}:6379" \
-    --node-manager-port=22345 \
-    --object-manager-port=22346 \
-    --runtime-env-agent-port=22347 \
-    --dashboard-agent-grpc-port=22348 \
+    --node-manager-port=12345 \
+    --object-manager-port=12346 \
+    --runtime-env-agent-port=12347 \
+    --dashboard-agent-grpc-port=12348 \
     --dashboard-agent-listen-port=52365 \
-    --metrics-export-port=22349 \
+    --metrics-export-port=8090 \
     --min-worker-port=20000 \
     --max-worker-port=20100 #\
   #    --node-ip-address=$NODE_IP_ADDRESS
