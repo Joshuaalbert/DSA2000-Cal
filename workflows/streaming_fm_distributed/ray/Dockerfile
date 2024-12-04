@@ -12,6 +12,9 @@ RUN pip install -r /dsa/code/requirements-notebooks.txt
 # Install the ducc0 package from source for performance
 RUN pip install --ignore-installed --no-binary ducc0=0.35.0 --user ducc0
 
+# Install JAX for GPU
+RUN pip install --ignore-installed jax[jaxlib] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
 # Download the ephem data for astropy
 RUN python -c 'import astropy.time as at; at.Time.now().ut1'
 
