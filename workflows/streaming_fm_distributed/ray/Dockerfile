@@ -8,6 +8,10 @@ COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
 COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt
 RUN pip install -r /dsa/code/requirements.txt
 RUN pip install -r /dsa/code/requirements-notebooks.txt
+
+# Install the ducc0 package from source for performance
+RUN pip install --ignore-installed --no-binary ducc0=0.35.0 --user ducc0
+
 # Download the ephem data for astropy
 RUN python -c 'import astropy.time as at; at.Time.now().ut1'
 
