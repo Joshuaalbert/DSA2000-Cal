@@ -1,6 +1,15 @@
 FROM python:3.11.7
 
-RUN apt-get update && apt-get install -y gdb lldb sudo rsync libcasacore-dev build-essential cmake ninja-build
+RUN add-apt-repository ppa:ska-sa/main && add-apt-repository ppa:ska-sa/beta
+
+
+
+RUN apt-get update && apt-get install -y gdb lldb sudo rsync \
+    libcasacore-dev build-essential cmake ninja-build \
+    casacore-data python3-numpy python3-nose \
+    python3-setuptools libboost-python-dev \
+    libcfitsio-dev
+
 
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
