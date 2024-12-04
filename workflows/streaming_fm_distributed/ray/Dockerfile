@@ -3,7 +3,7 @@ FROM python:3.11.7
 RUN apt-get update && apt-get install -y gdb lldb sudo rsync \
     build-essential cmake g++ gcc python3 python3-pip \
     python3-numpy python3-nose python3-setuptools libcfitsio-dev \
-    libhdf5-dev libboost-dev gfortran flex bison libblas-dev
+    libhdf5-dev libboost-dev gfortran flex bison libblas-dev liblapack-dev
 
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
