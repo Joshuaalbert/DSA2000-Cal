@@ -40,33 +40,70 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-  ray:
+  ray_head:
     image: ray
     container_name: ray
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
     ports:
-      - ${RAY_REDIS_PORT}:6379 # External redis for Ray
-      - "8265:8265" # Ray Dashboard
-      - "8890:8888" # Jupyter
+      - "6379:6379"        # GCS server port
+      - "8265:8265"        # Dashboard UI port
+      - "10001:10001"      # Ray client server port
+      - "50052:50052"      # Dashboard gRPC port
+      - "12345:12345"      # Node manager port
+      - "12346:12346"      # Object manager port
+      - "12347:12347"      # Runtime env agent port
+      - "12348:12348"      # Dashboard agent gRPC port
+      - "52365:52365"      # Dashboard agent HTTP port
+      - "8090:8090"      # Metrics export port
+      - "20000-20100:20000-20100"  # Worker ports range
+      - "6380:6380"        # Redis shard port
+      - "6381:6381"        # Redis shard port
+      - "8890:8888"        # Jupyter
     env_file:
       - .env
     cap_add:
       - SYS_PTRACE
-#    extra_hosts:
-#      ray_head: ${RAY_HEAD_IP}
     environment:
-      - IS_RAY_HEAD=${IS_RAY_HEAD}
+      - IS_RAY_HEAD=true
       - RAY_GRAFANA_HOST=http://grafana:3000
       - RAY_PROMETHEUS_HOST=http://prometheus:9090
       - RAY_GRAFANA_IFRAME_HOST=http://grafana:3000
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
-    shm_size: '100gb'
+    #    shm_size: '100gb'
     volumes:
-#      - /dev/shm:/dev/shm
+      - /dev/shm:/dev/shm
+      - ${HOST_RUN_DIR}:/dsa/run
+      - ~/.ssh:/root/.ssh:ro
+  ray_worker:
+    image: ray
+    container_name: ray
+    build:
+      context: ../..
+      dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+    ports:
+      - "22345:22345"      # Node manager port
+      - "22346:22346"      # Object manager port
+      - "22347:22347"      # Runtime env agent port
+      - "22348:22348"      # Dashboard agent gRPC port
+      - "52365:52365"      # Dashboard agent HTTP port
+      - "8090:8090"      # Metrics export port
+      - "20000-20100:20000-20100"  # Worker ports range
+    env_file:
+      - .env
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      - IS_RAY_HEAD=false
+      - XLA_FLAGS=${XLA_FLAGS}
+      - PYTHONMALLOC=${PYTHONMALLOC}
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
+    #    shm_size: '100gb'
+    volumes:
+      - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
       - ~/.ssh:/root/.ssh:ro
 volumes:

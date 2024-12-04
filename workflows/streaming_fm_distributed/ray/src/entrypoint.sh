@@ -44,9 +44,28 @@ if [ -z "$IS_RAY_HEAD" ]; then
   exit 1
 fi
 
+NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}')
+
 if [ "$IS_RAY_HEAD" = true ]; then
   echo "Starting Ray head node..."
-  ray start --head --port=6379 --dashboard-host=0.0.0.0 --metrics-export-port=8090 --temp-dir=$TEMP_DIR
+
+  ray start --head \
+    --port=6379 \
+    --ray-client-server-port=10001 \
+    --redis-shard-ports=6380,6381 \
+    --node-manager-port=12345 \
+    --object-manager-port=12346 \
+    --runtime-env-agent-port=12347 \
+    --dashboard-agent-grpc-port=12348 \
+    --dashboard-agent-listen-port=52365 \
+    --dashboard-port=8265 \
+    --dashboard-grpc-port=50052 \
+    --metrics-export-port=8090 \
+    --min-worker-port=20000 \
+    --max-worker-port=20100 \
+    --node-ip-address=$NODE_IP_ADDRESS \
+    -dashboard-host=0.0.0.0 \
+    --temp-dir=$TEMP_DIR
 
   ray status
 
@@ -73,12 +92,19 @@ else
     echo "Error: RAY_HEAD_IP must be specified for worker nodes."
     exit 1
   fi
-  if [ -z "$RAY_REDIS_PORT" ]; then
-    echo "Error: RAY_REDIS_PORT must be specified for worker nodes."
-    exit 1
-  fi
-  echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}:${RAY_REDIS_PORT}..."
-  ray start --address="$RAY_HEAD_IP:${RAY_REDIS_PORT}"
+  echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}..."
+
+  ray start --address="${RAY_HEAD_IP}:6379" \
+    --node-manager-port=22345 \
+    --object-manager-port=22346 \
+    --runtime-env-agent-port=22347 \
+    --dashboard-agent-grpc-port=22348 \
+    --dashboard-agent-listen-port=52365 \
+    --metrics-export-port=22349 \
+    --min-worker-port=20000 \
+    --max-worker-port=20100 \
+    --node-ip-address=$NODE_IP_ADDRESS
+
   ray status
 fi
 

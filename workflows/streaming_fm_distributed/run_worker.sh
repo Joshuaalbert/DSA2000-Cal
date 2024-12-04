@@ -33,7 +33,7 @@ echo "Configuring the services..."
 docker compose config
 
 echo "Starting the services..."
-docker compose -f "$SCRIPT_DIR/docker-compose.yaml" up -d ray
+docker compose -f "$SCRIPT_DIR/docker-compose.yaml" up -d ray_worker
 
 docker compose logs -f
 
