@@ -225,7 +225,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         **compute_data_streamer_options(run_params)
     )
     data_streamer = create_supervisor(
-        data_streamer_remote, 'data_streamer', 4,
+        data_streamer_remote, 'data_streamer', 2,
         run_params, data_streamer_params, system_gain_simulator
     )
 
