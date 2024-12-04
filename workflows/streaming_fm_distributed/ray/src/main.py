@@ -53,7 +53,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     freqs = array.get_channels()
 
-    num_channels = len(freqs)
+    num_channels = len(freqs)[:40]
     num_sub_bands = 1
     num_freqs_per_sol_int = 40
 
@@ -225,7 +225,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         **compute_data_streamer_options(run_params)
     )
     data_streamer = create_supervisor(
-        data_streamer_remote, 'data_streamer', 1,
+        data_streamer_remote, 'data_streamer', 4,
         run_params, data_streamer_params, system_gain_simulator
     )
 
