@@ -65,7 +65,7 @@ services:
       - PYTHONMALLOC=${PYTHONMALLOC}
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
     volumes:
-      - /dev/shm:/dev/shm
+#      - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
       - ~/.ssh:/root/.ssh:ro
 volumes:
