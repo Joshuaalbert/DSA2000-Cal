@@ -106,6 +106,34 @@ services:
       - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
       - ~/.ssh:/root/.ssh:ro
+  ray:
+    image: ray
+    container_name: ray
+    build:
+      context: ../..
+      dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+    ports:
+      - "22345:22345"      # Node manager port
+      - "22346:22346"      # Object manager port
+      - "22347:22347"      # Runtime env agent port
+      - "22348:22348"      # Dashboard agent gRPC port
+      - "52365:52365"      # Dashboard agent HTTP port
+      - "8090:8090"      # Metrics export port
+      - "20000-20100:20000-20100"  # Worker ports range
+    env_file:
+      - .env
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      - IS_RAY_HEAD=false
+      - XLA_FLAGS=${XLA_FLAGS}
+      - PYTHONMALLOC=${PYTHONMALLOC}
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
+    #    shm_size: '100gb'
+    volumes:
+      - /dev/shm:/dev/shm
+      - ${HOST_RUN_DIR}:/dsa/run
+      - ~/.ssh:/root/.ssh:ro
 volumes:
   grafana-data:
   prometheus-data:
