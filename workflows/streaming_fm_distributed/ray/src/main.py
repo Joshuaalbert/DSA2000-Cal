@@ -282,7 +282,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         await asyncio.gather(*tasks)
 
     # Submit with PRNG key
-    asyncio.run(run_all(jax.random.PRNGKey(0)))
+    await run_all(jax.random.PRNGKey(0))
 
 
 if __name__ == '__main__':
