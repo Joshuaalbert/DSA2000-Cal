@@ -167,7 +167,7 @@ class Calibrator:
 
             # stack, reshape, and transpose to [Ts, B, Cs[, 2, 2]]
             data_gather: List[DataStreamerResponse] = jax.tree.map(
-                lambda *x: np.stack(*x, axis=0), *data_gather)  # [Ts * Cs, ...]
+                lambda *x: np.stack(x, axis=0), *data_gather)  # [Ts * Cs, ...]
             data: DataStreamerResponse = jax.tree.map(
                 lambda x: np.reshape(x, (Ts, Cs) + np.shape(x)[1:]), data_gather)  # [Ts, Cs, ...]
             vis_data = np.moveaxis(data.vis, 1, 2)  # [Ts, B, Cs[, 2, 2]]
@@ -193,7 +193,7 @@ class Calibrator:
 
             # stack, reshape, and transpose to [D, Tm, Cm, B[, 2, 2]]
             model_gather: List[ModelPredictorResponse] = jax.tree.map(
-                lambda *x: np.stack(*x, axis=0), *model_gather)  # [Tm * Cm, ...]
+                lambda *x: np.stack(x, axis=0), *model_gather)  # [Tm * Cm, ...]
             model: ModelPredictorResponse = jax.tree.map(
                 lambda x: np.reshape(x, (Tm, Cm) + np.shape(x)[1:]), model_gather)  # [Tm, Cm, ...]
             vis_model = np.moveaxis(model.vis, 2, 0)  # [D, Tm, Cm, B[, 2, 2]]
