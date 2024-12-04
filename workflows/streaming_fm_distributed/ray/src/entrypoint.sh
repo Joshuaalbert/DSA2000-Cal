@@ -78,7 +78,7 @@ else
     exit 1
   fi
   echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}:${RAY_REDIS_PORT}..."
-  ray start --address="ray_head:${RAY_REDIS_PORT}"
+  ray start --address="$RAY_HEAD_IP:${RAY_REDIS_PORT}"
   ray status
 fi
 

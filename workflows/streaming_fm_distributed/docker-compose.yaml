@@ -54,8 +54,8 @@ services:
       - .env
     cap_add:
       - SYS_PTRACE
-    extra_hosts:
-      ray_head: ${RAY_HEAD_IP}
+#    extra_hosts:
+#      ray_head: ${RAY_HEAD_IP}
     environment:
       - IS_RAY_HEAD=${IS_RAY_HEAD}
       - RAY_GRAFANA_HOST=http://grafana:3000
