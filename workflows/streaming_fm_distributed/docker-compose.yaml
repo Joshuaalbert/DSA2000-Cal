@@ -68,6 +68,7 @@ services:
       - SYS_PTRACE
     environment:
       - IS_RAY_HEAD=true
+      - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
       - RAY_GRAFANA_HOST=http://grafana:3000
       - RAY_PROMETHEUS_HOST=http://prometheus:9090
       - RAY_GRAFANA_IFRAME_HOST=http://grafana:3000
@@ -100,6 +101,7 @@ services:
       - SYS_PTRACE
     environment:
       - IS_RAY_HEAD=false
+      - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}

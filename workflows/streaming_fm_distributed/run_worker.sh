@@ -19,6 +19,8 @@ for var in "$@"; do
 done
 
 export IS_RAY_HEAD=false
+NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}')
+export NODE_IP_ADDRESS
 DSA_CONTENT_SSH_USERNAME=$(whoami)
 export DSA_CONTENT_SSH_USERNAME
 

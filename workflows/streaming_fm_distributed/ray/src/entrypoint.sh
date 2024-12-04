@@ -43,7 +43,7 @@ if [ -z "$IS_RAY_HEAD" ]; then
   exit 1
 fi
 
-NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}')
+#NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}') # Gives docker container IP, not host IP which is needed for routing
 
 echo "Node IP address: $NODE_IP_ADDRESS"
 
