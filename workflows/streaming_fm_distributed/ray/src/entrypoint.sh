@@ -28,7 +28,6 @@ pip install -e "$PACKAGE_DIR"
 echo "Launching process with:"
 echo "IS_RAY_HEAD=${IS_RAY_HEAD}"
 echo "RAY_HEAD_IP=${RAY_HEAD_IP}"
-echo "RAY_REDIS_PORT=${RAY_REDIS_PORT}"
 echo "GIT_BRANCH=${GIT_BRANCH}"
 echo "PACKAGE_DIR=${PACKAGE_DIR}"
 

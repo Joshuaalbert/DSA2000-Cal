@@ -46,21 +46,22 @@ services:
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
-    ports:
-      - "6379:6379"        # GCS server port
-      - "8265:8265"        # Dashboard UI port
-      - "10001:10001"      # Ray client server port
-      - "50052:50052"      # Dashboard gRPC port
-      - "12345:12345"      # Node manager port
-      - "12346:12346"      # Object manager port
-      - "12347:12347"      # Runtime env agent port
-      - "12348:12348"      # Dashboard agent gRPC port
-      - "52365:52365"      # Dashboard agent HTTP port
-      - "8090:8090"      # Metrics export port
-      - "20000-20100:20000-20100"  # Worker ports range
-      - "6380:6380"        # Redis shard port
-      - "6381:6381"        # Redis shard port
-      - "8890:8888"        # Jupyter
+    network_mode: "host"
+#    ports:
+#      - "6379:6379"        # GCS server port
+#      - "8265:8265"        # Dashboard UI port
+#      - "10001:10001"      # Ray client server port
+#      - "50052:50052"      # Dashboard gRPC port
+#      - "12345:12345"      # Node manager port
+#      - "12346:12346"      # Object manager port
+#      - "12347:12347"      # Runtime env agent port
+#      - "12348:12348"      # Dashboard agent gRPC port
+#      - "52365:52365"      # Dashboard agent HTTP port
+#      - "8090:8090"      # Metrics export port
+#      - "20000-20100:20000-20100"  # Worker ports range
+#      - "6380:6380"        # Redis shard port
+#      - "6381:6381"        # Redis shard port
+#      - "8890:8888"        # Jupyter
     env_file:
       - .env
     cap_add:
@@ -84,14 +85,15 @@ services:
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
-    ports:
-      - "22345:22345"      # Node manager port
-      - "22346:22346"      # Object manager port
-      - "22347:22347"      # Runtime env agent port
-      - "22348:22348"      # Dashboard agent gRPC port
-      - "52365:52365"      # Dashboard agent HTTP port
-      - "8090:8090"      # Metrics export port
-      - "20000-20100:20000-20100"  # Worker ports range
+    network_mode: "host"
+#    ports:
+#      - "22345:22345"      # Node manager port
+#      - "22346:22346"      # Object manager port
+#      - "22347:22347"      # Runtime env agent port
+#      - "22348:22348"      # Dashboard agent gRPC port
+#      - "52365:52365"      # Dashboard agent HTTP port
+#      - "8090:8090"      # Metrics export port
+#      - "20000-20100:20000-20100"  # Worker ports range
     env_file:
       - .env
     cap_add:
