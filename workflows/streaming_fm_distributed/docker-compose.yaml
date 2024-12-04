@@ -64,6 +64,7 @@ services:
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
+    shm_size: '100gb'
     volumes:
 #      - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
