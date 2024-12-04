@@ -1,4 +1,3 @@
-version: "3"
 services:
   prometheus:
     image: prom/prometheus
@@ -79,6 +78,13 @@ services:
       - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
       - ~/.ssh:/root/.ssh:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              #              count: 1
+              capabilities: [ gpu ]
   ray_worker:
     image: ray
     container_name: ray
@@ -108,6 +114,13 @@ services:
       - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
       - ~/.ssh:/root/.ssh:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              #              count: 1
+              capabilities: [ gpu ]
 volumes:
   grafana-data:
   prometheus-data:

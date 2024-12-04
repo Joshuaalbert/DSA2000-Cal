@@ -152,7 +152,7 @@ class SystemGainSimulator:
         with TimerLog("Simulating dish gains..."):
             gain_model, model_gains_aperture = block_until_ready(
                 self.compute_dish_model_jit(key, time[None], freq[None], self.state))
-        gain_model = jax.tree.map(np.asarray, gain_model)
+        gain_model: BaseSphericalInterpolatorGainModel = jax.tree.map(np.asarray, gain_model)
         model_gains_aperture = jax.tree_map(np.asarray, model_gains_aperture)
         plot_aperture_model_host(
             beam_aperture=model_gains_aperture,
@@ -160,6 +160,9 @@ class SystemGainSimulator:
             dm=self.state.dm,
             plot_folder=self.params.plot_folder,
             name=f"dish_gains_aperture_T{time_idx}_F{freq_idx}"
+        )
+        gain_model.plot_regridded_beam(
+            save_fig=os.path.join(self.params.plot_folder, f'regridded_beam_T{time_idx}_F{freq_idx}.png')
         )
         return SystemGainSimulatorResponse(
             gain_model=gain_model
@@ -463,7 +466,7 @@ class BaseDishGainModel:
         model_gains_aperture = jnp.where(
             diameter_mask,
             aperture_field * beam_aperture,
-            jnp.zeros((), mp_policy.vis_dtype)
+            jnp.ones((), mp_policy.vis_dtype)
         )  # [num_times, lres, mres, num_ant, num_freqs[, 2, 2]]
         return model_gains_aperture
 

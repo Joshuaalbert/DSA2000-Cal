@@ -696,6 +696,7 @@ def simple_broadcast(f: Callable[..., U], leading_dims: int) -> U:
 
     @wraps(f)
     def _f(*args):
+        nonlocal leading_dims
         leading_shapes = jax.tree.map(lambda x: np.shape(x)[:leading_dims], jax.tree.leaves(args))
         if len(leading_shapes) == 0:
             raise ValueError("No args given.")
@@ -703,12 +704,12 @@ def simple_broadcast(f: Callable[..., U], leading_dims: int) -> U:
         if len(set(leading_shapes)) != 1:
             raise ValueError(f"Leading dimensions mis-match, got these different ones {leading_shapes}.")
 
-        leading_dims = leading_shapes[0]
-        leading_size = np.prod(leading_dims)
+        leading_shape = leading_shapes[0]
+        leading_size = int(np.prod(leading_shape))
         args = jax.tree.map(lambda x: jax.lax.reshape(x, (leading_size,) + np.shape(x)[leading_dims:]), args)
         out = f(*args)
         # reshape
-        out = jax.tree.map(lambda x: jax.lax.reshape(x, leading_dims + np.shape(x)[1:]), out)
+        out = jax.tree.map(lambda x: jax.lax.reshape(x, leading_shape + np.shape(x)[1:]), out)
         return out
 
     return _f

@@ -281,7 +281,7 @@ def test_simple_broadcast():
     x = jnp.ones((3, 4, 5))
     y = jnp.ones((3, 4, 5))
 
-    res = simple_broadcast(f, 1, x, y)
+    res = simple_broadcast(f, 1)(x, y)
 
     assert np.all(res == 2)
     assert np.shape(res) == (3, 4, 5)
