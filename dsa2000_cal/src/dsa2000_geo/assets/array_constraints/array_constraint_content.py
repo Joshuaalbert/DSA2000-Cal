@@ -3,7 +3,7 @@ from abc import ABC
 from functools import cached_property
 from typing import Tuple, List, Callable
 
-import geopandas as gpd
+
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import uniform
@@ -11,6 +11,11 @@ from shapely.geometry import Point
 from shapely.ops import nearest_points
 
 from dsa2000_cal.assets.base_content import BaseContent
+
+try:
+    import geopandas as gpd
+except ImportError:
+    print(f"Geopandas is not installed. Please install it to use array constraints.")
 
 
 class RegionSampler:

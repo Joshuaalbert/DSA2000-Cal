@@ -5,11 +5,10 @@ import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import numpy as np
-import pyrap.tables as pt
 
-from dsa2000_cal.common.corr_utils import CASA_CORR_TYPES
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, MeasurementSetMeta, \
+from dsa2000_cal.common.corr_utils import CASA_CORR_TYPES
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, MeasurementSetMeta, \
     VisibilityData
 
 
@@ -27,6 +26,7 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
     Returns:
         MeasurementSetMeta object
     """
+    import pyrap.tables as pt
 
     with pt.table(os.path.join(casa_ms, 'ANTENNA')) as t:
         antenna_position_m = t.getcol('POSITION')  # [num_ant, 3]
@@ -64,7 +64,7 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
         if field_idx is None:
             field_idx = 0
         phase_center = ac.ICRS(ra=phase_center_rad[field_idx, 0, 0] * au.rad,
-                                 dec=phase_center_rad[field_idx, 0, 1] * au.rad)
+                               dec=phase_center_rad[field_idx, 0, 1] * au.rad)
 
     with pt.table(os.path.join(casa_ms, 'SPECTRAL_WINDOW')) as t:
         freqs_hz = t.getcol('CHAN_FREQ')  # [num_spectral_windows, num_freqs]
@@ -85,7 +85,7 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
         corr_type = t.getcol('CORR_TYPE')  # [_, num_corrs]
         if corr_type.shape[0] > 1:
             raise ValueError("Multiple coherency types found.")
-        coherencies = list(CASA_CORR_TYPES[x] for x in corr_type[0, :])  # [num_corrs]
+        coherencies = tuple(list(CASA_CORR_TYPES[x] for x in corr_type[0, :]))  # [num_corrs]
 
     with pt.table(os.path.join(casa_ms, 'POINTING')) as t:
         if t.nrows() == 0:
@@ -132,7 +132,8 @@ def create_ms_meta(casa_ms: str, field_idx: int | None = None,
         mount_types=mount_types,
         with_autocorr=with_autocorr,
         system_equivalent_flux_density=system_equivalent_flux_density,
-        convention=convention
+        convention=convention,
+        ref_time=times[0]
     )
     return meta
 
@@ -148,6 +149,9 @@ def transfer_from_casa(ms_folder: str,
     Args:
         casa_ms: the name of CASA Measurement Set file
     """
+
+    import pyrap.tables as pt
+
     # Create new MS file
     print(f"Creating new MeasurementSet {ms_folder} from CASA MS {casa_ms}")
     meta = create_ms_meta(casa_ms=casa_ms, field_idx=field_idx, spectral_window_idx=spectral_window_idx,
