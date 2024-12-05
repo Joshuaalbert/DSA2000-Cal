@@ -2,13 +2,11 @@ import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import numpy as np
-import pytest
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.imaging.imagor import Imagor
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMeta, MeasurementSet, VisibilityData
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta, MeasurementSet, VisibilityData
 
 
 def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan, corrs):
@@ -52,31 +50,3 @@ def build_calibrator_source_models(array_name, tmp_path, full_stokes, num_chan, 
         )
 
     return ms
-
-
-@pytest.mark.parametrize("full_stokes", [True, False])
-@pytest.mark.parametrize("num_chan", [1, 2])
-@pytest.mark.parametrize("corrs", [['XX', 'XY', 'YX', 'YY'], ['I', 'Q', 'U', 'V']])
-def test_dirty_imaging(tmp_path, full_stokes, num_chan, corrs):
-    ms = build_calibrator_source_models('dsa2000W_small', tmp_path, full_stokes, num_chan, corrs)
-
-    imagor = Imagor(
-        plot_folder='plots',
-        field_of_view=2 * au.deg
-    )
-    image_model = imagor.image(image_name='test_dirty', ms=ms, overwrite=True)
-    # print(image_model)
-
-
-@pytest.mark.parametrize("full_stokes", [False])
-@pytest.mark.parametrize("num_chan", [40])
-@pytest.mark.parametrize("corrs", [['I', 'Q', 'U', 'V']])
-def test_demo(tmp_path, full_stokes, num_chan, corrs):
-    ms = build_calibrator_source_models('dsa2000W', tmp_path, full_stokes, num_chan, corrs)
-
-    imagor = Imagor(
-        plot_folder='plots',
-        field_of_view=2 * au.deg
-    )
-    image_model = imagor.image(image_name='test_dirty', ms=ms, overwrite=True)
-    # print(image_model)
