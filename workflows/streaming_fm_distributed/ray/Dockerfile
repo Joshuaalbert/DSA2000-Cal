@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y gdb lldb sudo rsync
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # Install the ducc0 package from source for performance
-RUN pip install --no-binary ducc0 'ducc0==0.35.0 numpy<2'
+RUN pip install --no-binary ducc0 'ducc0==0.35.0' 'numpy<2'
 
 # Install JAX for GPU
 RUN pip install jax[jaxlib] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html  --no-deps
