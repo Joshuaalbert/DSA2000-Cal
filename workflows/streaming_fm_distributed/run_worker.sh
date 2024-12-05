@@ -19,8 +19,11 @@ for var in "$@"; do
 done
 
 export IS_RAY_HEAD=false
-NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}')
+# Try getting the IP address from ifconfig.me, otherwise use the hostname's first listed IP address (which might be the internal IP)
+NODE_IP_ADDRESS=$(curl -4 ifconfig.me || hostname -I | awk '{print $1}')
 export NODE_IP_ADDRESS
+NODE_NAME=$(hostname)
+export NODE_NAME
 DSA_CONTENT_SSH_USERNAME=$(whoami)
 export DSA_CONTENT_SSH_USERNAME
 

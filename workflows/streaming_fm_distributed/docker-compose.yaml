@@ -41,7 +41,7 @@ services:
       retries: 3
   ray_head:
     image: ray
-    container_name: ray
+    container_name: ray_head
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
@@ -67,6 +67,7 @@ services:
     environment:
       - IS_RAY_HEAD=true
       - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
+      - NODE_NAME=${NODE_NAME}
       - RAY_GRAFANA_HOST=http://grafana:3000
       - RAY_PROMETHEUS_HOST=http://prometheus:9090
       - RAY_GRAFANA_IFRAME_HOST=http://grafana:3000
@@ -108,6 +109,7 @@ services:
     environment:
       - IS_RAY_HEAD=false
       - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
+      - NODE_NAME=${NODE_NAME}
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}

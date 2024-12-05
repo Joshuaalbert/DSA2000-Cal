@@ -37,6 +37,8 @@ echo "PACKAGE_DIR=${PACKAGE_DIR}"
 LARGE_N=99999999999
 export RAY_health_check_initial_delay_ms=$LARGE_N
 export RAY_health_check_period_ms=$LARGE_N
+NUMEXPR_MAX_THREADS=$(nproc)
+export NUMEXPR_MAX_THREADS
 
 if [ -z "$IS_RAY_HEAD" ]; then
   echo "Error: IS_RAY_HEAD must be specified."
