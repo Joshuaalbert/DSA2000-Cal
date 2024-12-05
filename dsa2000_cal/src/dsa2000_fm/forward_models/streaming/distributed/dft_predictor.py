@@ -10,7 +10,6 @@ from ray.runtime_env import RuntimeEnv
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import TimerLog
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
@@ -21,11 +20,6 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_mode
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 
 logger = logging.getLogger('ray')
-
-
-class DFTPredictorParams(SerialisableBaseModel):
-    convention: str
-    with_autocorr: bool
 
 
 class DFTPredictorResponse(NamedTuple):
@@ -56,9 +50,8 @@ def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
 
 @ray.remote
 class DFTPredictor:
-    def __init__(self, params: ForwardModellingRunParams, predict_params: DFTPredictorParams):
+    def __init__(self, params: ForwardModellingRunParams):
         self.params = params
-        self.predict_params = predict_params
 
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'dft_predictor')
         os.makedirs(self.params.plot_folder, exist_ok=True)
@@ -81,8 +74,8 @@ class DFTPredictor:
             visibility_coords = far_field_delay_engine.compute_visibility_coords(
                 freqs=freq[None],
                 times=time[None],
-                with_autocorr=self.predict_params.with_autocorr,
-                convention=self.predict_params.convention
+                with_autocorr=self.params.ms_meta.with_autocorr,
+                convention=self.params.ms_meta.convention
             )
             vis = source_model.predict(
                 visibility_coords=visibility_coords,

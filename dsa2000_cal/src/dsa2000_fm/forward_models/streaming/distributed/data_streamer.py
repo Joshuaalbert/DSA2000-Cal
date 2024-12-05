@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import logging
 import os
@@ -11,8 +12,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.jax_utils import block_until_ready
+from dsa2000_cal.common.array_types import FloatArray, ComplexArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
@@ -21,15 +21,17 @@ from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
-from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
-from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
-from dsa2000_fm.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulatorResponse
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
     build_fits_source_model_from_wsclean_components
 from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel, \
     build_point_source_model_from_wsclean_components
+from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
+from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import DegriddingPredictor
+from dsa2000_fm.forward_models.streaming.distributed.dft_predictor import DFTPredictorResponse
+from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
+from dsa2000_fm.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulatorResponse
 
 logger = logging.getLogger('ray')
 
@@ -69,10 +71,15 @@ def compute_data_streamer_options(run_params: ForwardModellingRunParams):
 @ray.remote
 class DataStreamer:
     def __init__(self, params: ForwardModellingRunParams, predict_params: DataStreamerParams,
-                 system_gain_simulator: Supervisor[SystemGainSimulatorResponse]):
+                 system_gain_simulator: Supervisor[SystemGainSimulatorResponse],
+                 dft_predictor: Supervisor[DFTPredictorResponse],
+                 degridding_predictor: Supervisor[DegriddingPredictor]
+                 ):
         self.params = params
         self.predict_params = predict_params
         self._system_gain_simulator = system_gain_simulator
+        self._dft_predictor = dft_predictor
+        self._degridding_predictor = degridding_predictor
 
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'data_streamer')
         os.makedirs(self.params.plot_folder, exist_ok=True)
@@ -104,26 +111,51 @@ class DataStreamer:
         self.init()
         noise_key, sim_gain_key = jax.random.split(key)
         with TimerLog("Getting system gains"):
-            system_gain_main = await self._system_gain_simulator(sim_gain_key,
-                                                                 time_idx,
-                                                                 freq_idx)
+            system_gain_model = await self._system_gain_simulator(
+                sim_gain_key,
+                time_idx,
+                freq_idx
+            )
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         with TimerLog("Predicting and sampling visibilities"):
-            vis, weights, flags, visibility_coords = block_until_ready(self._step_jit(
-                key=noise_key,
-                freq=freq,
-                time=time,
-                gain_model=system_gain_main.gain_model,
-                near_field_delay_engine=self.predict_params.near_field_delay_engine,
-                far_field_delay_engine=self.predict_params.far_field_delay_engine,
-                geodesic_model=self.predict_params.geodesic_model,
-                state=self.state
-            ))
-        vis = np.asarray(vis)
-        weights = np.asarray(weights)
-        flags = np.asarray(flags)
-        visibility_coords = jax.tree.map(np.asarray, visibility_coords)
+            tasks = []
+            tasks.append(
+                self._degridding_predictor(
+                    source_model=self.state.sky_model,
+                    freq=freq,
+                    time=time,
+                    gain_model=system_gain_model,
+                    near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                    far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                    geodesic_model=self.predict_params.geodesic_model
+                )
+            )
+            tasks.append(
+                self._dft_predictor(
+                    source_model=self.state.bright_sky_model,
+                    freq=freq,
+                    time=time,
+                    gain_model=system_gain_model,
+                    near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                    far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                    geodesic_model=self.predict_params.geodesic_model
+                )
+            )
+            dft_response, degridder_response = await asyncio.gather(*tasks)
+            vis = dft_response.vis + degridder_response.vis
+            visibility_coords = dft_response.visibility_coords
+
+            # Add noise
+            vis, weights, flags = add_noise(
+                noise_key,
+                vis,
+                self.params.full_stokes,
+                self.params.ms_meta.system_equivalent_flux_density,
+                self.params.ms_meta.channel_width,
+                self.params.ms_meta.integration_time
+            )
+
         # Predict then send
         return DataStreamerResponse(
             vis=vis,
@@ -131,6 +163,31 @@ class DataStreamer:
             flags=flags,
             visibility_coords=visibility_coords
         )
+
+
+def add_noise(key, vis: ComplexArray, full_stokes: bool, system_equivalent_flux_density: au.Quantity,
+              channel_width: au.Quantity, integration_time: au.Quantity):
+    # Add noise
+    num_pol = 2 if full_stokes else 1
+    noise_scale = calc_baseline_noise(
+        system_equivalent_flux_density=quantity_to_jnp(system_equivalent_flux_density,
+                                                       'Jy'),
+        chan_width_hz=quantity_to_jnp(channel_width, 'Hz'),
+        t_int_s=quantity_to_jnp(integration_time, 's')
+    )
+    key1, key2 = jax.random.split(key)
+    noise = mp_policy.cast_to_vis(
+        (noise_scale / np.sqrt(num_pol)) * np.asarray(
+            jax.lax.complex(
+                jax.random.normal(key1, np.shape(vis)),
+                jax.random.normal(key2, np.shape(vis))
+            )
+        )
+    )
+    vis += noise
+    weights = np.full(np.shape(vis), 1 / noise_scale ** 2, mp_policy.weight_dtype)
+    flags = np.full(np.shape(vis), False, mp_policy.flag_dtype)
+    return vis, weights, flags
 
 
 class PredictAndSampleState(NamedTuple):

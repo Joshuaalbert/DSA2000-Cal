@@ -27,6 +27,9 @@ from dsa2000_fm.forward_models.streaming.distributed.calibrator import Calibrato
 from dsa2000_fm.forward_models.streaming.distributed.common import ChunkParams, ForwardModellingRunParams, ImageParams
 from dsa2000_fm.forward_models.streaming.distributed.data_streamer import DataStreamerParams, DataStreamer, \
     compute_data_streamer_options
+from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import DegriddingPredictor, \
+    compute_degridding_predictor_options
+from dsa2000_fm.forward_models.streaming.distributed.dft_predictor import DFTPredictor, compute_dft_predictor_options
 from dsa2000_fm.forward_models.streaming.distributed.gridder import Gridder, compute_gridder_options
 from dsa2000_fm.forward_models.streaming.distributed.model_predictor import ModelPredictor, ModelPredictorParams, \
     compute_model_predictor_options
@@ -207,6 +210,23 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
 
 
 async def run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params):
+
+    dft_predictor_remote = DFTPredictor.options(
+        **compute_dft_predictor_options(run_params)
+    )
+    dft_predictor = create_supervisor(
+        dft_predictor_remote, 'dft_predictor', 10,
+        run_params
+    )
+
+    degridding_predictor_remote = DegriddingPredictor.options(
+        **compute_degridding_predictor_options(run_params)
+    )
+    degridding_predictor = create_supervisor(
+        degridding_predictor_remote, 'degridding_predictor', 10,
+        run_params
+    )
+
     system_gain_simulator_remote = SystemGainSimulator.options(
         **compute_system_gain_simulator_options(run_params)
     )
@@ -220,7 +240,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
     )
     model_predictor = create_supervisor(
         model_predictor_remote, 'model_predictor', 1,
-        run_params, predict_params
+        run_params, predict_params, dft_predictor, degridding_predictor
     )
 
     data_streamer_remote = DataStreamer.options(
@@ -228,7 +248,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
     )
     data_streamer = create_supervisor(
         data_streamer_remote, 'data_streamer', 1,
-        run_params, data_streamer_params, system_gain_simulator
+        run_params, data_streamer_params, system_gain_simulator, dft_predictor, degridding_predictor
     )
 
     calibration_soluation_cache = CalibrationSolutionCache(

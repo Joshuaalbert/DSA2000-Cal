@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import logging
 import os
@@ -12,17 +13,20 @@ import ray
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import TimerLog
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
-from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
     build_fits_calibration_source_model_from_wsclean_components
+from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
+from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import DegriddingPredictor, \
+    DegriddingPredictorResponse
+from dsa2000_fm.forward_models.streaming.distributed.dft_predictor import DFTPredictorResponse
+from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
 
 logger = logging.getLogger('ray')
 
@@ -57,9 +61,15 @@ def compute_model_predictor_options(run_params: ForwardModellingRunParams):
 
 @ray.remote
 class ModelPredictor:
-    def __init__(self, params: ForwardModellingRunParams, predict_params: ModelPredictorParams):
+    def __init__(self,
+                 params: ForwardModellingRunParams, predict_params: ModelPredictorParams,
+                 dft_predictor: Supervisor[DFTPredictorResponse],
+                 degridding_predictor: Supervisor[DegriddingPredictor]
+                 ):
         self.params = params
         self.predict_params = predict_params
+        self._dft_predictor = dft_predictor
+        self._degridding_predictor = degridding_predictor
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'model_predictor')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
@@ -102,16 +112,24 @@ class ModelPredictor:
         self.init()
 
         with TimerLog("Predicting..."):
-            vis = block_until_ready(self._step_jit(
-                freq=freq,
-                time=time,
-                gain_model=self.beam_model,
-                near_field_delay_engine=self.predict_params.near_field_delay_engine,
-                far_field_delay_engine=self.predict_params.far_field_delay_engine,
-                geodesic_model=self.predict_params.geodesic_model,
-                state=self.state
-            ))
-        vis = np.asarray(vis)
+            tasks = []
+            for source_model in self.state.sky_models:
+                tasks.append(
+                    self._degridding_predictor(
+                        source_model=source_model,
+                        freq=freq,
+                        time=time,
+                        gain_model=self.beam_model,
+                        near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                        far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                        geodesic_model=self.predict_params.geodesic_model
+                    )
+                )
+            results: List[DegriddingPredictorResponse] = await asyncio.gather(*tasks)
+            vis_list = []
+            for result in results:
+                vis_list.append(result.vis)  # each is [B[, 2, 2]]
+            vis = np.stack(vis_list, axis=0)  # [D, B[, 2, 2]]
         return ModelPredictorResponse(
             vis=vis
         )

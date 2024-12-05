@@ -41,6 +41,6 @@ class AbstractSourceModel(ABC):
 
 
         Returns:
-            the visibility model
+            the visibility model [T, B, C[, 2, 2]]
         """
         ...
