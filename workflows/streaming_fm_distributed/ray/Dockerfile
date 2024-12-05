@@ -8,7 +8,7 @@ RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-
 RUN pip install --no-binary ducc0 'ducc0==0.35.0' 'numpy<2'
 
 # Install JAX for GPU
-RUN pip install jax[cuda12] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN pip install jax[cuda12_cudnn91] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 
 # requirements rarely change, so install those here
