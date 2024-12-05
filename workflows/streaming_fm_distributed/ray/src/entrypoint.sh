@@ -73,7 +73,8 @@ if [ "$IS_RAY_HEAD" = true ]; then
     --dashboard-grpc-port=50052 \
     --min-worker-port=20000 \
     --max-worker-port=20100 \
-    --node-ip-address=$NODE_IP_ADDRESS
+    --node-ip-address=$NODE_IP_ADDRESS \
+    --node-name=$NODE_NAME
 
   ray status
 
@@ -111,7 +112,8 @@ else
     --dashboard-agent-listen-port=52365 \
     --min-worker-port=20000 \
     --max-worker-port=20100 \
-    --node-ip-address=$NODE_IP_ADDRESS
+    --node-ip-address=$NODE_IP_ADDRESS \
+    --node-name=$NODE_NAME
 
   ray status
 fi
