@@ -11,6 +11,7 @@ import numpy as np
 import pylab as plt
 import ray
 from astropy import constants
+from ray.runtime_env import RuntimeEnv
 
 import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, IntArray
@@ -22,11 +23,11 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np, t
 from dsa2000_cal.common.ray_utils import TimerLog
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import DishEffectsParams
-from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
+from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 
 logger = logging.getLogger('ray')
 
@@ -99,7 +100,15 @@ def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams)
     return {
         "num_cpus": 1,
         "num_gpus": 0,
-        'memory': 1.1 * memory
+        'memory': 1.1 * memory,
+        "runtime_env": RuntimeEnv(
+            env_vars={
+                # "XLA_PYTHON_CLIENT_MEM_FRACTION": ".75",
+                # "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
+                # "XLA_PYTHON_CLIENT_ALLOCATOR":"platform",
+                "JAX_PLATFORMS":"cpu"
+            }
+        )
     }
 
 

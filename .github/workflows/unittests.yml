@@ -39,4 +39,4 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       - name: Test with pytest
         run: |
-          SKIP_CONTENT_SYNC=1 JAX_ENABLE_X64=True pytest
+          MPLBACKEND=Agg SKIP_CONTENT_SYNC=1 pytest -s

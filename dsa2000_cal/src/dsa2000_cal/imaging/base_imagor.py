@@ -11,10 +11,10 @@ from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_cal.common.ellipse_utils import Gaussian
-from dsa2000_cal.common.jax_utils import multi_vmap
+from dsa2000_cal.common.jax_utils import multi_vmap, simple_broadcast
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.vec_utils import kron_inv
+from dsa2000_cal.common.vec_utils import kron_inv, kron_product
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
@@ -215,7 +215,11 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
         image: [num_pixel, num_pixel, 4/1]
     """
 
-    def _remove(image, beam):
+    @partial(
+        simple_broadcast,
+        leading_dims = 2
+    )
+    def _remove_beam(image, beam):
         if (np.shape(image) == ()) or (np.shape(image) == (1,)):
             if np.shape(beam) != ():
                 raise ValueError(f"Expected beam to be scalar, got {np.shape(beam)}")
@@ -231,7 +235,43 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
         else:
             raise ValueError(f"Unknown image shape {np.shape(image)} and beam shape {np.shape(beam)}.")
 
-    pb_cor_image = jax.vmap(jax.vmap(_remove))(image, beam)
+    pb_cor_image = _remove_beam(image, beam)
+    return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)
+
+
+def apply_beam(image: jax.Array, beam: jax.Array) -> jax.Array:
+    """
+    Divide out the beam from the image.
+
+    Args:
+        image: [num_pixel, num_pixel, 4/1]
+        beam: [num_pixel, num_pixel[,2,2]]
+
+    Returns:
+        image: [num_pixel, num_pixel, 4/1]
+    """
+
+    @partial(
+        simple_broadcast,
+        leading_dims=2
+    )
+    def _apply_beam(image, beam):
+        if (np.shape(image) == ()) or (np.shape(image) == (1,)):
+            if np.shape(beam) != ():
+                raise ValueError(f"Expected beam to be scalar, got {np.shape(beam)}")
+            return image * beam
+        elif np.shape(image) == (4,):
+            if np.shape(beam) != (2, 2):
+                raise ValueError(f"Expected beam to be full-stokes.")
+            return flatten_coherencies(kron_product(beam, unflatten_coherencies(image), beam.T.conj()))
+        elif np.shape(image) == (2, 2):
+            if np.shape(beam) != (2, 2):
+                raise ValueError(f"Expected beam to be full-stokes.")
+            return kron_product(beam, image, beam.T.conj())
+        else:
+            raise ValueError(f"Unknown image shape {np.shape(image)} and beam shape {np.shape(beam)}.")
+
+    pb_cor_image = _apply_beam(image, beam)
     return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)
 
 
