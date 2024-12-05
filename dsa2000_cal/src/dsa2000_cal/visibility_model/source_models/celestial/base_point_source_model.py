@@ -12,7 +12,7 @@ import pylab as plt
 from astropy import constants
 from jax import numpy as jnp, lax
 
-from dsa2000_cal.adapter.utils import broadcast_translate_corrs
+from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap

@@ -1,4 +1,6 @@
 import dataclasses
+import pickle
+import warnings
 from typing import Tuple, TypeVar, Generic, List, Any
 
 import jax
@@ -380,8 +382,6 @@ def field_dunder(binary_op, self: 'InterpolatedArray',
 #         [-3, 3, -2, -1],
 #         [2, -2, 1, 1],
 #     ])
-#
-#     jax.lax.switch
 
 @dataclasses.dataclass(eq=False)
 class InterpolatedArray(Generic[VT]):

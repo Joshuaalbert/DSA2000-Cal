@@ -1,6 +1,6 @@
 import os
 
-from dsa2000_cal.forward_models.streaming.distributed.calibrator import Calibration
+from dsa2000_fm.forward_models.streaming.distributed.calibrator import Calibration
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
@@ -14,7 +14,7 @@ import jax.random
 import numpy as np
 import pyrap.tables as pt
 
-from dsa2000_cal.adapter.utils import CASA_CORR_TYPES, broadcast_translate_corrs
+from dsa2000_cal.common.corr_utils import CASA_CORR_TYPES, broadcast_translate_corrs
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp

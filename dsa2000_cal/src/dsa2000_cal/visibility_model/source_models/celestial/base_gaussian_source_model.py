@@ -12,7 +12,7 @@ import pylab as plt
 from astropy import constants
 from jax import numpy as jnp, lax
 
-from dsa2000_cal.adapter.utils import broadcast_translate_corrs
+from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
 from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_coherencies
 from dsa2000_cal.common.ellipse_utils import Gaussian

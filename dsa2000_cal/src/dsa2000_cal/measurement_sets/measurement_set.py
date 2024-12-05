@@ -4,7 +4,7 @@ import os.path
 import shutil
 import warnings
 from functools import cached_property, partial
-from typing import Literal, List, Union, Annotated, NamedTuple, Generator, Tuple, Optional
+from typing import Literal, List, NamedTuple, Generator, Tuple, Optional
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -15,7 +15,8 @@ import tables as tb
 from astropy import time as at
 from pydantic import Field
 
-from dsa2000_cal.adapter.utils import broadcast_translate_corrs
+from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
+from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
@@ -224,9 +225,9 @@ class VisibilityData(NamedTuple):
     """
     Data for a single visibility.
     """
-    vis: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the visibility data
-    weights: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the weights
-    flags: Optional[jax.Array | np.ndarray] = None  # [rows, num_freqs, 4] the flags
+    vis: Optional[ComplexArray] = None  # [rows, num_freqs, 4] the visibility data
+    weights: Optional[FloatArray] = None  # [rows, num_freqs, 4] the weights
+    flags: Optional[BoolArray] = None  # [rows, num_freqs, 4] the flags
 
 
 @dataclasses.dataclass(eq=False)

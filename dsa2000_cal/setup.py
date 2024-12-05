@@ -11,7 +11,9 @@ def load_requirements(file_name):
 setup(
     install_requires=load_requirements("requirements.txt"),
     extras_require={
+        "casa": load_requirements("requirements-casa.txt"),
+        "geo": load_requirements("requirements-geo.txt"),
         "notebooks": load_requirements("requirements-notebooks.txt"),
-    },
-    tests_require=load_requirements("requirements-tests.txt"),
+        "tests": load_requirements("requirements-tests.txt"),
+    }
 )

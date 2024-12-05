@@ -19,10 +19,14 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 urls = { "Homepage" = "https://github.com/joshuaalbert/dsa2000-cal" }
+dynamic = ["dependencies"]
 
 [project.optional-dependencies]
 # Define the extras here; they will be loaded dynamically from setup.py
+casa = [] # Placeholders; extras will load from setup.py
+geo = [] # Placeholders; extras will load from setup.py
 notebooks = []  # Placeholders; extras will load from setup.py
+tests = [] # Placeholders; extras will load from setup.py
 
 [tool.setuptools]
 include-package-data = true

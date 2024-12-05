@@ -8,8 +8,8 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
-from dsa2000_cal.forward_models.streaming.distributed.calibrator import Calibration
-from dsa2000_cal.forward_models.utils import ObservationSetup
+from dsa2000_fm.forward_models.streaming.distributed.calibrator import Calibration
+from dsa2000_fm.forward_models.utils import ObservationSetup
 from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import build_point_source_model
 
 

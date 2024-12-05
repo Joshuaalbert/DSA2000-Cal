@@ -5,10 +5,10 @@ from typing import Optional, Tuple
 from jaxns.framework.special_priors import SpecialPrior
 from scipy.spatial import KDTree
 
-from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
 from dsa2000_cal.calibration.approx_cg_newton import ApproxCGNewton
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.astropy_utils import mean_itrs
+from dsa2000_geo.assets.array_constraints.array_constraint_content import ArrayConstraint
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 

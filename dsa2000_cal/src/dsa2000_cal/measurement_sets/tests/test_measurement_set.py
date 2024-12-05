@@ -5,7 +5,7 @@ import pytest
 import tables as tb
 from astropy import coordinates as ac, units as au, time as at
 
-from dsa2000_cal.adapter.from_casa_ms import transfer_from_casa
+from dsa2000_casa.adapter import transfer_from_casa
 from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
     _try_get_slice, _get_slice, NotContiguous, MeasurementSetMeta, MeasurementSet, VisibilityData, get_non_unqiue, \
     put_non_unique
