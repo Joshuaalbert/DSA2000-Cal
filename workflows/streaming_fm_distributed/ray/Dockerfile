@@ -5,7 +5,7 @@ FROM nvidia/cuda:12.3.0-base-ubuntu20.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Amsterdam
 
-# from https://github.com/docker-library/python/blob/23c83c5a82646e123df33d056f7dfbe1d78cfc8b/3.11/bullseye/Dockerfile
+# https://github.com/docker-library/python/blob/23c83c5a82646e123df33d056f7dfbe1d78cfc8b/3.11/slim-bullseye/Dockerfile
 # ensure local python is preferred over distribution python
 ENV PATH /usr/local/bin:$PATH
 
@@ -149,11 +149,13 @@ ENV DEBIAN_FRONTEND=dialog
 
 # Install py-spy and other packages for rest of package
 
-RUN apt-get update && apt-get install -y gdb lldb sudo rsync
+RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential \
+    g++
 
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # Install the ducc0 package from source for performance
+
 RUN pip install --no-binary ducc0 'ducc0==0.35.0' 'numpy<2'
 
 # Install JAX for GPU
