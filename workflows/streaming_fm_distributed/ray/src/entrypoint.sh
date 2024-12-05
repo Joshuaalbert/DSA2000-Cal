@@ -51,8 +51,12 @@ if [ -z "$NODE_IP_ADDRESS" ]; then
   echo "Error: NODE_IP_ADDRESS must be specified."
   exit 1
 fi
+if [ -z "$NODE_NAME" ]; then
+  echo "Error: NODE_NAME must be specified."
+  exit 1
+fi
 
-echo "Node IP address: $NODE_IP_ADDRESS"
+echo "Node IP address: $NODE_IP_ADDRESS ($NODE_NAME)"
 
 if [ "$IS_RAY_HEAD" = true ]; then
   echo "Starting Ray head node..."
