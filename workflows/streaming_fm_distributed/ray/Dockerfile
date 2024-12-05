@@ -10,9 +10,10 @@ RUN apt-get update && apt-get install -y \
     build-essential gcc g++ \
     && apt-get clean
 
-# Set Python 3.11 as default
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-RUN update-alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3 1
+# Set Python 3.11 as the default Python and pip
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
 
 # Install py-spy and other packages for rest of package
 
