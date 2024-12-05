@@ -78,8 +78,8 @@ class SimulateIonosphereStep(AbstractCoreStep[SimulateIonosphereState, SimulateI
         geodesic_model.compute_far_field_geodesic()
 
         state = SimulateIonosphereState(
-            window_dtec=window_dtec,
-            window_geodesics=window_geodesics,
+            window_dtec=...,
+            window_geodesics=...,
             window_times=window_times
         )
         return state

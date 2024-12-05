@@ -39,7 +39,7 @@ def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):
     print(f"GIF saved as {gif_path}")
 
 
-def plot_antenna_gains(gain_obj: SystemGains | CalibrationSolutions, antenna_idx: int,
+def plot_antenna_gains(gain_obj: SystemGains, antenna_idx: int,
                        direction_idx: int, ref_ant: int = 0) -> plt.Figure:
     """
     Plots the gains as a function of time to a file.

@@ -14,7 +14,7 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.array_types import FloatArray, IntArray
+from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
@@ -69,17 +69,6 @@ def a_transpose(x: AT, axes: Tuple[int, ...]) -> AT:
 
 def a_stack(x: List[AT], axis: int) -> AT:
     return np.stack(x, axis=axis)
-
-
-class VisibilityCoords(NamedTuple):
-    """
-    Coordinates for a single visibility.
-    """
-    uvw: FloatArray  # [rows, 3] the uvw coordinates
-    time_obs: FloatArray  # [rows] the time relative to the reference time (observation start)
-    antenna1: IntArray  # [rows] the first antenna
-    antenna2: IntArray  # [rows] the second antenna
-    time_idx: IntArray  # [rows] the time index
 
 
 class FarFieldDelayEngineState(NamedTuple):

@@ -222,18 +222,18 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
     ).cartesian.xyz.T
 
     fig, ax = plt.subplots(1, 1, squeeze=True, figsize=(10, 10))
-    ax[0][0].scatter(antennas_enu[:, 0].to('m'), antennas_enu[:, 1].to('m'), marker='*', c='grey', alpha=0.5,
+    ax.scatter(antennas_enu[:, 0].to('m'), antennas_enu[:, 1].to('m'), marker='*', c='grey', alpha=0.5,
                      label="Array Antennas")
-    ax[0][0].scatter(model_antennas_enu[:, 0].to('m'), model_antennas_enu[:, 1].to('m'), marker='+',
+    ax.scatter(model_antennas_enu[:, 0].to('m'), model_antennas_enu[:, 1].to('m'), marker='+',
                      label='Model Antennas')
-    ax[0][0].set_xlabel(f"East (m)")
-    ax[0][0].set_ylabel(f"North (m)")
-    ax[0][0].set_title(f"Model Antenna Locations")
+    ax.set_xlabel(f"East (m)")
+    ax.set_ylabel(f"North (m)")
+    ax.set_title(f"Model Antenna Locations")
 
-    ax[0][0].scatter(x0[0].to('m'), x0[1].to('m'), marker='o', color='red',
+    ax.scatter(x0[0].to('m'), x0[1].to('m'), marker='o', color='red',
                      label="Reference Antenna")
 
-    ax[0][0].legend()
+    ax.legend()
     fig.savefig(os.path.join(plot_folder, "model_antenna_locations.png"))
     plt.close(fig)
 

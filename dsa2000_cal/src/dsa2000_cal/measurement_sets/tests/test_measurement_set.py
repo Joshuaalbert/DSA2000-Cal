@@ -5,7 +5,6 @@ import pytest
 import tables as tb
 from astropy import coordinates as ac, units as au, time as at
 
-from dsa2000_casa.adapter import transfer_from_casa
 from dsa2000_cal.measurement_sets.measurement_set import _combination_with_replacement_index, _combination_index, \
     _try_get_slice, _get_slice, NotContiguous, MeasurementSetMeta, MeasurementSet, VisibilityData, get_non_unqiue, \
     put_non_unique
@@ -190,16 +189,6 @@ def test_put_non_unique():
     values = np.array([[7, 8], [10, 11], [13, 14]])
     put_non_unique(h5_array, indices, values, axis=1, indices_sorted=True)
     np.testing.assert_allclose(h5_array, np.array([[7, 8], [10, 11], [13, 14]]))
-
-
-def _test_transfer_from_casa():
-    casa_file = '~/data/forward_modelling/data_dir/lwa01.ms'
-    ms_folder = '~/data/forward_modelling/data_dir/lwa01_ms'
-    ms = transfer_from_casa(
-        ms_folder=ms_folder,
-        casa_ms=casa_file,
-        convention='engineering'  # Or else UVW coordinates are very wrong.
-    )
 
 
 def test_reshape_antenna_blocks():
