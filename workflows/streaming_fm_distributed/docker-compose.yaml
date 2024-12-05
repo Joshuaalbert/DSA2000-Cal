@@ -90,7 +90,7 @@ services:
               capabilities: [ gpu ]
   ray_worker:
     image: ray
-    container_name: ray
+    container_name: ray_worker
     build:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
