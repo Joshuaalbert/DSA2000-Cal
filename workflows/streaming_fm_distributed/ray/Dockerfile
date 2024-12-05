@@ -2,6 +2,10 @@
 FROM nvidia/cuda:12.3.0-base-ubuntu20.04
 
 # Install Python 3.11
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Amsterdam
+
+# from https://github.com/docker-library/python/blob/23c83c5a82646e123df33d056f7dfbe1d78cfc8b/3.11/bullseye/Dockerfile
 # ensure local python is preferred over distribution python
 ENV PATH /usr/local/bin:$PATH
 
@@ -106,6 +110,9 @@ RUN set -eux; \
 	done
 
 RUN which python && which pip && python --version && pip --version
+
+# Reset DEBIAN_FRONTEND to prevent unintended behavior in the container
+ENV DEBIAN_FRONTEND=dialog
 
 # Install py-spy and other packages for rest of package
 
