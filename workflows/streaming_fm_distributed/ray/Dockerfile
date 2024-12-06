@@ -35,7 +35,7 @@ RUN set -eux; \
 
 # Make Python 3.11 the default `python3` and create stripped symlinks
 RUN set -eux; \
-    for src in idle3 pip3 pydoc3 python3 python3-config; do \
+    for src in pip3 python3; do \
         dst="$(echo "$src" | tr -d 3)"; \
         [ -s "/usr/bin/$src" ]; \
         [ ! -e "/usr/bin/$dst" ]; \
