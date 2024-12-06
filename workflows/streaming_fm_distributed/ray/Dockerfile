@@ -9,7 +9,6 @@ ENV TZ=Europe/Amsterdam
 # Install Python 3.11 and dependencies
 RUN set -eux; \
     apt-get update; \
-    apt-get remove -y python*; \
     apt-get install -y --no-install-recommends \
         software-properties-common \
         build-essential \
@@ -30,6 +29,7 @@ RUN set -eux; \
         && add-apt-repository ppa:deadsnakes/ppa -y; \
     apt-get update; \
     apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv python3-pip; \
+    apt-get remove --purge -y python3.8 python3.8-minimal \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
