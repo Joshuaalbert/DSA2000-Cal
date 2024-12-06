@@ -52,12 +52,11 @@ def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
 class DFTPredictor:
     def __init__(self, params: ForwardModellingRunParams):
         self.params = params
-
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'dft_predictor')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True

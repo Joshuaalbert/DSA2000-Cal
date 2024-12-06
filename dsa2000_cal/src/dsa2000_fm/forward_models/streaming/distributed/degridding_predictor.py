@@ -56,7 +56,7 @@ class DegriddingPredictor:
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True
