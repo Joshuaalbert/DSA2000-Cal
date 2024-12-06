@@ -41,6 +41,10 @@ ENV DEBIAN_FRONTEND=dialog
 RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential \
     g++
 
+# Create symlinks for python -> python3 and pip -> pip3
+RUN ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
+
 RUN which python && python --version && which pip && pip --version && pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # Install the ducc0 package from source for performance
