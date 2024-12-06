@@ -1,9 +1,11 @@
+# The version of cuda must not be greater than the version installed on hosts which is 12.1
 # Our options here are to install python 3.11 ontop of cuda 12.1 or vice versa.
 # We choose to install python 3.11 ontop of cuda 12.1, as that is easier.
 # To install python from source properly, we borrow from the official python dockerfile:
 # https://github.com/docker-library/python/blob/23c83c5a82646e123df33d056f7dfbe1d78cfc8b/3.11/slim-bullseye/Dockerfile
 
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
+# This is a base of cuda 12.1 and cudnn 8.9, ensure JAX matches
 
 # === Install Python 3.11 from source ===
 
@@ -162,9 +164,9 @@ RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-
 # This must be installed before requirement.txt, to avoid install from binary
 RUN pip install --no-binary ducc0 'ducc0==0.35.0' 'numpy<2'
 
-# Install JAX for GPU on top of cuda 12, and cudnn9 to match the base image
+# Install JAX for GPU on top of cuda 12.1, and cudnn 8.9 to match the base image
 # This must be installed before requirement.txt, to avoid install for CPU only
-RUN pip install jax[cuda12_cudnn91] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN pip install jax[cuda12_cudnn89] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 # Requirements (rarely change, so install here)
 COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
