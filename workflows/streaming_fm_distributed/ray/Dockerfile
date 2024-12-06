@@ -33,15 +33,6 @@ RUN set -eux; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
-# Make Python 3.11 the default `python3` and create stripped symlinks
-RUN set -eux; \
-    for src in pip3 python3; do \
-        dst="$(echo "$src" | tr -d 3)"; \
-        [ -s "/usr/bin/$src" ]; \
-        [ ! -e "/usr/bin/$dst" ]; \
-        ln -svT "/usr/bin/$src" "/usr/bin/$dst"; \
-    done
-
 # Reset DEBIAN_FRONTEND to prevent unintended behavior in the container
 ENV DEBIAN_FRONTEND=dialog
 
