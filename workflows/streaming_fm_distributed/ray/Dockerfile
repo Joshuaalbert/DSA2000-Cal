@@ -1,5 +1,5 @@
 # FROM python:3.11.7
-FROM nvidia/cuda:12.1.1-base-ubuntu20.04
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04
 
 # Install Python 3.11
 ENV DEBIAN_FRONTEND=noninteractive
