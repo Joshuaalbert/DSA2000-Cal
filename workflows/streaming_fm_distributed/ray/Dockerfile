@@ -28,9 +28,10 @@ RUN set -eux; \
         wget \
         && add-apt-repository ppa:deadsnakes/ppa -y; \
     apt-get update; \
-    apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv python3-pip; \
     apt-get remove --purge -y python3.8 python3.8-minimal; \
     apt-get autoremove -y; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv python3-pip; \
     rm -rf /var/lib/apt/lists/*
 
 # Create symlinks for python -> python3 and pip -> pip3
