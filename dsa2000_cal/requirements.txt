@@ -4,8 +4,7 @@ ujson
 astropy>=6.1.0
 h5parm
 tables
-jax>=0.4.35
-jaxlib
+jax[cuda12]
 jaxns>=2.6.6
 scipy
 tomographic_kernel>=1.0.3

@@ -166,7 +166,7 @@ RUN pip install --no-binary ducc0 'ducc0==0.35.0' 'numpy<2'
 
 # Install JAX for GPU on top of cuda 12.1, and cudnn 8.9 to match the base image
 # This must be installed before requirement.txt, to avoid install for CPU only
-RUN pip install -U jax[cuda12]
+# RUN pip install -U jax[cuda12] # protobuf should be same as ray
 
 # Requirements (rarely change, so install here)
 COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
