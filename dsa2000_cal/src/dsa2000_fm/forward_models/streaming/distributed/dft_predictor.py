@@ -42,7 +42,7 @@ def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
         #         "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",
         #         "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                 "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
-                "JAX_PLATFORMS": "gpu"
+                "JAX_PLATFORMS": ""
             }
         )
     }

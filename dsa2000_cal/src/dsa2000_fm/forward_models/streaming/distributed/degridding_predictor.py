@@ -40,7 +40,7 @@ def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
             env_vars={
         #         "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",
         #         "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
-                "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
+        #         "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
                 "JAX_PLATFORMS": "cpu"
             }
         )
