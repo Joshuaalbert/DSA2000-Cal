@@ -15,8 +15,6 @@ from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDel
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import BaseGaussianSourceModel
-from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 
 logger = logging.getLogger('ray')
@@ -61,6 +59,10 @@ class DFTPredictor:
             return
         self._initialised = True
 
+        from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import \
+            BaseGaussianSourceModel
+        from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel
+
         def predict(
                 source_model: BasePointSourceModel | BaseGaussianSourceModel,
                 freq: FloatArray,
@@ -92,7 +94,7 @@ class DFTPredictor:
         self._predict_jit = jax.jit(predict)
 
     async def __call__(self,
-                       source_model: BasePointSourceModel | BaseGaussianSourceModel,
+                       source_model,
                        freq: FloatArray,
                        time: FloatArray,
                        gain_model: BaseSphericalInterpolatorGainModel | None,
