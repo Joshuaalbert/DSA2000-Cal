@@ -1,148 +1,46 @@
 # FROM python:3.11.7
-FROM nvidia/cuda:12.3.0-base-ubuntu20.04
+FROM nvidia/cuda:12.1.1-base-ubuntu20.04
 
 # Install Python 3.11
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Amsterdam
 
-# https://github.com/docker-library/python/blob/23c83c5a82646e123df33d056f7dfbe1d78cfc8b/3.11/slim-bullseye/Dockerfile
-# ensure local python is preferred over distribution python
-ENV PATH /usr/local/bin:$PATH
 
-# cannot remove LANG even though https://bugs.python.org/issue19846 is fixed
-# last attempted removal of LANG broke many users:
-# https://github.com/docker-library/python/pull/570
-ENV LANG C.UTF-8
-
-# runtime dependencies
+# Install Python 3.11 and dependencies
 RUN set -eux; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends \
-		ca-certificates \
-		netbase \
-		tzdata \
-	; \
-	rm -rf /var/lib/apt/lists/*
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        build-essential \
+        curl \
+        libssl-dev \
+        zlib1g-dev \
+        libbz2-dev \
+        libreadline-dev \
+        libsqlite3-dev \
+        libffi-dev \
+        liblzma-dev \
+        libncurses5-dev \
+        libncursesw5-dev \
+        tk-dev \
+        uuid-dev \
+        g++ \
+        wget \
+        && add-apt-repository ppa:deadsnakes/ppa -y; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv python3-pip; \
+    apt-get remove -y python3.8 python3.8-minimal; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
 
-ENV GPG_KEY A035C8C19219BA821ECEA86B64E628F8D684696D
-ENV PYTHON_VERSION 3.11.11
-ENV PYTHON_SHA256 2a9920c7a0cd236de33644ed980a13cbbc21058bfdc528febb6081575ed73be3
-
+# Make Python 3.11 the default `python3` and create stripped symlinks
 RUN set -eux; \
-	\
-	savedAptMark="$(apt-mark showmanual)"; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends \
-		dpkg-dev \
-		gcc \
-		gnupg \
-		libbluetooth-dev \
-		libbz2-dev \
-		libc6-dev \
-		libdb-dev \
-		libffi-dev \
-		libgdbm-dev \
-		liblzma-dev \
-		libncursesw5-dev \
-		libreadline-dev \
-		libsqlite3-dev \
-		libssl-dev \
-		make \
-		tk-dev \
-		uuid-dev \
-		wget \
-		xz-utils \
-		zlib1g-dev \
-	; \
-	\
-	wget -O python.tar.xz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz"; \
-	echo "$PYTHON_SHA256 *python.tar.xz" | sha256sum -c -; \
-	wget -O python.tar.xz.asc "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz.asc"; \
-	GNUPGHOME="$(mktemp -d)"; export GNUPGHOME; \
-	gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "$GPG_KEY"; \
-	gpg --batch --verify python.tar.xz.asc python.tar.xz; \
-	gpgconf --kill all; \
-	rm -rf "$GNUPGHOME" python.tar.xz.asc; \
-	mkdir -p /usr/src/python; \
-	tar --extract --directory /usr/src/python --strip-components=1 --file python.tar.xz; \
-	rm python.tar.xz; \
-	\
-	cd /usr/src/python; \
-	gnuArch="$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)"; \
-	./configure \
-		--build="$gnuArch" \
-		--enable-loadable-sqlite-extensions \
-		--enable-optimizations \
-		--enable-option-checking=fatal \
-		--enable-shared \
-		--with-lto \
-		--with-ensurepip \
-	; \
-	nproc="$(nproc)"; \
-	EXTRA_CFLAGS="$(dpkg-buildflags --get CFLAGS)"; \
-	LDFLAGS="$(dpkg-buildflags --get LDFLAGS)"; \
-	LDFLAGS="${LDFLAGS:--Wl},--strip-all"; \
-	make -j "$nproc" \
-		"EXTRA_CFLAGS=${EXTRA_CFLAGS:-}" \
-		"LDFLAGS=${LDFLAGS:-}" \
-	; \
-# https://github.com/docker-library/python/issues/784
-# prevent accidental usage of a system installed libpython of the same version
-	rm python; \
-	make -j "$nproc" \
-		"EXTRA_CFLAGS=${EXTRA_CFLAGS:-}" \
-		"LDFLAGS=${LDFLAGS:--Wl},-rpath='\$\$ORIGIN/../lib'" \
-		python \
-	; \
-	make install; \
-	\
-	cd /; \
-	rm -rf /usr/src/python; \
-	\
-	find /usr/local -depth \
-		\( \
-			\( -type d -a \( -name test -o -name tests -o -name idle_test \) \) \
-			-o \( -type f -a \( -name '*.pyc' -o -name '*.pyo' -o -name 'libpython*.a' \) \) \
-		\) -exec rm -rf '{}' + \
-	; \
-	\
-	ldconfig; \
-	\
-	apt-mark auto '.*' > /dev/null; \
-	apt-mark manual $savedAptMark; \
-	find /usr/local -type f -executable -not \( -name '*tkinter*' \) -exec ldd '{}' ';' \
-		| awk '/=>/ { so = $(NF-1); if (index(so, "/usr/local/") == 1) { next }; gsub("^/(usr/)?", "", so); printf "*%s\n", so }' \
-		| sort -u \
-		| xargs -r dpkg-query --search \
-		| cut -d: -f1 \
-		| sort -u \
-		| xargs -r apt-mark manual \
-	; \
-	apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
-	rm -rf /var/lib/apt/lists/*; \
-	\
-	export PYTHONDONTWRITEBYTECODE=1; \
-	python3 --version; \
-	\
-	pip3 install \
-		--disable-pip-version-check \
-		--no-cache-dir \
-		--no-compile \
-		'setuptools==65.5.1' \
-		wheel \
-	; \
-	pip3 --version
-
-# make some useful symlinks that are expected to exist ("/usr/local/bin/python" and friends)
-RUN set -eux; \
-	for src in idle3 pip3 pydoc3 python3 python3-config; do \
-		dst="$(echo "$src" | tr -d 3)"; \
-		[ -s "/usr/local/bin/$src" ]; \
-		[ ! -e "/usr/local/bin/$dst" ]; \
-		ln -svT "$src" "/usr/local/bin/$dst"; \
-	done
-
-RUN which python && which pip && python --version && pip --version
+    for src in idle3 pip3 pydoc3 python3 python3-config; do \
+        dst="$(echo "$src" | tr -d 3)"; \
+        [ -s "/usr/bin/$src" ]; \
+        [ ! -e "/usr/bin/$dst" ]; \
+        ln -svT "/usr/bin/$src" "/usr/bin/$dst"; \
+    done
 
 # Reset DEBIAN_FRONTEND to prevent unintended behavior in the container
 ENV DEBIAN_FRONTEND=dialog
