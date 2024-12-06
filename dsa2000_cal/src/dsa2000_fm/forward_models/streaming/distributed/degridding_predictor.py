@@ -102,7 +102,7 @@ class DegriddingPredictor:
                        far_field_delay_engine: BaseFarFieldDelayEngine,
                        geodesic_model: BaseGeodesicModel
                        ) -> DegriddingPredictorResponse:
-        self.init()
+        await self.init()
 
         with TimerLog(f"Predicting and sampling visibilities for time {time} and freq {freq}"):
             response = block_until_ready(
