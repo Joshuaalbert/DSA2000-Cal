@@ -5,7 +5,6 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import ray
-from ray.runtime_env import RuntimeEnv
 
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.jax_utils import block_until_ready
@@ -15,6 +14,9 @@ from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDel
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
+from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import \
+    BaseGaussianSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 
 logger = logging.getLogger('ray')
@@ -32,8 +34,8 @@ def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
     itemsize_vis = np.dtype(np.complex64).itemsize
     memory = 2 * B * num_coh * (itemsize_vis)
     return {
-        "num_cpus": 0,
-        "num_gpus": 0.1,
+        "num_cpus": 1,
+        "num_gpus": 0,
         'memory': 1.1 * memory,
         # "runtime_env": RuntimeEnv(
         #     env_vars={
@@ -58,10 +60,6 @@ class DFTPredictor:
         if self._initialised:
             return
         self._initialised = True
-
-        from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import \
-            BaseGaussianSourceModel
-        from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel
 
         def predict(
                 source_model: BasePointSourceModel | BaseGaussianSourceModel,

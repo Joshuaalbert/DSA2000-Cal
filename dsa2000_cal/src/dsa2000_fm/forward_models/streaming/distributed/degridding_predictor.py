@@ -5,7 +5,6 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import ray
-from ray.runtime_env import RuntimeEnv
 
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.jax_utils import block_until_ready
