@@ -9,6 +9,7 @@ ENV TZ=Europe/Amsterdam
 # Install Python 3.11 and dependencies
 RUN set -eux; \
     apt-get update; \
+    apt-get remove -y python*; \
     apt-get install -y --no-install-recommends \
         software-properties-common \
         build-essential \
@@ -29,9 +30,12 @@ RUN set -eux; \
         && add-apt-repository ppa:deadsnakes/ppa -y; \
     apt-get update; \
     apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv python3-pip; \
-    apt-get remove -y python3.8 python3.8-minimal; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
+
+# Create symlinks for python -> python3 and pip -> pip3
+RUN ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
 
 # Reset DEBIAN_FRONTEND to prevent unintended behavior in the container
 ENV DEBIAN_FRONTEND=dialog
@@ -41,11 +45,7 @@ ENV DEBIAN_FRONTEND=dialog
 RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential \
     g++
 
-# Create symlinks for python -> python3 and pip -> pip3
-RUN ln -sf /usr/bin/python3 /usr/bin/python && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip
-
-RUN which python && python --version && which pip && pip --version && pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
+RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # Install the ducc0 package from source for performance
 
