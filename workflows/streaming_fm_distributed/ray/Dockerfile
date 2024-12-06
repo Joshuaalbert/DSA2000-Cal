@@ -41,7 +41,7 @@ ENV DEBIAN_FRONTEND=dialog
 RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential \
     g++
 
-RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
+RUN which python && python --version && which pip && pip --version && pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # Install the ducc0 package from source for performance
 
