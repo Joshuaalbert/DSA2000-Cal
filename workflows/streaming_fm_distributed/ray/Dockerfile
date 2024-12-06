@@ -1,12 +1,16 @@
-# FROM python:3.11.7
+# Our options here are to install python 3.11 ontop of cuda 12.1 or vice versa.
+# We choose to install python 3.11 ontop of cuda 12.1, as that is easier.
+# To install python from source properly, we borrow from the official python dockerfile:
+# https://github.com/docker-library/python/blob/23c83c5a82646e123df33d056f7dfbe1d78cfc8b/3.11/slim-bullseye/Dockerfile
+
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04
 
-# Install Python 3.11
+# === Install Python 3.11 from source ===
+
+# turn of interactive mode for this part
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Amsterdam
 
-
-# Install Python 3.11 and dependencies
 # ensure local python is preferred over distribution python
 ENV PATH /usr/local/bin:$PATH
 
@@ -146,42 +150,38 @@ RUN set -eux; \
 # Reset DEBIAN_FRONTEND to prevent unintended behavior in the container
 ENV DEBIAN_FRONTEND=dialog
 
-# Install py-spy and other packages for rest of package
+# === Install rest of package ===
 
-RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential \
-    g++
 
+RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential g++
+
+# Install py-spy for inspecting running processes
 RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
-# Install the ducc0 package from source for performance
-
+# Install the ducc0 package from source for best performance
+# This must be installed before requirement.txt, to avoid install from binary
 RUN pip install --no-binary ducc0 'ducc0==0.35.0' 'numpy<2'
 
-# Install JAX for GPU
+# Install JAX for GPU on top of cuda 12, and cudnn9 to match the base image
+# This must be installed before requirement.txt, to avoid install for CPU only
 RUN pip install jax[cuda12_cudnn91] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
-
-# requirements rarely change, so install those here
+# Requirements (rarely change, so install here)
 COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
 COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt
 RUN pip install -r /dsa/code/requirements.txt
 RUN pip install -r /dsa/code/requirements-notebooks.txt
 
-
-# Download the ephem data for astropy
+# Download the ephem data for astropy, to avoid at runtime
 RUN python -c 'import astropy.time as at; at.Time.now().ut1'
 
 # Copy entrypoint
 COPY ./workflows/streaming_fm_distributed/ray/src /dsa/code/src
 
-# Mask ssh dir
+# Make a ssh dir, to mount user's ssh keys at runtime
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
-# Make a writable directory for ssh
-RUN mkdir -p /tmp/ssh && chmod 700 /tmp/ssh
-
-
-# For data persistence in the run directory
+# Make a persistent run directory
 RUN mkdir -p /dsa/run
 WORKDIR /dsa/run
 
