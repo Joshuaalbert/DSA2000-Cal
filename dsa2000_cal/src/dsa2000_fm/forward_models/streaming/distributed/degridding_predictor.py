@@ -5,6 +5,7 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import ray
+from ray.runtime_env import RuntimeEnv
 
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.jax_utils import block_until_ready
@@ -35,14 +36,14 @@ def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
         "num_cpus": 1,
         "num_gpus": 0,
         'memory': 1.1 * memory,
-        # "runtime_env": RuntimeEnv(
-        #     env_vars={
-        # #         "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",
-        # #         "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
-        # #         "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
-        #         "JAX_PLATFORMS": "cpu"
-        #     }
-        # )
+        "runtime_env": RuntimeEnv(
+            env_vars={
+                #         "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",
+                #         "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
+                #         "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
+                "JAX_PLATFORMS": "cpu"
+            }
+        )
     }
 
 

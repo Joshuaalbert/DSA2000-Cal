@@ -1,4 +1,7 @@
+import os
 import time
+os.environ['JAX_PLATFORMS'] = ''
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import astropy.coordinates as ac
 import astropy.time as at
@@ -110,7 +113,7 @@ if __name__ == '__main__':
     main(
         num_directions=1,
         num_ant=2048,
-        num_times=4,
-        num_channels=40,
+        num_times=1,
+        num_channels=1,
         num_model_freqs=3
     )

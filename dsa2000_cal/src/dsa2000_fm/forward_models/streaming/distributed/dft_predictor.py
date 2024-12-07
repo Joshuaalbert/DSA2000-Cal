@@ -5,10 +5,11 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import ray
+from ray.runtime_env import RuntimeEnv
 
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.common.ray_utils import TimerLog
+from dsa2000_cal.common.ray_utils import TimerLog, set_all_gpus_visible, get_gpu_with_most_memory
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
@@ -34,17 +35,17 @@ def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
     itemsize_vis = np.dtype(np.complex64).itemsize
     memory = 2 * B * num_coh * (itemsize_vis)
     return {
-        "num_cpus": 1,
-        "num_gpus": 0,
+        "num_cpus": 0,
+        "num_gpus": 0.1,
         'memory': 1.1 * memory,
-        # "runtime_env": RuntimeEnv(
-        #     env_vars={
-        # #         "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",
-        # #         "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
-        #         "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
-        #         "JAX_PLATFORMS": ""
-        #     }
-        # )
+        "runtime_env": RuntimeEnv(
+            env_vars={
+                "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",  # 10% of GPU memory
+                "XLA_PYTHON_CLIENT_PREALLOCATE": "true",  # Preallocate memory
+                "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
+                "JAX_PLATFORMS": ""
+            }
+        )
     }
 
 
@@ -55,6 +56,8 @@ class DFTPredictor:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'dft_predictor')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
+
+        set_all_gpus_visible()
 
     async def init(self):
         if self._initialised:
@@ -103,15 +106,24 @@ class DFTPredictor:
         await self.init()
 
         with TimerLog(f"Predicting and sampling visibilities for time {time} and freq {freq}"):
+            data_dict = dict(
+                source_model=source_model,
+                freq=freq,
+                time=time,
+                gain_model=gain_model,
+                near_field_delay_engine=near_field_delay_engine,
+                far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model
+            )
+
+            gpu_idx, memory = get_gpu_with_most_memory()
+            logger.info(f"Using GPU {gpu_idx} with {memory / 2 ** 30} GB free memory")
+
+            data_dict = jax.device_put(data_dict, jax.local_devices(gpu_idx, backend='gpu')[0], donate=True)
+
             response = block_until_ready(
                 self._predict_jit(
-                    source_model=source_model,
-                    freq=freq,
-                    time=time,
-                    gain_model=gain_model,
-                    near_field_delay_engine=near_field_delay_engine,
-                    far_field_delay_engine=far_field_delay_engine,
-                    geodesic_model=geodesic_model
+                    **data_dict
                 )
             )
         return jax.tree.map(np.asarray, response)

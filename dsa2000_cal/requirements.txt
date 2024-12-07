@@ -4,6 +4,7 @@ ujson
 astropy>=6.1.0
 h5parm
 tables
+pynvml
 jax[cuda12]
 jaxns>=2.6.6
 scipy

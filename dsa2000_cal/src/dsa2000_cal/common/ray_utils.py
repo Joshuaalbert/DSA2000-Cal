@@ -9,13 +9,47 @@ import time
 import traceback
 from contextlib import ContextDecorator
 from datetime import timedelta
-from typing import Coroutine, Callable, Any
+from typing import Coroutine, Callable, Any, Tuple
 
 import psutil
 import ray
+from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlDeviceGetCount
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 logger = logging.getLogger("ray")
+
+
+def get_gpu_with_most_memory() -> Tuple[int, int]:
+    """
+    Get the GPU with the most free memory.
+
+    Returns:
+        the index of the GPU with the most free memory, and the amount of free memory on that GPU
+    """
+    nvmlInit()
+    device_count = nvmlDeviceGetCount()
+    max_free_memory = 0
+    best_gpu = None
+    for i in range(device_count):
+        handle = nvmlDeviceGetHandleByIndex(i)
+        mem_info = nvmlDeviceGetMemoryInfo(handle)
+        free_memory = mem_info.free
+        if free_memory > max_free_memory:
+            max_free_memory = free_memory
+            best_gpu = i
+    return best_gpu, max_free_memory
+
+
+def set_all_gpus_visible():
+    """
+    Set all GPUs to be visible to the current process.
+    """
+    nvmlInit()
+    device_count = nvmlDeviceGetCount()
+    if device_count > 0:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in range(device_count))
+    else:
+        raise RuntimeError("No GPUs available!")
 
 
 def get_head_node_id() -> str:
@@ -212,6 +246,7 @@ class MemoryLogger(ContextDecorator):
         # Wait for the thread to finish
         if self.logging_thread is not None:
             self.logging_thread.join()
+
 
 @dataclasses.dataclass
 class TimerLog:
