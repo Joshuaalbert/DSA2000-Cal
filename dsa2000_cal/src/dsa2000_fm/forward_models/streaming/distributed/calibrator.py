@@ -231,17 +231,6 @@ class Calibrator:
             flags_avg = freq_average_rule(time_average_rule(flags.astype(np.float16))).astype(np.bool_)
 
         with TimerLog("Calibrating..."):
-            data = dict(vis_model=vis_model,
-                vis_data=vis_data_avg,
-                weights=weights_avg,
-                flags=flags_avg,
-                freqs=model_freqs,
-                times=model_times,
-                antenna1=antenna1,
-                antenna2=antenna2,
-                state=previous_state.solver_state)
-            logger.info(jax.tree.map(np.shape, data))
-            logger.info(jax.tree.map(np.result_type, data))
             gains, solver_state, diagnostics = block_until_ready(self.calibrate_jit(
                 vis_model=vis_model,
                 vis_data=vis_data_avg,
@@ -259,8 +248,6 @@ class Calibrator:
                 self._compute_residual_jit(
                     vis_model=vis_model,
                     vis_data=vis_data,
-                    weights=weights,
-                    flags=flags,
                     gains=gains,
                     antenna1=antenna1,
                     antenna2=antenna2
