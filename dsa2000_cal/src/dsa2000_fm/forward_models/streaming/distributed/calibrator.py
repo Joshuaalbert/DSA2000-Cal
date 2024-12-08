@@ -324,8 +324,6 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
             else:
                 raise ValueError(f"Invalid shape: {np.shape(g1)}")
 
-        logger.info(jax.tree.map(np.shape, (g1, g2, vis_model)))
-
         delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
         return accumulate + delta_vis, ()
 
