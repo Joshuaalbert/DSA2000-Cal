@@ -111,7 +111,7 @@ class DataStreamer:
         self.init()
         noise_key, sim_gain_key = jax.random.split(key)
         with TimerLog("Getting system gains"):
-            system_gain_model = await self._system_gain_simulator(
+            system_gain_simulator_response: SystemGainSimulatorResponse = await self._system_gain_simulator(
                 sim_gain_key,
                 time_idx,
                 freq_idx
@@ -125,7 +125,7 @@ class DataStreamer:
                     source_model=self.state.sky_model,
                     freq=freq,
                     time=time,
-                    gain_model=system_gain_model,
+                    gain_model=system_gain_simulator_response.gain_model,
                     near_field_delay_engine=self.predict_params.near_field_delay_engine,
                     far_field_delay_engine=self.predict_params.far_field_delay_engine,
                     geodesic_model=self.predict_params.geodesic_model
