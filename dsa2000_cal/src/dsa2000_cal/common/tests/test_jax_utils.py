@@ -276,12 +276,38 @@ def test_get_permutation():
 
 def test_simple_broadcast():
     def f(x, y):
+        assert np.shape(x) == (4, 5)
         return x + y
 
     x = jnp.ones((3, 4, 5))
     y = jnp.ones((3, 4, 5))
 
     res = simple_broadcast(f, 1)(x, y)
+
+    assert np.all(res == 2)
+    assert np.shape(res) == (3, 4, 5)
+
+    def f(x, y):
+        assert np.shape(x) == (5,)
+        return x + y
+
+    x = jnp.ones((3, 4, 5))
+    y = jnp.ones((3, 4, 5))
+
+    res = simple_broadcast(f, 2)(x, y)
+
+    assert np.all(res == 2)
+    assert np.shape(res) == (3, 4, 5)
+
+
+    def f(x, y):
+        assert np.shape(x) == ()
+        return x + y
+
+    x = jnp.ones((3, 4, 5))
+    y = jnp.ones((3, 4, 5))
+
+    res = simple_broadcast(f, 3)(x, y)
 
     assert np.all(res == 2)
     assert np.shape(res) == (3, 4, 5)

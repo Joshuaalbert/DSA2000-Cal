@@ -205,6 +205,7 @@ class Calibrator:
                 gather_data(key, time_idxs, freq_idxs),
                 model_gather(model_times, model_freqs)
             )
+            logger.info(jax.tree.map(np.shape, ((vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2), vis_model)))
 
         # Response generator can be used in an `async for` block.
         with TimerLog("Getting previous state..."):
@@ -293,7 +294,7 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
     Args:
         vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
         vis_data: [Ts, B, Cs[,2,2]] the data visibilities, Ts = 0 mod Tm, Cs = 0 mod Cm i.e. Ts % Tm = 0, Cs % Cm = 0
-        gains: [D, Tm, A, Cm[, 2, 2]] the gains
+        gains: [D, Tm, A, Cm[,2,2]] the gains
         antenna1: [B] the antenna1
         antenna2: [B] the antenna2
 
@@ -322,6 +323,8 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
                 return mp_policy.cast_to_vis(g1 * vis * g2.conj())
             else:
                 raise ValueError(f"Invalid shape: {np.shape(g1)}")
+
+        logger.info(jax.tree.map(np.shape, (g1, g2, vis_model)))
 
         delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
         return accumulate + delta_vis, ()
@@ -362,10 +365,10 @@ class Calibration:
         Calibrate and subtract model visibilities from data visibilities.
 
         Args:
-            vis_model: [D, Tm, B, Cm, 2, 2] the model visibilities per direction
-            vis_data: [Tm, B, Cm, 2, 2] the data visibilities
-            weights: [Tm, B, Cm, 2, 2] the weights
-            flags: [Tm, B, Cm, 2, 2] the flags
+            vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
+            vis_data: [Tm, B, Cm[,2,2]] the data visibilities
+            weights: [Tm, B, Cm[,2,2]] the weights
+            flags: [Tm, B, Cm[,2,2]] the flags
             freqs: [Cm] the frequencies
             times: [Tm] the times
             antenna1: [B] the antenna1
@@ -373,7 +376,7 @@ class Calibration:
             state: MultiStepLevenbergMarquardtState the state of the solver (optional)
 
         Returns:
-            gains: [D, Tm, A, Cm, 2, 2] the gains
+            gains: [D, Tm, A, Cm[,2,2]] the gains
             state: MultiStepLevenbergMarquardtState the state of the solver
             diagnostics: the diagnostics of the solver
         """
@@ -396,8 +399,8 @@ class Calibration:
                 freqs=freqs,
                 times=times
             )
-            (gains,), _ = simulate_prior_model(key, prior_model)  # [D, Tm, A, Cm, 2, 2]
-            return gains  # [D, Tm, A, Cm, 2, 2]
+            (gains,), _ = simulate_prior_model(key, prior_model)  # [D, Tm, A, Cm[,2,2]]
+            return gains  # [D, Tm, A, Cm[,2,2]]
 
         get_gains_transformed = ctx.transform(get_gains)
 
@@ -447,7 +450,7 @@ class Calibration:
                 vis_data: [Ts, B, Cs[,2,2]] the data visibilities
                 weights: [Ts, B, Cs[,2,2]] the data weights
                 flags: [Ts, B, Cs[,2,2]] the data flags
-                gains: [D, Tm, A, Cm[, 2, 2]] the gains
+                gains: [D, Tm, A, Cm[,2, 2]] the gains
                 antenna1: [B] the antenna1
                 antenna2: [B] the antenna2
 
@@ -469,8 +472,8 @@ class Calibration:
                 antenna1=antenna1,
                 antenna2=antenna2
             )
-            weights *= jnp.logical_not(flags).astype(weights.dtype)  # [Tm, B, Cm, 2, 2]
-            residuals *= jnp.sqrt(weights)  # [Tm, B, Cm, 2, 2]
+            weights *= jnp.logical_not(flags).astype(weights.dtype)  # [Tm, B, Cm[,2,2]]
+            residuals *= jnp.sqrt(weights)  # [Tm, B, Cm[,2,2]]
             return residuals.real, residuals.imag
 
         return compute_residuals_fn

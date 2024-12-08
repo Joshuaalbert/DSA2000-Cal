@@ -707,7 +707,7 @@ def simple_broadcast(f: Callable[..., U], leading_dims: int) -> U:
         leading_shape = leading_shapes[0]
         leading_size = int(np.prod(leading_shape))
         args = jax.tree.map(lambda x: jax.lax.reshape(x, (leading_size,) + np.shape(x)[leading_dims:]), args)
-        out = f(*args)
+        out = jax.vmap(f)(*args)
         # reshape
         out = jax.tree.map(lambda x: jax.lax.reshape(x, leading_shape + np.shape(x)[1:]), out)
         return out
