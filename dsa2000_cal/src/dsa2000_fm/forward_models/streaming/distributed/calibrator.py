@@ -329,7 +329,7 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
         delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
         return accumulate + delta_vis, ()
 
-    accumulate = jnp.zeros(np.shape(vis_data)[1:], dtype=vis_model.dtype)
+    accumulate = jnp.zeros(np.shape(vis_model)[1:], dtype=vis_model.dtype)
     accumulate, _ = jax.lax.scan(body_fn, accumulate, (vis_model, gains))
 
     # Invert average rule with tile
