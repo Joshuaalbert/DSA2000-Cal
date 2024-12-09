@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+"""Scrape Ray nodes and write Prometheus target files."""
+
 import json
 import os
 
@@ -8,20 +11,6 @@ from dsa2000_fm.forward_models.streaming.single_kernel.process_actor import get_
 # Directory to store Prometheus target files
 TARGETS_DIR = "/etc/prometheus/dynamic_targets"  # Replace with actual path
 PROMETHEUS_PORT = 8090
-
-
-def get_ray_nodes():
-    """Fetch the list of all Ray nodes and their IPs."""
-    try:
-        # Initialize a connection to the Ray head node
-        ray.init(address="auto", ignore_reinit_error=True)
-
-        # Fetch the list of all nodes
-        node_info = ray.nodes()
-        return [{"ip": node["NodeManagerAddress"], "name": node["NodeName"]} for node in node_info if node["Alive"]]
-    except Exception as e:
-        print(f"Error fetching Ray nodes: {e}")
-        return []
 
 
 def write_target_file(node_id):
@@ -49,7 +38,7 @@ def write_target_file(node_id):
 
 def main():
     print("Scraping Ray nodes and writing Prometheus target files...")
-    nodes = get_ray_nodes()
+    nodes = ray.nodes()
     for node in nodes:
         node_id = node["NodeID"]
         write_target_file(node_id)
