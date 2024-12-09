@@ -14,8 +14,6 @@ services:
       - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
     env_file:
       - .env
-    ports:
-      - "9090:9090"
     healthcheck:
       test: [ "CMD", "wget", "--spider", "http://localhost:9090/-/healthy" ]
       interval: 30s
