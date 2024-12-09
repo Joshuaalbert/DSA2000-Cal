@@ -37,6 +37,7 @@ def write_target_file(node_id):
 
 
 def main():
+    ray.init(address="auto")
     print("Scraping Ray nodes and writing Prometheus target files...")
     nodes = ray.nodes()
     for node in nodes:

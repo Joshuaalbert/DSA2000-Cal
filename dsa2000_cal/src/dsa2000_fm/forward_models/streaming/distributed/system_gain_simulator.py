@@ -84,7 +84,7 @@ class SimulateDishState(NamedTuple):
 class SystemGainSimulatorParams(SerialisableBaseModel):
     geodesic_model: BaseGeodesicModel
     init_key: IntArray
-    bypass: bool
+    bypass: bool = False
 
 
 class SystemGainSimulatorResponse(NamedTuple):
@@ -359,7 +359,6 @@ class BaseDishGainModel:
             full_stokes=self.full_stokes
         )
 
-        print(gain_model)
 
         return gain_model, model_gains_aperture
 
