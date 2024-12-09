@@ -88,6 +88,10 @@ class Gridder:
                                   dtype=np.float32, order='F')
             pq_array = itertools.product(range(2), range(2))
         else:
+            # Add extra axes
+            visibilities = visibilities[..., None, None]
+            weights = weights[..., None, None]
+            flags = flags[..., None, None]
             image_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 1, 1),
                                     dtype=np.float32, order='F')
             psf_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 1, 1),
@@ -165,12 +169,17 @@ class Gridder:
         self.init()
         with TimerLog("Getting bright source subtracted data..."):
             cal_response = await self._calibrator(key, sol_int_time_idx, sol_int_freq_idx)
+            visibilities = np.asarray(cal_response.visibilities, order='F')
+            weights = np.asarray(cal_response.weights, order='F')
+            flags = np.asarray(cal_response.flags, order='F')
+            uvw = np.asarray(cal_response.uvw, order='F')
+            del cal_response
 
         with TimerLog("Gridding..."):
             return block_until_ready(self._grid_vis(
                 sol_int_freq_idx=sol_int_freq_idx,
-                uvw=cal_response.uvw,
-                visibilities=cal_response.visibilities,
-                weights=cal_response.weights,
-                flags=cal_response.flags
+                uvw=uvw,
+                visibilities=visibilities,
+                weights=weights,
+                flags=flags
             ))
