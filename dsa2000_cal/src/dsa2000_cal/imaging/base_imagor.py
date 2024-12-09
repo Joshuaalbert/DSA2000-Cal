@@ -289,6 +289,8 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
         minor: the minor FWHM in rad
         posang: the position angle in rad
     """
+    if np.shape(dl) != () or np.shape(dm) != ():
+        raise ValueError(f"Expected dl and dm to be scalars, got {np.shape(dl)} and {np.shape(dm)}")
     num_l, num_m = np.shape(psf)
     # Trim equally from both sides until num_l and num_m <= max_central_size
     trim_size_l = 0

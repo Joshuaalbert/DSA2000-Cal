@@ -11,15 +11,15 @@ from jax import numpy as jnp
 from pydantic import Field
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from dsa2000_rcp.actors.namespace import NAMESPACE
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_cal.imaging.base_imagor import fit_beam
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_fm.forward_models.streaming.distributed.gridder import GridderResponse
 from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
-from dsa2000_cal.imaging.base_imagor import fit_beam
+from dsa2000_rcp.actors.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 
@@ -217,6 +217,11 @@ class _Aggregator:
         central_freq = np.mean(self.params.fm_run_params.ms_meta.freqs[self._freq_idxs])
 
         # Fit beam on Stokes I.
+
+        logger.info(
+            f"Fitting beam to psf stokes I {psf.shape} "
+            f"dl={self.params.fm_run_params.image_params.dl} dm={self.params.fm_run_params.image_params.dm}"
+        )
 
         major, minor, posang = self._fit_beam_jit(
             psf=psf[:, :, 0],
