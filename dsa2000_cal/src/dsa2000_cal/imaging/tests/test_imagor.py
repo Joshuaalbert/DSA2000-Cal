@@ -14,7 +14,7 @@ from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.imaging.base_imagor import fit_beam, evaluate_beam, divide_out_beam
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSetMeta, MeasurementSet
+from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta, MeasurementSet
 
 
 def build_mock_calibrator_source_models(tmp_path, coherencies):
@@ -132,7 +132,7 @@ def test_fit_beam():
     for both the major and minor axes of a synthetic ellipsoid image.
     """
     dl = dm = 0.01
-    n = 32
+    n = 256
     lvec = (-0.5 * n + jnp.arange(n)) * dl
     mvec = (-0.5 * n + jnp.arange(n)) * dm
     L, M = jnp.meshgrid(lvec, mvec, indexing='ij')

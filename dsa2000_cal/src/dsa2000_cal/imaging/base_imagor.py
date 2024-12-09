@@ -292,6 +292,8 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
     if np.shape(dl) != () or np.shape(dm) != ():
         raise ValueError(f"Expected dl and dm to be scalars, got {np.shape(dl)} and {np.shape(dm)}")
     num_l, num_m = np.shape(psf)
+    if num_l < max_central_size or num_m < max_central_size:
+        raise ValueError(f"Expected PSF to be at least {max_central_size}x{max_central_size}, got {num_l}x{num_m}")
     # Trim equally from both sides until num_l and num_m <= max_central_size
     trim_size_l = 0
     while num_l - trim_size_l * 2 > max_central_size:
@@ -300,8 +302,12 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
     while num_m - trim_size_m * 2 > max_central_size:
         trim_size_m += 1
     psf = psf[trim_size_l:-trim_size_l, trim_size_m:-trim_size_m]
+    print(f"Trimmed PSF from {num_l}x{num_m} to {np.shape(psf)}")
     lvec = (-0.5 * num_l + jnp.arange(num_l)) * dl  # [num_l]
     mvec = (-0.5 * num_m + jnp.arange(num_m)) * dm  # [num_m]
+    # Trim lvec and mvec too
+    lvec = lvec[trim_size_l:-trim_size_l]
+    mvec = mvec[trim_size_m:-trim_size_m]
     L, M = jnp.meshgrid(lvec, mvec, indexing='ij')  # [num_l, num_m]
     lm = jnp.stack([L, M], axis=-1).reshape((-1, 2))  # [num_l, num_m, 2]
     psf = jnp.reshape(psf, (-1,))
