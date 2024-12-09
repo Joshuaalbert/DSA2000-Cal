@@ -96,8 +96,13 @@ if [ "$IS_RAY_HEAD" = true ]; then
 
   jupyter server list
 
-  #chmod +x /run/code/cleanup_logs.sh
-  #(crontab -l 2>/dev/null; echo "0 * * * * /run/code/cleanup_logs.sh") | crontab -
+  service cron start
+
+  # chmod +x /dsa/code/src/cleanup_logs.sh
+  # (crontab -l 2>/dev/null; echo "0 * * * * /run/code/cleanup_logs.sh") | crontab -
+  chmod +x /dsa/code/src/scrape_metric_targets.py
+  # Run every minute
+  (crontab -l 2>/dev/null; echo "* * * * * /run/code/src/scrape_metric_targets.py") | crontab -
   #service cron start
 
 else

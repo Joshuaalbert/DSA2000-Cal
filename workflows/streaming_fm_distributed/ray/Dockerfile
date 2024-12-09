@@ -168,6 +168,8 @@ RUN pip install --no-binary ducc0 'ducc0==0.35.0' 'numpy<2'
 # This must be installed before requirement.txt, to avoid install for CPU only
 # RUN pip install -U jax[cuda12] # protobuf should be same as ray
 
+RUN pip install jax[cuda12] 'numpy<2'
+
 # Requirements (rarely change, so install here)
 COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
 COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt

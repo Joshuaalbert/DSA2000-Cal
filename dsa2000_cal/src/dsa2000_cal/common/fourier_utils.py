@@ -40,8 +40,21 @@ class ApertureTransform:
     and l is direction cosine of wave vector.
     """
     convention: str = 'physical'
+    use_shifts: bool = True
 
     def to_image(self, f_aperture, axes, dx, dy):
+        """
+        Transform from aperture to image plane.
+
+        Args:
+            f_aperture: [..., num_l, num_m, ...]
+            axes: the axes of the l and m dimensions
+            dx: the pixel size in the l direction = 1 / (num_l * dl)
+            dy: the pixel size in the m direction = 1 / (num_m * dm)
+
+        Returns:
+            f_image: [..., num_x, num_y, ...]
+        """
 
         if self.convention == 'physical':
             if axes != (-2, -1):
@@ -98,7 +111,7 @@ class ApertureTransform:
         f_image_shifted = pre_phase_factor * f_image
         f_image_scaled = f_image_shifted * dl * dm
 
-        f_aperture = jnp.fft.fft2(f_image_scaled, axes=axes)
+        f_aperture = jnp.fft.fftshift(jnp.fft.fft2(f_image_scaled, axes=axes), axes=axes)
 
         # e^{-2 pi i (lmin * (xmin + * n dx))}
         Nx, Ny = Ml, Mm
@@ -110,11 +123,12 @@ class ApertureTransform:
         return f_aperture_shifted
 
     def _to_aperture_physical_with_shifts(self, f_image, axes, dl, dm):
+        if not self.use_shifts:
+            return self._to_aperture_physical(f_image, axes, dl, dm)
         # uses -2pi convention, do shifts with axis rolling
-        f_image_shifted = jnp.fft.fftshift(f_image, axes=axes)
-        f_image_scaled = f_image_shifted * dl * dm
+        f_image_scaled = f_image * dl * dm
         f_aperture = jnp.fft.fft2(f_image_scaled, axes=axes)
-        f_aperture_shifted = jnp.fft.ifftshift(f_aperture, axes=axes)
+        f_aperture_shifted = jnp.fft.fftshift(f_aperture, axes=axes)
         return f_aperture_shifted
 
     def _to_image_physical(self, f_aperture, axes, dx, dy):
@@ -142,7 +156,7 @@ class ApertureTransform:
 
         f_aperture_scaled = f_aperture_shifted * dx * dy * num_x * num_y
 
-        f_image = jnp.fft.ifft2(f_aperture_scaled, axes=axes)
+        f_image = jnp.fft.ifft2(jnp.fft.ifftshift(f_aperture_scaled, axes=axes), axes=axes)
 
         # e^{2 pi i (xmin (lmin + m dl))}
 
@@ -155,6 +169,8 @@ class ApertureTransform:
         return f_image_shifted
 
     def _to_image_physical_with_shifts(self, f_aperture, axes, dx, dy):
+        if not self.use_shifts:
+            return self._to_image_physical(f_aperture, axes, dx, dy)
         x_axis, y_axis = axes
         num_x = np.shape(f_aperture)[x_axis]
         num_y = np.shape(f_aperture)[y_axis]
@@ -162,7 +178,7 @@ class ApertureTransform:
         f_aperture_shifted = jnp.fft.ifftshift(f_aperture, axes=axes)
         f_aperture_scaled = f_aperture_shifted * dx * dy * num_x * num_y
         f_image = jnp.fft.ifft2(f_aperture_scaled, axes=axes)
-        f_image_shifted = jnp.fft.fftshift(f_image, axes=axes)
+        f_image_shifted = f_image
         return f_image_shifted
 
     def _to_aperture_engineering(self, f_image, axes, dl, dm):

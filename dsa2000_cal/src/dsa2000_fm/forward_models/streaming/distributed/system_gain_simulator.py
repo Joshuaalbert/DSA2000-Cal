@@ -84,6 +84,7 @@ class SimulateDishState(NamedTuple):
 class SystemGainSimulatorParams(SerialisableBaseModel):
     geodesic_model: BaseGeodesicModel
     init_key: IntArray
+    bypass: bool
 
 
 class SystemGainSimulatorResponse(NamedTuple):
@@ -106,7 +107,7 @@ def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams)
                 # "XLA_PYTHON_CLIENT_MEM_FRACTION": ".75",
                 # "XLA_PYTHON_CLIENT_PREALLOCATE": "true",
                 # "XLA_PYTHON_CLIENT_ALLOCATOR":"platform",
-                "JAX_PLATFORMS":"cpu"
+                "JAX_PLATFORMS": "cpu"
             }
         )
     }
@@ -562,28 +563,3 @@ def plot_aperture_model_callback(beam_aperture: ComplexArray, dl: FloatArray, dm
     )
 
 
-def test_aperture_transform():
-    am = ApertureTransform(convention='physical')
-    beam_gain_model = build_beam_gain_model(array_name='dsa2000W_small', resolution=513)
-    beam_image = beam_gain_model.model_gains  # [num_model_times, lres, mres, num_model_freqs, 2, 2]
-    beam_image = beam_image[0, :, :, 0, 0, 0]
-    dl = beam_gain_model.lvec[1] - beam_gain_model.lvec[0]
-    dm = beam_gain_model.mvec[1] - beam_gain_model.mvec[0]
-    beam_aperture = am.to_aperture(beam_image, axes=(-1, -2), dl=dl, dm=dm)
-    print(beam_aperture)
-    import pylab as plt
-    plt.imshow(np.abs(beam_image), origin='lower')
-    plt.show()
-    plt.imshow(np.angle(beam_image), origin='lower')
-    plt.show()
-    plt.imshow(np.abs(beam_aperture), origin='lower')
-    plt.show()
-    plt.imshow(np.angle(beam_aperture), origin='lower')
-    plt.show()
-    dx = 1. / (dm * np.shape(beam_aperture)[0])
-    dy = 1. / (dl * np.shape(beam_aperture)[1])
-    beam_image_rec = am.to_image(beam_aperture, axes=(-1, -2), dx=dx, dy=dy)
-    plt.imshow(np.abs(beam_image_rec), origin='lower')
-    plt.show()
-    plt.imshow(np.angle(beam_image_rec), origin='lower')
-    plt.show()

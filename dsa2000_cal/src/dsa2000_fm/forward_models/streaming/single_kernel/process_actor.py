@@ -99,7 +99,7 @@ class SFMProcess:
         return ray.get(self._actor.run.remote())
 
 
-def get_head_ip():
+def get_head_ip() -> str:
     head_node_id = get_head_node_id()
     logger.info(f"Attempting to connect to Ray head node {head_node_id}...")
     # Retrieve all node information
@@ -114,6 +114,20 @@ def get_head_ip():
     if head_node_ip is None:
         raise RuntimeError("Head node IP address not found")
     return head_node_ip
+
+def get_node_ip(node_id: str) -> str:
+    # Retrieve all node information
+    nodes_info = ray.nodes()
+
+    # Find the IP address corresponding to the actor's node ID
+    node_ip = None
+    for node in nodes_info:
+        if node["NodeID"] == node_id:
+            node_ip = node["NodeManagerAddress"]
+            break
+    if node_ip is None:
+        raise RuntimeError(f"Node IP address not found for node {node_id}")
+    return node_ip
 
 
 class _SFMProcess:

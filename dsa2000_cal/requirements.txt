@@ -5,7 +5,7 @@ astropy>=6.1.0
 h5parm
 tables
 pynvml
-jax[cuda12]
+jax
 jaxns>=2.6.6
 scipy
 tomographic_kernel>=1.0.3

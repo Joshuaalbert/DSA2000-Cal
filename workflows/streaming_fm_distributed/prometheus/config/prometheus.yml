@@ -12,3 +12,8 @@ scrape_configs:
     static_configs:
       - targets:
           - 'ray_head:8090'
+  - job_name: 'ray_workers'
+    metrics_path: /metrics
+    file_sd_configs:
+      - files:
+          - '/etc/prometheus/dynamic_targets/*.json'
