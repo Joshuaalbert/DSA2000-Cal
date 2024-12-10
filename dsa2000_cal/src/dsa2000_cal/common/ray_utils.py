@@ -15,6 +15,7 @@ import psutil
 import ray
 from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlDeviceGetCount
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray.util.metrics import Gauge
 
 logger = logging.getLogger("ray")
 
@@ -199,8 +200,33 @@ def get_free_port() -> int:
     return free_port
 
 
+async def memory_logger(task: str, cadence: timedelta):
+    """
+    Log the memory usage of the process in MB.
+
+    Args:
+        task: the task name
+        cadence: the cadence at which to log the memory usage
+    """
+    pid = os.getpid()
+    python_process = psutil.Process(pid)
+    memory_gauge = Gauge(
+        name=f"memory_usage_gauge_MB",
+        description="The memory usage of the process in MB",
+        tag_keys=("task",)
+    )
+    memory_gauge.set_default_tags({"task": task})
+
+    async def log_memory():
+        mem_MB = python_process.memory_info()[0] / 2 ** 20
+        memory_gauge.set(mem_MB)
+
+    await loop_task(log_memory, cadence)
+
+
 class MemoryLogger(ContextDecorator):
-    def __init__(self, log_file='memory_usage.log', interval=1, kill_threshold=None):
+    def __init__(self, log_file='memory_usage.log', interval=1, kill_threshold=None, mode: str = 'w'):
+        self.mode = mode
         self.log_file = log_file
         self.interval = interval
         self.kill_threshold = kill_threshold
@@ -211,7 +237,7 @@ class MemoryLogger(ContextDecorator):
         pid = os.getpid()
         python_process = psutil.Process(pid)
 
-        with open(self.log_file, 'w') as f:
+        with open(self.log_file, self.mode) as f:
             f.write("#Time (s), Memory Usage (MB)\n")
             start_time = time.time()
 

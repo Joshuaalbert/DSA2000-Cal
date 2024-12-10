@@ -2,6 +2,7 @@ import asyncio
 import dataclasses
 import logging
 import os
+from datetime import timedelta
 from functools import partial
 from typing import NamedTuple, Tuple, List
 
@@ -19,7 +20,7 @@ from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, 
 from dsa2000_cal.common.jax_utils import block_until_ready, simple_broadcast
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.ray_utils import TimerLog
+from dsa2000_cal.common.ray_utils import TimerLog, MemoryLogger, memory_logger
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolution, \
     CalibrationSolutionCache
@@ -114,11 +115,13 @@ class Calibrator:
         os.makedirs(self.params.plot_folder, exist_ok=True)
 
         self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True
+        self._memory_logger_task = asyncio.create_task(memory_logger(task='calibrator', cadence=timedelta(seconds=5)))
 
         calibration = Calibration(
             full_stokes=self.params.full_stokes,
@@ -137,19 +140,16 @@ class Calibrator:
     async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> CalibratorResponse:
         logger.info(f"Calibrating and subtracting model visibilities for sol_int_time_idx={sol_int_time_idx} and "
                     f"sol_int_freq_idx={sol_int_freq_idx}")
-        self.init()
+        await self.init()
 
+
+        # Get the time and freq indices for the solution interval (a regular grid)
         time_idxs = sol_int_time_idx * self.params.chunk_params.num_times_per_sol_int + np.arange(
             self.params.chunk_params.num_times_per_sol_int)
         freq_idxs = sol_int_freq_idx * self.params.chunk_params.num_freqs_per_sol_int + np.arange(
             self.params.chunk_params.num_freqs_per_sol_int)
         logger.info(f"Time indices: {time_idxs}")
         logger.info(f"Freq indices: {freq_idxs}")
-
-        times = time_to_jnp(self.params.ms_meta.times[time_idxs], self.params.ms_meta.ref_time)
-        freqs = quantity_to_jnp(self.params.ms_meta.freqs[freq_idxs], 'Hz')
-        model_times = average_rule(times, self.params.chunk_params.num_model_times_per_solution_interval, axis=0)
-        model_freqs = average_rule(freqs, self.params.chunk_params.num_model_freqs_per_solution_interval, axis=0)
 
         async def gather_data(key, time_idxs, freq_idxs):
             Ts = len(time_idxs)
@@ -180,6 +180,12 @@ class Calibrator:
             antenna2 = data.visibility_coords.antenna2[0, 0, :]  # [B]
             return vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2
 
+        # Get the model data at the averaged times and freqs
+        times = time_to_jnp(self.params.ms_meta.times[time_idxs], self.params.ms_meta.ref_time)
+        freqs = quantity_to_jnp(self.params.ms_meta.freqs[freq_idxs], 'Hz')
+        model_times = average_rule(times, self.params.chunk_params.num_model_times_per_solution_interval, axis=0)
+        model_freqs = average_rule(freqs, self.params.chunk_params.num_model_freqs_per_solution_interval, axis=0)
+
         async def model_gather(model_times, model_freqs):
             Tm = len(model_times)
             Cm = len(model_freqs)
@@ -205,7 +211,6 @@ class Calibrator:
                 gather_data(key, time_idxs, freq_idxs),
                 model_gather(model_times, model_freqs)
             )
-            logger.info(jax.tree.map(np.shape, ((vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2), vis_model)))
 
         # Response generator can be used in an `async for` block.
         with TimerLog("Getting previous state..."):

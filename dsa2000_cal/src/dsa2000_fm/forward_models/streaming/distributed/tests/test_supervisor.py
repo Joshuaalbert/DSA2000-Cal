@@ -26,7 +26,8 @@ async def test_run_supervisor():
         print(f"{await supervisor.num_running()} running, {await supervisor.num_available()} available")
         assert await supervisor.num_running() <= 10
         assert await supervisor.num_available() >= 0
-        return await task
+        assert (await task) == x
+        return x
 
     results = await asyncio.gather(*[assert_(a) for a in range(100)])
 

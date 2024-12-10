@@ -2,6 +2,7 @@ import asyncio
 import dataclasses
 import logging
 import os
+from datetime import timedelta
 from typing import NamedTuple
 
 import astropy.units as au
@@ -16,7 +17,7 @@ from dsa2000_cal.common.array_types import FloatArray, ComplexArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.ray_utils import TimerLog
+from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -84,11 +85,14 @@ class DataStreamer:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'data_streamer')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True
+        self._memory_logger_task = asyncio.create_task(
+            memory_logger(task='data_streamer', cadence=timedelta(seconds=5)))
 
         predict_and_sample = PredictAndSample(
             faint_sky_model_id=self.predict_params.sky_model_id,
@@ -108,7 +112,7 @@ class DataStreamer:
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> DataStreamerResponse:
         logger.info(f"Sampling visibilities for time_idx={time_idx} and freq_idx={freq_idx}")
-        self.init()
+        await self.init()
         noise_key, sim_gain_key = jax.random.split(key)
         with TimerLog("Getting system gains"):
             system_gain_simulator_response: SystemGainSimulatorResponse = await self._system_gain_simulator(

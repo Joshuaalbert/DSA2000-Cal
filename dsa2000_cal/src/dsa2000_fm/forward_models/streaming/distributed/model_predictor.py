@@ -2,6 +2,7 @@ import asyncio
 import dataclasses
 import logging
 import os
+from datetime import timedelta
 from typing import List, NamedTuple
 
 import astropy.units as au
@@ -13,7 +14,7 @@ import ray
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.ray_utils import TimerLog
+from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
@@ -73,11 +74,15 @@ class ModelPredictor:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'model_predictor')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True
+        self._memory_logger_task = asyncio.create_task(
+            memory_logger(task='model_predictor', cadence=timedelta(seconds=5)))
+
         if self.predict_params.num_facets_per_side == 0:
             raise ValueError("At least one sky model is required.")
 
@@ -109,7 +114,7 @@ class ModelPredictor:
 
     async def __call__(self, time: FloatArray, freq: FloatArray) -> ModelPredictorResponse:
         logger.info(f"Predicting visibilities for time {time} and freq {freq}")
-        self.init()
+        await self.init()
 
         with TimerLog("Predicting..."):
             tasks = []

@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from datetime import timedelta
 from typing import NamedTuple, Type, Dict, Tuple
 
 import jax
@@ -7,12 +9,12 @@ import ray
 from jax import numpy as jnp
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from dsa2000_rcp.actors.namespace import NAMESPACE
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardtState
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
-from dsa2000_cal.common.ray_utils import get_head_node_id
+from dsa2000_cal.common.ray_utils import get_head_node_id, memory_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
+from dsa2000_rcp.actors.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 
@@ -143,6 +145,8 @@ class _CalibrationSolutionCache:
         self.params = params
         self.cache: Dict[
             Tuple[int, int], CalibrationSolution] = {}  # (sol_int_time_idx, sol_int_freq_idx) -> CalibrationSolution
+        self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
     def health_check(self):
         """
@@ -151,12 +155,21 @@ class _CalibrationSolutionCache:
         logger.info(f"Healthy {self.__class__.__name__}")
         return
 
+    async def init(self):
+        if self._initialised:
+            return
+        self._initialised = True
+        self._memory_logger_task = asyncio.create_task(
+            memory_logger(task='calibration_solution_cache', cadence=timedelta(seconds=5)))
+
     async def store_calibration_solution(self, sol_int_time_idx: int, sol_int_freq_idx: int,
                                          solution: CalibrationSolution):
+        await self.init()
         self.cache[(sol_int_time_idx, sol_int_freq_idx)] = solution
 
     async def get_calibration_solution_snapshot(self, sol_int_time_idx: int,
                                                 sol_int_freq_idx: int) -> CalibrationSolution:
+        await self.init()
         return self.cache.get(
             (sol_int_time_idx - 1, sol_int_freq_idx),
             CalibrationSolution(

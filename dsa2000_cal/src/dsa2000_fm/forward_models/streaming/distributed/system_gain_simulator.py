@@ -1,6 +1,8 @@
+import asyncio
 import dataclasses
 import logging
 import os
+from datetime import timedelta
 from functools import partial
 from typing import NamedTuple
 
@@ -20,7 +22,7 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np, time_to_jnp
-from dsa2000_cal.common.ray_utils import TimerLog
+from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
@@ -122,11 +124,15 @@ class SystemGainSimulator:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'system_gain_simulator')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True
+        self._memory_logger_task = asyncio.create_task(
+            memory_logger(task='system_gain_simulator', cadence=timedelta(seconds=5)))
+
         beam_model = build_beam_gain_model(
             array_name=self.params.ms_meta.array_name,
             times=self.params.ms_meta.times,
@@ -156,7 +162,7 @@ class SystemGainSimulator:
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> SystemGainSimulatorResponse:
         logger.info(f"Simulating dish gains for time {time_idx} and freq {freq_idx}")
-        self.init()
+        await self.init()
         time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
         freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
         with TimerLog("Simulating dish gains..."):
@@ -359,7 +365,6 @@ class BaseDishGainModel:
             full_stokes=self.full_stokes
         )
 
-
         return gain_model, model_gains_aperture
 
     def compute_dish_image(self, model_gains_aperture: jax.Array, dx: FloatArray, dy: FloatArray) -> jax.Array:
@@ -560,5 +565,3 @@ def plot_aperture_model_callback(beam_aperture: ComplexArray, dl: FloatArray, dm
         jax.ShapeDtypeStruct((), jnp.bool_), beam_aperture, dl, dm,
         ordered=False
     )
-
-

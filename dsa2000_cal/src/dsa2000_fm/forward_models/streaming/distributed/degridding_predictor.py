@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+from datetime import timedelta
 from typing import NamedTuple
 
 import jax
@@ -9,7 +11,7 @@ from ray.runtime_env import RuntimeEnv
 
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.common.ray_utils import TimerLog
+from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
@@ -55,11 +57,14 @@ class DegriddingPredictor:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'dft_predictor')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
     async def init(self):
         if self._initialised:
             return
         self._initialised = True
+        self._memory_logger_task = asyncio.create_task(
+            memory_logger(task='degridding_predictor', cadence=timedelta(seconds=5)))
 
         def predict(
                 source_model: BaseFITSSourceModel,

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Generic, TypeVar
 from typing import Type
 from uuid import uuid4
@@ -9,8 +10,8 @@ import ray
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from dsa2000_rcp.actors.namespace import NAMESPACE
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_rcp.actors.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 
@@ -98,7 +99,8 @@ class Supervisor(Generic[T]):
         return f"SUPERVISOR#{node_id}"
 
     async def __call__(self, *args, **kwargs) -> T:
-        return await self._actor.call.remote(*args, **kwargs)
+        obj_ref = await self._actor.call.remote(*args, **kwargs)
+        return await obj_ref
 
     async def num_running(self) -> int:
         return await self._actor.num_running.remote()
@@ -113,6 +115,7 @@ class _Supervisor:
         self._actor_queue = asyncio.Queue()
         for i, _ in enumerate(self.params.actors):
             self._actor_queue.put_nowait(i)
+        self._thread_pool = ThreadPoolExecutor(max_workers=min(32, len(self.params.actors)))
         self._run_time_gauge = Gauge(
             name=f"run_time_gauge_s",
             description="The time taken to run a task",
@@ -128,9 +131,16 @@ class _Supervisor:
             description="The number of running tasks",
             tag_keys=("task",)
         )
+        self._num_queued_gauge = Gauge(
+            name=f"num_queued_gauge",
+            description="The number of queued tasks",
+            tag_keys=("task",)
+        )
         self._run_time_gauge.set_default_tags({"task": params.name})
         self._queue_time_gauge.set_default_tags({"task": params.name})
         self._num_running_gauge.set_default_tags({"task": params.name})
+        self._num_queued_gauge.set_default_tags({"task": params.name})
+        self._num_queued = 0
 
     def health_check(self):
         """
@@ -148,7 +158,13 @@ class _Supervisor:
     async def call(self, *args, **kwargs):
         # Get the next available actor
         t0 = time.time()
+        self._num_queued += 1
+        if self._actor_queue.empty():
+            # If there are no available actors, report
+            self._num_queued_gauge.set(self._num_queued)
         actor_idx = await self._actor_queue.get()
+        self._num_queued -= 1
+        self._num_queued_gauge.set(self._num_queued)
         t1 = time.time()
         self._queue_time_gauge.set(t1 - t0)
 
@@ -156,12 +172,17 @@ class _Supervisor:
         actor = self.params.actors[actor_idx]
         self._num_running_gauge.set(self.num_running())
         t0 = time.time()
-        response = await actor.__call__.remote(*args, **kwargs)
+        response_obj_ref = actor.__call__.remote(*args, **kwargs)
+        loop = asyncio.get_event_loop()
+        [ready_response_obj_ref], _ = await loop.run_in_executor(
+            self._thread_pool,
+            lambda: ray.wait([response_obj_ref], num_returns=1, fetch_local=False)
+        )
         t1 = time.time()
         self._actor_queue.put_nowait(actor_idx)
         self._num_running_gauge.set(self.num_running())
         self._run_time_gauge.set(t1 - t0)
-        return response
+        return ready_response_obj_ref
 
 
 def create_supervisor(remote: ray.actor.ActorClass, name: str, num_actors: int, *args, **kwargs) -> Supervisor:

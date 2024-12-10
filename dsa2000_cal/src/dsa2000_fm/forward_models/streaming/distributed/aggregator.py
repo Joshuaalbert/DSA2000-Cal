@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+from datetime import timedelta
 from typing import List, NamedTuple
 from typing import Type
 
@@ -14,6 +16,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.ray_utils import memory_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.imaging.base_imagor import fit_beam
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -148,11 +151,13 @@ class _Aggregator:
         self.params.fm_run_params.plot_folder = os.path.join(self.params.fm_run_params.plot_folder, 'aggregator')
         os.makedirs(self.params.fm_run_params.plot_folder, exist_ok=True)
         self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True
+        self._memory_logger_task = asyncio.create_task(memory_logger(task='aggregator', cadence=timedelta(seconds=5)))
 
         shape = (self.params.fm_run_params.image_params.num_l, self.params.fm_run_params.image_params.num_m)
         if self.params.fm_run_params.full_stokes:
@@ -260,7 +265,7 @@ class _Aggregator:
 
     async def call(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
         logger.info(f"Aggregating {sol_int_time_idx}")
-        self.init()
+        await self.init()
 
         keys = jax.random.split(key, len(self.params.sol_int_freq_idxs))
 

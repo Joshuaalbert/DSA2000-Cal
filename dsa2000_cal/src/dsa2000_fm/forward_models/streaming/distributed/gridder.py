@@ -1,7 +1,9 @@
+import asyncio
 import itertools
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from typing import NamedTuple
 
 import numpy as np
@@ -11,7 +13,7 @@ import ray
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_np
-from dsa2000_cal.common.ray_utils import TimerLog
+from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
 from dsa2000_cal.common.wgridder import vis_to_image_np
 from dsa2000_fm.forward_models.streaming.distributed.calibrator import CalibratorResponse
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -52,11 +54,13 @@ class Gridder:
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'gridder')
         os.makedirs(self.params.plot_folder, exist_ok=True)
         self._initialised = False
+        self._memory_logger_task: asyncio.Task | None = None
 
-    def init(self):
+    async def init(self):
         if self._initialised:
             return
         self._initialised = True
+        self._memory_logger_task = asyncio.create_task(memory_logger(task='gridder', cadence=timedelta(seconds=5)))
 
     def _grid_vis(self, sol_int_freq_idx: int, uvw: FloatArray, visibilities: ComplexArray, weights: FloatArray,
                   flags: BoolArray) -> GridderResponse:
@@ -166,7 +170,8 @@ class Gridder:
 
     async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> GridderResponse:
         logger.info(f"Gridding visibilities for time_idx={sol_int_time_idx} and freq_idx={sol_int_freq_idx}")
-        self.init()
+        await self.init()
+
         with TimerLog("Getting bright source subtracted data..."):
             cal_response = await self._calibrator(key, sol_int_time_idx, sol_int_freq_idx)
             visibilities = np.asarray(cal_response.visibilities, order='F')
