@@ -13,7 +13,8 @@ from typing import Coroutine, Callable, Any, Tuple
 
 import psutil
 import ray
-from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlDeviceGetCount
+from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlDeviceGetCount, \
+    nvmlDeviceGetComputeRunningProcesses
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.util.metrics import Gauge
 
@@ -210,16 +211,36 @@ async def memory_logger(task: str, cadence: timedelta):
     """
     pid = os.getpid()
     python_process = psutil.Process(pid)
+    nvmlInit()
+
+    # Get the GPU handle (assuming single GPU at index 0)
+    try:
+        gpu_handle = nvmlDeviceGetHandleByIndex(0)
+    except Exception as e:
+        print(f"Unable to initialize NVML GPU tracking: {e}")
+        gpu_handle = None
+
     memory_gauge = Gauge(
         name=f"memory_usage_gauge_MB",
         description="The memory usage of the process in MB",
-        tag_keys=("task",)
+        tag_keys=("task", "device_type")
     )
     memory_gauge.set_default_tags({"task": task})
 
     async def log_memory():
         mem_MB = python_process.memory_info()[0] / 2 ** 20
-        memory_gauge.set(mem_MB)
+        memory_gauge.set(mem_MB, tags={"device_type": "cpu", "task": task})
+        # GPU memory usage by this process
+        if gpu_handle is not None:
+            try:
+                processes = nvmlDeviceGetComputeRunningProcesses(gpu_handle)
+                gpu_mem_MB = 0
+                for process in processes:
+                    if process.pid == pid:
+                        gpu_mem_MB += process.usedGpuMemory / 2 ** 20
+                memory_gauge.set(gpu_mem_MB, tags={"device_type": "gpu", "task": task})
+            except Exception as e:
+                print(f"Error logging GPU memory for process: {e}")
 
     await loop_task(log_memory, cadence)
 
