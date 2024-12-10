@@ -65,6 +65,7 @@ services:
       - .env
     cap_add:
       - SYS_PTRACE
+    pid: host # Use host PID namespace so GPU metrics are available
     environment:
       - IS_RAY_HEAD=true
       - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
@@ -106,6 +107,7 @@ services:
       - "20000-20100:20000-20100"  # Worker ports range
     env_file:
       - .env
+    pid: host # Use host PID namespace so GPU metrics are available
     cap_add:
       - SYS_PTRACE
     environment:

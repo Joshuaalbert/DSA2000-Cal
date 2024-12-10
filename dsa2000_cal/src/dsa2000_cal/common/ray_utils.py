@@ -218,7 +218,7 @@ async def memory_logger(task: str, cadence: timedelta):
         gpu_handles = [nvmlDeviceGetHandleByIndex(idx) for idx in range(nvmlDeviceGetCount())]
     except Exception as e:
         print(f"Unable to initialize NVML GPU tracking: {e}")
-        gpu_handle = None
+        gpu_handles = []
 
     memory_gauge = Gauge(
         name=f"memory_usage_gauge_MB",
@@ -228,7 +228,7 @@ async def memory_logger(task: str, cadence: timedelta):
     memory_gauge.set_default_tags({"task": task})
 
     async def log_memory():
-        logger.info(f"Logging memory usage for task {task} for pid {pid}")
+        # logger.info(f"Logging memory usage for task {task} for pid {pid}")
         mem_MB = python_process.memory_info()[0] / 2 ** 20
         memory_gauge.set(mem_MB, tags={"device_type": "cpu", "task": task})
         # GPU memory usage by this process
@@ -238,7 +238,7 @@ async def memory_logger(task: str, cadence: timedelta):
                 try:
                     processes = nvmlDeviceGetComputeRunningProcesses(gpu_handle)
                     for process in processes:
-                        logger.info(f"Process: {process.pid}, Memory: {process.usedGpuMemory / 2 ** 20:.2f} MB")
+                        # logger.info(f"Process: {process.pid}, Memory: {process.usedGpuMemory / 2 ** 20:.2f} MB")
                         if process.pid == pid:
                             gpu_mem_MB += process.usedGpuMemory / 2 ** 20
                 except Exception as e:
