@@ -103,18 +103,21 @@ class Gridder:
             pq_array = itertools.product(range(1), range(1))
 
         def single_run(p_idx, q_idx):
+            _visibilities = visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan))
+            _weights = weights[..., p_idx, q_idx].reshape((num_rows, num_chan))
+            _mask = np.logical_not(flags[..., p_idx, q_idx].reshape((num_rows, num_chan)))
             vis_to_image_np(
                 uvw=uvw.reshape((num_rows, 3)),
                 freqs=freqs,
-                vis=visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan)),
+                vis=_visibilities,
                 pixsize_m=quantity_to_np(self.params.image_params.dm, 'rad'),
                 pixsize_l=quantity_to_np(self.params.image_params.dl, 'rad'),
                 center_l=quantity_to_np(self.params.image_params.l0, 'rad'),
                 center_m=quantity_to_np(self.params.image_params.m0, 'rad'),
                 npix_l=self.params.image_params.num_l,
                 npix_m=self.params.image_params.num_m,
-                wgt=weights[..., p_idx, q_idx].reshape((num_rows, num_chan)),
-                mask=np.logical_not(flags[..., p_idx, q_idx]).reshape((num_rows, num_chan)),
+                wgt=_weights,
+                mask=_mask,
                 epsilon=self.params.image_params.epsilon,
                 double_precision_accumulation=False,
                 scale_by_n=True,
@@ -125,15 +128,15 @@ class Gridder:
             vis_to_image_np(
                 uvw=uvw.reshape((num_rows, 3)),
                 freqs=freqs,
-                vis=visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan)),
+                vis=np.ones_like(_visibilities),
                 pixsize_m=quantity_to_np(self.params.image_params.dm, 'rad'),
                 pixsize_l=quantity_to_np(self.params.image_params.dl, 'rad'),
                 center_l=quantity_to_np(self.params.image_params.l0, 'rad'),
                 center_m=quantity_to_np(self.params.image_params.m0, 'rad'),
                 npix_l=self.params.image_params.num_l,
                 npix_m=self.params.image_params.num_m,
-                wgt=weights[..., p_idx, q_idx].reshape((num_rows, num_chan)),
-                mask=np.logical_not(flags[..., p_idx, q_idx]).reshape((num_rows, num_chan)),
+                wgt=_weights,
+                mask=_mask,
                 epsilon=self.params.image_params.epsilon,
                 double_precision_accumulation=False,
                 scale_by_n=True,

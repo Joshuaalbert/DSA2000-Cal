@@ -197,25 +197,30 @@ class _Aggregator:
 
         # TODO: remove primary beam
 
+        # Easier than averaging taking into account the weights and flags (which are already done per-gridding)
+        normalisation = np.max(self._psf, axis=(0, 1))
+        image = self._image / normalisation
+        psf = self._psf / normalisation
+
         if self.params.fm_run_params.full_stokes:
             coherencies = ('I', 'Q', 'U', 'V')
             image = au.Quantity(
                 np.asarray(broadcast_translate_corrs(
-                    jnp.asarray(self._image),
+                    jnp.asarray(image),
                     (('XX', 'XY'), ('YX', 'YY')), coherencies
                 )),
                 'Jy'
             )  # [num_l, num_m, 4]
             psf = au.Quantity(
                 np.asarray(broadcast_translate_corrs(
-                    jnp.asarray(self._psf),
+                    jnp.asarray(psf),
                     (('XX', 'XY'), ('YX', 'YY')), coherencies
                 )), 'Jy'
             )  # [num_l, num_m, 4]
         else:
             coherencies = ('I',)
-            image = au.Quantity(self._image[..., None], 'Jy')  # [num_l, num_m, 1]
-            psf = au.Quantity(self._psf[..., None], 'Jy')  # [num_l, num_m, 1]
+            image = au.Quantity(image[..., None], 'Jy')  # [num_l, num_m, 1]
+            psf = au.Quantity(psf[..., None], 'Jy')  # [num_l, num_m, 1]
 
         bandwidth = self.params.fm_run_params.ms_meta.channel_width * len(self._freq_idxs)
 
