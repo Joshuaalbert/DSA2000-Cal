@@ -29,15 +29,16 @@ class DegriddingPredictorResponse(NamedTuple):
 
 
 def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
-    # memory is 2 * B * num_coh * (itemsize(vis))
-    num_coh = 4 if run_params.full_stokes else 1
-    B = run_params.chunk_params.num_baselines
-    itemsize_vis = np.dtype(np.complex64).itemsize
-    memory = 2 * B * num_coh * (itemsize_vis)
+    # # memory is 2 * B * num_coh * (itemsize(vis))
+    # num_coh = 4 if run_params.full_stokes else 1
+    # B = run_params.chunk_params.num_baselines
+    # itemsize_vis = np.dtype(np.complex64).itemsize
+    # memory = 2 * B * num_coh * (itemsize_vis)
+    memory = 50 * 2**30  # 50 GB
     return {
         "num_cpus": 1,
         "num_gpus": 0,
-        'memory': 1.1 * memory,
+        'memory': memory,
         "runtime_env": RuntimeEnv(
             env_vars={
                 #         "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",
