@@ -16,7 +16,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.ray_utils import memory_logger
+from dsa2000_cal.common.ray_utils import resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.imaging.base_imagor import fit_beam
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -157,7 +157,7 @@ class _Aggregator:
         if self._initialised:
             return
         self._initialised = True
-        self._memory_logger_task = asyncio.create_task(memory_logger(task='aggregator', cadence=timedelta(seconds=5)))
+        self._memory_logger_task = asyncio.create_task(resource_logger(task='aggregator', cadence=timedelta(seconds=5)))
 
         shape = (self.params.fm_run_params.image_params.num_l, self.params.fm_run_params.image_params.num_m)
         if self.params.fm_run_params.full_stokes:

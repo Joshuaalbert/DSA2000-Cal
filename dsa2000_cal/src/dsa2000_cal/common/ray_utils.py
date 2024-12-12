@@ -201,7 +201,25 @@ def get_free_port() -> int:
     return free_port
 
 
-async def memory_logger(task: str, cadence: timedelta):
+def get_cpu_usage_by_pid(pid):
+    try:
+        # Fetch the process by its PID
+        process = psutil.Process(pid)
+
+        # Get the CPU usage percentage (over the interval since the last call)
+        cpu_usage = process.cpu_percent(interval=1.0)
+
+        print(f"CPU usage for process {pid}: {cpu_usage}%")
+        return cpu_usage
+    except psutil.NoSuchProcess:
+        print(f"No process found with PID {pid}")
+    except psutil.AccessDenied:
+        print(f"Access denied to process {pid}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+
+async def resource_logger(task: str, cadence: timedelta):
     """
     Log the memory usage of the process in MB.
 
@@ -211,6 +229,7 @@ async def memory_logger(task: str, cadence: timedelta):
     """
     pid = os.getpid()
     python_process = psutil.Process(pid)
+    _ = python_process.cpu_percent(interval=0.1)  # Initialize the CPU usage
     nvmlInit()
 
     # Get the GPU handle (assuming single GPU at index 0)
@@ -227,10 +246,19 @@ async def memory_logger(task: str, cadence: timedelta):
     )
     memory_gauge.set_default_tags({"task": task})
 
-    async def log_memory():
+    cpu_gauge = Gauge(
+        name=f"cpu_usage_gauge",
+        description="The CPU usage of the process as a percentage.",
+        tag_keys=("task",)
+    )
+
+    async def log_resources():
         # logger.info(f"Logging memory usage for task {task} for pid {pid}")
         mem_MB = python_process.memory_info()[0] / 2 ** 20
         memory_gauge.set(mem_MB, tags={"device_type": "cpu", "task": task})
+        # CPU usage by this process
+        cpu_usge = python_process.cpu_percent(interval=0.)  # no need to block
+        cpu_gauge.set(cpu_usge, tags={"task": task})
         # GPU memory usage by this process
         gpu_mem_MB = 0
         for gpu_handle in gpu_handles:
@@ -245,7 +273,7 @@ async def memory_logger(task: str, cadence: timedelta):
                     print(f"Error logging GPU memory for process: {e}")
         memory_gauge.set(gpu_mem_MB, tags={"device_type": "gpu", "task": task})
 
-    await loop_task(log_memory, cadence)
+    await loop_task(log_resources, cadence)
 
 
 class MemoryLogger(ContextDecorator):

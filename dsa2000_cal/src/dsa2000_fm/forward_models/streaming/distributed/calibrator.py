@@ -20,7 +20,7 @@ from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, 
 from dsa2000_cal.common.jax_utils import block_until_ready, simple_broadcast
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.ray_utils import TimerLog, MemoryLogger, memory_logger
+from dsa2000_cal.common.ray_utils import TimerLog, MemoryLogger, resource_logger
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolution, \
     CalibrationSolutionCache
@@ -121,7 +121,7 @@ class Calibrator:
         if self._initialised:
             return
         self._initialised = True
-        self._memory_logger_task = asyncio.create_task(memory_logger(task='calibrator', cadence=timedelta(seconds=5)))
+        self._memory_logger_task = asyncio.create_task(resource_logger(task='calibrator', cadence=timedelta(seconds=5)))
 
         calibration = Calibration(
             full_stokes=self.params.full_stokes,

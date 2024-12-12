@@ -11,7 +11,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardtState
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
-from dsa2000_cal.common.ray_utils import get_head_node_id, memory_logger
+from dsa2000_cal.common.ray_utils import get_head_node_id, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_rcp.actors.namespace import NAMESPACE
@@ -160,7 +160,7 @@ class _CalibrationSolutionCache:
             return
         self._initialised = True
         self._memory_logger_task = asyncio.create_task(
-            memory_logger(task='calibration_solution_cache', cadence=timedelta(seconds=5)))
+            resource_logger(task='calibration_solution_cache', cadence=timedelta(seconds=5)))
 
     async def store_calibration_solution(self, sol_int_time_idx: int, sol_int_freq_idx: int,
                                          solution: CalibrationSolution):

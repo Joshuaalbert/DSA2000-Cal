@@ -13,7 +13,7 @@ import ray
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.quantity_utils import quantity_to_np
-from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
+from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.wgridder import vis_to_image_np
 from dsa2000_fm.forward_models.streaming.distributed.calibrator import CalibratorResponse
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -60,7 +60,7 @@ class Gridder:
         if self._initialised:
             return
         self._initialised = True
-        self._memory_logger_task = asyncio.create_task(memory_logger(task='gridder', cadence=timedelta(seconds=5)))
+        self._memory_logger_task = asyncio.create_task(resource_logger(task='gridder', cadence=timedelta(seconds=5)))
 
     def _grid_vis(self, sol_int_freq_idx: int, uvw: FloatArray, visibilities: ComplexArray, weights: FloatArray,
                   flags: BoolArray) -> GridderResponse:

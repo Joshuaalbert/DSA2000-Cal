@@ -22,7 +22,7 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np, time_to_jnp
-from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
+from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
@@ -131,7 +131,7 @@ class SystemGainSimulator:
             return
         self._initialised = True
         self._memory_logger_task = asyncio.create_task(
-            memory_logger(task='system_gain_simulator', cadence=timedelta(seconds=5)))
+            resource_logger(task='system_gain_simulator', cadence=timedelta(seconds=5)))
 
         beam_model = build_beam_gain_model(
             array_name=self.params.ms_meta.array_name,

@@ -14,7 +14,7 @@ import ray
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
+from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
@@ -81,7 +81,7 @@ class ModelPredictor:
             return
         self._initialised = True
         self._memory_logger_task = asyncio.create_task(
-            memory_logger(task='model_predictor', cadence=timedelta(seconds=5)))
+            resource_logger(task='model_predictor', cadence=timedelta(seconds=5)))
 
         if self.predict_params.num_facets_per_side == 0:
             raise ValueError("At least one sky model is required.")

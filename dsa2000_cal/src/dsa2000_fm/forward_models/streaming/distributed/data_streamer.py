@@ -17,7 +17,7 @@ from dsa2000_cal.common.array_types import FloatArray, ComplexArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.ray_utils import TimerLog, memory_logger
+from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -92,7 +92,7 @@ class DataStreamer:
             return
         self._initialised = True
         self._memory_logger_task = asyncio.create_task(
-            memory_logger(task='data_streamer', cadence=timedelta(seconds=5)))
+            resource_logger(task='data_streamer', cadence=timedelta(seconds=5)))
 
         predict_and_sample = PredictAndSample(
             faint_sky_model_id=self.predict_params.sky_model_id,
