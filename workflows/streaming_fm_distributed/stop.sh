@@ -9,7 +9,7 @@ NODE_NAME=$(hostname)
   export NODE_NAME
 
   # Try shutdown on head, else on worker
-  docker compose exec ray_head /dsa/code/shutdown.sh || docker compose exec ray_worker /dsa/code/shutdown.sh
+  docker compose exec ray_head /dsa/code/src/shutdown.sh || docker compose exec ray_worker /dsa/code/src/shutdown.sh
 
   sleep 5
 
