@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import List, Any
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
 from dsa2000_cal.assets.content_registry import ContentRegistry, ContentMap, AbstractContentFactory, SetKwargsFactory
@@ -64,3 +64,10 @@ rfi_model_registry = ContentRegistry[AbstractRFIEmitterData](
     content_factory=create_factory_from_templates
 )
 rfi_model_map = ContentMap[AbstractRFIEmitterData](content_registry=rfi_model_registry)
+
+misc_registry = ContentRegistry[Any](
+    match_func=match_func,
+    sort_key_func=sort_key_func,
+    content_factory=create_factory_from_templates
+)
+misc_map = ContentMap[Any](content_registry=misc_registry)
