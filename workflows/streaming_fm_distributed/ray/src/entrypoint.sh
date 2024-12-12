@@ -1,35 +1,35 @@
 #!/bin/bash
 
-#!/bin/bash
-
-# Clone or pull the repository
-REPO_DIR="DSA2000-Cal"
-PACKAGE_DIR="${REPO_DIR}/dsa2000_cal"
-TEMP_DIR="/dsa/run/temp"
-mkdir -p "$TEMP_DIR"
-
-# make absolution
-
-if [ -d "$REPO_DIR/.git" ]; then
-  echo "Repository already exists. Pulling latest changes from branch $GIT_BRANCH..."
-  cd "$REPO_DIR" || exit 1
-  git fetch origin && git checkout "$GIT_BRANCH" && git pull origin "$GIT_BRANCH"
-  cd - || exit 1
-else
-  echo "Cloning repository from branch $GIT_BRANCH..."
-  git clone --branch "$GIT_BRANCH" https://github.com/Joshuaalbert/DSA2000-Cal.git "$REPO_DIR"
-fi
-
-# Install the code
-echo "Installing the $REPO_DIR package..."
-pip install -e "$PACKAGE_DIR"
 
 # Launch the Python process
 echo "Launching process with:"
 echo "IS_RAY_HEAD=${IS_RAY_HEAD}"
 echo "RAY_HEAD_IP=${RAY_HEAD_IP}"
-echo "GIT_BRANCH=${GIT_BRANCH}"
-echo "PACKAGE_DIR=${PACKAGE_DIR}"
+echo "NODE_IP_ADDRESS=${NODE_IP_ADDRESS}"
+
+TEMP_DIR="/dsa/run/temp"
+mkdir -p "$TEMP_DIR"
+PACKAGE_DIR="/dsa/code/package"
+
+# Ensure it points to valid pyproject.toml
+if [ ! -f "$PACKAGE_DIR/pyproject.toml" ]; then
+  echo "Error: pyproject.toml not found at $PACKAGE_DIR"
+  exit 1
+fi
+
+## Set up tmp .ssh directory
+#mkdir -p /tmp/.ssh
+#cp /root/.ssh/* /tmp/.ssh/
+#chmod 700 /tmp/.ssh
+#chmod 600 /tmp/.ssh/*
+#git config --global core.sshCommand "ssh -F /tmp/.ssh/config"
+# Use it, then delete
+#rm -rf /tmp/.ssh
+
+# Install the code
+echo "Installing the $PACKAGE_DIR package..."
+pip install -e "$PACKAGE_DIR"[crypto,stocks]
+
 
 # Start Ray
 
@@ -44,8 +44,6 @@ if [ -z "$IS_RAY_HEAD" ]; then
   echo "Error: IS_RAY_HEAD must be specified."
   exit 1
 fi
-
-#NODE_IP_ADDRESS=$(hostname -I | awk '{print $1}') # Gives docker container IP, not host IP which is needed for routing
 
 if [ -z "$NODE_IP_ADDRESS" ]; then
   echo "Error: NODE_IP_ADDRESS must be specified."
@@ -83,12 +81,12 @@ if [ "$IS_RAY_HEAD" = true ]; then
   ray status
 
   # Start Jupyter Notebook only on the head node
-  ROOT_DIR="/dsa/run/${REPO_DIR}/dsa2000_cal/notebooks"
+  JUPYTER_ROOT_DIR="$PACKAGE_DIR/notebooks"
   jupyter notebook \
     --port=8888 --no-browser --allow-root \
     --ServerApp.allow_origin='*' \
     --ServerApp.ip='0.0.0.0' \
-    --ServerApp.root_dir="${ROOT_DIR}" \
+    --ServerApp.root_dir="${JUPYTER_ROOT_DIR}" \
     --ServerApp.token="$JUPYTER_TOKEN" \
     --PasswordIdentityProvider.allow_password_change="False" \
     --ServerApp.password="" \
@@ -96,13 +94,15 @@ if [ "$IS_RAY_HEAD" = true ]; then
 
   jupyter server list
 
+  streamlit run "${PACKAGE_DIR}/dashboards/dsa/home.py" --server.port 8501 &
+
   service cron start
 
   # chmod +x /dsa/code/src/cleanup_logs.sh
-  # (crontab -l 2>/dev/null; echo "0 * * * * /run/code/cleanup_logs.sh") | crontab -
+  # (crontab -l 2>/dev/null; echo "0 * * * * /dsa/code/cleanup_logs.sh") | crontab -
   chmod +x /dsa/code/src/scrape_metric_targets.py
   # Run every minute
-  (crontab -l 2>/dev/null; echo "* * * * * /run/code/src/scrape_metric_targets.py") | crontab -
+  (crontab -l 2>/dev/null; echo "* * * * * python /dsa/code/src/scrape_metric_targets.py") | crontab -
   #service cron start
 
 else

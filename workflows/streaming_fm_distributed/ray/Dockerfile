@@ -172,9 +172,13 @@ RUN pip install jax[cuda12] 'numpy<2'
 
 # Requirements (rarely change, so install here)
 COPY ./dsa2000_cal/requirements.txt /dsa/code/requirements.txt
-COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt
 RUN pip install -r /dsa/code/requirements.txt
+COPY ./dsa2000_cal/requirements-geo.txt /dsa/code/requirements-geo.txt
+RUN pip install -r /dsa/code/requirements-geo.txt
+COPY ./dsa2000_cal/requirements-notebooks.txt /dsa/code/requirements-notebooks.txt
 RUN pip install -r /dsa/code/requirements-notebooks.txt
+# Skip tests, casa requirements as casacore is not available here
+# TODO: could add casacore to the base image
 
 # Download the ephem data for astropy, to avoid at runtime
 RUN python -c 'import astropy.time as at; at.Time.now().ut1'
@@ -184,6 +188,9 @@ COPY ./workflows/streaming_fm_distributed/ray/src /dsa/code/src
 
 # Make a ssh dir, to mount user's ssh keys at runtime
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
+
+# Make a persistent source code direction to mount to
+RUN mkdir -p /dsa/code/package
 
 # Make a persistent run directory
 RUN mkdir -p /dsa/run

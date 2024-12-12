@@ -12,9 +12,8 @@ tomographic_kernel>=1.0.3
 sympy
 ducc0==0.35.0
 imageio
-ray[serve]==2.39.0
+ray[serve]==2.40.0
 psutil
 uvloop
 websockets<14
-geopandas
-shapely
+streamlit

@@ -60,7 +60,8 @@ services:
       - "20000-20100:20000-20100"  # Worker ports range
       - "6380:6380"        # Redis shard port
       - "6381:6381"        # Redis shard port
-      - "8899:8888"        # Jupyter
+      - "8890:8888"        # Jupyter
+      - "8501:8501"        # Streamlit
     env_file:
       - .env
     cap_add:
@@ -75,13 +76,14 @@ services:
       - RAY_GRAFANA_IFRAME_HOST=http://grafana:3000
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
-      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
       - ENV NVIDIA_VISIBLE_DEVICES=all
       - ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - SSH_CONFIG_DIR=/root/tmp_ssh
     #    shm_size: '100gb'
     volumes:
       - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
+      - ../../dsa2000_cal:/dsa/code/package
       - ~/.ssh:/root/.ssh:ro
       - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
     deploy:
@@ -116,13 +118,14 @@ services:
       - NODE_NAME=${NODE_NAME}
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
-      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
       - ENV NVIDIA_VISIBLE_DEVICES=all
       - ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - SSH_CONFIG_DIR=/root/tmp_ssh
     #    shm_size: '100gb'
     volumes:
       - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
+      - ../../dsa2000_cal:/dsa/code/package
       - ~/.ssh:/root/.ssh:ro
       - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
     deploy:
