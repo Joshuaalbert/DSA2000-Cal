@@ -29,7 +29,7 @@ class SurveyPointings(BaseContent):
 def test_survey_pointings():
     fill_registries()
     survey_pointings = misc_registry.get_instance(misc_registry.get_match('survey_pointings'))
-    print(SurveyPointings().survey_pointings_v1())
+    print(survey_pointings.survey_pointings_v1())
     # <ICRS Coordinate: (ra, dec) in deg
     #     [(328.88708087,  89.85172121), (135.64056827,  88.75188608),
     #      (275.8150158 ,  88.32370549), ..., (127.25737576, -30.97488149),

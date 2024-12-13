@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 # Launch the Python process
 echo "Launching process with:"
 echo "IS_RAY_HEAD=${IS_RAY_HEAD}"
@@ -29,7 +28,6 @@ fi
 # Install the code
 echo "Installing the $PACKAGE_DIR package..."
 pip install -e "$PACKAGE_DIR"[crypto,stocks]
-
 
 # Start Ray
 
@@ -96,14 +94,14 @@ if [ "$IS_RAY_HEAD" = true ]; then
 
   streamlit run "${PACKAGE_DIR}/dashboards/dsa/home.py" --server.port 8501 &
 
-  service cron start
-
-  # chmod +x /dsa/code/src/cleanup_logs.sh
-  # (crontab -l 2>/dev/null; echo "0 * * * * /dsa/code/cleanup_logs.sh") | crontab -
-  chmod +x /dsa/code/src/scrape_metric_targets.py
-  # Run every minute
-  (crontab -l 2>/dev/null; echo "* * * * * python /dsa/code/src/scrape_metric_targets.py") | crontab -
-  #service cron start
+#  service cron start
+#
+#  # chmod +x /dsa/code/src/cleanup_logs.sh
+#  # (crontab -l 2>/dev/null; echo "0 * * * * /dsa/code/cleanup_logs.sh") | crontab -
+#  chmod +x /dsa/code/src/scrape_metric_targets.py
+#  # Run every minute
+#  (crontab -l 2>/dev/null; echo "* * * * * python /dsa/code/src/scrape_metric_targets.py") | crontab -
+#  #service cron start
 
 else
   if [ -z "$RAY_HEAD_IP" ]; then
@@ -125,6 +123,9 @@ else
     --node-name=$NODE_NAME
 
   ray status
+
 fi
+
+python /dsa/code/src/scrape_metric_targets.py
 
 tail -f /dev/null
