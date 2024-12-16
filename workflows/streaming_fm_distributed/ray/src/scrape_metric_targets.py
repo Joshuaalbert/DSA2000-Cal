@@ -10,7 +10,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.common.ray_utils import get_head_node_id
 from dsa2000_fm.forward_models.streaming.single_kernel.process_actor import get_node_ip
-from dsa2000_rcp.actors.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 
@@ -54,7 +53,7 @@ def main():
     ray.init(address="auto")
     placement_node_id = get_head_node_id()
     task_options = {
-        "scheduling_strategy": NodeAffinitySchedulingStrategy(placement_node_id, soft=False)    }
+        "scheduling_strategy": NodeAffinitySchedulingStrategy(placement_node_id, soft=False)}
     ray.get(ray.remote(scrape_task).options(**task_options).remote())
 
 
