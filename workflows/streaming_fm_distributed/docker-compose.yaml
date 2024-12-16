@@ -60,7 +60,7 @@ services:
       - "20000-20100:20000-20100"  # Worker ports range
       - "6380:6380"        # Redis shard port
       - "6381:6381"        # Redis shard port
-      - "8890:8888"        # Jupyter
+      - "8899:8888"        # Jupyter
       - "8501:8501"        # Streamlit
     env_file:
       - .env
