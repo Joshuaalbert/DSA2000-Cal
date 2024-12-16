@@ -20,19 +20,19 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
-# Only when on VPN trust this
-if [ -z "$NODE_IP_ADDRESS" ]; then
-  echo "NODE_IP_ADDRESS is not set. Trying to automatically find it."
-  # Try getting the IP address from ifconfig.me, otherwise use the hostname's first listed IP address (which might be the internal IP)
-  NODE_IP_ADDRESS=$(curl -4 ifconfig.me || hostname -I | awk '{print $1}')
-  export NODE_IP_ADDRESS
-  exit 1
-fi
-
 NODE_NAME=$(hostname)
 
 # Use a subshell so that the exported variables are not available after the script finishes
 (
+
+  # Only when on VPN trust this
+  if [ -z "$NODE_IP_ADDRESS" ]; then
+    echo "NODE_IP_ADDRESS is not set. Trying to automatically find it."
+    # Try getting the IP address from ifconfig.me, otherwise use the hostname's first listed IP address (which might be the internal IP)
+    NODE_IP_ADDRESS=$(curl -4 ifconfig.me || hostname -I | awk '{print $1}')
+    export NODE_IP_ADDRESS
+    exit 1
+  fi
   # export so they are used in the Docker Compose file
   export NODE_NAME
 

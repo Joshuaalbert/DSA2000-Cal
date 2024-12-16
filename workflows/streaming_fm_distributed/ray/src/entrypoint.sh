@@ -27,7 +27,7 @@ fi
 
 # Install the code
 echo "Installing the $PACKAGE_DIR package..."
-pip install -e "$PACKAGE_DIR"[crypto,stocks]
+pip install -e "$PACKAGE_DIR"[geo,notebooks]
 
 # Start Ray
 
