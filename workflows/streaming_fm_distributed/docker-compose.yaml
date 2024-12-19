@@ -76,8 +76,9 @@ services:
       - RAY_GRAFANA_IFRAME_HOST=http://grafana:3000
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
-      - ENV NVIDIA_VISIBLE_DEVICES=all
-      - ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
       - SSH_CONFIG_DIR=/root/tmp_ssh
     #    shm_size: '100gb'
     volumes:
@@ -118,8 +119,9 @@ services:
       - NODE_NAME=${NODE_NAME}
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
-      - ENV NVIDIA_VISIBLE_DEVICES=all
-      - ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
       - SSH_CONFIG_DIR=/root/tmp_ssh
     #    shm_size: '100gb'
     volumes:
