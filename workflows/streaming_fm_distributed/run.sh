@@ -31,6 +31,7 @@ DSA_CONTENT_SSH_USERNAME=$(whoami)
     echo "NODE_IP_ADDRESS is not set. Trying to automatically find it."
     # Try getting the IP address from ifconfig.me, otherwise use the hostname's first listed IP address (which might be the internal IP)
     NODE_IP_ADDRESS=$(curl -4 ifconfig.me || hostname -I | awk '{print $1}' || exit 1)
+    echo "NODE_IP_ADDRESS is $NODE_IP_ADDRESS"
     export NODE_IP_ADDRESS
   fi
   # export so they are used in the Docker Compose file

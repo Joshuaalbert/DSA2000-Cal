@@ -17,7 +17,7 @@ from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_geo.assets.array_constraints.array_constraint_content import ArrayConstraint
+from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
 
 os.environ['JAX_PLATFORMS'] = 'cpu'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
