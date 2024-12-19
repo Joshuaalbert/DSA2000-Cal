@@ -114,7 +114,7 @@ def sync_content():
 
         lf_paths = glob.glob(os.path.join(*content_prefix_path, "**", ".large_files"), recursive=True)
         CONTENT_SSH_USER = os.environ.get("DSA_CONTENT_SSH_USERNAME", None)
-        FMCAL_FTP_ADDRESS = os.environ.get("FMCAL_FTP_ADDRESS", "mario:/safepool/fmcal_data")
+        FMCAL_FTP_ADDRESS = os.environ.get("FMCAL_FTP_ADDRESS", "mario.caltech.edu:/safepool/fmcal_data")
         if CONTENT_SSH_USER is not None:
             FMCAL_FTP_ADDRESS = f"{CONTENT_SSH_USER}@{FMCAL_FTP_ADDRESS}"
 
@@ -128,8 +128,7 @@ def sync_content():
                         destination_path = os.path.dirname(lf_path)
                         asset_root_path = remove_content_prefix(destination_path)
                         ftp_url = f"{FMCAL_FTP_ADDRESS}{asset_root_path}/{line.strip()}"
-                        cmd = ['rsync', '-a', '--partial',
-                               ftp_url, f"{destination_path}/"]
+                        cmd = ['rsync', '-a', '--partial', ftp_url, f"{destination_path}/"]
                         subprocess.run(['echo'] + cmd)
                         completed_process = subprocess.run(cmd)
                         if completed_process.returncode != 0:
