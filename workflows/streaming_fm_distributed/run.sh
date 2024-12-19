@@ -21,6 +21,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 NODE_NAME=$(hostname)
+DSA_CONTENT_SSH_USERNAME=$(whoami)
 
 # Use a subshell so that the exported variables are not available after the script finishes
 (
@@ -34,6 +35,7 @@ NODE_NAME=$(hostname)
   fi
   # export so they are used in the Docker Compose file
   export NODE_NAME
+  export DSA_CONTENT_SSH_USERNAME
 
   # Use the temporary .env file in Docker Compose commands
   echo "Tearing down old services..."
