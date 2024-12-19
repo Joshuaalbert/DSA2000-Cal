@@ -1,37 +1,41 @@
 import itertools
 import os
-from functools import partial
-from typing import Tuple, Optional
+from typing import Optional, Tuple
+
+from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
+from jaxns.framework.special_priors import SpecialPrior
+from scipy.spatial import KDTree
+
+from dsa2000_cal.calibration.approx_cg_newton import ApproxCGNewton
+from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.astropy_utils import mean_itrs
+from dsa2000_geo.assets.array_constraints.array_constraint_content import ArrayConstraint
+
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+
+import dataclasses
+from jaxns import Model, Prior
 
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
+import jax
+from jaxns import save_pytree
+import jax.numpy as jnp
+import numpy as np
+from functools import partial
 import pylab as plt
-from jaxns import Prior, Model, save_pytree
-from jaxns.framework.special_priors import SpecialPrior
-from scipy.spatial import KDTree
+import tensorflow_probability.substrates.jax as tfp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardt
-from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_geo.assets.array_constraints.array_constraint_content import ArrayConstraint
-
-os.environ['JAX_PLATFORMS'] = 'cpu'
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
-
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
-
-from dsa2000_cal.common.array_types import FloatArray
-
-import jax
-import jax.numpy as jnp
-import numpy as np
-import tensorflow_probability.substrates.jax as tfp
-
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_cal.common.jax_utils import create_mesh
+
+from jax._src.partition_spec import PartitionSpec
+from jax.experimental.shard_map import shard_map
 
 tfpd = tfp.distributions
 
@@ -73,41 +77,27 @@ def project_antennas(antennas: FloatArray, latitude: FloatArray, transit_dec: Fl
     return antennas_projected
 
 
-def compute_psf(antennas: FloatArray, lmn: FloatArray, freq: FloatArray, latitude: FloatArray,
-                transit_dec: FloatArray, with_autocorr: bool = False) -> FloatArray:
+def compute_psf(antennas: jax.Array, lmn: jax.Array, freq: jax.Array, latitude: jax.Array, dec: FloatArray) -> jax.Array:
     """
-    Compute the point spread function of the array. Uses short cut,
-
-    B(l,m) = (sum_i e^(-i2pi (u_i l + v_i m)))^2/N^2
-
-    To remove auto-correlations, there are N values of 1 to subtract from N^2 values, then divide by (N-1)N
-    PSF(l,m) = (N^2 B(l,m) - N)/(N-1)/N = (N B(l,m) - 1)/(N-1) where B(l,m) in [0, 1].
-    Thus the amount of negative is (-1/(N-1))
+    Compute the point spread function of the array
 
     Args:
         antennas: [N, 3]
-        lmn: [..., 3]
+        lmn: [..., , 3]
         freq: []
 
     Returns:
         psf: [...]
     """
+    mesh = create_mesh((len(jax.devices()),), ('shard',), devices=jax.devices())
 
-    # # Create a mesh for the shard_map
-    # mesh = create_mesh((len(jax.devices()),), ('shard',), devices=jax.devices())
-    #
-    # @partial(
-    #     shard_map,
-    #     mesh=mesh,
-    #     in_specs=(PartitionSpec(),
-    #               PartitionSpec('shard', ),
-    #               PartitionSpec(),
-    #               PartitionSpec(),
-    #               PartitionSpec(),
-    #               ),
-    #     out_specs=PartitionSpec('shard', )
-    # )
-    def compute_shard_psf(antennas, lmn_shard, freq, latitude, transit_dec):
+    @partial(
+        shard_map,
+        mesh=mesh,
+        in_specs=(PartitionSpec(), PartitionSpec('shard', ), PartitionSpec(), PartitionSpec()),
+        out_specs=PartitionSpec('shard', )
+    )
+    def compute_shard_psf(antennas, lmn_shard, freq, latitude):
         antennas = project_antennas(antennas, latitude, transit_dec)
         wavelength = mp_policy.cast_to_length(299792458. / freq)
         r = antennas / wavelength
@@ -120,63 +110,137 @@ def compute_psf(antennas: FloatArray, lmn: FloatArray, freq: FloatArray, latitud
             return power_beam
         return jnp.reciprocal(N - 1) * (N * power_beam - 1)
 
-    _, psf = jax.lax.scan(
-        lambda carry, lmn: (None, compute_shard_psf(antennas, lmn, freq, latitude, transit_dec)),
-        None,
-        lmn
-    )
-
-    return psf
+    return compute_shard_psf(antennas, lmn, freq, latitude)
 
 
-def compute_ideal_psf_distribution(key, lmn: FloatArray, freq: FloatArray, latitude: FloatArray,
-                                   transit_dec: FloatArray, base_projected_array: FloatArray, num_samples: int):
-    def body_fn(carry, key):
-        x, x2 = carry
-        psf = sample_ideal_psf(
-            key,
-            lmn,
-            freq,
-            latitude,
-            transit_dec,
-            base_projected_array,
-            with_autocorr=True
+@dataclasses.dataclass(eq=False)
+class OptimisationProblem:
+    batch_size: int = 1024
+    num_radial_bins: int = 3600 // 8
+    num_theta_bins: int = 10
+    lmax: au.Quantity = 1 * au.deg
+    lmin: au.Quantity = 8 * au.arcsec
+    fwhm: au.Quantity = 3.3 * au.arcsec
+    freq: au.Quantity = 1350. * au.MHz
+
+    def __post_init__(self):
+        self.devices = jax.devices()
+        self.mesh = create_mesh((len(self.devices),), ('shard',), devices=self.devices)
+
+    def create_data(self, antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation):
+        lmax = quantity_to_jnp(self.lmax, 'rad')
+        lmin = quantity_to_jnp(self.lmin, 'rad')
+        fwhm = quantity_to_jnp(self.fwhm, 'rad')
+        radii = jnp.concatenate([0.5 * fwhm[None], jnp.linspace(lmin, lmax, self.num_radial_bins)])
+        theta = jnp.linspace(0., 2 * np.pi, self.num_theta_bins, endpoint=False)
+
+        R, Theta = jnp.meshgrid(
+            radii, theta,
+            indexing='ij'
         )
-        log_psf = 10 * jnp.log10(psf)
-        x = x + log_psf
-        x2 = x2 + log_psf ** 2
-        return (x, x2), None
 
-    init_x = jnp.zeros(lmn.shape[:-1])
-    (x, x2), _ = jax.lax.scan(
-        body_fn,
-        (init_x, init_x),
-        jax.random.split(key, num_samples)
+        L = R * jnp.cos(Theta)
+        M = R * jnp.sin(Theta)
+        N = jnp.sqrt(1 - L ** 2 - M ** 2)
+        lmn = jnp.stack([L, M, N], axis=-1)  # [Nr, Nt, 3]
+
+        antenna_enu_xyz = antennas.get_itrs(
+            obstime=obstime, location=array_location).transform_to(
+            ENU(obstime=obstime, location=array_location)).cartesian.xyz.to('m').T
+
+        antennas0 = quantity_to_jnp(antenna_enu_xyz, 'm')  # [N, 3]
+
+        freq = quantity_to_jnp(self.freq, 'Hz')
+
+        latitude = quantity_to_jnp(array_location.geodetic.lat)
+
+        return antennas0, lmn, freq, latitude
+
+
+def compute_mu_sigma_X(mu_Y, sigma_Y):
+    # Compute the standard deviation of X
+    sigma_X = jnp.sqrt(jnp.log(1 + (sigma_Y ** 2) / (mu_Y ** 2)))
+
+    # Compute the mean of X
+    mu_X = jnp.log(mu_Y) - 0.5 * (sigma_X ** 2)
+
+    return mu_X, sigma_X
+
+
+def compute_residuals(antenna_locations: jax.Array, lmn: jax.Array,
+                      freq: jax.Array, latitude: jax.Array):
+    psf = compute_psf(antenna_locations, lmn, freq, latitude)  # [Nr, Nt]
+    fwhm_ring = psf[0, :]  # [Nt]
+    sidelobes = psf[1:, :]  # [Nr-1, Nt]
+    # Only positive psf values can be optimised by configuration
+    residual_fwhm = (jnp.log(fwhm_ring) - jnp.log(0.5)) / 0.02
+    residual_fwhm = jnp.where(jnp.isnan(residual_fwhm), 0., residual_fwhm)
+    log_sidelobe = jnp.log(sidelobes)
+
+    # Make the threshold for sidelobe optimisation
+    sidelobe_radii = jnp.linalg.norm(lmn[1:, :, :2], axis=-1)  # [Nr-1, Nt]
+    inner_threshold = jnp.asarray(np.log(10 ** -3.), psf.dtype)
+    outer_threshold = jnp.asarray(np.log(10 ** -4.), psf.dtype)
+    r_min = sidelobe_radii[0, 0]
+    r_max = sidelobe_radii[-1, 0]
+    threshold = inner_threshold + (sidelobe_radii - r_min) / (r_max - r_min) * (outer_threshold - inner_threshold)
+    inner_uncert = jnp.asarray(np.log(1.5), psf.dtype)
+    outer_uncert = jnp.asarray(np.log(3.), psf.dtype)
+    uncert = inner_uncert + (sidelobe_radii - r_min) / (r_max - r_min) * (outer_uncert - inner_uncert)
+
+    residual_sidelobes = jnp.where(
+        log_sidelobe > threshold,
+        (log_sidelobe - threshold) / uncert,
+        0.
     )
-    mean = x / num_samples
-    std = jnp.sqrt(jnp.abs(x2 / num_samples - mean ** 2))
-    return mean, std
+
+    def single_dec_residuals(delta_dec):
+        # Also take into account zenith but only consider sidelobes
+        psf = compute_psf(antenna_locations, lmn, freq, latitude - delta_dec)  # [Nr, Nt]
+        zenith_sidelobes = psf[1:, :]  # [Nr-1, Nt]
+        log_zenith_sidelobes = jnp.log(zenith_sidelobes)
+        residual_zenith_sidelobes = jnp.where(
+            log_zenith_sidelobes > threshold,
+            (log_zenith_sidelobes - threshold) / uncert,
+            0.
+        )
+        return residual_zenith_sidelobes
+
+    delta_decs = jnp.asarray(np.asarray([-30., -16., 10., 23., 36., 50., 64., 76., 90.]) * np.pi / 180.)
+
+    # other_residual_sidelobes = [single_dec_residuals(d) for d in delta_decs]
+
+    other_residual_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
+
+    return residual_fwhm, residual_sidelobes, other_residual_sidelobes
 
 
-def sample_ideal_psf(key, lmn: FloatArray, freq: FloatArray, latitude: FloatArray,
-                     transit_dec: FloatArray, base_projected_array: FloatArray, with_autocorr: bool) -> FloatArray:
-    """
-    Compute the ideal point spread function of the array
+def compute_obj_fn(antenna_locations: jax.Array, lmn: jax.Array,
+                   freq: jax.Array, latitude: jax.Array):
+    psf = compute_psf(antenna_locations, lmn, freq, latitude)  # [Nr, Nt]
+    fwhm_ring = psf[0, :]  # [Nt]
+    sidelobes = psf[1:, :]  # [Nr-1, Nt]
+    # Only positive psf values can be optimised by configuration
+    residual_fwhm = (jnp.log(fwhm_ring) - jnp.log(0.5)) / 0.02
+    residual_fwhm = jnp.where(jnp.isnan(residual_fwhm), 0., residual_fwhm)
+    log_sidelobe = jnp.log(sidelobes)
+    log_sidelobe = jnp.where(sidelobes > 0., log_sidelobe, 0.)
 
-    Args:
-        lmn: [Nr, Ntheta, 3]
-        freq: []
-        latitude: []
-        transit_dec: []
+    def single_dec_residuals(delta_dec):
+        # Also take into account zenith but only consider sidelobes
+        psf = compute_psf(antenna_locations, lmn, freq, latitude - delta_dec)  # [Nr, Nt]
+        sidelobes = psf[1:, :]  # [Nr-1, Nt]
+        log_sidelobes = jnp.log(sidelobes)
+        log_sidelobes = jnp.where(sidelobes > 0., log_sidelobes, 0.)
+        return log_sidelobes
 
-    Returns:
-        psf: [Nr, Ntheta]
-    """
-    antenna_projected_dist = tfpd.Normal(loc=0, scale=50.)
+    delta_decs = jnp.asarray(np.asarray([-30., -16., 10., 23., 36., 50., 64., 76., 90.]) * np.pi / 180.)
 
-    antennas_enu = base_projected_array + antenna_projected_dist.sample(base_projected_array.shape, key)
-    psf = compute_psf(antennas_enu, lmn, freq, latitude, transit_dec, with_autocorr=with_autocorr)
-    return psf
+    # other_residual_sidelobes = [single_dec_residuals(d) for d in delta_decs]
+
+    other_sidelobes = jax.vmap(single_dec_residuals)(delta_decs)
+
+    return jnp.mean(jnp.square(residual_fwhm)) + jnp.mean(log_sidelobe) + jnp.mean(other_sidelobes)
 
 
 def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance):
@@ -362,7 +426,7 @@ def get_uniform_ball_prior(antennas_enu: np.ndarray, obstime: at.Time, array_loc
     min_sep = 8.
     ball_radius = np.maximum(0., np.minimum(ball_radius, dist - min_sep))
     # Construct prior
-    ball_centre = antennas_enu
+    ball_centre = antennas_enu[:, :2]
     return ball_centre, ball_radius
 
 
@@ -399,39 +463,50 @@ class BiUnitRadiusPrior(SpecialPrior):
 
 
 @partial(jax.jit)
-def solve(ball_origin, ball_radius, lmn, latitude, freqs, decs,
-          target_log_psf_mean, target_log_psf_stddev):
+def solve(ball_origin, ball_radius, lmn, freq, latitude):
+    lower_freq = jnp.asarray(700e6, freq.dtype)
+    upper_freq = jnp.asarray(2000e6, freq.dtype)
+
     def prior_model():
         # Uniform ball prior
         theta = yield Prior(tfpd.Uniform(
             jnp.zeros_like(ball_radius),
             2. * jnp.pi * jnp.ones_like(ball_radius)),
             name='theta').parametrised(random_init=True)
-        direction = jnp.stack([jnp.cos(theta), jnp.sin(theta), jnp.zeros_like(theta)], axis=-1)
+        direction = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
 
         # Allow going up and down, with initial point at zero
         radius = yield Prior(tfpd.Uniform(-ball_radius, ball_radius), name='radius').parametrised()
         # radius = yield BiUnitRadiusPrior(max_radius=ball_radius, name='radius').parametrised()
-        antennas_enu = ball_origin + radius[:, None] * direction  # [N, 3]
+        x = ball_origin + radius[:, None] * direction  # [N, 2]
+        up = jnp.zeros((np.shape(ball_radius)[0], 1))
+        antennas_enu = jnp.concatenate([x, up], axis=-1)
         return antennas_enu
 
     def log_likelihood(x):
-        return 0.
+        # unused since we use least squares
+        residuals = compute_residuals(x, lmn, freq, latitude)
+        return sum([-jnp.sum(jnp.square(r)) for r in jax.tree.leaves(residuals)])
 
     model = Model(prior_model, log_likelihood)
-
     U = model.sample_U(jax.random.key(0))
 
     def residuals(params):
         (x,) = model(params).prepare_input(U)
+        return (
+            compute_residuals(x, lmn, freq, latitude),
+            compute_residuals(x, lmn, lower_freq, latitude),
+            compute_residuals(x, lmn, upper_freq, latitude)
+        )
 
-        psf = jax.vmap(
-            lambda freq, dec: compute_psf(x, lmn, freq, latitude, dec, with_autocorr=True)
-        )(freqs, decs)
-
-        log_psf = 10 * jnp.log10(psf)
-
-        return (log_psf - target_log_psf_mean) / target_log_psf_stddev
+    def objective(params):
+        (x,) = model(params).prepare_input(U)
+        obj = (
+            compute_obj_fn(x, lmn, freq, latitude)
+            # + compute_obj_fn(x, lmn, lower_freq, latitude)
+            # + compute_obj_fn(x, lmn, upper_freq, latitude)
+        )
+        return obj
 
     # solver = ApproxCGNewton(
     #     obj_fn=objective,
@@ -488,102 +563,8 @@ def plot_relocated_antennas(antennas_before: ac.EarthLocation, antennas_after: a
     plt.close('all')
 
 
-def create_lmn1():
-    lmn = []
-    for inner, outer, dl, frac in [
-        (0. * au.arcmin, 1. * au.arcmin, (3.3 / 7) * au.arcsec, 1.),
-        # (1. * au.arcmin, 0.5 * au.deg, (3.3/7) * au.arcsec, 0.001),
-        # (0.5 * au.deg, 1.5 * au.deg, (3.3/7) * au.arcsec, 0.0001),
-    ]:
-        lvec = mvec = np.arange(-outer.to('rad').value, outer.to('rad').value, dl.to('rad').value)
-        L, M = np.meshgrid(lvec, mvec, indexing='ij')
-        L = L.flatten()
-        M = M.flatten()
-        LM = L ** 2 + M ** 2
-        _lmn = np.stack([L, M, 1 - jnp.sqrt(1 - LM)], axis=-1)
-        keep = np.logical_and(np.sqrt(LM) >= inner.to('rad').value, LM < outer.to('rad').value)
-        _lmn = _lmn[keep]
-        print(f"Got {_lmn.shape[0]} samples")
-        if frac < 1:
-            select_idx = np.random.choice(_lmn.shape[0], int(frac * _lmn.shape[0]), replace=False)
-            _lmn = _lmn[select_idx]
-        print(f"Got {_lmn.shape[0]} samples from {inner} to {outer} with {dl} spacing")
-        lmn.append(_lmn)
-    lmn = jnp.concatenate(lmn, axis=0)
-    print(f"Total {lmn.shape[0]} samples")
-    return lmn
-
-
-def create_lmn2():
-    batch_size: int = 1024
-    num_radial_bins: int = 3600 // 8
-    num_theta_bins: int = 10
-    lmax: au.Quantity = 1 * au.deg
-    lmin: au.Quantity = 8 * au.arcsec
-    fwhm: au.Quantity = 3.3 * au.arcsec
-    lmax = quantity_to_jnp(lmax, 'rad')
-    lmin = quantity_to_jnp(lmin, 'rad')
-    fwhm = quantity_to_jnp(fwhm, 'rad')
-    radii = jnp.concatenate([0.5 * fwhm[None], jnp.linspace(lmin, lmax, num_radial_bins)])
-    theta = jnp.linspace(0., 2 * np.pi, num_theta_bins, endpoint=False)
-
-    R, Theta = jnp.meshgrid(
-        radii, theta,
-        indexing='ij'
-    )
-
-    L = R * jnp.cos(Theta)
-    M = R * jnp.sin(Theta)
-    N = jnp.sqrt(1 - L ** 2 - M ** 2)
-    lmn = jnp.stack([L, M, 1 - N], axis=-1)  # [Nr, Nt, 3]
-
-    return lmn
-
-
-def create_target(key, lmn, freqs, decs, num_samples: int):
-    fill_registries()
-    array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
-
-    antennas = array.get_antennas()
-    array_location = array.get_array_location()
-    obstime = at.Time('2022-01-01T00:00:00', scale='utc')
-    antennas_enu = antennas.get_itrs(obstime=obstime, location=array_location).transform_to(
-        ENU(0, 0, 1, obstime=obstime, location=array_location)
-    )
-    antennas_enu_xyz = antennas_enu.cartesian.xyz.T
-    latitude = array_location.geodetic.lat.rad
-    antennas_enu_xyz[:, 1] /= np.cos(latitude)
-
-    antennas_enu_xyz = jnp.asarray(antennas_enu_xyz)
-
-    return jax.vmap(lambda freq, dec: compute_ideal_psf_distribution(
-        key, lmn, freq, latitude, dec, antennas_enu_xyz, num_samples)
-                    )(freqs, decs)
-
-
-def create_initial_data(antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation):
-    antenna_enu_xyz = antennas.get_itrs(
-        obstime=obstime, location=array_location).transform_to(
-        ENU(obstime=obstime, location=array_location)).cartesian.xyz.to('m').T
-    antennas0 = quantity_to_jnp(antenna_enu_xyz, 'm')  # [N, 3]
-    latitude = quantity_to_jnp(array_location.geodetic.lat)
-    return antennas0, latitude
-
-
 def main(init_config: str | None = None):
-    key = jax.random.PRNGKey(0)
-    np.random.seed(0)
-    lmn = create_lmn1()
-
-    freqs = [700, 1350, 2000] * au.MHz
-    decs = [-30, 0, 30, 60, 90] * au.deg
-
-    freqs, decs = np.meshgrid(freqs.to('Hz').value, decs.to('rad').value, indexing='ij')
-    freqs = jnp.asarray(freqs.flatten())
-    decs = jnp.asarray(decs.flatten())
-
-    target_log_psf_mean, target_log_psf_stddev = create_target(key, lmn, freqs, decs, 20)
-
+    np.random.seed(43)  # Correlated resamples fond by keeping seed the same.
     if init_config is not None:
         coords = []
         with open(init_config, 'r') as f:
@@ -606,12 +587,59 @@ def main(init_config: str | None = None):
         array_location = array.get_array_location()
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
 
-    antennas = shift_antennas_too_close_to_boundary(antennas, array_location, obstime)
-    antennas0, latitude = create_initial_data(antennas, obstime, array_location)
+    # Shift antennas if too close to boundary, so that search priors can have non-zero radius
+    antennas_before = antennas
+
+    # Minimal allowed movement
+    init_freedom = 10.
+
+    antennas_before_enu = antennas_before.get_itrs(
+        obstime=obstime, location=array_location
+    ).transform_to(
+        ENU(obstime=obstime, location=array_location)
+    ).cartesian.xyz.to('m').value.T
+    tree = KDTree(antennas_before_enu)
+    dist, _ = tree.query(antennas_before_enu, k=2)
+    dist = dist[:, 1]
+    force_relocate = dist < 8. + init_freedom
+
+    while True:
+        relocated_antennas = relocate_antennas(antennas, obstime, array_location,
+                                               additional_buffer=init_freedom, force_relocate=force_relocate)
+        relocated_antennas_enu = relocated_antennas.get_itrs(
+            obstime=obstime, location=array_location
+        ).transform_to(
+            ENU(obstime=obstime, location=array_location)
+        ).cartesian.xyz.to('m').value.T
+        tree = KDTree(relocated_antennas_enu)
+        dist, _ = tree.query(relocated_antennas_enu, k=2)
+        dist = dist[:, 1]
+        if np.any(dist < 8. + init_freedom):
+            print(f"Some {np.sum(dist < 8. + init_freedom)} antennas are still too close to each other, retrying")
+            # force_relocate = dist < 8. + init_freedom
+            continue
+        break
+    antennas = relocated_antennas
+
+    plot_relocated_antennas(antennas_before, antennas, obstime, array_location)
+
+    # Setup the optimisation problem
+    problem = OptimisationProblem(
+        num_radial_bins=12 * 20 - 1,
+        num_theta_bins=12 * 20,
+        lmax=3 * au.deg
+    )
+
+    antennas0, lmn, freq, latitude = problem.create_data(
+        antennas=antennas, obstime=obstime, array_location=array_location
+    )
+
     x_init = antennas0
+    plot_solution('init', antennas, obstime, array_location, x_init,
+                  *get_uniform_ball_prior(x_init, obstime, array_location))
     for iteration in range(100):
         ball_centre, ball_radius = get_uniform_ball_prior(x_init, obstime, array_location)
-        x, state, diagnostics = solve(ball_centre, ball_radius, lmn, latitude, freqs, decs, target_log_psf_mean, target_log_psf_stddev)
+        x, state, diagnostics = solve(ball_centre, ball_radius, lmn, freq, latitude)
         x_init = x
         # Save state and solution
         save_pytree(state, 'state.json')
@@ -627,13 +655,19 @@ def main(init_config: str | None = None):
             ).transform_to(ac.ITRS(obstime=obstime, location=array_location)).earth_location
             for row in antenna_locs:
                 f.write(f"{row.x.to('m').value},{row.y.to('m').value},{row.z.to('m').value}\n")
-        plot_solution(iteration, antennas0, latitude, x, ball_centre, ball_radius)
+        plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, ball_radius)
 
 
-def plot_solution(iteration, antennas0, latitude, x, ball_centre, ball_radius):
-    x0 = antennas0
-    lmn = create_lmn2()
-    freq = quantity_to_jnp(1350 * au.MHz)
+def plot_solution(iteration, antennas, obstime, array_location, x, ball_centre, ball_radius):
+    problem = OptimisationProblem(
+        num_radial_bins=12 * 20 - 1,
+        num_theta_bins=12 * 20,
+        lmax=1.5 * au.deg
+    )
+
+    x0, lmn, freq, latitude = problem.create_data(
+        antennas=antennas, obstime=obstime, array_location=array_location
+    )
 
     # row 1: Plot prior, ball centre and radius
     # row 2: Plot the antenna locations, and their movement from x0
@@ -646,7 +680,7 @@ def plot_solution(iteration, antennas0, latitude, x, ball_centre, ball_radius):
     ax[0].set_title('Prior')
     # Plot x0 and gradient from from x0 to x
     ax[1].scatter(x0[:, 0], x0[:, 1], s=1, c='black', alpha=0.1)
-    arrow_length = jnp.linalg.norm(x - x0, axis=-1)
+    arrow_length = jnp.linalg.norm(x[:, :2] - x0[:, :2], axis=-1)
     ar = ax[1].quiver(
         x0[:, 0],
         x0[:, 1],
@@ -665,7 +699,7 @@ def plot_solution(iteration, antennas0, latitude, x, ball_centre, ball_radius):
     ax[1].set_title(f'Solution: {iteration}')
     antenna1, antenna2 = np.asarray(list(itertools.combinations_with_replacement(range(x.shape[0]), 2)),
                                     dtype=jnp.int32).T
-    uvw_radial = np.linalg.norm(x[antenna2] - x[antenna1], axis=-1)
+    uvw_radial = np.linalg.norm(x[antenna2, :2] - x[antenna1, :2], axis=-1)
     ax[2].hist(uvw_radial.flatten(), bins=np.arange(0, 20e3, 10))
     ax[2].set_xlabel('UVW radial distance [m]')
     ax[2].set_ylabel('Number of pairs')
@@ -677,12 +711,12 @@ def plot_solution(iteration, antennas0, latitude, x, ball_centre, ball_radius):
     # row 2: Plot residuals, PSF - PSF0
     # row 3: Plot FWHM of both
     fig, ax = plt.subplots(3, 1, figsize=(6, 15))
-    psf0 = 10. * np.log10(jax.jit(compute_psf)(x0, lmn, freq, latitude, 0.))  # [Nr, Nt]
-    psf = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude, 0.))  # [Nr, Nt]
+    psf0 = 10. * np.log10(jax.jit(compute_psf)(x0, lmn, freq, latitude))  # [Nr, Nt]
+    psf = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude))  # [Nr, Nt]
     fwhm = 10 ** (psf[0, :] / 10)
     fwhm0 = 10 ** (psf0[0, :] / 10)
     residuals = psf - psf0
-    thetas = np.linspace(0, 2 * np.pi, lmn.shape[1], endpoint=False)
+    thetas = np.linspace(0, 2 * np.pi, problem.num_theta_bins, endpoint=False)
     sc = ax[0].scatter(
         lmn[..., 0].flatten(), lmn[..., 1].flatten(), c=psf.flatten(), s=1, cmap='jet',
         vmin=-70, vmax=-20
@@ -728,11 +762,11 @@ def plot_solution(iteration, antennas0, latitude, x, ball_centre, ball_radius):
     # row 3: Plot the PSF at DEC=0
     # row 4: Plot the PSF at DEC=+45
     # row 5: Plot the PSF at DEC=+90
-    psf = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude, - np.pi/2))  # [Nr, Nt]
-    psf_45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude, - np.pi/4))  # [Nr, Nt]
-    psf_m45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude, 0.))  # [Nr, Nt]
-    psf_90 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude, np.pi/4))  # [Nr, Nt]
-    psf_m90 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude, np.pi/2))  # [Nr, Nt]
+    psf = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude))  # [Nr, Nt]
+    psf_45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude - 45 * np.pi / 180.))  # [Nr, Nt]
+    psf_m45 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude + 45 * np.pi / 180.))  # [Nr, Nt]
+    psf_90 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude - 90 * np.pi / 180.))  # [Nr, Nt]
+    psf_m90 = 10. * np.log10(jax.jit(compute_psf)(x, lmn, freq, latitude + 90 * np.pi / 180.))  # [Nr, Nt]
     fig, ax = plt.subplots(5, 1, figsize=(6, 20), sharex=True, sharey=True)
     for i, (p, title) in enumerate(
             [(psf_m90, 'DEC=-90'), (psf_m45, 'DEC=-45'), (psf, 'DEC=0'), (psf_45, 'DEC=+45'), (psf_90, 'DEC=+90')]):
@@ -764,42 +798,5 @@ def plot_solution(iteration, antennas0, latitude, x, ball_centre, ball_radius):
     plt.close('all')
 
 
-def shift_antennas_too_close_to_boundary(antennas, array_location, obstime):
-    # Shift antennas if too close to boundary, so that search priors can have non-zero radius
-    antennas_before = antennas
-    # Minimal allowed movement
-    init_freedom = 10.
-    antennas_before_enu = antennas_before.get_itrs(
-        obstime=obstime, location=array_location
-    ).transform_to(
-        ENU(obstime=obstime, location=array_location)
-    ).cartesian.xyz.to('m').value.T
-    tree = KDTree(antennas_before_enu)
-    dist, _ = tree.query(antennas_before_enu, k=2)
-    dist = dist[:, 1]
-    force_relocate = dist < 8. + init_freedom
-    while True:
-        relocated_antennas = relocate_antennas(antennas, obstime, array_location,
-                                               additional_buffer=init_freedom, force_relocate=force_relocate)
-        relocated_antennas_enu = relocated_antennas.get_itrs(
-            obstime=obstime, location=array_location
-        ).transform_to(
-            ENU(obstime=obstime, location=array_location)
-        ).cartesian.xyz.to('m').value.T
-        tree = KDTree(relocated_antennas_enu)
-        dist, _ = tree.query(relocated_antennas_enu, k=2)
-        dist = dist[:, 1]
-        if np.any(dist < 8. + init_freedom):
-            print(f"Some {np.sum(dist < 8. + init_freedom)} antennas are still too close to each other, retrying")
-            # force_relocate = dist < 8. + init_freedom
-            continue
-        break
-    antennas = relocated_antennas
-    plot_relocated_antennas(antennas_before, antennas, obstime, array_location)
-    return antennas
-
-
 if __name__ == '__main__':
     main(init_config='init_config.txt')
-
-
