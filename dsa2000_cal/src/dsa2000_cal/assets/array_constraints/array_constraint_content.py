@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import uniform
 from shapely.geometry import Point
+from shapely.geometry.multipolygon import MultiPolygon
+from shapely.geometry.polygon import Polygon
 from shapely.ops import nearest_points
 
 from dsa2000_cal.assets.base_content import BaseContent
@@ -25,6 +27,10 @@ class RegionSampler:
         self.gdf = gpd.read_file(shapefile_path)
         if filter is not None:
             self.gdf = filter(self.gdf)
+
+        # # Validate geometries
+        # self.gdf = self.gdf[self.gdf.is_valid]
+        # self.gdf = self.gdf.buffer(0)  # Fix invalid geometries if necessary
 
         # Check if the shapefile has a CRS; if not, raise an error
         if self.gdf.crs is None:
@@ -103,7 +109,7 @@ class RegionSampler:
         # Return the closest point (longitude, latitude) and the distance
         return (closest_point.x, closest_point.y), angular_dist
 
-    def closest_approach_to_boundary(self, lon, lat):
+    def _closest_approach_to_boundary(self, lon, lat):
         """
         Calculates the closest point on the boundary of the polygon to the provided lon/lat.
         This method will return a point on the perimeter even if the input point is inside
@@ -124,6 +130,33 @@ class RegionSampler:
 
         # Calculate the distance between the input point and the closest point on the boundary
 
+        angular_dist = haversine(lon * np.pi / 180, lat * np.pi / 180, closest_point.x * np.pi / 180,
+                                 closest_point.y * np.pi / 180) * 180 / np.pi
+
+        # Return the closest point (longitude, latitude) on the boundary and the distance
+        return (closest_point.x, closest_point.y), angular_dist
+
+    def closest_approach_to_boundary(self, lon, lat):
+        """
+        Calculates the closest point on the boundary of the polygon to the provided lon/lat.
+        This method will return a point on the perimeter even if the input point is inside
+        the polygon.
+        """
+        # Create a shapely Point from the input lon/lat
+        input_point = Point(lon, lat)
+
+        # Determine the polygon boundary
+        if isinstance(self.polygon, Polygon):
+            polygon_boundary = self.polygon.exterior
+        elif isinstance(self.polygon, MultiPolygon):
+            polygon_boundary = self.polygon.boundary
+        else:
+            raise ValueError("The geometry is not a Polygon or MultiPolygon.")
+
+        # Find the nearest point on the polygon boundary to the input point
+        _, closest_point = nearest_points(input_point, polygon_boundary)
+
+        # Calculate the distance between the input point and the closest point on the boundary
         angular_dist = haversine(lon * np.pi / 180, lat * np.pi / 180, closest_point.x * np.pi / 180,
                                  closest_point.y * np.pi / 180) * 180 / np.pi
 
@@ -177,6 +210,20 @@ class RegionSampler:
         print(f"  - Centroid (longitude, latitude): ({centroid.x:.4f}, {centroid.y:.4f})")
         print(f"  - Bounding box: [({minx:.4f}, {miny:.4f}), ({maxx:.4f}, {maxy:.4f})]")
         print(f"  - Columns: {columns}")
+
+
+def _test_region_sampler():
+    files = [
+        "/home/albert/git/DSA2000-Cal/dsa2000_cal/src/dsa2000_cal/assets/array_constraints/spring_valley_31b/Buildable Area - Outside AOI.shp",
+        "/home/albert/git/DSA2000-Cal/dsa2000_cal/src/dsa2000_cal/assets/array_constraints/spring_valley_31b/Western Expansion Areas.shp"
+    ]
+
+    for file in files:
+        sampler = RegionSampler(file)
+        assert sampler.total_area > 0
+        sample = sampler.get_samples_within(1)[0]
+        assert sampler.closest_approach(*sample)[1] == 0
+        assert sampler.closest_approach_to_boundary(*sample)[1] > 0
 
 
 class ArrayConstraint(ABC, BaseContent):
