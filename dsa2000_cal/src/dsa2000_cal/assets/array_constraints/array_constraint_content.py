@@ -286,10 +286,16 @@ class ArrayConstraintV2(ABC, BaseContent):
         # Prepend the folder path
         folder = self.get_array_constraint_folder()
 
+        _30ft = 9.144
+        _50ft = 15.24
+        _60ft = 18.288
+        _100ft = 30.48
+        _200ft = 60.96
+
         return [
-            (RegionSampler(os.path.join(folder, "Spring Valley AOI 3.1b.shp")), 20.0),
-            # (RegionSampler(os.path.join(folder, "Buildable Area - Outside AOI.shp")), 20.0),
-            # (RegionSampler(os.path.join(folder, "Western Expansion Areas.shp")), 20.0)
+            (RegionSampler(os.path.join(folder, "Spring Valley AOI 3.1b.shp")), _60ft),
+            (RegionSampler(os.path.join(folder, "Buildable Area - Outside AOI.shp")), _60ft),
+            (RegionSampler(os.path.join(folder, "Western Expansion Areas.shp")), _60ft)
         ]
 
 
