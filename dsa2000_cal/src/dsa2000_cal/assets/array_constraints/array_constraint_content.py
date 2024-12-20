@@ -238,7 +238,7 @@ class ArrayConstraintV2(ABC, BaseContent):
         BaseContent.__init__(self, seed='array_constraint_v2')
 
     def get_array_constraint_folder(self) -> str:
-        return str(os.path.join(*self.content_path, 'spring_valley_31b_v2'))
+        return str(os.path.join(*self.content_path, 'spring_valley_31b'))
 
     def get_constraint_regions(self) -> List[Tuple[RegionSampler, float]]:
         """
