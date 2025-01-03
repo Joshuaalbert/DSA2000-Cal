@@ -100,7 +100,7 @@ def parse_and_process_wsclean_source_line(line, freqs: au.Quantity) -> WSCleanLi
 
     if result['LogarithmicSI']:
         spectrum = wsclean_log_spectral_index_spectrum_fn(
-            stokesI=result['I'] * au.Jy,
+            log10_stokesI=result['I'], # log10(I/1Jy)
             ref_nu=result['ReferenceFrequency'] * au.Hz,
             nu=freqs,
             spectral_indices=result['SpectralIndex']
@@ -127,18 +127,18 @@ def parse_and_process_wsclean_source_line(line, freqs: au.Quantity) -> WSCleanLi
     )
 
 
-def wsclean_log_spectral_index_spectrum_fn(stokesI, ref_nu, nu, spectral_indices):
-    # Wrong -> flux(nu) = exp ( log stokesI + term0 log(nu/refnu) + term1 log(nu/refnu)^2 + ... )
-    # Correct -> flux(nu) = I0 * (v/v0) ^ (c0 + c1 * log10(v/v0) + c2 * log10(v/v0)^2 + …)
-    exponents = np.arange(len(spectral_indices))  # [n]
+def wsclean_log_spectral_index_spectrum_fn(log10_stokesI, ref_nu, nu, spectral_indices):
+    # https://wsclean.readthedocs.io/en/latest/component_list.html
+    # flux(nu) = 10 ** ( log10 stokesI + term0 log10(nu/refnu) + term1 log10(nu/refnu)^2 + ... )
+    exponents = np.arange(len(spectral_indices)) + 1  # [n]
     freq_ratio = dimensionless(nu / ref_nu)  # [num_freq]
     tmp = spectral_indices * np.log10(freq_ratio[:, None]) ** exponents  # [num_freq, n]
-    scaling = freq_ratio ** np.sum(tmp, axis=-1)  # [num_freq]
-    return stokesI * scaling
+    return 10**(log10_stokesI + np.sum(tmp, axis=-1)) * au.Jy # [num_freq]
 
 
 def wsclean_linear_spectral_index_spectrum_fn(stokesI: au.Quantity, ref_nu: au.Quantity, nu: au.Quantity,
                                               spectral_indices: np.ndarray):
+    # https://wsclean.readthedocs.io/en/latest/component_list.html
     # flux(nu) = I0 + c0 * (v/v0 - 1) + c1 * (v /v0 - 1)^2 + c2 * (v/v0 -1)^3 + …
     exponents = np.arange(len(spectral_indices)) + 1  # [n]
     freq_ratio = dimensionless(nu / ref_nu)  # [num_freq]
