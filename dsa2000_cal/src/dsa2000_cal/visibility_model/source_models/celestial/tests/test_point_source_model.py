@@ -5,7 +5,11 @@ import astropy.units as au
 import jax
 import numpy as np
 import pytest
+from astropy import units as au, coordinates as ac
 from tomographic_kernel.frames import ENU
+
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import source_model_registry
 
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.wgridder import image_to_vis
@@ -14,7 +18,8 @@ from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_fie
 from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn
 from dsa2000_cal.gain_models.base_spherical_interpolator import build_spherical_interpolator
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
-from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import build_point_source_model
+from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import build_point_source_model, \
+    build_calibration_point_source_models_from_wsclean
 
 
 def build_mock_point_source_model(num_model_freqs: int, num_source: int, full_stokes: bool,
@@ -228,3 +233,19 @@ def test_point_predict(full_stokes: bool, with_gains: bool, tile_antennas: bool,
     f_jit = jax.jit(f).lower(point_source_model).compile()
 
     jax.block_until_ready(f_jit(point_source_model))
+
+
+def test_build_calibration_point_source_models_from_wsclean():
+    fill_registries()
+    component_file = source_model_registry.get_instance(
+        source_model_registry.get_match('mock_calibrators')).get_wsclean_clean_component_file()
+    model_freqs = au.Quantity([1.4, 1.5], 'GHz')
+    pointing = ac.ICRS(ra=0 * au.deg, dec=0 * au.deg)
+    fov_fwhm = 3.06 * au.deg
+    sky_models = build_calibration_point_source_models_from_wsclean(
+        wsclean_component_file=component_file,
+        model_freqs=model_freqs,
+        pointing=pointing,
+        fov_fwhm=fov_fwhm
+    )
+    print(sky_models)

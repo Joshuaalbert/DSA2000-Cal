@@ -4,12 +4,10 @@ import warnings
 from functools import partial
 from typing import Tuple, List, Any
 
-import astropy.coordinates as ac
-import astropy.units as au
 import jax
 import numpy as np
 import pylab as plt
-from astropy import constants
+from astropy import constants, units as au, coordinates as ac
 from jax import numpy as jnp, lax
 
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
@@ -427,3 +425,56 @@ def build_point_source_model_from_wsclean_components(
         dec=dec,
         A=A
     )
+
+
+def build_calibration_point_source_models_from_wsclean(
+        wsclean_component_file: str,
+        model_freqs: au.Quantity,
+        pointing: ac.ICRS,
+        fov_fwhm: au.Quantity,
+        full_stokes: bool = True,
+):
+    """
+    Build a calibration source model from wsclean components.
+
+    Args:
+        wsclean_component_file: the wsclean component file
+        model_freqs: the model frequencies
+        fov_fwhm: the fov fwhm
+        full_stokes: whether the model should be full stokes
+
+    Returns:
+        the calibration source model
+    """
+    sky_model = build_point_source_model_from_wsclean_components(
+        wsclean_clean_component_file=wsclean_component_file,
+        model_freqs=model_freqs,
+        full_stokes=full_stokes
+    )
+    #     model_freqs: FloatArray  # [num_model_freqs] Frequencies
+    #     ra: FloatArray  # [num_sources] ra coordinate of the source
+    #     dec: FloatArray  # [num_sources] dec coordinate of the source
+    #     A: FloatArray  # [num_sources, num_model_freqs,[,2,2]] Flux amplitude of the source
+    num_facets = np.shape(sky_model.A)[0]
+    # Turn each facet into a 1 facet sky model
+    sky_models = []
+    for facet_idx in range(num_facets):
+        A = sky_model.A[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs, [2,2]]
+        ra = sky_model.ra[facet_idx:facet_idx + 1]  # [facet=1]
+        dec = sky_model.dec[facet_idx:facet_idx + 1]  # [facet=1]
+        # Get haversine distance from pointing,only keep sources within fov_fwhm
+        haversine_distance = ac.SkyCoord(ra=ra * au.rad, dec=dec * au.rad).separation(pointing).to('rad')
+        if haversine_distance > 0.5 * fov_fwhm:
+            continue
+        sky_models.append(
+            BasePointSourceModel(
+                model_freqs=sky_model.model_freqs,
+                A=A,
+                ra=ra,
+                dec=dec,
+                convention=sky_model.convention
+            )
+        )
+    return sky_models
+
+

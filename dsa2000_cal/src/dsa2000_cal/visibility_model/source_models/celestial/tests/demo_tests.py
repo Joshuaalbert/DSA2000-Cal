@@ -5,7 +5,7 @@ from astropy import units as au
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import \
-    build_fits_source_model_from_wsclean_components, build_fits_calibration_source_model_from_wsclean_components
+    build_fits_source_model_from_wsclean_components, build_calibration_fits_source_models_from_wsclean
 from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import \
     build_gaussian_source_model_from_wsclean_components
 from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import \
@@ -62,7 +62,7 @@ def test_build_fits_calibration_source_model_from_wsclean_components():
 
     model_freqs = au.Quantity(np.linspace(65e6, 77e6, 2), 'Hz')
 
-    sky_models = build_fits_calibration_source_model_from_wsclean_components(
+    sky_models = build_calibration_fits_source_models_from_wsclean(
         wsclean_fits_files=wsclean_fits_files,
         model_freqs=model_freqs,
         full_stokes=True,

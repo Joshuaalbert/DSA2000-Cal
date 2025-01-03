@@ -11,11 +11,12 @@ import numpy as np
 import pylab as plt
 from astropy.io import fits
 from astropy.wcs import WCS
+
 from jax import numpy as jnp, lax
 
-from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common import wgridder
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray
+from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.interp_utils import InterpolatedArray, select_interpolation_points
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
@@ -414,13 +415,13 @@ def build_fits_source_model(
     )
 
 
-def build_fits_calibration_source_model_from_wsclean_components(
+def build_calibration_fits_source_models_from_wsclean(
         wsclean_fits_files: List[str],
         model_freqs: au.Quantity,
         full_stokes: bool = True,
         repoint_centre: ac.ICRS | None = None,
         crop_box_size: au.Quantity | None = None,
-        num_facets: int = 1
+        num_facets: int = 1,
 ):
     """
     Build a calibration source model from wsclean components.
@@ -432,6 +433,7 @@ def build_fits_calibration_source_model_from_wsclean_components(
         repoint_centre: the repoint centre
         crop_box_size: the crop box size
         num_facets: the number of facets
+        components: whether the model is components
 
     Returns:
         the calibration source model

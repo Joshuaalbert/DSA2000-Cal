@@ -22,7 +22,7 @@ from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
-    build_fits_calibration_source_model_from_wsclean_components
+    build_calibration_fits_source_models_from_wsclean
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import DegriddingPredictor, \
     DegriddingPredictorResponse
@@ -167,7 +167,7 @@ class ModelPredict:
             source_model_registry.get_match(self.sky_model_id)).get_wsclean_fits_files()
         # -04:00:28.608,40.43.33.595
 
-        sky_models = build_fits_calibration_source_model_from_wsclean_components(
+        sky_models = build_calibration_fits_source_models_from_wsclean(
             wsclean_fits_files=wsclean_fits_files,
             model_freqs=model_freqs,
             full_stokes=self.full_stokes,
