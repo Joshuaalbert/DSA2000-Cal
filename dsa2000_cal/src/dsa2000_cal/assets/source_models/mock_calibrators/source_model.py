@@ -6,7 +6,7 @@ from dsa2000_cal.assets.registries import source_model_registry
 from dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel
 
 
-@source_model_registry(template='illustris')
+@source_model_registry(template='mock_calibrators')
 class MockCalibratorsSourceModel(AbstractWSCleanSourceModel):
 
     def get_wsclean_clean_component_file(self) -> str:
