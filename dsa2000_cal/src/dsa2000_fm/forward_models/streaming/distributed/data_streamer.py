@@ -33,7 +33,7 @@ from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import
 from dsa2000_fm.forward_models.streaming.distributed.dft_predictor import DFTPredictorResponse
 from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
 from dsa2000_fm.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulatorResponse
-
+import astropy.coordinates as ac
 logger = logging.getLogger('ray')
 
 
@@ -105,10 +105,11 @@ class DataStreamer:
             channel_width=self.params.ms_meta.channel_width,
             integration_time=self.params.ms_meta.integration_time,
             with_autocorr=self.params.ms_meta.with_autocorr,
-            convention=self.params.ms_meta.convention
+            convention=self.params.ms_meta.convention,
+            pointing=self.params.ms_meta.pointing
         )
         self.state = predict_and_sample.get_state()
-        self._step_jit = jax.jit(predict_and_sample.step)
+        # self._step_jit = jax.jit(predict_and_sample.step)
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> DataStreamerResponse:
         logger.info(f"Sampling visibilities for time_idx={time_idx} and freq_idx={freq_idx}")
@@ -146,7 +147,7 @@ class DataStreamer:
                     geodesic_model=self.predict_params.geodesic_model
                 )
             )
-            dft_response, degridder_response = await asyncio.gather(*tasks)
+            degridder_response, dft_response = await asyncio.gather(*tasks)
             vis = dft_response.vis + degridder_response.vis
             visibility_coords = dft_response.visibility_coords
 
@@ -211,6 +212,7 @@ class PredictAndSample:
     channel_width: au.Quantity
     integration_time: au.Quantity
     with_autocorr: bool
+    pointing: ac.ICRS
 
     convention: str = 'physical'
 
@@ -227,7 +229,8 @@ class PredictAndSample:
             model_freqs=model_freqs,
             full_stokes=self.full_stokes,
             crop_box_size=self.crop_box_size,
-            num_facets_per_side=self.num_facets_per_side
+            num_facets_per_side=self.num_facets_per_side,
+            repoint_centre=self.pointing
         )
 
         wsclean_clean_component_file = source_model_registry.get_instance(

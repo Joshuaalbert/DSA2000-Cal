@@ -188,19 +188,20 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     )
 
     data_streamer_params = DataStreamerParams(
-        sky_model_id='cas_a',
-        bright_sky_model_id='cas_a',
+        sky_model_id='trecs',
+        bright_sky_model_id='mock_calibrators',
         num_facets_per_side=2,
-        crop_box_size=None,
+        crop_box_size=3 * au.deg,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,
         geodesic_model=geodesic_model
     )
 
     predict_params = ModelPredictorParams(
-        sky_model_id='cas_a',
+        sky_model_id='trecs',
+        background_sky_model_id='mock_calibrators',
         num_facets_per_side=2,
-        crop_box_size=None,
+        crop_box_size=3 * au.deg,
         near_field_delay_engine=near_field_delay_engine,
         far_field_delay_engine=far_field_delay_engine,
         geodesic_model=geodesic_model
@@ -210,7 +211,6 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
 
 
 async def run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params):
-
     dft_predictor_remote = DFTPredictor.options(
         **compute_dft_predictor_options(run_params)
     )

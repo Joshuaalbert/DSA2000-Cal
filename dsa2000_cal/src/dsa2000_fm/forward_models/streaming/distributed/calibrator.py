@@ -9,6 +9,7 @@ from typing import NamedTuple, Tuple, List
 import jax
 import jaxns.framework.context as ctx
 import numpy as np
+import pylab as plt
 import ray
 from jax import numpy as jnp
 from jaxns.framework.ops import simulate_prior_model
@@ -20,7 +21,7 @@ from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, 
 from dsa2000_cal.common.jax_utils import block_until_ready, simple_broadcast
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.ray_utils import TimerLog, MemoryLogger, resource_logger
+from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolution, \
     CalibrationSolutionCache
@@ -142,7 +143,6 @@ class Calibrator:
                     f"sol_int_freq_idx={sol_int_freq_idx}")
         await self.init()
 
-
         # Get the time and freq indices for the solution interval (a regular grid)
         time_idxs = sol_int_time_idx * self.params.chunk_params.num_times_per_sol_int + np.arange(
             self.params.chunk_params.num_times_per_sol_int)
@@ -204,13 +204,16 @@ class Calibrator:
                 lambda x: np.reshape(x, (Tm, Cm) + np.shape(x)[1:]), model_gather)  # [Tm, Cm, ...]
             vis_model = np.moveaxis(model.vis, 2, 0)  # [D, Tm, Cm, B[, 2, 2]]
             vis_model = np.moveaxis(vis_model, 3, 2)  # [D, Tm, B, Cm[, 2, 2]]
-            return vis_model
+            background_vis_model = np.moveaxis(model.vis_background, 2, 0)  # [E, Tm, Cm, B[, 2, 2]]
+            background_vis_model = np.moveaxis(background_vis_model, 3, 2)  # [E, Tm, B, Cm[, 2, 2]]
+            return vis_model, background_vis_model
 
         with TimerLog("Gathering data and model visibilities"):
-            (vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2), vis_model = await asyncio.gather(
-                gather_data(key, time_idxs, freq_idxs),
-                model_gather(model_times, model_freqs)
-            )
+            (vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2), (vis_model, background_vis_model) = \
+                await asyncio.gather(
+                    gather_data(key, time_idxs, freq_idxs),
+                    model_gather(model_times, model_freqs)
+                )
 
         # Response generator can be used in an `async for` block.
         with TimerLog("Getting previous state..."):
@@ -236,8 +239,10 @@ class Calibrator:
             flags_avg = freq_average_rule(time_average_rule(flags.astype(np.float16))).astype(np.bool_)
 
         with TimerLog("Calibrating..."):
+            # combine model and background model
+            full_vis_model = np.concatenate([vis_model, background_vis_model], axis=0)
             gains, solver_state, diagnostics = block_until_ready(self.calibrate_jit(
-                vis_model=vis_model,
+                vis_model=full_vis_model,
                 vis_data=vis_data_avg,
                 weights=weights_avg,
                 flags=flags_avg,
@@ -247,13 +252,32 @@ class Calibrator:
                 antenna2=antenna2,
                 state=previous_state.solver_state
             ))
+            diagnostics: MultiStepLevenbergMarquardtDiagnostic
+            # row 1: Plot error
+            # row 2: Plot r
+            # row 3: plot chi-2 (F_norm)
+            # row 4: plot damping
+
+            fig, axs = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
+            axs[0].plot(diagnostics.iteration, diagnostics.error)
+            axs[0].set_title('Error')
+            axs[1].plot(diagnostics.iteration, diagnostics.r)
+            axs[1].set_title('r')
+            axs[2].plot(diagnostics.iteration, diagnostics.F_norm)
+            axs[2].set_title('|F|')
+            axs[3].plot(diagnostics.iteration, diagnostics.damping)
+            axs[3].set_title('Damping')
 
         with TimerLog("Computing residuals..."):
+            # We don't subtract background, just the bright stuff
+            # Trim gains to the ones to be subtracted
+            num_subtract = np.shape(vis_model)[0]
+            subtract_gains = gains[:num_subtract, ...]
             vis_residual = np.asarray(
                 self._compute_residual_jit(
                     vis_model=vis_model,
                     vis_data=vis_data,
-                    gains=gains,
+                    gains=subtract_gains,
                     antenna1=antenna1,
                     antenna2=antenna2
                 )

@@ -11,7 +11,6 @@ import numpy as np
 import pylab as plt
 from astropy.io import fits
 from astropy.wcs import WCS
-
 from jax import numpy as jnp, lax
 
 from dsa2000_cal.common import wgridder
@@ -433,10 +432,9 @@ def build_calibration_fits_source_models_from_wsclean(
         repoint_centre: the repoint centre
         crop_box_size: the crop box size
         num_facets: the number of facets
-        components: whether the model is components
 
     Returns:
-        the calibration source model
+        the calibration source model shaped [
     """
     sky_model = build_fits_source_model_from_wsclean_components(
         wsclean_fits_files=wsclean_fits_files,
