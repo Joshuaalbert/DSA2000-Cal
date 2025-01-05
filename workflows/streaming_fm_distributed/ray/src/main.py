@@ -185,10 +185,11 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     system_gain_simulator_params = SystemGainSimulatorParams(
         geodesic_model=geodesic_model,
         init_key=jax.random.PRNGKey(0),
-        apply_effects=False, # Skip for now
-        simulate_ionosphere=False # Skip for now
+        apply_effects=False,  # Skip for now
+        simulate_ionosphere=False  # Skip for now
     )
 
+    # TODO: add list of sky model for each sub-type
     data_streamer_params = DataStreamerParams(
         sky_model_id='trecs',
         bright_sky_model_id='mock_calibrators',

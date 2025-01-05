@@ -42,9 +42,9 @@ def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
         'memory': 1.1 * memory,
         "runtime_env": RuntimeEnv(
             env_vars={
-                "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",  # 10% of GPU memory
-                "XLA_PYTHON_CLIENT_PREALLOCATE": "true",  # Preallocate memory
-                "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow but more memory efficient
+                # "XLA_PYTHON_CLIENT_MEM_FRACTION": ".1",  # 10% of GPU memory
+                "XLA_PYTHON_CLIENT_PREALLOCATE": "false",  # if false allocate on demand as much as needed
+                # "XLA_PYTHON_CLIENT_ALLOCATOR": "platform",  # Slow, but releases memory
                 "JAX_PLATFORMS": "cuda"
             }
         )
