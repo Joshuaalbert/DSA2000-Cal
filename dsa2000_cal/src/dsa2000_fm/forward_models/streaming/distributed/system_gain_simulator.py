@@ -86,7 +86,8 @@ class SimulateDishState(NamedTuple):
 class SystemGainSimulatorParams(SerialisableBaseModel):
     geodesic_model: BaseGeodesicModel
     init_key: IntArray
-    bypass: bool = False
+    apply_effects: bool
+    simulate_ionosphere: bool
 
 
 class SystemGainSimulatorResponse(NamedTuple):
@@ -133,56 +134,70 @@ class SystemGainSimulator:
         self._memory_logger_task = asyncio.create_task(
             resource_logger(task='system_gain_simulator', cadence=timedelta(seconds=5)))
 
-        beam_model = build_beam_gain_model(
+        self.beam_model = build_beam_gain_model(
             array_name=self.params.ms_meta.array_name,
             times=self.params.ms_meta.times,
             ref_time=self.params.ms_meta.ref_time,
             freqs=self.params.ms_meta.freqs,
             full_stokes=self.params.full_stokes
         )
-        dish_gain_model = BaseDishGainModel(
-            geodesic_model=self.system_gain_simulator_params.geodesic_model,
-            full_stokes=self.params.full_stokes,
-            num_antennas=len(self.params.ms_meta.antennas),
-            freqs=self.params.ms_meta.freqs,
-            dish_effects_params=self.params.dish_effects_params,
-            convention=self.params.ms_meta.convention
-        )
+        if self.system_gain_simulator_params.apply_effects:
+            dish_gain_model = BaseDishGainModel(
+                geodesic_model=self.system_gain_simulator_params.geodesic_model,
+                full_stokes=self.params.full_stokes,
+                num_antennas=len(self.params.ms_meta.antennas),
+                freqs=self.params.ms_meta.freqs,
+                dish_effects_params=self.params.dish_effects_params,
+                convention=self.params.ms_meta.convention
+            )
 
-        self.state = dish_gain_model.get_state(beam_model=beam_model, key=self.system_gain_simulator_params.init_key)
-        plot_aperture_model_host(
-            beam_aperture=self.state.beam_aperture,
-            dl=self.state.dl,
-            dm=self.state.dm,
-            plot_folder=self.params.plot_folder,
-            name='beam_model_aperture'
-        )
+            self.state = dish_gain_model.get_state(beam_model=self.beam_model,
+                                                   key=self.system_gain_simulator_params.init_key)
+            plot_aperture_model_host(
+                beam_aperture=self.state.beam_aperture,
+                dl=self.state.dl,
+                dm=self.state.dm,
+                plot_folder=self.params.plot_folder,
+                name='beam_model_aperture'
+            )
 
-        self.compute_dish_model_jit = jax.jit(dish_gain_model.step)
+            self.compute_dish_model_jit = jax.jit(dish_gain_model.step)
+        if self.system_gain_simulator_params.simulate_ionosphere:
+            pass
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> SystemGainSimulatorResponse:
         logger.info(f"Simulating dish gains for time {time_idx} and freq {freq_idx}")
         await self.init()
-        time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
-        freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
-        with TimerLog("Simulating dish gains..."):
-            gain_model, model_gains_aperture = block_until_ready(
-                self.compute_dish_model_jit(key, time[None], freq[None], self.state))
-        gain_model: BaseSphericalInterpolatorGainModel = jax.tree.map(np.asarray, gain_model)
-        model_gains_aperture = jax.tree_map(np.asarray, model_gains_aperture)
-        plot_aperture_model_host(
-            beam_aperture=model_gains_aperture,
-            dl=self.state.dl,
-            dm=self.state.dm,
-            plot_folder=self.params.plot_folder,
-            name=f"dish_gains_aperture_T{time_idx}_F{freq_idx}"
-        )
-        gain_model.plot_regridded_beam(
-            save_fig=os.path.join(self.params.plot_folder, f'regridded_beam_T{time_idx}_F{freq_idx}.png')
-        )
-        return SystemGainSimulatorResponse(
-            gain_model=gain_model
-        )
+
+        # Jones = Beam x Ionosphere (order matters)
+
+        if self.system_gain_simulator_params.simulate_ionosphere:
+            raise NotImplementedError("Ionosphere simulation not implemented yet.")
+
+        # Determine the beam model
+        if not self.system_gain_simulator_params.apply_effects:
+            gain_model = self.beam_model
+        else:
+            time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
+            freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
+            with TimerLog("Simulating dish gains..."):
+                gain_model, model_gains_aperture = block_until_ready(
+                    self.compute_dish_model_jit(key, time[None], freq[None], self.state))
+            gain_model: BaseSphericalInterpolatorGainModel = jax.tree.map(np.asarray, gain_model)
+            model_gains_aperture = jax.tree_map(np.asarray, model_gains_aperture)
+            plot_aperture_model_host(
+                beam_aperture=model_gains_aperture,
+                dl=self.state.dl,
+                dm=self.state.dm,
+                plot_folder=self.params.plot_folder,
+                name=f"dish_gains_aperture_T{time_idx}_F{freq_idx}"
+            )
+            gain_model.plot_regridded_beam(
+                save_fig=os.path.join(self.params.plot_folder, f'regridded_beam_T{time_idx}_F{freq_idx}.png')
+            )
+            gain_model = gain_model
+
+        return SystemGainSimulatorResponse(gain_model=gain_model)
 
 
 @dataclasses.dataclass(eq=False)

@@ -7,7 +7,7 @@ from astropy import coordinates as ac
 
 from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
 from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaModel
-from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
+from dsa2000_cal.assets.arrays.lwa.array import LWAArray
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_earth_grid
 
@@ -84,7 +84,7 @@ class MockAntennaModel(AltAzAntennaModel):
 
 
 @array_registry(template='lwa_mock')
-class LWAMockArray(DSA2000WArray):
+class LWAMockArray(LWAArray):
     """
     Mock LWA array class, for testing
     """

@@ -2,6 +2,7 @@ import re
 from typing import List, Any
 
 from dsa2000_cal.assets.arrays.array import AbstractArray
+from dsa2000_cal.assets.beam_models.beam_model import AbstractBeamModel
 from dsa2000_cal.assets.content_registry import ContentRegistry, ContentMap, AbstractContentFactory, SetKwargsFactory
 from dsa2000_cal.assets.rfi.rfi_emitter_model import AbstractRFIEmitterData
 from dsa2000_cal.assets.source_models.source_model import AbstractWSCleanSourceModel
@@ -71,3 +72,10 @@ misc_registry = ContentRegistry[Any](
     content_factory=create_factory_from_templates
 )
 misc_map = ContentMap[Any](content_registry=misc_registry)
+
+beam_model_registry = ContentRegistry[AbstractBeamModel](
+    match_func=match_func,
+    sort_key_func=sort_key_func,
+    content_factory=create_factory_from_templates
+)
+beam_model_map = ContentMap[AbstractBeamModel](content_registry=beam_model_registry)

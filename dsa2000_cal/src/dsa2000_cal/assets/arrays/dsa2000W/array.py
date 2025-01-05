@@ -8,7 +8,7 @@ from astropy import units as au
 from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
 from dsa2000_cal.antenna_model.matlab_amplitude_only_model import MatlabAntennaModelV1
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.assets.registries import array_registry, beam_model_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.common.types import DishEffectsParams
 
@@ -61,10 +61,8 @@ class DSA2000WArray(AbstractArray):
         return 0.7 * au.dimensionless_unscaled
 
     def get_antenna_model(self) -> AbstractAntennaModel:
-        return MatlabAntennaModelV1(
-            antenna_model_file=os.path.join(*self.content_path, 'dsa2000_antenna_model.mat'),
-            model_name='coPolPattern_dBi_Freqs_15DegConicalShield'
-        )
+        beam_model = beam_model_registry.get_instance(beam_model_registry.get_match('dsa_original'))
+        return beam_model.get_antenna_model()
 
     def get_dish_effect_params(self) -> DishEffectsParams:
         # Could provide in terms of zenike polynomial coefficients

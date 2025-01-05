@@ -4,9 +4,8 @@ import astropy.coordinates as ac
 import astropy.units as au
 
 from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
-from dsa2000_cal.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_cal.assets.arrays.dsa2000W.array import DSA2000WArray
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.assets.registries import array_registry, beam_model_registry
 
 
 @array_registry(template='dsa2000_31b')
@@ -19,11 +18,8 @@ class DSA200031b(DSA2000WArray):
         return os.path.join(*self.content_path, 'antenna_config.txt')
 
     def get_antenna_model(self) -> AbstractAntennaModel:
-        return H5AntennaModelV1(
-            angular_units=au.deg,
-            freq_units=au.GHz,
-            beam_file=os.path.join(*self.content_path, 'DSA2000-beam-wShieldSolidCylinder600mm.h5')
-        )
+        beam_model = beam_model_registry.get_instance(beam_model_registry.get_match('dsa_prototype'))
+        return beam_model.get_antenna_model()
 
 
 def convert_dsa2000_31b_csv_to_config():
