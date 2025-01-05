@@ -106,7 +106,7 @@ class DataStreamer:
             integration_time=self.params.ms_meta.integration_time,
             with_autocorr=self.params.ms_meta.with_autocorr,
             convention=self.params.ms_meta.convention,
-            pointing=self.params.ms_meta.pointing
+            pointing=self.params.ms_meta.phase_center
         )
         self.state = predict_and_sample.get_state()
         # self._step_jit = jax.jit(predict_and_sample.step)
