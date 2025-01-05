@@ -204,8 +204,8 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     )
 
     predict_params = ModelPredictorParams(
-        sky_model_id='trecs',
-        background_sky_model_id='mock_calibrators',
+        sky_model_id='mock_calibrators',
+        background_sky_model_id='trecs',
         num_facets_per_side=2,
         crop_box_size=3 * au.deg,
         near_field_delay_engine=near_field_delay_engine,
