@@ -100,7 +100,8 @@ def sync_content(prefix_path: str | None = None):
 
     global _BASE_CONTENT_SYNC
     if not _BASE_CONTENT_SYNC:
-        _BASE_CONTENT_SYNC = True
+        if prefix_path is None:
+            _BASE_CONTENT_SYNC = True
         content_root = os.path.split(os.path.abspath(__file__))[:-1]
         if prefix_path is None:
             content_prefix_path = content_root
