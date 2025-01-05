@@ -158,7 +158,6 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     run_params = build_run_params(array_name, with_autocorr, field_of_view, oversample_factor,
                                   full_stokes, num_cal_facets, root_folder, run_name)
     print("Running with params:")
-    print(run_params.json(indent=2))
     with open("run_params.json", "w") as f:
         f.write(run_params.json(indent=2))
 
