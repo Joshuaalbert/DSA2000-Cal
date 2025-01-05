@@ -503,6 +503,7 @@ def build_fits_source_model_from_wsclean_components(
             else:
                 raise KeyError("Frequency information not found in FITS header.")
             wsclean_fits_freqs_and_fits.append((frequency, fits_file))
+    print(f"Found {len(wsclean_fits_freqs_and_fits)} fits files")
 
     # Sort by freq
     wsclean_fits_freqs_and_fits = sorted(wsclean_fits_freqs_and_fits, key=lambda x: x[0])
