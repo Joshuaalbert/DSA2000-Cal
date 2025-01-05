@@ -65,7 +65,8 @@ def get_array_image_parameters(array_name: str, field_of_view: au.Quantity | Non
         try:
             antenna_model = array.get_antenna_model()
             _freqs, _beam_widths = get_dish_model_beam_widths(antenna_model)
-            field_of_view = np.max(np.interp(freqs, _freqs, _beam_widths))
+            # Use the mean beam-width for the field of view.
+            field_of_view = np.mean(np.interp(freqs, _freqs, _beam_widths))
         except NoMatchFound as e:
             print(f"Failed to get beam width from antenna model: {e}")
             field_of_view = au.Quantity(
