@@ -495,11 +495,16 @@ def build_fits_source_model_from_wsclean_components(
             header = hdul[0].header
             # Try to find freq
             if 'FREQ' in header:
+                # Assume Hz
                 frequency = header['FREQ'] * au.Hz
             elif 'RESTFRQ' in header:
+                # Assume Hz
                 frequency = header['RESTFRQ'] * au.Hz
             elif 'CRVAL3' in header:  # Assuming the frequency is in the third axis
-                frequency = header['CRVAL3'] * au.Hz
+                if header['CTYPE3'].strip().upper() != 'FREQ':
+                    raise ValueError(f"Expected CTYPE3 to be FREQ, got {header['CTYPE3']}")
+                unit = header['CUNIT3']
+                frequency = au.Quantity(header['CRVAL3'], unit=unit)
             else:
                 raise KeyError("Frequency information not found in FITS header.")
             wsclean_fits_freqs_and_fits.append((frequency, fits_file))
