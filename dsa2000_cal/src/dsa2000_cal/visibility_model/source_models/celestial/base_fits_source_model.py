@@ -548,9 +548,9 @@ def build_fits_source_model_from_wsclean_components(
                 raise ValueError(f"Expected SIN projection, got {w0.wcs.ctype}")
             pixel_size_l = au.Quantity(w0.wcs.cdelt[0], au.deg)
             pixel_size_m = au.Quantity(w0.wcs.cdelt[1], au.deg)
-            if hdul0[0].header['BUNIT'] == 'JY/PIXEL':
+            if hdul0[0].header['BUNIT'].upper() == 'JY/PIXEL':
                 pass
-            elif hdul0[0].header['BUNIT'] == 'JY/BEAM':
+            elif hdul0[0].header['BUNIT'].upper() == 'JY/BEAM':
                 # Convert to JY/PIXEL
                 print(f"Converting from JY/BEAM to JY/PIXEL")
                 bmaj = hdul0[0].header['BMAJ'] * au.deg
