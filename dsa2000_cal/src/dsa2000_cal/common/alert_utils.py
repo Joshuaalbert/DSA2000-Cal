@@ -48,7 +48,7 @@ def post_completed_forward_modelling_run(run_dir: str, start_time: datetime, dur
         warnings.warn("No SLACK_FINISHED_RUNS_HOOK_URL set. Not posting to slack.")
         return
 
-    hostname = os.uname().nodename
+    hostname = os.environ.get('NODE_IP_ADDRESS', os.uname().nodename)
 
     data = {
         "run_duration": f"{duration.total_seconds()} seconds",
@@ -59,4 +59,12 @@ def post_completed_forward_modelling_run(run_dir: str, start_time: datetime, dur
         url=hook_url,
         data=json.dumps(data),
         headers={'Content-type': 'application/json'}
+    )
+
+def test_post_completed_forward_modelling_run():
+    post_completed_forward_modelling_run(
+        run_dir='test_run_dir',
+        start_time=datetime.now(),
+        duration=timedelta(seconds=10),
+        hook_url='https://hooks.slack.com/triggers/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'
     )

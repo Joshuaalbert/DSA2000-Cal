@@ -118,7 +118,7 @@ def sync_content(prefix_path: str | None = None):
                 last_sync = datetime.datetime.fromisoformat(last_line.strip())
                 if datetime.datetime.now() - last_sync < datetime.timedelta(days=1):
                     return
-        print("Syncing assets. This happens at most once per day, and may take a few minutes.")
+        print(f"Syncing {os.path.join(*content_prefix_path)} assets. This happens at most once per day, and may take a few minutes.")
 
         def remove_content_prefix(content_path, content_prefix_path):
             # Get the partial path between content_root and content_prefix_path.

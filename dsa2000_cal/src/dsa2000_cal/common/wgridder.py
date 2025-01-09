@@ -155,7 +155,7 @@ def _host_dirty2vis(uvw: FloatArray, freqs: FloatArray,
         divide_by_n=bool(divide_by_n),
         sigma_min=float(sigma_min),
         sigma_max=float(sigma_max),
-        nthreads=1,  # Each thread will handle one channel
+        nthreads=1,
         verbosity=int(verbosity),
         vis=output_vis
     )

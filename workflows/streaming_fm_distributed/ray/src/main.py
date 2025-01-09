@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import os
 from uuid import uuid4
@@ -9,6 +10,7 @@ import astropy.units as au
 import jax
 import numpy as np
 import ray
+from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
@@ -303,11 +305,18 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
             )
 
     async def run_all(key):
+        start_time = datetime.datetime.now()
         tasks = []
         for sub_band_idx in range(run_params.chunk_params.num_sub_bands):
             aggregator_key, key = jax.random.split(key, 2)
             tasks.append(asyncio.create_task(run_aggregator(aggregator_key, sub_band_idx)))
         await asyncio.gather(*tasks)
+        end_time = datetime.datetime.now()
+        post_completed_forward_modelling_run(
+            run_dir=os.getcwd(),
+            start_time=start_time,
+            duration=end_time - start_time
+        )
 
     # Submit with PRNG key
     await run_all(jax.random.PRNGKey(0))
