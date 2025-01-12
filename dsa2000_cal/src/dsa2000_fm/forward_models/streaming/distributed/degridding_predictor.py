@@ -84,7 +84,7 @@ class DegriddingPredictor:
                 with_autocorr=self.params.ms_meta.with_autocorr,
                 convention=self.params.ms_meta.convention
             )
-            vis = source_model.predict(
+            vis = source_model.predict_np(
                 visibility_coords=visibility_coords,
                 gain_model=gain_model,
                 near_field_delay_engine=near_field_delay_engine,
@@ -97,7 +97,7 @@ class DegriddingPredictor:
                 visibility_coords=visibility_coords
             )
 
-        self._predict_jit = jax.jit(predict)
+        self._predict = predict
 
     async def __call__(self,
                        source_model: BaseFITSSourceModel,
@@ -112,7 +112,7 @@ class DegriddingPredictor:
 
         with TimerLog(f"Predicting and sampling visibilities for time {time} and freq {freq}"):
             response = block_until_ready(
-                self._predict_jit(
+                self._predict(
                     source_model=source_model,
                     freq=freq,
                     time=time,

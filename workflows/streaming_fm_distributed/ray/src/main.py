@@ -25,7 +25,7 @@ from dsa2000_fm.forward_models.streaming.distributed.aggregator import Aggregato
 from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolutionCacheParams, \
     CalibrationSolutionCache, compuate_calibration_solution_cache_options
 from dsa2000_fm.forward_models.streaming.distributed.calibrator import Calibrator, \
-    compute_calibrator_options
+    compute_calibrator_options, CalibratorParams
 from dsa2000_fm.forward_models.streaming.distributed.common import ChunkParams, ForwardModellingRunParams, ImageParams
 from dsa2000_fm.forward_models.streaming.distributed.data_streamer import DataStreamerParams, DataStreamer, \
     compute_data_streamer_options
@@ -215,10 +215,16 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         geodesic_model=geodesic_model
     )
 
-    asyncio.run(run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params))
+    calibrator_params = CalibratorParams(
+        do_calibration=False
+    )
+
+    asyncio.run(run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params,
+                                  calibrator_params))
 
 
-async def run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params):
+async def run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params,
+                            calibrator_params):
     dft_predictor_remote = DFTPredictor.options(
         **compute_dft_predictor_options(run_params)
     )
@@ -268,7 +274,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
     )
     calibrator = create_supervisor(
         calibrator_remote, 'calibrator', 1,
-        run_params, data_streamer, model_predictor, calibration_soluation_cache
+        run_params, calibrator_params, data_streamer, model_predictor, calibration_soluation_cache
     )
     gridder_remote = Gridder.options(
         **compute_gridder_options(run_params)

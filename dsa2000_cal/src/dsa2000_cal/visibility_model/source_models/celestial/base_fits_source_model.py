@@ -1,4 +1,5 @@
 import dataclasses
+import os
 import pickle
 import warnings
 from functools import partial
@@ -19,6 +20,7 @@ from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.interp_utils import InterpolatedArray, select_interpolation_points
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.pure_callback_utils import construct_threaded_callback
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.common.vec_utils import kron_product
@@ -28,6 +30,52 @@ from dsa2000_cal.delay_models.uvw_utils import perley_lmn_from_icrs, perley_icrs
 from dsa2000_cal.gain_models.gain_model import GainModel
 from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
+
+
+def _prepare_model(freq, time, antenna1, antenna2, model_freqs, image, ra, dec, dl, dm,
+                   geodesic_model: BaseGeodesicModel,
+                   gain_model: GainModel | None, is_full_stokes: bool):
+    interp = InterpolatedArray(x=model_freqs, values=(image, ra, dec, dl, dm),
+                               axis=0)
+    _image, _ra, _dec, _dl, _dm = interp(freq)  # [num_l, num_m, [2,2]], [],...
+
+    num_l, num_m = np.shape(_image)[:2]
+    lmn = geodesic_model.compute_far_field_lmn(_ra, _dec, time, return_elevation=False)
+    l0, m0 = lmn[:2]
+    lvec = (-0.5 * num_l + jnp.arange(num_l)) * _dl + l0
+    mvec = (-0.5 * num_m + jnp.arange(num_m)) * _dm + m0
+    L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
+    L2M2 = L ** 2 + M ** 2
+    N = jnp.sqrt(1 - L2M2)
+    LMN = jnp.stack([L, M, N], axis=-1)  # [num_l, num_m, 3]
+    elevation = geodesic_model.compute_elevation_from_lmn(LMN, time)  # [num_l, num_m]
+    elevation_mask = elevation <= 0
+    n_mask = L2M2 > 1
+    mask = jnp.logical_or(elevation_mask, n_mask)
+    if is_full_stokes:
+        masked_image = jnp.where(mask[:, :, None, None], 0, _image)  # [Nl,Nm[,2, 2]]
+    else:
+        masked_image = jnp.where(mask, 0, _image)  # [Nl,Nm[,2, 2]]
+
+    lmn_geodesic = geodesic_model.compute_far_field_geodesic(
+        times=time[None],
+        lmn_sources=lmn[None, :]
+    )  # [1, num_ant, 1, 3]
+    if gain_model is not None:
+        # Compute the gains
+        gains = gain_model.compute_gain(
+            freqs=freq[None],
+            times=time[None],
+            lmn_geodesic=lmn_geodesic,
+        )  # [1, num_ant, 1, 1,[, 2, 2]]
+        g1 = gains[0, antenna1, 0, 0, ...]  # [B[, 2, 2]]
+        g2 = gains[0, antenna2, 0, 0, ...]  # [B[, 2, 2]]
+    else:
+        g1 = g2 = None
+    return g1, g2, masked_image, l0, m0, _dl, _dm
+
+
+_prepare_model_jit = jax.jit(_prepare_model, static_argnames=['is_full_stokes'])
 
 
 @dataclasses.dataclass(eq=False)
@@ -66,6 +114,86 @@ class BaseFITSSourceModel(AbstractSourceModel):
     def is_full_stokes(self) -> bool:
         return len(np.shape(self.image)) == 6 and np.shape(self.image)[-2:] == (2, 2)
 
+    def predict_np(
+            self,
+            visibility_coords: VisibilityCoords,
+            gain_model: GainModel,
+            near_field_delay_engine: BaseNearFieldDelayEngine,
+            far_field_delay_engine: BaseFarFieldDelayEngine,
+            geodesic_model: BaseGeodesicModel
+    ) -> ComplexArray:
+
+        # convert coords to np
+        visibility_coords = jax.tree.map(np.asarray, visibility_coords)
+
+        def scan_np(f, init, xs):
+            carry = init
+
+            map_size = set(np.shape(x)[0] for x in jax.tree.leaves(xs))
+            if len(map_size) != 1:
+                raise ValueError("All inputs must have the same size")
+            map_size = list(map_size)[0]
+            for i in range(map_size):
+                x = jax.tree.map(lambda x: np.asarray(x[i]), xs)
+                carry, _ = f(carry, x)
+            return carry, ()
+
+        # Uses a similar approach to predict, but with numpy instead of JAX, which allows usin wgridder direct access to buffers rather than duplicating buffers, which causes blow-up.
+        def body_fn(accumulate, x):
+            (ra, dec, dl, dm, image) = x
+
+            def compute_visibilities_fits_single_source(freq, time, uvw, antenna1, antenna2):
+                g1, g2, masked_image, l0, m0, _dl, _dm = jax.tree.map(
+                    np.asarray,
+                    _prepare_model_jit(
+                        freq, time, antenna1, antenna2,
+                        self.model_freqs, image, ra, dec, dl, dm,
+                        geodesic_model, gain_model, self.is_full_stokes()
+                    )
+                )
+                return self._single_compute_visibilty_np(
+                    uvw, g1, g2, freq, masked_image, l0, m0, _dl, _dm
+                )  # [B[,2, 2]]
+
+            # Kernel input shapes:
+            # freq: []
+            # time: []
+            # uvw: [B, 3]
+            # antenna1: [B]
+            # antenna2: [B]
+            freqs = visibility_coords.freqs[None, :]  # [1, C]
+            times = visibility_coords.times[:, None]  # [T, 1]
+            uvw = visibility_coords.uvw[:, None, :, :]  # [T, 1, B, 3]
+            antenna1 = visibility_coords.antenna1[None, None, :]  # [1, 1, B]
+            antenna2 = visibility_coords.antenna2[None, None, :]  # [1, 1, B]
+
+            num_cpus = os.cpu_count()
+            total_num_execs = T * C * (4 if self.is_full_stokes() else 1)
+            num_threads = min(num_cpus, total_num_execs)
+            num_threads_inner = (4 if self.is_full_stokes() else 1)
+            num_threads_outer = max(1, num_threads // num_threads_inner)
+            cb = construct_threaded_callback(compute_visibilities_fits_single_source, 0, 0, 2, 1, 1,
+                                             num_threads=num_threads_outer)
+
+            delta = cb(freqs, times, uvw, antenna1, antenna2)  # [T, C, B[, 2, 2]]
+            # out_mapping = '[T,~B,C[,~P,~Q]]'
+            delta = np.moveaxis(delta, 2, 1)  # [T, B, C[, 2, 2]]
+            accumulate += mp_policy.cast_to_vis(delta)
+            return accumulate, ()
+
+        T = np.shape(visibility_coords.times)[0]
+        B = np.shape(visibility_coords.antenna1)[0]
+        C = np.shape(visibility_coords.freqs)[0]
+        if self.is_full_stokes():
+            init_accumulate = np.zeros((T, B, C, 2, 2), dtype=mp_policy.vis_dtype)
+
+        else:
+            init_accumulate = np.zeros((T, B, C), dtype=mp_policy.vis_dtype)
+        xs = jax.tree.map(np.asarray, (self.ra, self.dec, self.dl, self.dm, self.image))
+        # sum over sources
+        vis_accumulation, _ = scan_np(body_fn, init_accumulate, xs)
+        return vis_accumulation  # [T, B, C[, 2, 2]]
+
     def predict(
             self,
             visibility_coords: VisibilityCoords,
@@ -91,44 +219,11 @@ class BaseFITSSourceModel(AbstractSourceModel):
                 verbose=True
             )
             def compute_visibilities_fits_single_source(freq, time, uvw, antenna1, antenna2):
-
-                interp = InterpolatedArray(x=self.model_freqs, values=(image, ra, dec, dl, dm),
-                                           axis=0)
-                _image, _ra, _dec, _dl, _dm = interp(freq)  # [num_l, num_m, [2,2]], [],...
-
-                num_l, num_m = np.shape(_image)[:2]
-                lmn = geodesic_model.compute_far_field_lmn(_ra, _dec, time, return_elevation=False)
-                l0, m0 = lmn[:2]
-                lvec = (-0.5 * num_l + jnp.arange(num_l)) * _dl + l0
-                mvec = (-0.5 * num_m + jnp.arange(num_m)) * _dm + m0
-                L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
-                L2M2 = L ** 2 + M ** 2
-                N = jnp.sqrt(1 - L2M2)
-                LMN = jnp.stack([L, M, N], axis=-1)  # [num_l, num_m, 3]
-                elevation = geodesic_model.compute_elevation_from_lmn(LMN, time)  # [num_l, num_m]
-                elevation_mask = elevation <= 0
-                n_mask = L2M2 > 1
-                mask = jnp.logical_or(elevation_mask, n_mask)
-                if self.is_full_stokes():
-                    masked_image = jnp.where(mask[:, :, None, None], 0, _image)  # [Nl,Nm[,2, 2]]
-                else:
-                    masked_image = jnp.where(mask, 0, _image)  # [Nl,Nm[,2, 2]]
-
-                lmn_geodesic = geodesic_model.compute_far_field_geodesic(
-                    times=time[None],
-                    lmn_sources=lmn[None, :]
-                )  # [1, num_ant, 1, 3]
-                if gain_model is not None:
-                    # Compute the gains
-                    gains = gain_model.compute_gain(
-                        freqs=freq[None],
-                        times=time[None],
-                        lmn_geodesic=lmn_geodesic,
-                    )  # [1, num_ant, 1, 1,[, 2, 2]]
-                    g1 = gains[0, antenna1, 0, 0, ...]  # [[, 2, 2]]
-                    g2 = gains[0, antenna2, 0, 0, ...]  # [[, 2, 2]]
-                else:
-                    g1 = g2 = None
+                g1, g2, masked_image, l0, m0, _dl, _dm = _prepare_model(
+                    freq, time, antenna1, antenna2,
+                    self.model_freqs, image, ra, dec, dl, dm,
+                    geodesic_model, gain_model, self.is_full_stokes()
+                )
                 return self._single_compute_visibilty(uvw, g1, g2, freq, masked_image, l0, m0, _dl, _dm)  # [B[,2, 2]]
 
             delta = compute_visibilities_fits_single_source(
@@ -155,6 +250,67 @@ class BaseFITSSourceModel(AbstractSourceModel):
         # sum over sources
         vis_accumulation, _ = lax.scan(body_fn, init_accumulate, xs)
         return vis_accumulation  # [T, B, C[, 2, 2]]
+
+    def _single_compute_visibilty_np(self, uvw, g1, g2, freq, image, l0, m0, dl, dm):
+        """
+        Compute the visibility from a single direction for a single baseline.
+
+        Args:
+            uvw: [B, 3]
+            g1: [B, 2, 2]
+            g2: [B, 2, 2]
+            freq: []
+            image: [Nl,Nm[,2, 2]]
+            l0: []
+            m0: []
+            dl: []
+            dm: []
+
+        Returns:
+            [B[,2, 2]] visibility in given direction for given baseline.
+        """
+        uvw = np.array(uvw)
+        if self.convention == 'engineering':
+            uvw = np.negative(uvw)
+
+        def wgridder_per_polarisation(image):
+            return wgridder.image_to_vis_np(
+                uvw=uvw,
+                freqs=freq[None],
+                dirty=image,
+                pixsize_m=dm,
+                pixsize_l=dl,
+                center_m=m0,
+                center_l=l0,
+                epsilon=self.epsilon,
+                num_threads=1
+            )[:, 0]  # [B]
+
+        if self.is_full_stokes():
+            # image_mapping = "[P,Q,Nl,Nm]"
+            # out_mapping = "[~B,P,Q]"
+            image = np.transpose(image, (2, 3, 0, 1))  # [P,Q,Nl,Nm]
+        else:
+            # image_mapping = "[Nl,Nm]"
+            # out_mapping = "[~B]"
+            pass
+
+        cb = construct_threaded_callback(wgridder_per_polarisation, 2, num_threads=4 if self.is_full_stokes() else 1)
+        vis = cb(image)  # [[2, 2],B]
+        vis = np.moveaxis(vis, -1, 0)  # [B, [2, 2]]
+
+        if g1 is None and g2 is None:
+            return vis
+
+        # Apply the gains
+        def apply_gains(vis, g1, g2):
+            if self.is_full_stokes():
+                return kron_product(g1, vis, g2.conj().T)
+            else:
+                return g1 * vis * g2.conj()
+
+        vis = jax.jit(jax.vmap(apply_gains))(vis, g1, g2)  # [B[,2,2]]
+        return np.asarray(vis)
 
     def _single_compute_visibilty(self, uvw, g1, g2, freq, image, l0, m0, dl, dm):
         """

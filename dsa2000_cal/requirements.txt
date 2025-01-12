@@ -18,3 +18,4 @@ uvloop
 websockets<14
 streamlit
 tqdm
+essm_jax

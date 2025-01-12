@@ -91,7 +91,9 @@ def _host_dirty2vis(uvw: FloatArray, freqs: FloatArray,
                     epsilon: float, do_wgridding: bool,
                     flip_v: bool, divide_by_n: bool,
                     sigma_min: float, sigma_max: float,
-                    verbosity: int):
+                    verbosity: int,
+                    output_buffer: np.ndarray | None = None,
+                    num_threads: int = 1):
     """
     Compute the visibilities from the dirty image.
 
@@ -116,6 +118,19 @@ def _host_dirty2vis(uvw: FloatArray, freqs: FloatArray,
     Returns:
         [num_rows, num_freqs] array of visibilities.
     """
+
+    if output_buffer is not None:
+        if np.shape(output_buffer) != (np.shape(uvw)[0], np.shape(freqs)[0]):
+            raise ValueError(
+                f"Expected output_buffer to have shape {(np.shape(uvw)[0], np.shape(freqs)[0])}, got {np.shape(output_buffer)}"
+            )
+        if not np.issubdtype(np.result_type(output_buffer), jnp.complexfloating):
+            raise ValueError(
+                f"Expected output_buffer to have dtype {jnp.complexfloating}, got {np.result_type(output_buffer)}"
+            )
+        order = output_buffer.flags['F_CONTIGUOUS']
+        if not order:
+            raise ValueError("Expected output_buffer to be Fortran contiguous.")
 
     uvw = np.asarray(uvw, order='C', dtype=np.float64)  # [num_rows, 3]
     freqs = np.asarray(freqs, order='C', dtype=np.float64)  # [num_freqs]
@@ -155,7 +170,7 @@ def _host_dirty2vis(uvw: FloatArray, freqs: FloatArray,
         divide_by_n=bool(divide_by_n),
         sigma_min=float(sigma_min),
         sigma_max=float(sigma_max),
-        nthreads=1,
+        nthreads=num_threads,
         verbosity=int(verbosity),
         vis=output_vis
     )
@@ -408,7 +423,7 @@ def vis_to_image_np(uvw: FloatArray, freqs: FloatArray, vis: ComplexArray, pixsi
                     double_precision_accumulation: bool = False, scale_by_n: bool = True,
                     normalise: bool = True,
                     output_buffer: np.ndarray | None = None,
-                    num_threads: int= 1) -> jax.Array:
+                    num_threads: int = 1) -> jax.Array:
     """
     Compute the image from the visibilities.
 
@@ -529,3 +544,58 @@ def image_to_vis(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
         nthreads=nthreads,
         verbosity=verbosity
     ))
+
+
+def image_to_vis_np(uvw: jax.Array, freqs: jax.Array, dirty: jax.Array,
+                    pixsize_m: float | jax.Array, pixsize_l: float | jax.Array,
+                    center_m: float | jax.Array, center_l: float | jax.Array,
+                    mask: jax.Array | None = None,
+                    epsilon: float = 1e-6,
+                    num_threads: int = 1,
+                    verbosity: int = 0,
+                    output_buffer: np.ndarray | None = None):
+    """
+    Compute the visibilities from the dirty image.
+
+    Args:
+        uvw: [num_rows, 3] array of uvw coordinates.
+        freqs: [num_freqs] array of frequencies.
+        dirty: [num_l, num_m] array of dirty image, in units of JY/PIXEL.
+        pixsize_m: scalar, pixel size in m direction.
+        pixsize_l: scalar, pixel size in l direction.
+        center_m: scalar, m at center of image.
+        center_l: scalar, l at center of image.
+        mask: [num_rows, num_freqs] array of mask, only predict where mask!=0.
+        epsilon: scalar, gridding accuracy
+        nthreads: number of threads to use.
+        verbosity: verbosity level, 0, 1.
+
+    Returns:
+        [num_rows, num_freqs] array of visibilities.
+    """
+
+    # # Divides I(l,m) by n(l,m) then applies gridding with w-term taken into account.
+    # # Pixels should be in Jy/pixel.
+    uvw[:, 2] *= -1
+
+    vis = _host_dirty2vis(
+        uvw=uvw,
+        freqs=freqs,
+        dirty=dirty,
+        wgt=None,
+        mask=mask,
+        pixsize_m=pixsize_m,
+        pixsize_l=pixsize_l,
+        center_m=center_m,
+        center_l=center_l,
+        epsilon=epsilon,
+        do_wgridding=True,
+        flip_v=False,
+        divide_by_n=True,
+        sigma_min=1.1,
+        sigma_max=2.6,
+        verbosity=verbosity,
+        num_threads=num_threads,
+        output_buffer=output_buffer
+    )
+    return vis

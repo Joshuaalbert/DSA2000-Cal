@@ -2,7 +2,8 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.pure_callback_utils import construct_threaded_pure_callback, _build_batch_shape_determiner
+from dsa2000_cal.common.pure_callback_utils import construct_threaded_pure_callback, _build_batch_shape_determiner, \
+    construct_threaded_callback
 
 
 def test_construct_threaded_pure_callback():
@@ -48,3 +49,40 @@ def test_build_batch_shape_determiner():
     z = np.ones((4, 5))
     batch_shape_determiner = _build_batch_shape_determiner(1, 2, 0)
     assert batch_shape_determiner(x, y, z) == (4, 5)
+
+
+def test_construct_threaded_callback():
+    def cb_kernel(x, y):
+        assert np.shape(x) == ()
+        assert np.shape(y) == ()
+        return np.sin(x) + np.cos(y)
+
+    cb = construct_threaded_callback(cb_kernel, 0, 0)
+    x = np.ones((2, 3))
+    y = np.ones((2, 3))
+
+    res = cb(x, y)
+
+    np.testing.assert_allclose(res, np.sin(x) + np.cos(y))
+
+
+def test_construct_threaded_callback_nested():
+    def cb_kernel(x, y):
+        def cb_inner(a):
+            assert np.shape(a) == ()
+            return a * 2
+
+        assert np.shape(x) == (3,)
+        assert np.shape(y) == (3,)
+        a = np.sin(x) + np.cos(y)
+        cb = construct_threaded_callback(cb_inner, 0)
+        return cb(a)
+
+
+    cb = construct_threaded_callback(cb_kernel, 1, 1)
+    x = np.ones((2, 3))
+    y = np.ones((2, 3))
+
+    res = cb(x, y)
+
+    np.testing.assert_allclose(res, (np.sin(x) + np.cos(y))*2)

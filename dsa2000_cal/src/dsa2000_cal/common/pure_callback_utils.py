@@ -101,7 +101,7 @@ def _build_batch_shape_determiner(*args_shape_size):
             batch_shape = np.broadcast_shapes(*list(shapes))
         except ValueError as e:
             if "shape mismatch" in str(e):
-                raise ValueError(f'Inconsistent batch shapes: {shapes}')
+                raise ValueError(f'Inconsistent batch shapes: {leaves}')
             raise e
         return batch_shape
 
@@ -148,15 +148,32 @@ def construct_threaded_pure_callback(cb_kernel: Callable, result_shape_dtypes: A
     return callback
 
 
-def test_construct_threaded_pure_callback():
-    import jax.numpy as jnp
+def construct_threaded_callback(cb_kernel: Callable, *args_shape_size, num_threads: int | None = None):
+    """
+    Construct a callback that uses threading to parallelize the computation.
 
-    def cb_kernel(x, y):
-        return x + y
+    Args:
+        cb_kernel: a callable that takes a consistently shaped set of arguments and returns a consistently shaped
+            pytree of results.
+        *args_shape_size: the number of (unbatched) dimensions for each argument to cb_kernel.
+        num_threads: the number of threads to use. If None, reuses a shared global threadpool, by default using all
+            available CPUs, and which can be configured with environment variable `JAX_PURE_CALLBACK_NUM_THREADS`.
 
-    result_shape_dtypes = jax.ShapeDtypeStruct((), np.float32)
+    Returns:
+        A pure callback that works with vmap, using threading to parallelize the computation.
+    """
 
-    cb = jax.vmap(jax.vmap(construct_threaded_pure_callback(cb_kernel, result_shape_dtypes, 0, 0)))
-    x = jnp.ones((2, 3), np.float32)
-    y = jnp.ones((2, 3), np.float32)
-    res = jax.jit(cb)(x, y)
+    def wrapped_cb_kernel(*args):
+        def _check_shape(x, shape_size):
+            if x is None:
+                return
+            if len(np.shape(x)) != shape_size:
+                raise ValueError(
+                    f'Expected shape of size {shape_size} but got {np.shape(x)}, sized ({len(np.shape(x))}).')
+
+        jax.tree.map(_check_shape, args, args_shape_size, is_leaf=lambda x: x is None)
+        return cb_kernel(*args)
+
+    batch_shape_determiner = _build_batch_shape_determiner(*args_shape_size)
+    cb = _build_callback_from_kernel(wrapped_cb_kernel, batch_shape_determiner, num_threads=num_threads)
+    return cb

@@ -20,6 +20,30 @@ class AbstractSourceModel(ABC):
         """
         ...
 
+    def predict_np(
+            self,
+            visibility_coords: VisibilityCoords,
+            gain_model: GainModel,
+            near_field_delay_engine: BaseNearFieldDelayEngine,
+            far_field_delay_engine: BaseFarFieldDelayEngine,
+            geodesic_model: BaseGeodesicModel
+    ) -> ComplexArray:
+        """
+        Predict the visibility model for the given model data using numpy instead of JAX.
+        Need not be implemented for all models.
+
+        Args:
+            visibility_coords: the visibility coordinates
+            gain_model: the gain model
+            near_field_delay_engine: the near field delay engine
+            far_field_delay_engine: the far field delay engine
+            geodesic_model: the geodesic model
+
+        Returns:
+            the visibility model [T, B, C[, 2, 2]]
+        """
+        raise NotImplementedError("This method must be implemented by the subclass.")
+
     @abstractmethod
     def predict(
             self,
@@ -38,7 +62,6 @@ class AbstractSourceModel(ABC):
             near_field_delay_engine: the near field delay engine
             far_field_delay_engine: the far field delay engine
             geodesic_model: the geodesic model
-
 
         Returns:
             the visibility model [T, B, C[, 2, 2]]

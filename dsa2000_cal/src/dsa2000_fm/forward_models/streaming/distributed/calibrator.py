@@ -14,14 +14,15 @@ import ray
 from jax import numpy as jnp
 from jaxns.framework.ops import simulate_prior_model
 
-from dsa2000_cal.calibration.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
-    MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, UnconstrainedGain
+from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
+    MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_cal.common.jax_utils import block_until_ready, simple_broadcast
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
+from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolution, \
     CalibrationSolutionCache
@@ -97,6 +98,10 @@ def compute_calibrator_options(run_params: ForwardModellingRunParams):
     }
 
 
+class CalibratorParams(SerialisableBaseModel):
+    do_calibration: bool
+
+
 @ray.remote
 class Calibrator:
     """
@@ -105,10 +110,12 @@ class Calibrator:
     The total dataset is (num_times_per_obs, num_freqs_per_obs) or in terms of sol_ints (num_times_per_obs//num_times_per_sol_int, num_freqs_per_obs//num_freqs_per_sol_int).
     """
 
-    def __init__(self, params: ForwardModellingRunParams, data_streamer: Supervisor[DataStreamerResponse],
+    def __init__(self, params: ForwardModellingRunParams, calibrator_params: CalibratorParams,
+                 data_streamer: Supervisor[DataStreamerResponse],
                  model_predictor: Supervisor[ModelPredictorResponse],
                  calibration_solution_cache: CalibrationSolutionCache):
         self.params = params
+        self.calibrator_params = calibrator_params
         self._calibration_solution_cache = calibration_solution_cache
         self._data_streamer = data_streamer
         self._model_predictor = model_predictor
@@ -207,6 +214,17 @@ class Calibrator:
             background_vis_model = np.moveaxis(model.vis_background, 2, 0)  # [E, Tm, Cm, B[, 2, 2]]
             background_vis_model = np.moveaxis(background_vis_model, 3, 2)  # [E, Tm, B, Cm[, 2, 2]]
             return vis_model, background_vis_model
+
+        if not self.calibrator_params.do_calibration:
+            with TimerLog("Gathering data and skipping calibration"):
+                (vis_data, weights, flags, uvw, freqs, times, antenna1,
+                 antenna2) = await gather_data(key, time_idxs, freq_idxs)
+            return CalibratorResponse(
+                visibilities=np.asarray(vis_data),
+                weights=np.asarray(weights),
+                flags=np.asarray(flags),
+                uvw=np.asarray(uvw)
+            )
 
         with TimerLog("Gathering data and model visibilities"):
             (vis_data, weights, flags, uvw, freqs, times, antenna1, antenna2), (vis_model, background_vis_model) = \

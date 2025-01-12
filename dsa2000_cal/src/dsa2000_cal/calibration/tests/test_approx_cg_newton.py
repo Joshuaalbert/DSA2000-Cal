@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.calibration.approx_cg_newton import ApproxCGNewton
+from dsa2000_cal.calibration.solvers.approx_cg_newton import ApproxCGNewton
 from dsa2000_cal.common.array_types import FloatArray
 
 

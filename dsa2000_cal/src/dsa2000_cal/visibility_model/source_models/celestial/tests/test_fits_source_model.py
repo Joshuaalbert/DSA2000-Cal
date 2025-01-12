@@ -80,10 +80,10 @@ def build_mock_fits_source_model(num_model_freqs: int, num_source: int, full_sto
 
     if full_stokes:
         assert np.shape(images) == (
-        num_facets_per_side ** 2, num_model_freqs, N // num_facets_per_side, N // num_facets_per_side, 2, 2)
+            num_facets_per_side ** 2, num_model_freqs, N // num_facets_per_side, N // num_facets_per_side, 2, 2)
     else:
         assert np.shape(images) == (
-        num_facets_per_side ** 2, num_model_freqs, N // num_facets_per_side, N // num_facets_per_side)
+            num_facets_per_side ** 2, num_model_freqs, N // num_facets_per_side, N // num_facets_per_side)
     assert np.shape(ras) == (num_facets_per_side ** 2, num_model_freqs)
     assert np.shape(decs) == (num_facets_per_side ** 2, num_model_freqs)
     assert np.shape(dls) == (num_facets_per_side ** 2, num_model_freqs)
@@ -183,7 +183,7 @@ def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
 
 @pytest.mark.parametrize("full_stokes", [True, False])
 @pytest.mark.parametrize("with_gains", [True, False])
-def test_fits_predict(full_stokes: bool, with_gains: bool):
+def test_run_fits_predict(full_stokes: bool, with_gains: bool):
     time = 15
     ant = 100
     num_freqs = 4
@@ -204,6 +204,14 @@ def test_fits_predict(full_stokes: bool, with_gains: bool):
     else:
         assert not fits_source_model.is_full_stokes()
 
+    visibilities_np = fits_source_model.predict_np(
+        visibility_coords=visibility_coords,
+        gain_model=gain_model,
+        near_field_delay_engine=near_field_delay_engine,
+        far_field_delay_engine=far_field_delay_engine,
+        geodesic_model=geodesic_model
+    )
+
     visibilities = fits_source_model.predict(
         visibility_coords=visibility_coords,
         gain_model=gain_model,
@@ -211,6 +219,8 @@ def test_fits_predict(full_stokes: bool, with_gains: bool):
         far_field_delay_engine=far_field_delay_engine,
         geodesic_model=geodesic_model
     )
+
+    np.testing.assert_allclose(visibilities_np, visibilities, atol=1e-3)
     assert np.all(np.isfinite(visibilities))
     if full_stokes:
         assert np.shape(visibilities) == (num_times, num_baselines, num_freqs, 2, 2)
