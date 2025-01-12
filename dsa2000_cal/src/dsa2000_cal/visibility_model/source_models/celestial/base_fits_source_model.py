@@ -167,9 +167,8 @@ class BaseFITSSourceModel(AbstractSourceModel):
             antenna1 = visibility_coords.antenna1[None, None, :]  # [1, 1, B]
             antenna2 = visibility_coords.antenna2[None, None, :]  # [1, 1, B]
 
-            num_cpus = os.cpu_count()
             total_num_execs = T * C * (4 if self.is_full_stokes() else 1)
-            num_threads = min(num_cpus, total_num_execs)
+            num_threads = min(32, total_num_execs)
             num_threads_inner = (4 if self.is_full_stokes() else 1)
             num_threads_outer = max(1, num_threads // num_threads_inner)
             cb = construct_threaded_callback(compute_visibilities_fits_single_source, 0, 0, 2, 1, 1,

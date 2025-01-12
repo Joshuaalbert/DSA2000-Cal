@@ -10,7 +10,6 @@ import ray
 from ray.runtime_env import RuntimeEnv
 
 from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -37,12 +36,12 @@ def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
     T = 1
     C = 1
     total_num_execs = T * C * (4 if run_params.full_stokes else 1)
-    num_threads = min(total_num_execs, 32)
+    num_cpus = min(total_num_execs, 32)
 
     # TODO: read memory requirements off grafana and place here
     memory = 50 * 2 ** 30  # 50 GB
     return {
-        "num_cpus": num_threads,
+        "num_cpus": num_cpus,
         "num_gpus": 0,
         'memory': memory,
         "runtime_env": RuntimeEnv(
@@ -117,15 +116,14 @@ class DegriddingPredictor:
         await self.init()
 
         with TimerLog(f"Predicting and sampling visibilities for time {time} and freq {freq}"):
-            response = block_until_ready(
-                self._predict(
-                    source_model=source_model,
-                    freq=freq,
-                    time=time,
-                    gain_model=gain_model,
-                    near_field_delay_engine=near_field_delay_engine,
-                    far_field_delay_engine=far_field_delay_engine,
-                    geodesic_model=geodesic_model
-                )
+            response = self._predict(
+                source_model=source_model,
+                freq=freq,
+                time=time,
+                gain_model=gain_model,
+                near_field_delay_engine=near_field_delay_engine,
+                far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model
             )
+
         return jax.tree.map(np.asarray, response)

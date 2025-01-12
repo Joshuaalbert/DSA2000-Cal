@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import warnings
 from datetime import timedelta
 from typing import NamedTuple
 
@@ -26,8 +27,10 @@ class GridderResponse(NamedTuple):
 
 
 def compute_gridder_options(run_params: ForwardModellingRunParams):
-    num_total_execs = run_params.chunk_params.num_freqs_per_sol_int * (4 if run_params.full_stokes else 1)
-    num_threads = min(num_total_execs, 32) # maximum of 32 can be requested
+    if run_params.full_stokes:
+        num_cpus = 32 # 16 inner, 2 outer
+    else:
+        num_cpus = 32 # 32 inner, 1 outer
     # Memory is 2 * num_pix^2 * num_coh * itemsize(image)
     num_coh = 4 if run_params.full_stokes else 1
     num_pix_l = run_params.image_params.num_l
@@ -37,7 +40,7 @@ def compute_gridder_options(run_params: ForwardModellingRunParams):
     # TODO: read memory requirements off grafana and put here
     memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
     return {
-        "num_cpus": num_threads,
+        "num_cpus": num_cpus,
         "num_gpus": 0,  # Doesn't use GPU
         'memory': 1.1 * memory
     }
@@ -103,11 +106,14 @@ class Gridder:
                                   dtype=np.float32, order='F')
             pol_array = np.arange(1)
 
-        num_cpu = os.cpu_count()
-        num_total_execs = num_chan * (4 if self.params.full_stokes else 1)
-        num_threads = min(num_total_execs, num_cpu)
-        num_threads_inner = min(num_cpu, num_chan)
-        num_threads_outer = max(1, num_threads // num_threads_inner)
+        if os.cpu_count() < 32:
+            warnings.warn(f"Expected 32 CPUs, so there will be over-subscription.")
+        if self.params.full_stokes:
+            num_threads_outer = 2
+            num_threads_inner = 16
+        else:
+            num_threads_outer = 1
+            num_threads_inner = 32
 
         def single_run(p_idx, q_idx):
             _visibilities = visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan))
