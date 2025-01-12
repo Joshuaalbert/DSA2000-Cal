@@ -34,9 +34,15 @@ def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
     # B = run_params.chunk_params.num_baselines
     # itemsize_vis = np.dtype(np.complex64).itemsize
     # memory = 2 * B * num_coh * (itemsize_vis)
-    memory = 50 * 2**30  # 50 GB
+    T = 1
+    C = 1
+    total_num_execs = T * C * (4 if run_params.full_stokes else 1)
+    num_threads = min(total_num_execs, 32)
+
+    # TODO: read memory requirements off grafana and place here
+    memory = 50 * 2 ** 30  # 50 GB
     return {
-        "num_cpus": 1,
+        "num_cpus": num_threads,
         "num_gpus": 0,
         'memory': memory,
         "runtime_env": RuntimeEnv(

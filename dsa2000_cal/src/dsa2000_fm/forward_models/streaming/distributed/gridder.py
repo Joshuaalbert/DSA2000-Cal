@@ -1,8 +1,6 @@
 import asyncio
-import itertools
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import NamedTuple
 
@@ -11,7 +9,7 @@ import pylab as plt
 import ray
 
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
-from dsa2000_cal.common.jax_utils import block_until_ready
+from dsa2000_cal.common.pure_callback_utils import construct_threaded_callback
 from dsa2000_cal.common.quantity_utils import quantity_to_np
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.wgridder import vis_to_image_np
@@ -28,15 +26,18 @@ class GridderResponse(NamedTuple):
 
 
 def compute_gridder_options(run_params: ForwardModellingRunParams):
+    num_total_execs = run_params.chunk_params.num_freqs_per_sol_int * (4 if run_params.full_stokes else 1)
+    num_threads = min(num_total_execs, 32) # maximum of 32 can be requested
     # Memory is 2 * num_pix^2 * num_coh * itemsize(image)
     num_coh = 4 if run_params.full_stokes else 1
     num_pix_l = run_params.image_params.num_l
     num_pix_m = run_params.image_params.num_m
     # image is f64
     itemsize_image = np.dtype(np.float64).itemsize
+    # TODO: read memory requirements off grafana and put here
     memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
     return {
-        "num_cpus": run_params.chunk_params.num_freqs_per_sol_int,  # 1 thread per channel * (num coh)
+        "num_cpus": num_threads,
         "num_gpus": 0,  # Doesn't use GPU
         'memory': 1.1 * memory
     }
@@ -90,7 +91,7 @@ class Gridder:
                                     dtype=np.float32, order='F')
             psf_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 2, 2),
                                   dtype=np.float32, order='F')
-            pq_array = itertools.product(range(2), range(2))
+            pol_array = np.arange(2)
         else:
             # Add extra axes
             visibilities = visibilities[..., None, None]
@@ -100,12 +101,19 @@ class Gridder:
                                     dtype=np.float32, order='F')
             psf_buffer = np.zeros((self.params.image_params.num_l, self.params.image_params.num_m, 1, 1),
                                   dtype=np.float32, order='F')
-            pq_array = itertools.product(range(1), range(1))
+            pol_array = np.arange(1)
+
+        num_cpu = os.cpu_count()
+        num_total_execs = num_chan * (4 if self.params.full_stokes else 1)
+        num_threads = min(num_total_execs, num_cpu)
+        num_threads_inner = min(num_cpu, num_chan)
+        num_threads_outer = max(1, num_threads // num_threads_inner)
 
         def single_run(p_idx, q_idx):
             _visibilities = visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan))
             _weights = weights[..., p_idx, q_idx].reshape((num_rows, num_chan))
             _mask = np.logical_not(flags[..., p_idx, q_idx].reshape((num_rows, num_chan)))
+
             vis_to_image_np(
                 uvw=uvw.reshape((num_rows, 3)),
                 freqs=freqs,
@@ -123,7 +131,7 @@ class Gridder:
                 scale_by_n=True,
                 normalise=True,
                 output_buffer=image_buffer[:, :, p_idx, q_idx],
-                num_threads=num_chan
+                num_threads=num_threads_inner
             )
             vis_to_image_np(
                 uvw=uvw.reshape((num_rows, 3)),
@@ -142,15 +150,15 @@ class Gridder:
                 scale_by_n=True,
                 normalise=True,
                 output_buffer=psf_buffer[:, :, p_idx, q_idx],
-                num_threads=num_chan
+                num_threads=num_threads_inner
             )
 
-        # TODO: Tune size of thread pool executor.
-        #  Note, that each thread internally uses self.params.chunk_params.num_freqs_per_sol_int threads.
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            results = executor.map(single_run, *zip(*pq_array))
-        # Get all results (None's)
-        results = list(results)
+        cb = construct_threaded_callback(
+            single_run, 0, 0,
+            num_threads=num_threads_outer
+        )
+        _ = cb(pol_array[:, None], pol_array[None, :])
+
         if np.all(image_buffer == 0) or not np.all(np.isfinite(image_buffer)):
             logger.warning(f"Image buffer is all zeros or contains NaNs/Infs for freq_idx={sol_int_freq_idx}")
         if np.all(psf_buffer == 0) or not np.all(np.isfinite(psf_buffer)):
@@ -184,10 +192,10 @@ class Gridder:
             del cal_response
 
         with TimerLog("Gridding..."):
-            return block_until_ready(self._grid_vis(
+            return self._grid_vis(
                 sol_int_freq_idx=sol_int_freq_idx,
                 uvw=uvw,
                 visibilities=visibilities,
                 weights=weights,
                 flags=flags
-            ))
+            )

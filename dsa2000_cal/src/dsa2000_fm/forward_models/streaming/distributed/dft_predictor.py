@@ -35,6 +35,7 @@ def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
     num_coh = 4 if run_params.full_stokes else 1
     B = run_params.chunk_params.num_baselines
     itemsize_vis = np.dtype(np.complex64).itemsize
+    # TODO: read memory requirements off grafana
     memory = 2 * B * num_coh * (itemsize_vis)
     return {
         "num_cpus": 0,
