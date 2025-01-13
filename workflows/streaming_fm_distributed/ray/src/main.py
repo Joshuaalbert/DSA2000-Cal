@@ -23,7 +23,7 @@ from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
 from dsa2000_fm.forward_models.streaming.distributed.aggregator import Aggregator, AggregatorParams, \
     compute_aggregator_options
 from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolutionCacheParams, \
-    CalibrationSolutionCache, compuate_calibration_solution_cache_options
+    CalibrationSolutionCache, compute_calibration_solution_cache_options
 from dsa2000_fm.forward_models.streaming.distributed.calibrator import Calibrator, \
     compute_calibrator_options, CalibratorParams
 from dsa2000_fm.forward_models.streaming.distributed.common import ChunkParams, ForwardModellingRunParams, ImageParams
@@ -267,7 +267,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
 
     calibration_soluation_cache = CalibrationSolutionCache(
         params=CalibrationSolutionCacheParams(),
-        **compuate_calibration_solution_cache_options(run_params)
+        **compute_calibration_solution_cache_options(run_params)
     )
     calibrator_remote = Calibrator.options(
         **compute_calibrator_options(run_params)

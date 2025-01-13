@@ -170,25 +170,25 @@ class _CalibrationSolutionCache:
     async def get_calibration_solution_snapshot(self, sol_int_time_idx: int,
                                                 sol_int_freq_idx: int) -> CalibrationSolution:
         await self.init()
-        return self.cache.get(
-            (sol_int_time_idx - 1, sol_int_freq_idx),
-            CalibrationSolution(
+        if sol_int_time_idx == 0:
+            return CalibrationSolution(
                 solver_state=None,
                 gains=None,
                 model_freqs=None,
                 model_times=None
             )
-        )
+        # otherwise await condition that item exists for key
+        key = (sol_int_time_idx - 1, sol_int_freq_idx)
+        if key not in self.cache:
+            await asyncio.sleep(1.)
+        return self.cache[key]
 
 
-def compuate_calibration_solution_cache_options(run_params: ForwardModellingRunParams):
-    # memory os Tm * A * Cm * num_coh * itemsize(gains)
-    num_coh = 4 if run_params.full_stokes else 1
-    Tm = run_params.chunk_params.num_model_times_per_solution_interval
-    Cm = run_params.chunk_params.num_model_freqs_per_solution_interval
-    A = len(run_params.ms_meta.antennas)
-    itemsize_gains = np.dtype(np.complex64).itemsize
-    memory = Tm * A * Cm * num_coh * itemsize_gains
+def compute_calibration_solution_cache_options(run_params: ForwardModellingRunParams):
+    # Memory is 3.91GB per solution interval in freq
+    memory = 3.91 * 1024 ** 3 * run_params.chunk_params.num_sol_ints_freq
     return {
-        'memory': 1.1 * memory
+        'memory': 1.1 * memory,
+        'num_cpus': 0,
+        'num_gpus': 0,
     }

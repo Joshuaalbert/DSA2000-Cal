@@ -62,35 +62,37 @@ def average_rule(array, num_model_size: int, axis: int):
 
 
 def compute_calibrator_options(run_params: ForwardModellingRunParams):
-    # memory for inputs from stream:
-    # Ts * B * Cs * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
-
-    # memory for averaged data:
-    # Tm * B * Cm * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
-
-    # memory for model:
-    # D * Tm * B * Cm * num_coh * itemsize(vis)
-
-    # memory for solution:
-    # D * Tm * A * Cm * num_coh * itemsize(gains)
-
-    num_coh = 4 if run_params.full_stokes else 1
-    Ts = run_params.chunk_params.num_times_per_sol_int
-    B = run_params.chunk_params.num_baselines
-    Cs = run_params.chunk_params.num_freqs_per_sol_int
-    D = run_params.num_cal_facets
-    Tm = run_params.chunk_params.num_model_times_per_solution_interval
-    Cm = run_params.chunk_params.num_model_freqs_per_solution_interval
-    A = len(run_params.ms_meta.antennas)
-    itemsize_vis = np.dtype(np.complex64).itemsize
-    itemsize_weights = np.dtype(np.float16).itemsize
-    itemsize_flags = np.dtype(np.bool_).itemsize
-    itemsize_gains = np.dtype(np.complex64).itemsize
-    memory = Ts * B * Cs * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
-             Tm * B * Cm * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
-             D * Tm * B * Cm * num_coh * itemsize_vis + \
-             D * Tm * A * Cm * num_coh * itemsize_gains
-    # TODO: flip to GPU once we standardise the GPU's per device. This would need different resources for varying GPU's
+    # # memory for inputs from stream:
+    # # Ts * B * Cs * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+    #
+    # # memory for averaged data:
+    # # Tm * B * Cm * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
+    #
+    # # memory for model:
+    # # D * Tm * B * Cm * num_coh * itemsize(vis)
+    #
+    # # memory for solution:
+    # # D * Tm * A * Cm * num_coh * itemsize(gains)
+    #
+    # num_coh = 4 if run_params.full_stokes else 1
+    # Ts = run_params.chunk_params.num_times_per_sol_int
+    # B = run_params.chunk_params.num_baselines
+    # Cs = run_params.chunk_params.num_freqs_per_sol_int
+    # D = run_params.num_cal_facets
+    # Tm = run_params.chunk_params.num_model_times_per_solution_interval
+    # Cm = run_params.chunk_params.num_model_freqs_per_solution_interval
+    # A = len(run_params.ms_meta.antennas)
+    # itemsize_vis = np.dtype(np.complex64).itemsize
+    # itemsize_weights = np.dtype(np.float16).itemsize
+    # itemsize_flags = np.dtype(np.bool_).itemsize
+    # itemsize_gains = np.dtype(np.complex64).itemsize
+    # memory = Ts * B * Cs * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
+    #          Tm * B * Cm * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags) + \
+    #          D * Tm * B * Cm * num_coh * itemsize_vis + \
+    #          D * Tm * A * Cm * num_coh * itemsize_gains
+    # memory used is 11.5GB
+    memory = 11.5 * 1024 ** 3
+    # TODO: if we change execution pattern, e.g. to GPU or sharded over CPUs then should change.
     return {
         "num_cpus": 1,
         "num_gpus": 0,

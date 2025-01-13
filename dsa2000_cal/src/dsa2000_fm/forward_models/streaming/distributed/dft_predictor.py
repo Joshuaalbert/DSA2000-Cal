@@ -31,15 +31,16 @@ class DFTPredictorResponse(NamedTuple):
 
 
 def compute_dft_predictor_options(run_params: ForwardModellingRunParams):
-    # memory is 2 * B * num_coh * (itemsize(vis))
-    num_coh = 4 if run_params.full_stokes else 1
-    B = run_params.chunk_params.num_baselines
-    itemsize_vis = np.dtype(np.complex64).itemsize
-    # TODO: read memory requirements off grafana
-    memory = 2 * B * num_coh * (itemsize_vis)
+    # CPU usage is 0
+    # GPU memory usage is 17.2GB
+    # memory usage is 10.2GB
+    memory = 10.2 * 1024 ** 3
+    num_cpus = 0
+    gpu_size = 88
+    num_gpus = 17.2 / gpu_size * 1.1
     return {
-        "num_cpus": 0,
-        "num_gpus": 0.1,
+        "num_cpus": num_cpus,
+        "num_gpus": num_gpus,
         'memory': 1.1 * memory,
         "runtime_env": RuntimeEnv(
             env_vars={

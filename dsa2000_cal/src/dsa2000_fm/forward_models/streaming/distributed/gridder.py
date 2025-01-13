@@ -31,14 +31,8 @@ def compute_gridder_options(run_params: ForwardModellingRunParams):
         num_cpus = 32 # 16 inner, 2 outer
     else:
         num_cpus = 32 # 32 inner, 1 outer
-    # Memory is 2 * num_pix^2 * num_coh * itemsize(image)
-    num_coh = 4 if run_params.full_stokes else 1
-    num_pix_l = run_params.image_params.num_l
-    num_pix_m = run_params.image_params.num_m
-    # image is f64
-    itemsize_image = np.dtype(np.float64).itemsize
-    # TODO: read memory requirements off grafana and put here
-    memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
+    # memory usage is 18.6GB
+    memory = 18.6 * 1024 ** 3
     return {
         "num_cpus": num_cpus,
         "num_gpus": 0,  # Doesn't use GPU
@@ -139,6 +133,7 @@ class Gridder:
                 output_buffer=image_buffer[:, :, p_idx, q_idx],
                 num_threads=num_threads_inner
             )
+            # todo: PB correction
             vis_to_image_np(
                 uvw=uvw.reshape((num_rows, 3)),
                 freqs=freqs,

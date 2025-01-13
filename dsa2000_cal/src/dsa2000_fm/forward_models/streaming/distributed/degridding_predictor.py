@@ -28,18 +28,10 @@ class DegriddingPredictorResponse(NamedTuple):
 
 
 def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
-    # # memory is 2 * B * num_coh * (itemsize(vis))
-    # num_coh = 4 if run_params.full_stokes else 1
-    # B = run_params.chunk_params.num_baselines
-    # itemsize_vis = np.dtype(np.complex64).itemsize
-    # memory = 2 * B * num_coh * (itemsize_vis)
-    T = 1
-    C = 1
-    total_num_execs = T * C * (4 if run_params.full_stokes else 1)
-    num_cpus = min(total_num_execs, 32)
-
-    # TODO: read memory requirements off grafana and place here
-    memory = 50 * 2 ** 30  # 50 GB
+    # Distributed over 32 CPUs
+    num_cpus = 32
+    # memory is 20.5GB
+    memory = 20.5 * 1024 ** 3
     return {
         "num_cpus": num_cpus,
         "num_gpus": 0,

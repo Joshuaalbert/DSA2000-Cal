@@ -56,12 +56,14 @@ class DataStreamerResponse(NamedTuple):
 
 def compute_data_streamer_options(run_params: ForwardModellingRunParams):
     # memory is 2 * B * num_coh * (itemsize(vis) + itemsize(weights) + itemsize(flags))
-    num_coh = 4 if run_params.full_stokes else 1
-    B = run_params.chunk_params.num_baselines
-    itemsize_vis = np.dtype(np.complex64).itemsize
-    itemsize_weights = np.dtype(np.float16).itemsize
-    itemsize_flags = np.dtype(np.bool_).itemsize
-    memory = 2 * B * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags)
+    # num_coh = 4 if run_params.full_stokes else 1
+    # B = run_params.chunk_params.num_baselines
+    # itemsize_vis = np.dtype(np.complex64).itemsize
+    # itemsize_weights = np.dtype(np.float16).itemsize
+    # itemsize_flags = np.dtype(np.bool_).itemsize
+    # memory = 2 * B * num_coh * (itemsize_vis + itemsize_weights + itemsize_flags)
+    # memory is 17GB
+    memory = 17 * 1024 ** 3
     return {
         "num_cpus": 1,
         "num_gpus": 0,

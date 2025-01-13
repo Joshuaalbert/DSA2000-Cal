@@ -95,12 +95,8 @@ class SystemGainSimulatorResponse(NamedTuple):
 
 
 def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams):
-    # memory is 2 * n * n * A * num_coh * itemsize(gains)
-    num_coh = 4 if run_params.full_stokes else 1
-    n = 257
-    A = len(run_params.ms_meta.antennas)
-    itemsize_gains = np.dtype(np.complex64).itemsize
-    memory = 2 * n * n * A * num_coh * itemsize_gains
+    # memory is 600MB
+    memory = 600 * 2 ** 20
     return {
         "num_cpus": 1,
         "num_gpus": 0,

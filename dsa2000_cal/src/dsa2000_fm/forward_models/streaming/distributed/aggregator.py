@@ -42,13 +42,8 @@ class AggregatorResponse(NamedTuple):
 
 
 def compute_aggregator_options(run_params: ForwardModellingRunParams):
-    # memory is 2 * num_pix^2 * num_coh * itemsize(image)
-    num_coh = 4 if run_params.full_stokes else 1
-    num_pix_l = run_params.image_params.num_l
-    num_pix_m = run_params.image_params.num_m
-    # image is f64
-    itemsize_image = np.dtype(np.float64).itemsize
-    memory = 2 * num_pix_l * num_pix_m * num_coh * itemsize_image
+    # Memory rose to 24GB
+    memory = 24 * 1024 ** 3
     return {
         "num_cpus": 0,  # Doesn't use CPU
         "num_gpus": 0,  # Doesn't use GPU
@@ -195,7 +190,7 @@ class _Aggregator:
         psf_path = os.path.join(self.params.fm_run_params.plot_folder,
                                 f"{self.params.fm_run_params.run_name}_{self.params.image_suffix}_psf.fits")
 
-        # TODO: remove primary beam
+        # TODO: remove primary beam (probably before adding since beam can change per time) can do in gridder step.
 
         # Easier than averaging taking into account the weights and flags (which are already done per-gridding)
         normalisation = np.max(self._psf, axis=(0, 1))

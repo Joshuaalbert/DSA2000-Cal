@@ -51,15 +51,10 @@ class ModelPredictorResponse(NamedTuple):
 
 
 def compute_model_predictor_options(run_params: ForwardModellingRunParams):
-    # memory is 2 * D * B * num_coh * itemsize(vis)
-    # 2 is for buffer in predict
-    num_coh = 4 if run_params.full_stokes else 1
-    D = run_params.num_cal_facets
-    B = run_params.chunk_params.num_baselines
-    itemsize_vis = np.dtype(np.complex64).itemsize
-    memory = 2 * D * B * num_coh * itemsize_vis
+    # memory is 10.2 GB
+    memory = 10.2 * 1024 ** 3
     return {
-        "num_cpus": 1,
+        "num_cpus": 0, # no comps, just memory
         "num_gpus": 0,
         'memory': 1.1 * memory
     }
