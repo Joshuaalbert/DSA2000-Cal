@@ -188,7 +188,5 @@ def compute_calibration_solution_cache_options(run_params: ForwardModellingRunPa
     # Memory is 3.91GB per solution interval in freq
     memory = 3.91 * 1024 ** 3 * run_params.chunk_params.num_sol_ints_freq
     return {
-        'memory': 1.1 * memory,
-        'num_cpus': 0,
-        'num_gpus': 0,
+        'memory': 1.1 * memory
     }
