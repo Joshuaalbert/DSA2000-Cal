@@ -41,7 +41,6 @@ class BaseContent:
 
     def sync_content(self):
         content_location = str(os.path.join(*self.content_path))
-        print(content_location)
         sync_content(prefix_path=content_location)
 
     def __hash__(self):

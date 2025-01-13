@@ -103,8 +103,8 @@ class Gridder:
         if os.cpu_count() < 32:
             warnings.warn(f"Expected 32 CPUs, so there will be over-subscription.")
         if self.params.full_stokes:
-            num_threads_outer = 2
-            num_threads_inner = 16
+            num_threads_outer = 4
+            num_threads_inner = 8
         else:
             num_threads_outer = 1
             num_threads_inner = 32

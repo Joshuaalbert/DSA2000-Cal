@@ -65,7 +65,7 @@ def compute_data_streamer_options(run_params: ForwardModellingRunParams):
     # memory is 17GB
     memory = 17 * 1024 ** 3
     return {
-        "num_cpus": 1,
+        "num_cpus": 0,
         "num_gpus": 0,
         'memory': 1.1 * memory
     }

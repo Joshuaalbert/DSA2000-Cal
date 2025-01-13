@@ -28,8 +28,14 @@ class DegriddingPredictorResponse(NamedTuple):
 
 
 def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
-    # Distributed over 32 CPUs
-    num_cpus = 32
+    # Distributed over max 32 CPUs
+    T = 1
+    C = 1
+    total_num_execs = T * C * (4 if run_params.full_stokes else 1)
+    num_threads = min(32, total_num_execs)
+    num_threads_inner = (4 if run_params.full_stokes else 1)
+    num_threads_outer = max(1, num_threads // num_threads_inner)
+    num_cpus = num_threads_inner * num_threads_outer
     # memory is 20.5GB
     memory = 20.5 * 1024 ** 3
     return {
