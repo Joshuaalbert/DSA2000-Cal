@@ -5,6 +5,7 @@ import os
 from datetime import timedelta
 from typing import NamedTuple
 
+import astropy.coordinates as ac
 import astropy.units as au
 import jax
 import numpy as np
@@ -33,7 +34,7 @@ from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import
 from dsa2000_fm.forward_models.streaming.distributed.dft_predictor import DFTPredictorResponse
 from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
 from dsa2000_fm.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulatorResponse
-import astropy.coordinates as ac
+
 logger = logging.getLogger('ray')
 
 
@@ -184,17 +185,17 @@ def add_noise(key, vis: ComplexArray, full_stokes: bool, system_equivalent_flux_
     )
     key1, key2 = jax.random.split(key)
     noise = mp_policy.cast_to_vis(
-        (noise_scale / np.sqrt(num_pol)) * np.asarray(
-            jax.lax.complex(
-                jax.random.normal(key1, np.shape(vis)),
-                jax.random.normal(key2, np.shape(vis))
-            )
+        (noise_scale / np.sqrt(num_pol)) * jax.lax.complex(
+            jax.random.normal(key1, np.shape(vis)),
+            jax.random.normal(key2, np.shape(vis))
         )
     )
+
     vis += noise
-    weights = np.full(np.shape(vis), 1 / noise_scale ** 2, mp_policy.weight_dtype)
-    flags = np.full(np.shape(vis), False, mp_policy.flag_dtype)
-    return vis, weights, flags
+    weights = jnp.full(np.shape(vis), 1 / noise_scale ** 2, mp_policy.weight_dtype)
+    flags = jnp.full(np.shape(vis), False, mp_policy.flag_dtype)
+
+    return jax.tree.map(np.asarray, (vis, weights, flags))
 
 
 class PredictAndSampleState(NamedTuple):
