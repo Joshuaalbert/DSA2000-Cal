@@ -79,8 +79,6 @@ class DegriddingPredictor:
                 far_field_delay_engine: BaseFarFieldDelayEngine,
                 geodesic_model: BaseGeodesicModel
         ):
-            # TODO: use wgridder image_to_vis_np for fastest results, avoiding JAX overhead.
-
             visibility_coords = far_field_delay_engine.compute_visibility_coords(
                 freqs=freq[None],
                 times=time[None],
