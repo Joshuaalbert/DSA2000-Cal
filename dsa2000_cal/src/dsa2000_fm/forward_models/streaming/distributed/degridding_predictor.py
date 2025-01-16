@@ -80,8 +80,8 @@ class DegriddingPredictor:
                 geodesic_model: BaseGeodesicModel
         ):
             visibility_coords = far_field_delay_engine.compute_visibility_coords(
-                freqs=freq[None],
-                times=time[None],
+                freqs=np.asarray(freq)[None],
+                times=np.asarray(time)[None],
                 with_autocorr=self.params.ms_meta.with_autocorr,
                 convention=self.params.ms_meta.convention
             )
