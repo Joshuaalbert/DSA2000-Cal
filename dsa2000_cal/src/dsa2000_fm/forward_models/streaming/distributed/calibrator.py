@@ -14,7 +14,7 @@ import ray
 from jax import numpy as jnp
 from jaxns.framework.ops import simulate_prior_model
 
-from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, UnconstrainedGain
+from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
 from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
     MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
@@ -136,10 +136,14 @@ class Calibrator:
         calibration = Calibration(
             full_stokes=self.params.full_stokes,
             num_ant=len(self.params.ms_meta.antennas),
-            gain_probabilistic_model=UnconstrainedGain(
+            gain_probabilistic_model=GainPriorModel(
                 full_stokes=self.params.full_stokes,
                 gain_stddev=2.,
-                dof=1
+                dd_dof=1,
+                double_differential=True,
+                di_dof=1,
+                di_type='unconstrained',
+                dd_type='unconstrained'
             )
         )
 

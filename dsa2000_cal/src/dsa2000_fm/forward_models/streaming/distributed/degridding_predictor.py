@@ -36,8 +36,8 @@ def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
     num_threads_inner = (4 if run_params.full_stokes else 1)
     num_threads_outer = max(1, num_threads // num_threads_inner)
     num_cpus = num_threads_inner * num_threads_outer
-    # memory is 20.5GB
-    memory = 20.5 * 1024 ** 3
+    # memory is 42GB
+    memory = 42 * 1024 ** 3
     return {
         "num_cpus": num_cpus,
         "num_gpus": 0,

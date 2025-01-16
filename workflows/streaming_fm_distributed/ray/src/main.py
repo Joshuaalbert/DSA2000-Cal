@@ -58,11 +58,14 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     else:
         num_baselines = (num_antennas * (num_antennas - 1)) // 2
 
-    freqs = array.get_channels()[:4]
-
-    num_channels = len(freqs)
+    # 10000/10 = 1000, 1000/40 = 25
     num_sub_bands = 1
     num_freqs_per_sol_int = 4
+
+    freqs = array.get_channels()[:num_freqs_per_sol_int * num_sub_bands]
+
+    num_channels = len(freqs)
+
 
     channel_width = array.get_channel_width()
     solution_interval_freq = num_freqs_per_sol_int * channel_width
@@ -216,7 +219,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     )
 
     calibrator_params = CalibratorParams(
-        do_calibration=False
+        do_calibration=True
     )
 
     asyncio.run(run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params,
