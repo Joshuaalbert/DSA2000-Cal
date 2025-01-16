@@ -219,7 +219,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     )
 
     calibrator_params = CalibratorParams(
-        do_calibration=False
+        do_calibration=True
     )
 
     asyncio.run(run_forward_model(run_params, data_streamer_params, predict_params, system_gain_simulator_params,
