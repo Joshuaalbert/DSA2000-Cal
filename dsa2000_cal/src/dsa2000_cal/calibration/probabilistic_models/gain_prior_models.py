@@ -45,25 +45,25 @@ class GainPriorModel(AbstractGainPriorModel):
     di_dof: int = 4
     di_type: Literal['unconstrained', 'rice'] = 'unconstrained'
 
-    def _make_gains_model_unconstrained(self, shape):
+    def _make_gains_model_unconstrained(self, shape, name: str):
         ones = jnp.ones(shape)
         scale = jnp.full(shape, self.gain_stddev)
         gains_real = yield Prior(
             tfpd.Normal(loc=ones,
                         scale=scale
                         ),
-            name='gains_real'
+            name=f'{name}_gains_real'
         ).parametrised()
         gains_imag = yield Prior(
             tfpd.Normal(loc=ones,
                         scale=scale
                         ),
-            name='gains_imag'
+            name=f'{name}_gains_imag'
         ).parametrised()
         gains = jax.lax.complex(gains_real, gains_imag)
         return gains
 
-    def _make_gains_model_rice(self, shape):
+    def _make_gains_model_rice(self, shape, name: str):
         ones = jnp.ones(shape)
         # Rice distribution for X ~ N[1, sigma^2], Y ~ U[0, sigma^2] then R^2 = X^2 + Y^2 ~ Rice(1, sigma^2)
         # We use noncentral chi^2 distribution to generate the squared amplitude.
@@ -72,7 +72,7 @@ class GainPriorModel(AbstractGainPriorModel):
                 noncentrality=ones / self.gain_stddev ** 2,
                 df=2,
             ),
-            name='gains_amplitude_squared'
+            name=f'{name}_gains_amplitude_squared'
         ).parametrised()
         gains_amplitude = self.gain_stddev * jnp.sqrt(gains_amplitude_2)
         gains_phase = yield Prior(
@@ -80,7 +80,7 @@ class GainPriorModel(AbstractGainPriorModel):
                 low=-jnp.pi * ones,
                 high=jnp.pi * ones
             ),
-            name='gains_phase'
+            name=f'{name}_gains_phase'
         ).parametrised()
         gains = gains_amplitude * jax.lax.complex(jnp.cos(gains_phase),
                                                   jnp.sin(gains_phase))  # [num_source, num_ant]
@@ -95,17 +95,17 @@ class GainPriorModel(AbstractGainPriorModel):
         def prior_model():
             def di_make_gains_model(shape):
                 if self.di_type == 'unconstrained':
-                    return (yield from self._make_gains_model_unconstrained(shape))
+                    return (yield from self._make_gains_model_unconstrained(shape, 'di'))
                 elif self.di_type == 'rice':
-                    return (yield from self._make_gains_model_rice(shape))
+                    return (yield from self._make_gains_model_rice(shape, 'di'))
                 else:
                     raise ValueError(f"Unsupported di_type, {self.di_type}")
 
             def dd_make_gains_model(shape):
                 if self.dd_type == 'unconstrained':
-                    return (yield from self._make_gains_model_unconstrained(shape))
+                    return (yield from self._make_gains_model_unconstrained(shape, 'dd'))
                 elif self.dd_type == 'rice':
-                    return (yield from self._make_gains_model_rice(shape))
+                    return (yield from self._make_gains_model_rice(shape, 'dd'))
                 else:
                     raise ValueError(f"Unsupported dd_type, {self.dd_type}")
 
