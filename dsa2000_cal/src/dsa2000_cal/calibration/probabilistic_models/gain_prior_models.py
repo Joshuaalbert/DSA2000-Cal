@@ -143,12 +143,12 @@ class GainPriorModel(AbstractGainPriorModel):
                         gains_di = yield from di_make_gains_model((T, A, F, 2, 2))
                     else:
                         raise ValueError(f"Unsupported double_differential_dof, {self.di_dof}")
+                    gains = gains_di @ gains  # [D,T,A,F,2,2]
                 else:
                     if self.di_dof != 1:
                         raise ValueError("Cannot have full_stokes=False and double_differential_dof > 1")
                     gains_di = yield from di_make_gains_model((T, A, F))
-                gains = gains_di @ gains  # [D,T,A,F,2,2]
-
+                    gains = gains_di * gains  # [D,T,A,F]
             return gains
 
         return prior_model
