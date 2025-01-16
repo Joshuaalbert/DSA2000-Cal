@@ -112,8 +112,8 @@ class Calibrator:
     """
 
     def __init__(self, params: ForwardModellingRunParams, calibrator_params: CalibratorParams,
-                 data_streamer: Supervisor[AsyncGenerator[DataStreamerResponse]],
-                 model_predictor: Supervisor[AsyncGenerator[ModelPredictorResponse]],
+                 data_streamer: Supervisor[AsyncGenerator[DataStreamerResponse, None]],
+                 model_predictor: Supervisor[AsyncGenerator[ModelPredictorResponse, None]],
                  calibration_solution_cache: CalibrationSolutionCache):
         self.params = params
         self.calibrator_params = calibrator_params

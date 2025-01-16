@@ -115,7 +115,7 @@ class DataStreamer:
         # self._step_jit = jax.jit(predict_and_sample.step)
 
     async def __call__(self, key, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[
-        DataStreamerResponse]:
+        DataStreamerResponse, None]:
 
         await self.init()
 

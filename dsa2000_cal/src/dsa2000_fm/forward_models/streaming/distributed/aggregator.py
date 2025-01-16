@@ -32,7 +32,7 @@ class AggregatorParams(SerialisableBaseModel):
         description="The solution interval frequency indices to use for the aggregation into this sub-band."
     )
     fm_run_params: ForwardModellingRunParams
-    gridder: Supervisor[AsyncGenerator[GridderResponse]]
+    gridder: Supervisor[AsyncGenerator[GridderResponse, None]]
     image_suffix: str
 
 
@@ -137,7 +137,7 @@ class Aggregator:
         return f"AGGREGATOR#{node_id}"
 
     async def __call__(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[
-        AggregatorResponse]:
+        AggregatorResponse, None]:
         return await self._actor.call.remote(key, sol_int_time_idxs, save_to_disk)
 
 
@@ -264,7 +264,7 @@ class _Aggregator:
             psf_path=psf_path
         )
 
-    async def call(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[AggregatorResponse]:
+    async def call(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[AggregatorResponse, None]:
         logger.info(f"Aggregating {sol_int_time_idxs}")
         await self.init()
 
