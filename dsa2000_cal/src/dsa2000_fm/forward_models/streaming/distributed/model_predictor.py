@@ -27,7 +27,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model
     build_calibration_fits_source_models_from_wsclean
 from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import \
     build_calibration_point_source_models_from_wsclean, BasePointSourceModel
-from dsa2000_fm.forward_models.streaming.distributed.calibrator import average_rule
+from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import DegriddingPredictor, \
     DegriddingPredictorResponse

@@ -23,6 +23,7 @@ from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
+from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
 from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolution, \
     CalibrationSolutionCache
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -38,26 +39,6 @@ class CalibratorResponse(NamedTuple):
     weights: np.ndarray  # [Ts, B, Cs[, 2, 2]]
     flags: np.ndarray  # [Ts, B, Cs[, 2, 2]]
     uvw: np.ndarray  # [Ts, B, 3]
-
-
-def average_rule(array, num_model_size: int, axis: int):
-    """
-    Block average array along axis.
-
-    Args:
-        array: [..., N, ...] on axis `axis`
-        num_model_size: how many blocks to average
-        axis: the axis
-
-    Returns:
-        [..., num_model_size, ...] on axis `axis`
-    """
-    axis_size = np.shape(array)[axis]
-    if axis_size % num_model_size != 0:
-        raise ValueError(f"Axis {axis} must be divisible by {num_model_size}.")
-    block_size = axis_size // num_model_size
-    return array.reshape(np.shape(array)[:axis] + (num_model_size, block_size) + np.shape(array)[axis + 1:]).mean(
-        axis=axis + 1)
 
 
 def compute_calibrator_options(run_params: ForwardModellingRunParams):
@@ -254,7 +235,8 @@ class Calibrator:
                 axs[2].set_title('|F|')
                 axs[3].plot(diagnostics.iteration, diagnostics.damping)
                 axs[3].set_title('Damping')
-                plt.savefig(os.path.join(self.params.plot_folder, f'calibration_diagnostics_{sol_int_time_idx}_{sol_int_freq_idx}.png'))
+                plt.savefig(os.path.join(self.params.plot_folder,
+                                         f'calibration_diagnostics_{sol_int_time_idx}_{sol_int_freq_idx}.png'))
                 plt.close(fig)
 
             with TimerLog("Computing residuals..."):
