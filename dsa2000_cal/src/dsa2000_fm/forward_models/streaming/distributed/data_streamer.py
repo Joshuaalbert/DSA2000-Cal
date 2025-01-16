@@ -154,15 +154,16 @@ class DataStreamer:
             vis = dft_response.vis + degridder_response.vis
             visibility_coords = dft_response.visibility_coords
 
-            # Add noise
-            vis, weights, flags = add_noise(
-                noise_key,
-                vis,
-                self.params.full_stokes,
-                self.params.ms_meta.system_equivalent_flux_density,
-                self.params.ms_meta.channel_width,
-                self.params.ms_meta.integration_time
-            )
+            with TimerLog("...adding noise"):
+                # Add noise
+                vis, weights, flags = add_noise(
+                    noise_key,
+                    vis,
+                    self.params.full_stokes,
+                    self.params.ms_meta.system_equivalent_flux_density,
+                    self.params.ms_meta.channel_width,
+                    self.params.ms_meta.integration_time
+                )
 
         # Predict then send
         return DataStreamerResponse(
