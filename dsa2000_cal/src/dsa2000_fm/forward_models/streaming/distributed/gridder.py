@@ -3,7 +3,7 @@ import logging
 import os
 import warnings
 from datetime import timedelta
-from typing import NamedTuple
+from typing import NamedTuple, List, Generator, AsyncGenerator
 
 import numpy as np
 import pylab as plt
@@ -46,7 +46,7 @@ class Gridder:
     Performs gridding of visibilities per solution interval.
     """
 
-    def __init__(self, params: ForwardModellingRunParams, calibrator: Supervisor[CalibratorResponse]):
+    def __init__(self, params: ForwardModellingRunParams, calibrator: Supervisor[AsyncGenerator[CalibratorResponse]]):
         self.params = params
         self._calibrator = calibrator
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'gridder')
@@ -180,23 +180,27 @@ class Gridder:
             # remove the last dimensions
             return GridderResponse(image=image_buffer[..., 0, 0], psf=psf_buffer[..., 0, 0])
 
-    async def __call__(self, key, sol_int_time_idx: int, sol_int_freq_idx: int) -> GridderResponse:
-        logger.info(f"Gridding visibilities for time_idx={sol_int_time_idx} and freq_idx={sol_int_freq_idx}")
+    async def __call__(self, key, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[GridderResponse]:
+        logger.info(f"Gridding visibilities for sol_int_time_idxs={sol_int_time_idxs} and sol_int_freq_idxs={sol_int_freq_idxs}")
         await self.init()
 
-        with TimerLog("Getting bright source subtracted data..."):
-            cal_response = await self._calibrator(key, sol_int_time_idx, sol_int_freq_idx)
+        cal_response_gen: AsyncGenerator[CalibratorResponse] = await self._calibrator(key, sol_int_time_idxs, sol_int_freq_idxs)
+        idx = 0
+        async for cal_response in cal_response_gen:
             visibilities = np.asarray(cal_response.visibilities, order='F')
             weights = np.asarray(cal_response.weights, order='F')
             flags = np.asarray(cal_response.flags, order='F')
             uvw = np.asarray(cal_response.uvw, order='F')
             del cal_response
 
-        with TimerLog("Gridding..."):
-            return self._grid_vis(
-                sol_int_freq_idx=sol_int_freq_idx,
-                uvw=uvw,
-                visibilities=visibilities,
-                weights=weights,
-                flags=flags
-            )
+            sol_int_freq_idx = sol_int_freq_idxs[idx]
+            idx += 1
+
+            with TimerLog("Gridding..."):
+                yield self._grid_vis(
+                    sol_int_freq_idx=sol_int_freq_idx,
+                    uvw=uvw,
+                    visibilities=visibilities,
+                    weights=weights,
+                    flags=flags
+                )

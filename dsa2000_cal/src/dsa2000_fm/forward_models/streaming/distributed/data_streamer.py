@@ -3,7 +3,7 @@ import dataclasses
 import logging
 import os
 from datetime import timedelta
-from typing import NamedTuple
+from typing import NamedTuple, List, AsyncGenerator
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -114,64 +114,82 @@ class DataStreamer:
         self.state = predict_and_sample.get_state()
         # self._step_jit = jax.jit(predict_and_sample.step)
 
-    async def __call__(self, key, time_idx: int, freq_idx: int) -> DataStreamerResponse:
-        logger.info(f"Sampling visibilities for time_idx={time_idx} and freq_idx={freq_idx}")
+    async def __call__(self, key, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[
+        DataStreamerResponse]:
+
         await self.init()
-        noise_key, sim_gain_key = jax.random.split(key)
-        with TimerLog("Getting system gains"):
-            system_gain_simulator_response: SystemGainSimulatorResponse = await self._system_gain_simulator(
-                sim_gain_key,
-                time_idx,
-                freq_idx
-            )
-        time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
-        freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
-        with TimerLog("Predicting and sampling visibilities"):
-            tasks = []
-            tasks.append(
-                self._degridding_predictor(
-                    source_model=self.state.sky_model,
-                    freq=freq,
-                    time=time,
-                    gain_model=system_gain_simulator_response.gain_model,
-                    near_field_delay_engine=self.predict_params.near_field_delay_engine,
-                    far_field_delay_engine=self.predict_params.far_field_delay_engine,
-                    geodesic_model=self.predict_params.geodesic_model
-                )
-            )
-            tasks.append(
-                self._dft_predictor(
-                    source_model=self.state.bright_sky_model,
-                    freq=freq,
-                    time=time,
-                    gain_model=system_gain_simulator_response.gain_model,
-                    near_field_delay_engine=self.predict_params.near_field_delay_engine,
-                    far_field_delay_engine=self.predict_params.far_field_delay_engine,
-                    geodesic_model=self.predict_params.geodesic_model
-                )
-            )
-            degridder_response, dft_response = await asyncio.gather(*tasks)
-            vis = dft_response.vis + degridder_response.vis
-            visibility_coords = dft_response.visibility_coords
 
-            with TimerLog("...adding noise"):
-                # Add noise
-                vis, weights, flags = add_noise(
-                    noise_key,
-                    vis,
-                    self.params.full_stokes,
-                    self.params.ms_meta.system_equivalent_flux_density,
-                    self.params.ms_meta.channel_width,
-                    self.params.ms_meta.integration_time
-                )
+        async def get_response(key, sol_int_time_idx: int, sol_int_freq_idx: int):
+            # Get the time and freq indices for the solution interval (a regular grid)
+            time_idxs = sol_int_time_idx * self.params.chunk_params.num_times_per_sol_int + np.arange(
+                self.params.chunk_params.num_times_per_sol_int)
+            freq_idxs = sol_int_freq_idx * self.params.chunk_params.num_freqs_per_sol_int + np.arange(
+                self.params.chunk_params.num_freqs_per_sol_int)
+            logger.info(f"Sampling visibilities for time_idxs={time_idxs} and freq_idxs={freq_idxs}")
 
-        # Predict then send
-        return DataStreamerResponse(
-            vis=vis,
-            weights=weights,
-            flags=flags,
-            visibility_coords=visibility_coords
-        )
+            logger.info(f"Time indices: {time_idxs}")
+            logger.info(f"Freq indices: {freq_idxs}")
+
+            noise_key, sim_gain_key = jax.random.split(key)
+            with TimerLog("Getting system gains"):
+                system_gain_simulator_response: SystemGainSimulatorResponse = await self._system_gain_simulator(
+                    sim_gain_key,
+                    time_idxs,
+                    freq_idxs
+                )
+            times = time_to_jnp(self.params.ms_meta.times[time_idxs], self.params.ms_meta.ref_time)
+            freqs = quantity_to_jnp(self.params.ms_meta.freqs[freq_idxs], 'Hz')
+            with TimerLog("Predicting and sampling visibilities"):
+                tasks = []
+                tasks.append(
+                    self._degridding_predictor(
+                        source_model=self.state.sky_model,
+                        freqs=freqs,
+                        times=times,
+                        gain_model=system_gain_simulator_response.gain_model,
+                        near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                        far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                        geodesic_model=self.predict_params.geodesic_model
+                    )
+                )
+                tasks.append(
+                    self._dft_predictor(
+                        source_model=self.state.bright_sky_model,
+                        freqs=freqs,
+                        times=times,
+                        gain_model=system_gain_simulator_response.gain_model,
+                        near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                        far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                        geodesic_model=self.predict_params.geodesic_model
+                    )
+                )
+                degridder_response, dft_response = await asyncio.gather(*tasks)
+                vis = dft_response.vis + degridder_response.vis
+                visibility_coords = dft_response.visibility_coords  # [T, B, ...]
+
+                with TimerLog("...adding noise"):
+                    # Add noise
+                    vis, weights, flags = add_noise(
+                        noise_key,
+                        vis,
+                        self.params.full_stokes,
+                        self.params.ms_meta.system_equivalent_flux_density,
+                        self.params.ms_meta.channel_width,
+                        self.params.ms_meta.integration_time
+                    )
+
+            # Predict then send
+            return DataStreamerResponse(
+                vis=vis,
+                weights=weights,
+                flags=flags,
+                visibility_coords=visibility_coords
+            )
+
+        for sol_int_time_idx, sol_int_freq_idx in zip(sol_int_time_idxs, sol_int_freq_idxs):
+            key, run_key = jax.random.split(key, 2)
+            response = await get_response(run_key, sol_int_time_idx, sol_int_freq_idx)
+            yield response
 
 
 def add_noise(key, vis: ComplexArray, full_stokes: bool, system_equivalent_flux_density: au.Quantity,

@@ -29,8 +29,8 @@ class DegriddingPredictorResponse(NamedTuple):
 
 def compute_degridding_predictor_options(run_params: ForwardModellingRunParams):
     # Distributed over max 32 CPUs
-    T = 1
-    C = 1
+    T = run_params.chunk_params.num_times_per_sol_int
+    C = run_params.chunk_params.num_freqs_per_sol_int
     total_num_execs = T * C * (4 if run_params.full_stokes else 1)
     num_threads = min(32, total_num_execs)
     num_threads_inner = (4 if run_params.full_stokes else 1)
@@ -72,16 +72,16 @@ class DegriddingPredictor:
 
         def predict(
                 source_model: BaseFITSSourceModel,
-                freq: FloatArray,
-                time: FloatArray,
+                freqs: FloatArray,
+                times: FloatArray,
                 gain_model: BaseSphericalInterpolatorGainModel | None,
                 near_field_delay_engine: BaseNearFieldDelayEngine,
                 far_field_delay_engine: BaseFarFieldDelayEngine,
                 geodesic_model: BaseGeodesicModel
         ):
             visibility_coords = far_field_delay_engine.compute_visibility_coords(
-                freqs=np.asarray(freq)[None],
-                times=np.asarray(time)[None],
+                freqs=np.asarray(freqs),
+                times=np.asarray(times),
                 with_autocorr=self.params.ms_meta.with_autocorr,
                 convention=self.params.ms_meta.convention
             )
@@ -91,8 +91,7 @@ class DegriddingPredictor:
                 near_field_delay_engine=near_field_delay_engine,
                 far_field_delay_engine=far_field_delay_engine,
                 geodesic_model=geodesic_model
-            )  # [T=1, B, C=1[, 2, 2]]
-            vis = vis[0, :, 0, ...]  # [B, [, 2, 2]]
+            )  # [T, B, C[, 2, 2]]
             return DegriddingPredictorResponse(
                 vis=vis,
                 visibility_coords=visibility_coords
@@ -102,8 +101,8 @@ class DegriddingPredictor:
 
     async def __call__(self,
                        source_model: BaseFITSSourceModel,
-                       freq: FloatArray,
-                       time: FloatArray,
+                       freqs: FloatArray,
+                       times: FloatArray,
                        gain_model: BaseSphericalInterpolatorGainModel | None,
                        near_field_delay_engine: BaseNearFieldDelayEngine,
                        far_field_delay_engine: BaseFarFieldDelayEngine,
@@ -111,11 +110,11 @@ class DegriddingPredictor:
                        ) -> DegriddingPredictorResponse:
         await self.init()
 
-        with TimerLog(f"Predicting and sampling visibilities for time {time} and freq {freq}"):
+        with TimerLog(f"Predicting and sampling visibilities for times {times} and freqs {freqs}"):
             response = self._predict(
                 source_model=source_model,
-                freq=freq,
-                time=time,
+                freqs=freqs,
+                times=times,
                 gain_model=gain_model,
                 near_field_delay_engine=near_field_delay_engine,
                 far_field_delay_engine=far_field_delay_engine,

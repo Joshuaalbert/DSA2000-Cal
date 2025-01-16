@@ -74,16 +74,16 @@ class DFTPredictor:
 
         def predict(
                 source_model: BasePointSourceModel | BaseGaussianSourceModel,
-                freq: FloatArray,
-                time: FloatArray,
+                freqs: FloatArray,
+                times: FloatArray,
                 gain_model: BaseSphericalInterpolatorGainModel | None,
                 near_field_delay_engine: BaseNearFieldDelayEngine,
                 far_field_delay_engine: BaseFarFieldDelayEngine,
                 geodesic_model: BaseGeodesicModel
         ):
             visibility_coords = far_field_delay_engine.compute_visibility_coords(
-                freqs=freq[None],
-                times=time[None],
+                freqs=freqs,
+                times=times,
                 with_autocorr=self.params.ms_meta.with_autocorr,
                 convention=self.params.ms_meta.convention
             )
@@ -93,8 +93,7 @@ class DFTPredictor:
                 near_field_delay_engine=near_field_delay_engine,
                 far_field_delay_engine=far_field_delay_engine,
                 geodesic_model=geodesic_model
-            )  # [T=1, B, C=1[, 2, 2]]
-            vis = vis[0, :, 0, ...]  # [B, [, 2, 2]]
+            )  # [T, B, C[, 2, 2]]
             return DFTPredictorResponse(
                 vis=vis,
                 visibility_coords=visibility_coords
@@ -104,8 +103,8 @@ class DFTPredictor:
 
     async def __call__(self,
                        source_model,
-                       freq: FloatArray,
-                       time: FloatArray,
+                       freqs: FloatArray,
+                       times: FloatArray,
                        gain_model: BaseSphericalInterpolatorGainModel | None,
                        near_field_delay_engine: BaseNearFieldDelayEngine,
                        far_field_delay_engine: BaseFarFieldDelayEngine,
@@ -113,11 +112,11 @@ class DFTPredictor:
                        ) -> DFTPredictorResponse:
         await self.init()
 
-        with TimerLog(f"Predicting and sampling visibilities for time {time} and freq {freq}"):
+        with TimerLog(f"Predicting and sampling visibilities for times {times} and freqs {freqs}"):
             data_dict = dict(
                 source_model=source_model,
-                freq=freq,
-                time=time,
+                freqs=freqs,
+                times=times,
                 gain_model=gain_model,
                 near_field_delay_engine=near_field_delay_engine,
                 far_field_delay_engine=far_field_delay_engine,

@@ -303,12 +303,10 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
             ),
             **compute_aggregator_options(run_params)
         )
-        for sol_int_time_idx in range(run_params.chunk_params.num_sol_ints_time):
-            run_key, key = jax.random.split(key, 2)
-            save_to_disk = True  # Save every iteration cumulatively
-            aggregator_response = aggregator(key, sol_int_time_idx, save_to_disk)
+        sol_int_time_idxs = list(range(run_params.chunk_params.num_sol_ints_time))
+        async for aggregator_response in await aggregator(key, sol_int_time_idxs, save_to_disk=True):
             logger.info(
-                f"Image {sol_int_time_idx} done. Saved to:\n"
+                f"Image {aggregator_response.sol_int_time_idx} done. Saved to:\n"
                 f"Image: {aggregator_response.image_path}\n"
                 f"PSF: {aggregator_response.psf_path}"
             )

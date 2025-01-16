@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from datetime import timedelta
-from typing import List, NamedTuple
+from typing import List, NamedTuple, AsyncGenerator
 from typing import Type
 
 import jax
@@ -32,7 +32,7 @@ class AggregatorParams(SerialisableBaseModel):
         description="The solution interval frequency indices to use for the aggregation into this sub-band."
     )
     fm_run_params: ForwardModellingRunParams
-    gridder: Supervisor[GridderResponse]
+    gridder: Supervisor[AsyncGenerator[GridderResponse]]
     image_suffix: str
 
 
@@ -136,8 +136,9 @@ class Aggregator:
     def actor_name(node_id: str) -> str:
         return f"AGGREGATOR#{node_id}"
 
-    def __call__(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
-        return ray.get(self._actor.call.remote(key, sol_int_time_idx, save_to_disk))
+    async def __call__(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[
+        AggregatorResponse]:
+        return await self._actor.call.remote(key, sol_int_time_idxs, save_to_disk)
 
 
 class _Aggregator:
@@ -263,23 +264,27 @@ class _Aggregator:
             psf_path=psf_path
         )
 
-    async def call(self, key, sol_int_time_idx: int, save_to_disk: bool) -> AggregatorResponse:
-        logger.info(f"Aggregating {sol_int_time_idx}")
+    async def call(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[AggregatorResponse]:
+        logger.info(f"Aggregating {sol_int_time_idxs}")
         await self.init()
 
-        keys = jax.random.split(key, len(self.params.sol_int_freq_idxs))
+        def gen_sol_int_idxs(sol_int_time_idxs: List[int]):
+            for sol_int_time_idx in sol_int_time_idxs:
+                for sol_int_freq_idx in self.params.sol_int_freq_idxs:
+                    yield sol_int_time_idx, sol_int_freq_idx
 
-        # Submit them and get one at a time, to avoid memory issues.
-        for sol_int_freq_idx, key in zip(self.params.sol_int_freq_idxs, keys):
-            response = await self.params.gridder(key, sol_int_time_idx, sol_int_freq_idx)
-            self._image += response.image
-            self._psf += response.psf
+        sol_int_time_idxs, sol_int_freq_idxs = zip(*gen_sol_int_idxs(sol_int_time_idxs))
 
-        if save_to_disk:
-            logger.info(f"Saving image to disk")
-            return self.save_image_to_fits()
+        gridder_gen = await self.params.gridder(key, sol_int_time_idxs, sol_int_freq_idxs)
+        async for gridder_response in gridder_gen:
+            self._image += gridder_response.image
+            self._psf += gridder_response.psf
 
-        return AggregatorResponse(
-            image_path=None,
-            psf_path=None
-        )
+            if save_to_disk:
+                logger.info(f"Saving image to disk")
+                yield self.save_image_to_fits()
+            else:
+                yield AggregatorResponse(
+                    image_path=None,
+                    psf_path=None
+                )

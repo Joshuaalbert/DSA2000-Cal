@@ -15,6 +15,7 @@ from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_wi
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, array_registry
 from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -26,6 +27,7 @@ from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model
     build_calibration_fits_source_models_from_wsclean
 from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import \
     build_calibration_point_source_models_from_wsclean, BasePointSourceModel
+from dsa2000_fm.forward_models.streaming.distributed.calibrator import average_rule
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import DegriddingPredictor, \
     DegriddingPredictorResponse
@@ -46,15 +48,17 @@ class ModelPredictorParams(SerialisableBaseModel):
 
 
 class ModelPredictorResponse(NamedTuple):
-    vis: np.ndarray  # [D,  B, [, 2, 2]]
-    vis_background: np.ndarray  # [E,  B, [, 2, 2]] the background visibilities, not subtracted
+    vis: np.ndarray  # [D,  T, B, C[, 2, 2]]
+    vis_background: np.ndarray  # [E, T, B, C[, 2, 2]] the background visibilities, not subtracted
+    model_times: np.ndarray # [T]
+    model_freqs: np.ndarray # [C]
 
 
 def compute_model_predictor_options(run_params: ForwardModellingRunParams):
     # memory is 10.2 GB
     memory = 10.2 * 1024 ** 3
     return {
-        "num_cpus": 0, # no comps, just memory
+        "num_cpus": 0,  # no comps, just memory
         "num_gpus": 0,
         'memory': 1.1 * memory
     }
@@ -119,53 +123,73 @@ class ModelPredictor:
 
         # self._step_jit = jax.jit(model_predict.step)
 
-    async def __call__(self, time: FloatArray, freq: FloatArray) -> ModelPredictorResponse:
-        logger.info(f"Predicting visibilities for time {time} and freq {freq}")
+    async def __call__(self, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> ModelPredictorResponse:
         await self.init()
 
-        with TimerLog("Predicting..."):
-            # Calibrator component models
-            tasks = []
-            for source_model in self.state.sky_models:
-                tasks.append(
-                    self._dft_predictor(
-                        source_model=source_model,
-                        freq=freq,
-                        time=time,
-                        gain_model=self.beam_model,
-                        near_field_delay_engine=self.predict_params.near_field_delay_engine,
-                        far_field_delay_engine=self.predict_params.far_field_delay_engine,
-                        geodesic_model=self.predict_params.geodesic_model
+        async def get_response(sol_int_time_idx: int, sol_int_freq_idx: int):
+            # Get the time and freq indices for the solution interval (a regular grid)
+            time_idxs = sol_int_time_idx * self.params.chunk_params.num_times_per_sol_int + np.arange(
+                self.params.chunk_params.num_times_per_sol_int)
+            freq_idxs = sol_int_freq_idx * self.params.chunk_params.num_freqs_per_sol_int + np.arange(
+                self.params.chunk_params.num_freqs_per_sol_int)
+
+            # Get the model data at the averaged times and freqs
+            model_times = time_to_jnp(self.params.ms_meta.times[time_idxs], self.params.ms_meta.ref_time)
+            model_freqs = quantity_to_jnp(self.params.ms_meta.freqs[freq_idxs], 'Hz')
+            model_times = average_rule(model_times, self.params.chunk_params.num_model_times_per_solution_interval,
+                                       axis=0)
+            model_freqs = average_rule(model_freqs, self.params.chunk_params.num_model_freqs_per_solution_interval,
+                                       axis=0)
+
+            logger.info(f"Predicting visibilities for model_times {model_times} and model_freqs {model_freqs}")
+            with TimerLog("Predicting..."):
+                # Calibrator component models
+                tasks = []
+                for source_model in self.state.sky_models:
+                    tasks.append(
+                        self._dft_predictor(
+                            source_model=source_model,
+                            freqs=model_freqs,
+                            times=model_times,
+                            gain_model=self.beam_model,
+                            near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                            far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                            geodesic_model=self.predict_params.geodesic_model
+                        )
                     )
-                )
-            # Background models
-            for source_model in self.state.background_sky_models:
-                tasks.append(
-                    self._degridding_predictor(
-                        source_model=source_model,
-                        freq=freq,
-                        time=time,
-                        gain_model=self.beam_model,
-                        near_field_delay_engine=self.predict_params.near_field_delay_engine,
-                        far_field_delay_engine=self.predict_params.far_field_delay_engine,
-                        geodesic_model=self.predict_params.geodesic_model
+                # Background models
+                for source_model in self.state.background_sky_models:
+                    tasks.append(
+                        self._degridding_predictor(
+                            source_model=source_model,
+                            freqs=model_freqs,
+                            times=model_times,
+                            gain_model=self.beam_model,
+                            near_field_delay_engine=self.predict_params.near_field_delay_engine,
+                            far_field_delay_engine=self.predict_params.far_field_delay_engine,
+                            geodesic_model=self.predict_params.geodesic_model
+                        )
                     )
-                )
-            results: List[DegriddingPredictorResponse | DFTPredictorResponse] = await asyncio.gather(*tasks)
-            vis_list = []
-            background_vis_list = []
-            for _ in self.state.sky_models:
-                result: DFTPredictorResponse = results.pop(0)
-                vis_list.append(result.vis)  # each is [B[, 2, 2]]
-            for _ in self.state.background_sky_models:
-                result: DegriddingPredictorResponse = results.pop(0)
-                background_vis_list.append(result.vis)
-            vis = np.stack(vis_list, axis=0)  # [D, B[, 2, 2]]
-            background_vis = np.stack(background_vis_list, axis=0)  # [E, B[, 2, 2]]
-        return ModelPredictorResponse(
-            vis=vis,
-            vis_background=background_vis
-        )
+                results: List[DegriddingPredictorResponse | DFTPredictorResponse] = await asyncio.gather(*tasks)
+                vis_list = []
+                background_vis_list = []
+                for _ in self.state.sky_models:
+                    result: DFTPredictorResponse = results.pop(0)
+                    vis_list.append(result.vis)  # each is [T,B,C[, 2, 2]]
+                for _ in self.state.background_sky_models:
+                    result: DegriddingPredictorResponse = results.pop(0)
+                    background_vis_list.append(result.vis)  # each is [T,B,C[, 2, 2]]
+                vis = np.stack(vis_list, axis=0)  # [D, T,B,C[, 2, 2]]
+                background_vis = np.stack(background_vis_list, axis=0)  # [E, T,B,C[, 2, 2]]
+            return ModelPredictorResponse(
+                vis=vis,
+                vis_background=background_vis,
+                model_times=model_times,
+                model_freqs=model_freqs
+            )
+
+        for sol_int_time_idx, sol_int_freq_idx in zip(sol_int_time_idxs, sol_int_freq_idxs):
+            yield get_response(sol_int_time_idx, sol_int_freq_idx)
 
 
 class ModelPredictState(NamedTuple):
