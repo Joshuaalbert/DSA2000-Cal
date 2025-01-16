@@ -232,7 +232,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         **compute_dft_predictor_options(run_params)
     )
     dft_predictor = create_supervisor(
-        dft_predictor_remote, 'dft_predictor', 4,
+        dft_predictor_remote, 'dft_predictor', 1,
         run_params
     )
 
@@ -240,7 +240,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         **compute_degridding_predictor_options(run_params)
     )
     degridding_predictor = create_supervisor(
-        degridding_predictor_remote, 'degridding_predictor', 4,
+        degridding_predictor_remote, 'degridding_predictor', 1,
         run_params
     )
 
@@ -264,7 +264,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
         **compute_data_streamer_options(run_params)
     )
     data_streamer = create_supervisor(
-        data_streamer_remote, 'data_streamer', 4,
+        data_streamer_remote, 'data_streamer', 1,
         run_params, data_streamer_params, system_gain_simulator, dft_predictor, degridding_predictor
     )
 
