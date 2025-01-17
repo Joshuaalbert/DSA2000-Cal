@@ -3,7 +3,7 @@ import dataclasses
 import logging
 import os
 from datetime import timedelta
-from typing import List, NamedTuple
+from typing import List, NamedTuple, AsyncGenerator
 
 import astropy.coordinates as ac
 import astropy.units as au
@@ -123,7 +123,7 @@ class ModelPredictor:
 
         # self._step_jit = jax.jit(model_predict.step)
 
-    async def __call__(self, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> ModelPredictorResponse:
+    async def __call__(self, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[ModelPredictorResponse, None]:
         await self.init()
 
         async def get_response(sol_int_time_idx: int, sol_int_freq_idx: int):
@@ -189,7 +189,8 @@ class ModelPredictor:
             )
 
         for sol_int_time_idx, sol_int_freq_idx in zip(sol_int_time_idxs, sol_int_freq_idxs):
-            yield get_response(sol_int_time_idx, sol_int_freq_idx)
+            response = await get_response(sol_int_time_idx, sol_int_freq_idx)
+            yield response
 
 
 class ModelPredictState(NamedTuple):
