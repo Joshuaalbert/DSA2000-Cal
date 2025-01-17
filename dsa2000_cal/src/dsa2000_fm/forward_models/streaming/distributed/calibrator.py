@@ -93,8 +93,8 @@ class Calibrator:
     """
 
     def __init__(self, params: ForwardModellingRunParams, calibrator_params: CalibratorParams,
-                 data_streamer: Supervisor[AsyncGenerator[DataStreamerResponse, None]],
-                 model_predictor: Supervisor[AsyncGenerator[ModelPredictorResponse, None]],
+                 data_streamer: Supervisor[DataStreamerResponse],
+                 model_predictor: Supervisor[ModelPredictorResponse],
                  calibration_solution_cache: CalibrationSolutionCache):
         self.params = params
         self.calibrator_params = calibrator_params
@@ -136,22 +136,24 @@ class Calibrator:
                     f"sol_int_freq_idxs={sol_int_freq_idxs}")
         await self.init()
 
-        data_response_gen = await self._data_streamer(key, sol_int_time_idxs, sol_int_freq_idxs)
+        data_response_gen = self._data_streamer.stream(key, sol_int_time_idxs, sol_int_freq_idxs)
         if self.calibrator_params.do_calibration:
-            model_response_gen = await self._model_predictor(sol_int_time_idxs, sol_int_freq_idxs)
+            model_response_gen = self._model_predictor.stream(sol_int_time_idxs, sol_int_freq_idxs)
 
         idx = 0
         while True:
             try:
                 if self.calibrator_params.do_calibration:
                     with TimerLog("Gathering data and model visibilities"):
-                        data, model = await asyncio.gather(
+                        data_ref, model_ref = await asyncio.gather(
                             data_response_gen.__anext__(),
                             model_response_gen.__anext__()  # noqa
                         )
+                        data, model = await asyncio.gather(data_ref, model_ref)
                 else:
                     with TimerLog("Gathering data visibilities and skipping calibration..."):
-                        data = await data_response_gen.__anext__()
+                        data_ref = await data_response_gen.__anext__()
+                        data = await data_ref
             except StopAsyncIteration:
                 break
             # Ts = len(time_idxs)

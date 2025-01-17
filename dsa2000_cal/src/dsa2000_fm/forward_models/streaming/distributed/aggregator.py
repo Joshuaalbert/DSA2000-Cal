@@ -32,7 +32,7 @@ class AggregatorParams(SerialisableBaseModel):
         description="The solution interval frequency indices to use for the aggregation into this sub-band."
     )
     fm_run_params: ForwardModellingRunParams
-    gridder: Supervisor[AsyncGenerator[GridderResponse, None]]
+    gridder: Supervisor[GridderResponse]
     image_suffix: str
 
 
@@ -136,9 +136,9 @@ class Aggregator:
     def actor_name(node_id: str) -> str:
         return f"AGGREGATOR#{node_id}"
 
-    async def __call__(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[
+    def __call__(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[
         AggregatorResponse, None]:
-        return await self._actor.call.remote(key, sol_int_time_idxs, save_to_disk)
+        return self._actor.call.remote(key, sol_int_time_idxs, save_to_disk)
 
 
 class _Aggregator:
@@ -275,8 +275,9 @@ class _Aggregator:
 
         sol_int_time_idxs, sol_int_freq_idxs = zip(*gen_sol_int_idxs(sol_int_time_idxs))
 
-        gridder_gen = await self.params.gridder(key, sol_int_time_idxs, sol_int_freq_idxs)
-        async for gridder_response in gridder_gen:
+        gridder_gen = self.params.gridder.stream(key, sol_int_time_idxs, sol_int_freq_idxs)
+        async for gridder_response_ref in gridder_gen:
+            gridder_response = await gridder_response_ref
             self._image += gridder_response.image
             self._psf += gridder_response.psf
 

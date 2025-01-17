@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Generic, TypeVar
+from typing import List, Generic, TypeVar, AsyncGenerator, Awaitable
 from typing import Type
 from uuid import uuid4
 
@@ -98,6 +98,11 @@ class Supervisor(Generic[T]):
     def actor_name(node_id: str) -> str:
         return f"SUPERVISOR#{node_id}"
 
+    async def stream(self, *args, **kwargs) -> AsyncGenerator[Awaitable[T], None]:
+        ref_gen = self._actor.stream.remote(*args, **kwargs)
+        async for ref in ref_gen:
+            yield await ref
+
     async def __call__(self, *args, **kwargs) -> T:
         obj_ref = await self._actor.call.remote(*args, **kwargs)
         return await obj_ref
@@ -154,6 +159,33 @@ class _Supervisor:
 
     def num_available(self) -> int:
         return self._actor_queue.qsize()
+
+    async def stream(self, *args, **kwargs):
+        # Get the next available actor
+        t0 = time.time()
+        self._num_queued += 1
+        if self._actor_queue.empty():
+            # If there are no available actors, report
+            self._num_queued_gauge.set(self._num_queued)
+        actor_idx = await self._actor_queue.get()
+        self._num_queued -= 1
+        self._num_queued_gauge.set(self._num_queued)
+        t1 = time.time()
+        self._queue_time_gauge.set(t1 - t0)
+
+        # Call the actor
+        actor = self.params.actors[actor_idx]
+        self._num_running_gauge.set(self.num_running())
+        t0 = time.time()
+        response_obj_ref_gen = actor.__call__.remote(*args, **kwargs)
+        async for response_obj_ref in response_obj_ref_gen:
+            yield response_obj_ref
+            t1 = time.time()
+            self._run_time_gauge.set(t1 - t0)
+            t0 = time.time()
+
+        self._actor_queue.put_nowait(actor_idx)
+        self._num_running_gauge.set(self.num_running())
 
     async def call(self, *args, **kwargs):
         # Get the next available actor

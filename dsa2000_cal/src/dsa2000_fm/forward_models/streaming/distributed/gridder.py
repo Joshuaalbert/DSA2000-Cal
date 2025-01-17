@@ -46,7 +46,7 @@ class Gridder:
     Performs gridding of visibilities per solution interval.
     """
 
-    def __init__(self, params: ForwardModellingRunParams, calibrator: Supervisor[AsyncGenerator[CalibratorResponse, None]]):
+    def __init__(self, params: ForwardModellingRunParams, calibrator: Supervisor[CalibratorResponse]):
         self.params = params
         self._calibrator = calibrator
         self.params.plot_folder = os.path.join(self.params.plot_folder, 'gridder')
@@ -184,9 +184,10 @@ class Gridder:
         logger.info(f"Gridding visibilities for sol_int_time_idxs={sol_int_time_idxs} and sol_int_freq_idxs={sol_int_freq_idxs}")
         await self.init()
 
-        cal_response_gen: AsyncGenerator[CalibratorResponse] = await self._calibrator(key, sol_int_time_idxs, sol_int_freq_idxs)
+        cal_response_gen = self._calibrator.stream(key, sol_int_time_idxs, sol_int_freq_idxs)
         idx = 0
-        async for cal_response in cal_response_gen:
+        async for cal_response_ref in cal_response_gen:
+            cal_response = await cal_response_ref
             visibilities = np.asarray(cal_response.visibilities, order='F')
             weights = np.asarray(cal_response.weights, order='F')
             flags = np.asarray(cal_response.flags, order='F')
