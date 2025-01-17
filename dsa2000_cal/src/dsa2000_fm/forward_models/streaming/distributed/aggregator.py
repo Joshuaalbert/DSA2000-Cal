@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from datetime import timedelta
-from typing import List, NamedTuple, AsyncGenerator
+from typing import List, NamedTuple, AsyncGenerator, Awaitable
 from typing import Type
 
 import jax
@@ -136,9 +136,11 @@ class Aggregator:
     def actor_name(node_id: str) -> str:
         return f"AGGREGATOR#{node_id}"
 
-    def __call__(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[
-        AggregatorResponse, None]:
-        return self._actor.call.remote(key, sol_int_time_idxs, save_to_disk)
+    async def stream(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[
+        Awaitable[AggregatorResponse], None]:
+        ref_gen = self._actor.stream.remote(key, sol_int_time_idxs, save_to_disk)
+        async for ref in ref_gen:
+            yield ref
 
 
 class _Aggregator:
@@ -264,7 +266,7 @@ class _Aggregator:
             psf_path=psf_path
         )
 
-    async def call(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[AggregatorResponse, None]:
+    async def stream(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[AggregatorResponse, None]:
         logger.info(f"Aggregating {sol_int_time_idxs}")
         await self.init()
 
