@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 
 from dsa2000_cal.common.astropy_utils import random_discrete_skymodel, mean_icrs, \
     create_spherical_grid_old, create_spherical_earth_grid, create_random_spherical_layout, create_mosaic_tiling, \
-    fibonacci_celestial_sphere
+    fibonacci_celestial_sphere, create_spherical_spiral_grid
 
 
 def test_random_discrete_skymodel():
@@ -93,3 +93,17 @@ def test_fibonacci_celestial_sphere(n: int):
 
     mean_area = (4 * np.pi / n) * au.rad ** 2
     print(n, mean_area.to('deg^2'))
+
+
+def test_create_spherical_spiral_grid():
+    pointing = ac.ICRS(ra=50 * au.deg, dec=0 * au.deg)
+    num_points = 10
+    angular_radius = 10 * au.deg
+    grid = create_spherical_spiral_grid(pointing, num_points, angular_radius)
+    import pylab as plt
+    plt.scatter(grid.ra.deg, grid.dec.deg)
+
+    grid = create_spherical_spiral_grid(pointing, num_points*2, angular_radius)
+    plt.scatter(grid.ra.deg, grid.dec.deg)
+
+    plt.show()

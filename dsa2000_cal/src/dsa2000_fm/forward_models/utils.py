@@ -32,7 +32,7 @@ class ObservationSetup:
             antennas=array.get_antennas(),
             array_location=array.get_array_location(),
             phase_center=phase_center,
-            obstimes=ref_time + np.arange(num_timesteps) * array.integration_time(),
+            obstimes=ref_time + np.arange(num_timesteps) * array.get_integration_time(),
             ref_time=ref_time,
             pointings=phase_center
         )

@@ -450,7 +450,7 @@ def build_gaussian_source_model(
         model_freqs: au.Quantity,  # [num_model_freq] Frequencies
         ra: au.Quantity,  # [num_sources] l coordinate of the source
         dec: au.Quantity,  # [num_sources] m coordinate of the source
-        A: au.Quantity,  # [num_sources, num_freqs[,2,2]] Flux amplitude of the source
+        A: au.Quantity,  # [num_sources, num_freqs[,2,2]] Total flux amplitude of the source
         major_axis: au.Quantity,  # [num_sources] Major axis of the source in proj.radians
         minor_axis: au.Quantity,  # [num_sources] Minor axis of the source in proj.radians
         pos_angle: au.Quantity,  # [num_sources] Position angle of the source in proj.radians
@@ -567,3 +567,61 @@ def build_gaussian_source_model_from_wsclean_components(
         minor_axis=minor_axis,
         pos_angle=pos_angle
     )
+
+
+
+def build_calibration_gaussian_source_models_from_wsclean(
+        wsclean_component_file: str,
+        model_freqs: au.Quantity,
+        pointing: ac.ICRS,
+        fov_fwhm: au.Quantity,
+        full_stokes: bool = True,
+):
+    """
+    Build a calibration source model from wsclean components.
+
+    Args:
+        wsclean_component_file: the wsclean component file
+        model_freqs: the model frequencies
+        fov_fwhm: the fov fwhm
+        full_stokes: whether the model should be full stokes
+
+    Returns:
+        the calibration source model
+    """
+    sky_model = build_gaussian_source_model_from_wsclean_components(
+        wsclean_clean_component_file=wsclean_component_file,
+        model_freqs=model_freqs,
+        full_stokes=full_stokes
+    )
+    #     model_freqs: FloatArray  # [num_model_freqs] Frequencies
+    #     ra: FloatArray  # [num_sources] ra coordinate of the source
+    #     dec: FloatArray  # [num_sources] dec coordinate of the source
+    #     A: FloatArray  # [num_sources, num_model_freqs,[,2,2]] Flux amplitude of the source
+    num_facets = np.shape(sky_model.A)[0]
+    # Turn each facet into a 1 facet sky model
+    sky_models = []
+    for facet_idx in range(num_facets):
+        A = sky_model.A[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs, [2,2]]
+        major_axis = sky_model.major_axis[facet_idx:facet_idx + 1]
+        minor_axis = sky_model.minor_axis[facet_idx:facet_idx + 1]
+        pos_angle = sky_model.pos_angle[facet_idx:facet_idx + 1]
+        ra = sky_model.ra[facet_idx:facet_idx + 1]  # [facet=1]
+        dec = sky_model.dec[facet_idx:facet_idx + 1]  # [facet=1]
+        # Get haversine distance from pointing,only keep sources within fov_fwhm
+        haversine_distance = ac.SkyCoord(ra=ra * au.rad, dec=dec * au.rad).separation(pointing).to('rad')
+        if haversine_distance > 0.5 * fov_fwhm:
+            continue
+        sky_models.append(
+            BaseGaussianSourceModel(
+                model_freqs=sky_model.model_freqs,
+                A=A,
+                major_axis=major_axis,
+                minor_axis=minor_axis,
+                pos_angle=pos_angle,
+                ra=ra,
+                dec=dec,
+                convention=sky_model.convention
+            )
+        )
+    return sky_models

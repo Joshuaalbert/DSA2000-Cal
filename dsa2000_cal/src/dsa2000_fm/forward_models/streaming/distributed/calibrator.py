@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import timedelta
 from functools import partial
-from typing import NamedTuple, Tuple, List, AsyncGenerator
+from typing import NamedTuple, Tuple, List
 
 import jax
 import jaxns.framework.context as ctx
@@ -237,8 +237,11 @@ class Calibrator:
                 axs[2].set_title('|F|')
                 axs[3].plot(diagnostics.iteration, diagnostics.damping)
                 axs[3].set_title('Damping')
-                plt.savefig(os.path.join(self.params.plot_folder,
-                                         f'calibration_diagnostics_{sol_int_time_idx}_{sol_int_freq_idx}.png'))
+                axs[3].set_xlabel('Iteration')
+                plt.savefig(
+                    os.path.join(self.params.plot_folder,
+                                 f'calibration_diagnostics_{sol_int_time_idx}_{sol_int_freq_idx}.png')
+                )
                 plt.close(fig)
 
             with TimerLog("Computing residuals..."):

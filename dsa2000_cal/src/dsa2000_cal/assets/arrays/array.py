@@ -224,7 +224,7 @@ class AbstractArray(ABC, BaseContent):
         ...
 
     @abstractmethod
-    def integration_time(self) -> au.Quantity:
+    def get_integration_time(self) -> au.Quantity:
         """
         Get integration time (s)
 

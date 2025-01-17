@@ -65,7 +65,7 @@ def get_process_local_params(process_id: int, array_name: str) -> ProcessLocalPa
     solution_interval = 6 * au.s
     validity_interval = 12 * au.s
     observation_duration = 624 * au.s
-    integration_interval = array.integration_time()
+    integration_interval = array.get_integration_time()
     num_timesteps = int(observation_duration / integration_interval)
     obstimes = ref_time + np.arange(num_timesteps) * integration_interval
     antennas = array.get_antennas()

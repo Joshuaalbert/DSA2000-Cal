@@ -42,6 +42,21 @@ def choose_dr(field_of_view: au.Quantity, total_n: int) -> au.Quantity:
     return au.Quantity(np.interp(total_n, num_n, dr))
 
 
+def create_spherical_spiral_grid(pointing: ac.ICRS, num_points: int, angular_radius: au.Quantity) -> ac.ICRS:
+    ra0 = pointing.ra
+    dec0 = pointing.dec
+    dtheta = 2 * np.pi / num_points**0.5
+    ra_grid = []
+    dec_grid = []
+    for i in range(num_points):
+        r = angular_radius * (i  / (num_points - 1))**0.5
+        theta = i * dtheta
+        ra_i, dec_i = offset_by(ra0, dec0, theta, r)
+        ra_grid.append(ra_i)
+        dec_grid.append(dec_i)
+    return ac.ICRS(ra=au.Quantity(ra_grid), dec=au.Quantity(dec_grid))
+
+
 def create_spherical_grid(pointing: ac.ICRS, angular_radius: au.Quantity, num_shells: int,
                           sky_rotation: au.Quantity | None = None) -> ac.ICRS:
     """

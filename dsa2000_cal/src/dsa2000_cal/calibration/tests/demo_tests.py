@@ -1,0 +1,787 @@
+import dataclasses
+import os
+import time
+from functools import partial
+from typing import Generator, Tuple, List
+
+import astropy.time as at
+import jax
+import jax.numpy as jnp
+import jaxns.framework.context as ctx
+import numpy as np
+from astropy import units as au, coordinates as ac
+from jaxns.framework.ops import simulate_prior_model
+from matplotlib import pyplot as plt
+from tomographic_kernel.frames import ENU
+
+from dsa2000_cal.assets.content_registry import fill_registries
+from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
+from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, \
+    MultiStepLevenbergMarquardtDiagnostic, MultiStepLevenbergMarquardt
+from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
+from dsa2000_cal.common.astropy_utils import create_spherical_spiral_grid
+from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
+from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
+from dsa2000_cal.common.jax_utils import simple_broadcast
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.noise import calc_baseline_noise
+from dsa2000_cal.common.pure_callback_utils import construct_threaded_callback
+from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp, quantity_to_np
+from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_cal.common.vec_utils import kron_product
+from dsa2000_cal.common.wgridder import vis_to_image_np
+from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine, BaseFarFieldDelayEngine
+from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
+    BaseNearFieldDelayEngine
+from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
+from dsa2000_cal.imaging.utils import get_array_image_parameters
+from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model, \
+    BaseGaussianSourceModel
+from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import build_point_source_model, \
+    BasePointSourceModel
+from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
+
+
+@dataclasses.dataclass
+class TimerLog:
+    msg: str
+
+    def __post_init__(self):
+        self.t0 = time.time()
+
+    def __enter__(self):
+        print(f"{self.msg}")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print(f"... took {time.time() - self.t0:.3f} seconds")
+        return False
+
+
+def build_mock_obs_setup(array_name: str, num_sol_ints_time: int):
+    fill_registries()
+    array = array_registry.get_instance(array_registry.get_match(array_name))
+
+    array_location = array.get_array_location()
+
+    ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
+    num_times = num_sol_ints_time * 4
+    obstimes = ref_time + np.arange(num_times) * array.get_integration_time()
+
+    phase_center = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
+    freqs = array.get_channels()[:1]
+
+    # Point dishes exactly at phase center
+    pointing = phase_center
+
+    antennas = array.get_antennas()
+
+    geodesic_model = build_geodesic_model(
+        antennas=antennas,
+        array_location=array_location,
+        phase_center=phase_center,
+        obstimes=obstimes,
+        ref_time=ref_time,
+        pointings=pointing
+    )
+
+    far_field_delay_engine = build_far_field_delay_engine(
+        antennas=antennas,
+        phase_center=phase_center,
+        start_time=obstimes.min(),
+        end_time=obstimes.max(),
+        ref_time=ref_time
+    )
+
+    near_field_delay_engine = build_near_field_delay_engine(
+        antennas=antennas,
+        start_time=obstimes.min(),
+        end_time=obstimes.max(),
+        ref_time=ref_time
+    )
+
+    system_equivalent_flux_density, chan_width, integration_time = array.get_system_equivalent_flux_density(), array.get_channel_width(), array.get_integration_time()
+
+    chan_width *= 40 # simulate widre band to lower nosie
+
+    return ref_time, obstimes, freqs, phase_center, antennas, geodesic_model, far_field_delay_engine, near_field_delay_engine, system_equivalent_flux_density, chan_width, integration_time
+
+
+def create_sky_model(phase_center: ac.ICRS, num_sources: int, model_freqs: au.Quantity, full_stokes: bool,
+                     fov: au.Quantity, psf_size: au.Quantity):
+    num_model_freqs = len(model_freqs)
+    if full_stokes:
+        A = 0.5 * np.tile(np.eye(2)[None, None, :, :], (num_sources, num_model_freqs, 1, 1)) * au.Jy
+    else:
+        A = np.ones((num_sources, num_model_freqs)) * au.Jy
+
+    source_pointings = create_spherical_spiral_grid(pointing=phase_center, num_points=num_sources,
+                                                    angular_radius=fov * 0.5)
+    point_model_data = build_point_source_model(
+        model_freqs=model_freqs,
+        ra=source_pointings.ra,
+        dec=source_pointings.dec,
+        A=A
+    )
+
+    # Calibrator models
+    num_facets = np.shape(point_model_data.A)[0]
+    # Turn each facet into a 1 facet sky model
+    cal_sky_models = []
+    for facet_idx in range(num_facets):
+        A = point_model_data.A[facet_idx:facet_idx + 1]  # [facet=1,num_model_freqs, [2,2]]
+        ra = point_model_data.ra[facet_idx:facet_idx + 1]  # [facet=1]
+        dec = point_model_data.dec[facet_idx:facet_idx + 1]  # [facet=1]
+        cal_sky_models.append(
+            BasePointSourceModel(
+                model_freqs=point_model_data.model_freqs,
+                A=A,
+                ra=ra,
+                dec=dec,
+                convention=point_model_data.convention
+            )
+        )
+
+    source_pointings = create_spherical_spiral_grid(pointing=phase_center, num_points=2 * num_sources,
+                                                    angular_radius=fov * 0.5)
+    if full_stokes:
+        total_flux = 0.5 * np.tile(np.eye(2)[None, None, :, :], (2 * num_sources, num_model_freqs, 1, 1)) * au.Jy
+    else:
+        total_flux = np.ones((2 * num_sources, num_model_freqs)) * au.Jy
+    major_axis = 10 * np.ones((2 * num_sources)) * psf_size
+    minor_axis = 10 * np.ones((2 * num_sources)) * psf_size
+    position_angle = np.zeros((2 * num_sources)) * au.rad
+
+    gaussian_model_data = build_gaussian_source_model(
+        model_freqs=model_freqs,
+        ra=source_pointings.ra,
+        dec=source_pointings.dec,
+        A=0.*total_flux,
+        major_axis=major_axis,
+        minor_axis=minor_axis,
+        pos_angle=position_angle
+    )
+
+    return point_model_data, gaussian_model_data, cal_sky_models
+
+
+def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
+    """
+    Compute the residual between the model visibilities and the observed visibilities.
+
+    Args:
+        vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
+        vis_data: [Ts, B, Cs[,2,2]] the data visibilities, Ts = 0 mod Tm, Cs = 0 mod Cm i.e. Ts % Tm = 0, Cs % Cm = 0
+        gains: [D, Tm, A, Cm[,2,2]] the gains
+        antenna1: [B] the antenna1
+        antenna2: [B] the antenna2
+
+    Returns:
+        [Ts, B, Cs[, 2, 2]] the residuals
+    """
+
+    def body_fn(accumulate, x):
+        vis_model, gains = x
+
+        g1 = gains[:, antenna1, :, ...]  # [Tm, B, Cm[, 2, 2]]
+        g2 = gains[:, antenna2, :, ...]  # [Tm, B, Cm[, 2, 2]]
+
+        @partial(
+            simple_broadcast,  # [Tm,B,Cm,...]
+            leading_dims=3
+        )
+        def apply_gains(g1, g2, vis):
+            if np.shape(g1) != np.shape(g1):
+                raise ValueError("Gains must have the same shape.")
+            if np.shape(vis) != np.shape(g1):
+                raise ValueError("Gains and visibilities must have the same shape.")
+            if np.shape(g1) == (2, 2):
+                return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
+            elif np.shape(g1) == ():
+                return mp_policy.cast_to_vis(g1 * vis * g2.conj())
+            else:
+                raise ValueError(f"Invalid shape: {np.shape(g1)}")
+
+        delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
+        return accumulate + delta_vis, ()
+
+    accumulate = jnp.zeros(np.shape(vis_model)[1:], dtype=vis_model.dtype)
+    accumulate, _ = jax.lax.scan(body_fn, accumulate, (vis_model, gains))
+
+    # Invert average rule with tile
+    time_rep = np.shape(vis_data)[0] // np.shape(accumulate)[0]  # Ts / Tm
+    freq_rep = np.shape(vis_data)[2] // np.shape(accumulate)[2]  # Cs / Cm
+    tile_reps = [1] * len(np.shape(accumulate))
+    tile_reps[0] = time_rep
+    tile_reps[2] = freq_rep
+    if np.prod(tile_reps) > 1:
+        accumulate = jnp.tile(accumulate, tile_reps)
+    return vis_data - accumulate
+
+
+@dataclasses.dataclass(eq=False)
+class Calibration:
+    gain_probabilistic_model: AbstractGainPriorModel
+    full_stokes: bool
+    num_ant: int
+    verbose: bool = True
+
+    def step(self,
+             vis_model: ComplexArray,
+             vis_data: ComplexArray,
+             weights: FloatArray,
+             flags: BoolArray,
+             freqs: FloatArray,
+             times: FloatArray,
+             antenna1: IntArray,
+             antenna2: IntArray,
+             state: MultiStepLevenbergMarquardtState | None = None
+             ) -> Tuple[ComplexArray, MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
+        """
+        Calibrate and subtract model visibilities from data visibilities.
+
+        Args:
+            vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
+            vis_data: [Tm, B, Cm[,2,2]] the data visibilities
+            weights: [Tm, B, Cm[,2,2]] the weights
+            flags: [Tm, B, Cm[,2,2]] the flags
+            freqs: [Cm] the frequencies
+            times: [Tm] the times
+            antenna1: [B] the antenna1
+            antenna2: [B] the antenna2
+            state: MultiStepLevenbergMarquardtState the state of the solver (optional)
+
+        Returns:
+            gains: [D, Tm, A, Cm[,2,2]] the gains
+            state: MultiStepLevenbergMarquardtState the state of the solver
+            diagnostics: the diagnostics of the solver
+        """
+        if np.shape(vis_model)[1:] != np.shape(vis_data):
+            raise ValueError(
+                f"Model visibilities and data visibilities must have the same shape, got {np.shape(vis_model)[1:]} "
+                f"and {np.shape(vis_data)}")
+
+        # calibrate and subtract
+        key = jax.random.PRNGKey(0)
+
+        D, Tm, B, Cm = np.shape(vis_model)[:4]
+
+        # Create gain prior model
+        def get_gains():
+            # TODO: pass in probabilitic model
+            prior_model = self.gain_probabilistic_model.build_prior_model(
+                num_source=D,
+                num_ant=self.num_ant,
+                freqs=freqs,
+                times=times
+            )
+            (gains,), _ = simulate_prior_model(key, prior_model)  # [D, Tm, A, Cm[,2,2]]
+            return gains  # [D, Tm, A, Cm[,2,2]]
+
+        get_gains_transformed = ctx.transform(get_gains)
+
+        compute_residuals_fn = self.build_compute_residuals_fn()
+
+        # Create residual_fn
+        def residual_fn(params: ComplexArray) -> ComplexArray:
+            gains = get_gains_transformed.apply(params, key).fn_val
+            return compute_residuals_fn(vis_model, vis_data, weights, flags, gains, antenna1, antenna2)
+
+        solver = MultiStepLevenbergMarquardt(
+            residual_fn=residual_fn,
+            num_approx_steps=0,
+            num_iterations=100,
+            verbose=self.verbose,
+            gtol=1e-4
+        )
+
+        # Get solver state
+        if state is None:
+            init_params = get_gains_transformed.init(key).params
+            state = solver.create_initial_state(init_params)
+        else:
+            # TODO: EKF forward update on data
+            state = solver.update_initial_state(state)
+        state, diagnostics = solver.solve(state)
+
+        gains = get_gains_transformed.apply(state.x, key).fn_val
+
+        return gains, state, diagnostics
+
+    def build_compute_residuals_fn(self):
+        def compute_residuals_fn(
+                vis_model: ComplexArray,
+                vis_data: ComplexArray,
+                weights: FloatArray,
+                flags: BoolArray,
+                gains: ComplexArray,
+                antenna1: IntArray,
+                antenna2: IntArray
+        ):
+            """
+            Compute the residual between the model visibilities and the observed visibilities.
+
+            Args:
+                vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
+                vis_data: [Ts, B, Cs[,2,2]] the data visibilities
+                weights: [Ts, B, Cs[,2,2]] the data weights
+                flags: [Ts, B, Cs[,2,2]] the data flags
+                gains: [D, Tm, A, Cm[,2, 2]] the gains
+                antenna1: [B] the antenna1
+                antenna2: [B] the antenna2
+
+            Returns:
+                residuals: [Ts, B, Cs[,2,2]]
+            """
+
+            if np.shape(weights) != np.shape(flags):
+                raise ValueError(
+                    f"Weights and flags must have the same shape, got {np.shape(weights)} and {np.shape(flags)}")
+            if np.shape(vis_data) != np.shape(weights):
+                raise ValueError(
+                    f"Visibilities and weights must have the same shape, got {np.shape(vis_data)} and {np.shape(weights)}")
+
+            residuals = compute_residual(
+                vis_model=vis_model,
+                vis_data=vis_data,
+                gains=gains,
+                antenna1=antenna1,
+                antenna2=antenna2
+            )
+            weights *= jnp.logical_not(flags).astype(weights.dtype)  # [Tm, B, Cm[,2,2]]
+            residuals *= jnp.sqrt(weights)  # [Tm, B, Cm[,2,2]]
+            return residuals.real, residuals.imag
+
+        return compute_residuals_fn
+
+
+def grid_residuls(visibilities: ComplexArray, weights: FloatArray,
+                  visibility_coords: VisibilityCoords, flags: BoolArray, full_stokes: bool, num_l, num_m, dl, dm, l0,
+                  m0):
+    """
+    Grids the visibilities for a single solution interval.
+
+    Args:
+        visibilities: [Ts, B, F[,2,2]] the visibilities
+        weights: [Ts, B, F[,2,2]] the weights
+        flags: [Ts, B, F[,2,2]] the flags, True means flagged, don't grid.
+
+    Returns:
+        the gridded image and psf
+    """
+
+    freqs = np.asarray(visibility_coords.freqs)  # [C]
+    uvw = np.array(visibility_coords.uvw)  # [T, B, 3]
+    num_rows = visibilities.shape[0] * visibilities.shape[1]
+    num_chan = np.shape(freqs)[0]
+    if full_stokes:
+        image_buffer = np.zeros((num_l, num_m, 2, 2), dtype=np.float32, order='F')
+        psf_buffer = np.zeros((num_l, num_m, 2, 2), dtype=np.float32, order='F')
+        pol_array = np.arange(2)
+    else:
+        # Add extra axes
+        visibilities = visibilities[..., None, None]
+        weights = weights[..., None, None]
+        flags = flags[..., None, None]
+        image_buffer = np.zeros((num_l, num_m, 1, 1),
+                                dtype=np.float32, order='F')
+        psf_buffer = np.zeros((num_l, num_m, 1, 1),
+                              dtype=np.float32, order='F')
+        pol_array = np.arange(1)
+
+    if full_stokes:
+        num_threads_outer = 4
+        num_threads_inner = 8
+    else:
+        num_threads_outer = 1
+        num_threads_inner = 32
+
+    def single_run(p_idx, q_idx):
+        _visibilities = visibilities[..., p_idx, q_idx].reshape((num_rows, num_chan))
+        _weights = weights[..., p_idx, q_idx].reshape((num_rows, num_chan))
+        _mask = np.logical_not(flags[..., p_idx, q_idx].reshape((num_rows, num_chan)))
+
+        vis_to_image_np(
+            uvw=uvw.reshape((num_rows, 3)),
+            freqs=freqs,
+            vis=_visibilities,
+            pixsize_m=quantity_to_np(dm, 'rad'),
+            pixsize_l=quantity_to_np(dl, 'rad'),
+            center_l=quantity_to_np(l0, 'rad'),
+            center_m=quantity_to_np(m0, 'rad'),
+            npix_l=num_l,
+            npix_m=num_m,
+            wgt=_weights,
+            mask=_mask,
+            epsilon=1e-6,
+            double_precision_accumulation=False,
+            scale_by_n=True,
+            normalise=True,
+            output_buffer=image_buffer[:, :, p_idx, q_idx],
+            num_threads=num_threads_inner
+        )
+        # todo: PB correction
+        vis_to_image_np(
+            uvw=uvw.reshape((num_rows, 3)),
+            freqs=freqs,
+            vis=np.ones_like(_visibilities),
+            pixsize_m=quantity_to_np(dm, 'rad'),
+            pixsize_l=quantity_to_np(dl, 'rad'),
+            center_l=quantity_to_np(l0, 'rad'),
+            center_m=quantity_to_np(m0, 'rad'),
+            npix_l=num_l,
+            npix_m=num_m,
+            wgt=_weights,
+            mask=_mask,
+            epsilon=1e-6,
+            double_precision_accumulation=False,
+            scale_by_n=True,
+            normalise=True,
+            output_buffer=psf_buffer[:, :, p_idx, q_idx],
+            num_threads=num_threads_inner
+        )
+
+    cb = construct_threaded_callback(
+        single_run, 0, 0,
+        num_threads=num_threads_outer
+    )
+    _ = cb(pol_array[:, None], pol_array[None, :])
+
+    if np.all(image_buffer == 0) or not np.all(np.isfinite(image_buffer)):
+        print(f"Image buffer is all zeros or contains NaNs/Infs")
+    if np.all(psf_buffer == 0) or not np.all(np.isfinite(psf_buffer)):
+        print(f"PSF buffer is all zeros or contains NaNs/Infs")
+
+    if full_stokes:
+        image_buffer = np.asarray(
+            broadcast_translate_corrs(
+                jnp.asarray(image_buffer),
+                (('XX', 'XY'), ('YX', 'YY')), ('I', 'Q', 'U', 'V')
+            )
+        )
+        psf_buffer = np.asarray(
+            broadcast_translate_corrs(
+                jnp.asarray(psf_buffer),
+                (('XX', 'XY'), ('YX', 'YY')), ('I', 'Q', 'U', 'V')
+            )
+        )
+        return image_buffer, psf_buffer
+    else:
+        # remove the last dimensions, already I, so remove 1 axis
+        return image_buffer[..., 0], psf_buffer[..., 0]
+
+
+def main(plot_folder: str, image_name: str, array_name: str, num_sources: int, num_sol_ints_time: int, full_stokes: bool,
+         fov: au.Quantity,
+         oversample_factor: float = 3.8, skip_calibration: bool = False):
+    os.makedirs(plot_folder, exist_ok=True)
+
+    num_model_times_per_solution_interval = 1  # Tm = num_model_times_per_solution_interval
+    num_model_freqs_per_solution_interval = 1  # Cm = num_model_freqs_per_solution_interval
+
+    # Create array setup
+    (ref_time, obstimes, freqs, phase_center, antennas, geodesic_model, far_field_delay_engine, near_field_delay_engine,
+     system_equivalent_flux_density, chan_width, integration_time) = build_mock_obs_setup(
+        array_name, num_sol_ints_time)
+
+
+
+    system_equivalent_flux_density_Jy = quantity_to_jnp(system_equivalent_flux_density, 'Jy')
+    chan_width_hz = quantity_to_jnp(chan_width, 'Hz')
+    t_int_s = quantity_to_jnp(integration_time, 's')
+
+    # Create sky model of grid of point sources
+    point_model_data, gaussian_model_data, cal_sky_models = create_sky_model(
+        phase_center=phase_center, num_sources=num_sources, model_freqs=freqs,
+        full_stokes=full_stokes, fov=fov, psf_size=3.3 * au.arcsec
+    )
+
+    num_pixel, dl, dm, l0, m0 = get_array_image_parameters(array_name, fov, oversample_factor)
+
+    @jax.jit
+    def predict_and_sample(key, freqs, times, point_model_data: BasePointSourceModel,
+                           gaussian_model_data: BaseGaussianSourceModel,
+                           geodesic_model: BaseGeodesicModel, far_field_delay_engine: BaseFarFieldDelayEngine,
+                           near_field_delay_engine: BaseNearFieldDelayEngine,
+                           system_equivalent_flux_density_Jy,
+                           chan_width_hz,
+                           t_int_s
+                           ):
+        visibility_coords = far_field_delay_engine.compute_visibility_coords(
+            freqs=freqs,
+            times=times,
+            with_autocorr=False
+        )
+        vis_points = point_model_data.predict(
+            visibility_coords=visibility_coords,
+            gain_model=None,
+            near_field_delay_engine=near_field_delay_engine,
+            far_field_delay_engine=far_field_delay_engine,
+            geodesic_model=geodesic_model
+        )  # [T, B, C[, 2, 2]]
+
+        vis_gaussians = gaussian_model_data.predict(
+            visibility_coords=visibility_coords,
+            gain_model=None,
+            near_field_delay_engine=near_field_delay_engine,
+            far_field_delay_engine=far_field_delay_engine,
+            geodesic_model=geodesic_model
+        )  # [T, B, C[, 2, 2]]
+
+        vis = vis_points# + vis_gaussians
+
+        # Add noise
+        num_pol = 2 if full_stokes else 1
+        noise_scale = calc_baseline_noise(
+            system_equivalent_flux_density=system_equivalent_flux_density_Jy,
+            chan_width_hz=chan_width_hz,
+            t_int_s=t_int_s
+        )
+        key1, key2 = jax.random.split(key)
+        noise = mp_policy.cast_to_vis(
+            (noise_scale / np.sqrt(num_pol)) * jax.lax.complex(
+                jax.random.normal(key1, np.shape(vis)),
+                jax.random.normal(key2, np.shape(vis))
+            )
+        )
+
+        vis += noise
+        weights = jnp.full(np.shape(vis), 1 / noise_scale ** 2, mp_policy.weight_dtype)
+        flags = jnp.full(np.shape(vis), False, mp_policy.flag_dtype)
+        return vis, weights, flags, visibility_coords
+
+    @jax.jit
+    def predict_model(model_freqs, model_times, cal_sky_models: List[BasePointSourceModel],
+                      background_sky_models: List[BaseGaussianSourceModel],
+                      geodesic_model: BaseGeodesicModel, far_field_delay_engine: BaseFarFieldDelayEngine,
+                      near_field_delay_engine: BaseNearFieldDelayEngine,
+                      ):
+        visibility_coords = far_field_delay_engine.compute_visibility_coords(
+            freqs=model_freqs,
+            times=model_times,
+            with_autocorr=False
+        )
+        vis_cal = []
+        for source_model in cal_sky_models:
+            _vis = source_model.predict(
+                visibility_coords=visibility_coords,
+                gain_model=None,
+                near_field_delay_engine=near_field_delay_engine,
+                far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model
+            )  # [T, B, C[, 2, 2]]
+            vis_cal.append(_vis)
+        vis_cal = jnp.stack(vis_cal, axis=0)  # [S, T, B, C[, 2, 2]]
+        vis_background = []
+        for source_model in background_sky_models:
+            _vis = source_model.predict(
+                visibility_coords=visibility_coords,
+                gain_model=None,
+                near_field_delay_engine=near_field_delay_engine,
+                far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model
+            )  # [T, B, C[, 2, 2]]
+            vis_background.append(_vis)
+        vis_background = jnp.stack(vis_background, axis=0)  # [E, T, B, C[, 2, 2]]
+
+        return vis_cal, vis_background, visibility_coords
+
+    @jax.jit
+    def calibrate(vis_model, vis_data_avg, weights_avg, flags_avg, cal_visibility_coords, solve_state):
+        cal = Calibration(
+            gain_probabilistic_model=GainPriorModel(
+                gain_stddev=1.,
+                dd_dof=1,
+                di_dof=1,
+                double_differential=True,
+                dd_type='unconstrained',
+                di_type='unconstrained',
+                full_stokes=full_stokes
+            ),
+            full_stokes=full_stokes,
+            num_ant=len(antennas),
+            verbose=True
+        )
+        return cal.step(
+            vis_model=vis_model,
+            vis_data=vis_data_avg,
+            weights=weights_avg,
+            flags=flags_avg,
+            freqs=cal_visibility_coords.freqs,
+            times=cal_visibility_coords.times,
+            antenna1=cal_visibility_coords.antenna1,
+            antenna2=cal_visibility_coords.antenna2,
+            state=solve_state
+        )
+
+    @jax.jit
+    def calc_residual(vis_model, vis_data, gains, antenna1, antenna2):
+        return compute_residual(vis_model, vis_data, gains, antenna1, antenna2)
+
+    def generate_data(key) -> Generator[Tuple[ComplexArray, FloatArray, BoolArray, VisibilityCoords], None, None]:
+        freqs_jax = quantity_to_jnp(freqs, 'Hz')
+        for sol_int_time_idx in range(num_sol_ints_time):
+            key, sample_key = jax.random.split(key)
+            times = time_to_jnp(obstimes[sol_int_time_idx * 4:(sol_int_time_idx + 1) * 4], ref_time)
+            model_times = average_rule(times, num_model_times_per_solution_interval, axis=0)
+            model_freqs = average_rule(freqs, num_model_freqs_per_solution_interval, axis=0)
+            with TimerLog(f"Predicting data for solution interval {sol_int_time_idx}"):
+                vis_data, weights, flags, visibility_coords = jax.block_until_ready(
+                    predict_and_sample(
+                        key=key,
+                        freqs=freqs_jax,
+                        times=times,
+                        point_model_data=point_model_data,
+                        gaussian_model_data=gaussian_model_data,
+                        geodesic_model=geodesic_model,
+                        far_field_delay_engine=far_field_delay_engine,
+                        near_field_delay_engine=near_field_delay_engine,
+                        system_equivalent_flux_density_Jy=system_equivalent_flux_density_Jy,
+                        chan_width_hz=chan_width_hz,
+                        t_int_s=t_int_s
+                    )
+                )
+            with TimerLog(f"Predicting model or solution interval {sol_int_time_idx}"):
+                vis_cal, vis_background, cal_visibility_coords = jax.block_until_ready(
+                    predict_model(
+                        model_freqs=model_freqs,
+                        model_times=model_times,
+                        cal_sky_models=cal_sky_models,
+                        background_sky_models=[gaussian_model_data],
+                        geodesic_model=geodesic_model,
+                        far_field_delay_engine=far_field_delay_engine,
+                        near_field_delay_engine=near_field_delay_engine
+                    )
+                )
+
+            yield sol_int_time_idx, (vis_data, weights, flags, visibility_coords), (
+                vis_cal, vis_background, cal_visibility_coords)
+
+    # average data to match model: [Ts, B, Cs[, 2, 2]] -> [Tm, B, Cm[, 2, 2]]
+    time_average_rule = partial(
+        average_rule,
+        num_model_size=num_model_times_per_solution_interval,
+        axis=0
+    )
+    freq_average_rule = partial(
+        average_rule,
+        num_model_size=num_model_freqs_per_solution_interval,
+        axis=2
+    )
+    # Predict data and model
+    solver_state = None
+    for sol_int_time_idx, (vis_data, weights, flags, visibility_coords), (
+            vis_cal, vis_background, cal_visibility_coords) in generate_data(jax.random.PRNGKey(0)):
+        # print(vis_data, weights, flags, visibility_coords)
+
+        if skip_calibration:
+            vis_residuals = vis_data
+        else:
+            # Average using average rule
+            with TimerLog("Averaging data"):
+                vis_data_avg = time_average_rule(freq_average_rule(vis_data))
+                weights_avg = jnp.reciprocal(time_average_rule(freq_average_rule(jnp.reciprocal(weights))))
+                flags_avg = freq_average_rule(time_average_rule(flags.astype(jnp.float16))).astype(jnp.bool_)
+
+            # Construct calibration
+
+            with TimerLog("Calibrating"):
+                vis_model = jnp.concatenate([vis_cal, vis_background], axis=0)  # [S + E, T, B, C[, 2, 2]]
+                gains, solver_state, diagnostics = jax.block_until_ready(
+                    calibrate(vis_model, vis_data_avg, weights_avg, flags_avg,
+                              cal_visibility_coords, solver_state)
+                )
+                # row 1: Plot error
+                # row 2: Plot r
+                # row 3: plot chi-2 (F_norm)
+                # row 4: plot damping
+
+                fig, axs = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
+                axs[0].plot(diagnostics.iteration, diagnostics.error)
+                axs[0].set_title('Error')
+                axs[1].plot(diagnostics.iteration, diagnostics.r)
+                axs[1].set_title('r')
+                axs[2].plot(diagnostics.iteration, diagnostics.F_norm)
+                axs[2].set_title('|F|')
+                axs[3].plot(diagnostics.iteration, diagnostics.damping)
+                axs[3].set_title('Damping')
+                axs[3].set_xlabel('Iteration')
+                plt.savefig(
+                    os.path.join(plot_folder,
+                                 f'calibration_diagnostics_{sol_int_time_idx}.png')
+                )
+                plt.close(fig)
+            # Compute residuals
+            with TimerLog("Computing residuals"):
+                num_cals = np.shape(vis_cal)[0]
+                vis_residuals = jax.block_until_ready(
+                    calc_residual(vis_model[:num_cals], vis_data, gains[:num_cals], visibility_coords.antenna1,
+                                  visibility_coords.antenna2)
+                )
+        # Grid result
+        with TimerLog("Gridding residuals"):
+            image, psf = grid_residuls(
+                visibilities=vis_residuals, weights=weights, visibility_coords=visibility_coords,
+                flags=flags, full_stokes=full_stokes,
+                num_l=num_pixel, num_m=num_pixel, dl=dl, dm=dm, l0=l0, m0=m0
+            )
+
+        with TimerLog("Plotting image"):
+            img = image[..., 0]
+            fig, ax = plt.subplots(1, 1)
+
+            vmin = np.min(img)
+            vmax = -vmin * 10
+            lmax = (dl.to('rad') * num_pixel / 2).value
+            mmax = (dm.to('rad') * num_pixel / 2).value
+            im = ax.imshow(
+                img.T, interpolation='nearest', origin='lower',
+                extent=(-lmax, lmax, -mmax, mmax),
+                vmin=vmin, vmax=vmax,
+                cmap='jet'
+            )
+            ax.set_xlabel('l [rad]')
+            ax.set_ylabel('m [rad]')
+            ax.set_title('I')
+            # colorbar to right of ax
+            cbar = fig.colorbar(im, ax=ax)
+            fig.savefig(os.path.join(plot_folder, f"{image_name}_residuals_{sol_int_time_idx:03d}.png"))
+            plt.close(fig)
+
+            image_model = ImageModel(
+                phase_center=phase_center,
+                obs_time=ref_time,
+                dl=dl,
+                dm=dm,
+                freqs=np.mean(freqs)[None],
+                bandwidth=len(freqs) * chan_width,
+                coherencies=('I', 'Q', 'U', 'V') if full_stokes else ('I',),
+                beam_major=np.asarray(3) * au.arcsec,
+                beam_minor=np.asarray(3) * au.arcsec,
+                beam_pa=np.asarray(0) * au.rad,
+                unit='JY/PIXEL',
+                object_name='demo',
+                image=image[:, :, None, :] * au.Jy  # [num_l, num_m, 1, 4/1]
+            )
+            save_image_to_fits(os.path.join(plot_folder, f"{image_name}_image_{sol_int_time_idx:03d}.fits"),
+                               image_model=image_model,
+                               overwrite=True)
+            image_model.image = psf[:, :, None, :] * au.Jy  # [num_l, num_m, 1, 4/1]
+            save_image_to_fits(os.path.join(plot_folder, f"{image_name}_psf_{sol_int_time_idx:03d}.fits"),
+                               image_model=image_model,
+                               overwrite=True)
+
+
+
+if __name__ == '__main__':
+    main(
+        plot_folder='plots',
+        image_name='dsa2000W',
+        array_name='dsa2000W',
+        num_sources=2,
+        num_sol_ints_time=2,
+        full_stokes=False,
+        fov=1 * au.deg,
+        oversample_factor=3.8,
+        skip_calibration=False
+    )

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from datetime import timedelta
 from typing import List, NamedTuple, AsyncGenerator, Awaitable
 from typing import Type
@@ -11,6 +12,7 @@ import ray
 from astropy import units as au
 from jax import numpy as jnp
 from pydantic import Field
+from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
@@ -157,6 +159,13 @@ class _Aggregator:
         self._initialised = True
         self._memory_logger_task = asyncio.create_task(resource_logger(task='aggregator', cadence=timedelta(seconds=5)))
 
+        self._throughput_period_gauge_s = Gauge(
+            "aggregator_throughput_gauge_s",
+            description="Aggregator throughput",
+            tags=('task,')
+        )
+        self._throughput_period_gauge_s.set_default_tags({'task': 'aggregator'})
+
         shape = (self.params.fm_run_params.image_params.num_l, self.params.fm_run_params.image_params.num_m)
         if self.params.fm_run_params.full_stokes:
             shape += (2, 2)
@@ -179,6 +188,7 @@ class _Aggregator:
                 self.params.fm_run_params.chunk_params.num_freqs_per_sol_int
             ) + sol_int_freq_idx * self.params.fm_run_params.chunk_params.num_freqs_per_sol_int
             self._freq_idxs.extend(freq_idxs.tolist())
+
 
     def health_check(self):
         """
@@ -278,6 +288,7 @@ class _Aggregator:
         sol_int_time_idxs, sol_int_freq_idxs = zip(*gen_sol_int_idxs(sol_int_time_idxs))
 
         gridder_gen = self.params.gridder.stream(key, sol_int_time_idxs, sol_int_freq_idxs)
+        t0 = time.time()
         async for gridder_response_ref in gridder_gen:
             gridder_response = await gridder_response_ref
             self._image += gridder_response.image
@@ -291,3 +302,6 @@ class _Aggregator:
                     image_path=None,
                     psf_path=None
                 )
+            t1 = time.time()
+            self._throughput_period_gauge_s.set(t1 - t0)
+            t0 = t1

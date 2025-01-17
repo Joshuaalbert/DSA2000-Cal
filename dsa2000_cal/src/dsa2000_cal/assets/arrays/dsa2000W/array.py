@@ -19,7 +19,7 @@ class DSA2000WArray(AbstractArray):
     DSA2000W array class.
     """
 
-    def integration_time(self) -> au.Quantity:
+    def get_integration_time(self) -> au.Quantity:
         return 1.5 * au.s
 
     def get_channel_width(self) -> au.Quantity:
