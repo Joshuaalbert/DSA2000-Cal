@@ -97,7 +97,8 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
 
 
 def main():
-    devices = jax.devices()
+    # devices = jax.devices()
+    devices = None # single process, single device
 
     # Get obs data from somewhere, like MS
     ref_time = at.Time.now()  # Can choose to be first time in obs, use the right scale, likely TAI, UTC, or TT.
@@ -129,7 +130,7 @@ def main():
         full_stokes=True,
         antennas=antennas,
         verbose=True,
-        devices=None
+        devices=devices
     )
 
     # Run the calibration
