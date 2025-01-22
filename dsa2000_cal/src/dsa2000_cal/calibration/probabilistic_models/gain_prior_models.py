@@ -8,6 +8,7 @@ from jax import numpy as jnp
 from jaxns import PriorModelType, Prior
 
 from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
 
 tfpd = tfp.distributions
 
@@ -38,12 +39,12 @@ class GainPriorModel(AbstractGainPriorModel):
     gain_stddev: float = 2.
     full_stokes: bool = True
 
-    dd_type: Literal['unconstrained', 'rice'] = 'unconstrained'
+    dd_type: Literal['unconstrained', 'rice', 'phase_only', 'amplitude_only'] = 'unconstrained'
     dd_dof: int = 4
 
     double_differential: bool = True
     di_dof: int = 4
-    di_type: Literal['unconstrained', 'rice'] = 'unconstrained'
+    di_type: Literal['unconstrained', 'rice', 'phase_only', 'amplitude_only'] = 'unconstrained'
 
     def _make_gains_model_unconstrained(self, shape, name: str):
         ones = jnp.ones(shape)
@@ -63,7 +64,19 @@ class GainPriorModel(AbstractGainPriorModel):
         gains = jax.lax.complex(gains_real, gains_imag)
         return gains
 
-    def _make_gains_model_rice(self, shape, name: str):
+    def _make_gains_model_phase(self, shape, name: str):
+        ones = jnp.ones(shape)
+        gains_phase = yield Prior(
+            tfpd.Uniform(
+                low=-jnp.pi * ones,
+                high=jnp.pi * ones
+            ),
+            name=f'{name}_gains_phase'
+        ).parametrised()
+        gains = jax.lax.complex(jnp.cos(gains_phase), jnp.sin(gains_phase))  # [num_source, num_ant]
+        return gains
+
+    def _make_gains_model_amplitude(self, shape, name: str):
         ones = jnp.ones(shape)
         # Rice distribution for X ~ N[1, sigma^2], Y ~ U[0, sigma^2] then R^2 = X^2 + Y^2 ~ Rice(1, sigma^2)
         # We use noncentral chi^2 distribution to generate the squared amplitude.
@@ -75,15 +88,13 @@ class GainPriorModel(AbstractGainPriorModel):
             name=f'{name}_gains_amplitude_squared'
         ).parametrised()
         gains_amplitude = self.gain_stddev * jnp.sqrt(gains_amplitude_2)
-        gains_phase = yield Prior(
-            tfpd.Uniform(
-                low=-jnp.pi * ones,
-                high=jnp.pi * ones
-            ),
-            name=f'{name}_gains_phase'
-        ).parametrised()
-        gains = gains_amplitude * jax.lax.complex(jnp.cos(gains_phase),
-                                                  jnp.sin(gains_phase))  # [num_source, num_ant]
+        gains = gains_amplitude  # [num_source, num_ant]
+        return gains
+
+    def _make_gains_model_rice(self, shape, name: str):
+        gains_amplitude = yield from self._make_gains_model_amplitude(shape, name)
+        gains_phase = yield from self._make_gains_model_phase(shape, name)
+        gains = gains_amplitude * gains_phase
         return gains
 
     def build_prior_model(self, num_source: int, num_ant: int, freqs: FloatArray, times: FloatArray) -> PriorModelType:
@@ -98,6 +109,10 @@ class GainPriorModel(AbstractGainPriorModel):
                     return (yield from self._make_gains_model_unconstrained(shape, 'di'))
                 elif self.di_type == 'rice':
                     return (yield from self._make_gains_model_rice(shape, 'di'))
+                elif self.di_type == 'phase_only':
+                    return (yield from self._make_gains_model_phase(shape, 'di'))
+                elif self.di_type == 'amplitude_only':
+                    return (yield from self._make_gains_model_amplitude(shape, 'di'))
                 else:
                     raise ValueError(f"Unsupported di_type, {self.di_type}")
 
@@ -106,6 +121,10 @@ class GainPriorModel(AbstractGainPriorModel):
                     return (yield from self._make_gains_model_unconstrained(shape, 'dd'))
                 elif self.dd_type == 'rice':
                     return (yield from self._make_gains_model_rice(shape, 'dd'))
+                elif self.dd_type == 'phase_only':
+                    return (yield from self._make_gains_model_phase(shape, 'dd'))
+                elif self.dd_type == 'amplitude_only':
+                    return (yield from self._make_gains_model_amplitude(shape, 'dd'))
                 else:
                     raise ValueError(f"Unsupported dd_type, {self.dd_type}")
 
@@ -149,6 +168,6 @@ class GainPriorModel(AbstractGainPriorModel):
                         raise ValueError("Cannot have full_stokes=False and double_differential_dof > 1")
                     gains_di = yield from di_make_gains_model((T, A, F))
                     gains = gains_di * gains  # [D,T,A,F]
-            return gains
+            return mp_policy.cast_to_gain(gains)
 
         return prior_model

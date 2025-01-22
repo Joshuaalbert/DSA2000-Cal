@@ -4,6 +4,7 @@ import numpy as np
 from astropy import units as au, time as at
 from jax._src.typing import SupportsDType
 
+from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.mixed_precision_utils import float_type, int_type, complex_type, mp_policy
 
 
@@ -67,7 +68,7 @@ def quantity_to_jnp(q: au.Quantity | np.ndarray, decompose_unit: au.Unit | str |
     return jnp.asarray(quantity_to_np(q, decompose_unit, dtype))
 
 
-def time_to_jnp(t: at.Time, ref_time: at.Time) -> jax.Array:
+def time_to_jnp(t: at.Time, ref_time: at.Time) -> FloatArray:
     """
     Convert an astropy time to a jax numpy array.
 
@@ -81,3 +82,15 @@ def time_to_jnp(t: at.Time, ref_time: at.Time) -> jax.Array:
     return quantity_to_jnp((t.tt - ref_time.tt) * au.s)
 
 
+def jnp_to_time(t: FloatArray, ref_time: at.Time) -> at.Time:
+    """
+    Convert a jax numpy array to an astropy time.
+
+    Args:
+        t: the jax numpy array, times in TT since ref time.
+        ref_time: a reference time
+
+    Returns:
+        astropy time
+    """
+    return ref_time.tt + t * au.s

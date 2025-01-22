@@ -6,8 +6,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from dsa2000_cal.common.ad_utils import tree_norm, tree_dot
-from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 from dsa2000_cal.common.array_types import FloatArray, IntArray
+from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
 
 X = TypeVar('X', bound=Union[jax.Array, Any])
 Y = TypeVar('Y', bound=Union[jax.Array, Any])
@@ -296,9 +296,9 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                  J: JVPLinearOp) -> Tuple[
             MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
             # d_k = -(J_k^T J_k + λ_k I)^(-1) J_k^T F(x_k)
-            JTF = J.matvec(state.F, adjoint=True)
+            JTF = J.matvec(state.F, adjoint=True)  # [obj]^2/[x]
             # Units of [obj]/[x]^2
-            damping = state.mu * state.error
+            damping = state.mu * state.error  # [obj]^2/[x]^2 -> mu is 1/[x]
 
             matvec = build_matvec(J, damping)
             delta_x, _ = jax.scipy.sparse.linalg.cg(
