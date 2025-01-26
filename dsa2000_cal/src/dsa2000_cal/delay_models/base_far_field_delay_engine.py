@@ -9,6 +9,7 @@ from typing import Tuple, List, Any
 import jax
 import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
+from astropy.coordinates.matrix_utilities import rotation_matrix
 from jax import config, numpy as jnp
 
 from dsa2000_cal.common.array_types import FloatArray
@@ -414,7 +415,8 @@ def build_far_field_delay_engine(
         ref_time: at.Time,
         phase_center: ac.ICRS,
         resolution: au.Quantity | None = None,
-        verbose: bool = False
+        verbose: bool = False,
+        lm_offset: au.Quantity | None = None,
 ):
     """
     Build a far field delay model.
@@ -427,6 +429,7 @@ def build_far_field_delay_engine(
         phase_center: the phase center.
         resolution: the resolution.
         verbose: whether to print verbose output.
+        lm_offset: [num_ant, 2] the pointing lm offset.
 
     Returns:
         The far field delay model.
@@ -516,6 +519,17 @@ def build_far_field_delay_engine(
     antennas_gcrs = antennas.reshape((1, num_ants)).get_gcrs(
         obstime=interp_times.reshape((num_grid_times, 1))
     )  # [T, num_ants]
+    if lm_offset is not None:
+        if not lm_offset.unit.is_equivalent(au.rad):
+            raise ValueError(f"lm_offset must be in radians got {lm_offset.unit}")
+        if lm_offset.shape != (len(antennas), 2):
+            raise ValueError(f"lm_offset must have shape (num_ant, 2) got {lm_offset.shape}")
+        # convert to GCRS spherical rep, apply offsets, convert back to cartesian
+        R_dec = rotation_matrix(lm_offset[:, 1].to_value(au.rad), axis='x')
+        R_ra = rotation_matrix(lm_offset[:, 0].to_value(au.rad), axis='z')
+        combined_rotation = R_dec @ R_ra
+        antennas_gcrs = antennas_gcrs.realize_frame(
+            antennas_gcrs.represent_as('cartesian').transform(combined_rotation))
     antennas_position_gcrs = antennas_gcrs.cartesian.xyz
     antennas_velocity_gcrs = antennas_gcrs.velocity.d_xyz
 
@@ -648,27 +662,3 @@ def build_far_field_delay_engine(
         V_J_bcrs=V_J_bcrs,
         GM_J=GM_J
     )
-
-
-def test_build_far_field_delay_engine():
-    far_field_delay_model = build_far_field_delay_engine(
-        antennas=ac.ITRS(
-            x=[0, 0, 0] * au.m, y=[1, 1, 1] * au.m, z=[0, 0, 0] * au.m,
-            obstime=at.Time.now()
-        ).earth_location,
-        start_time=at.Time.now(),
-        end_time=at.Time.now() + 1 * au.s,
-        ref_time=at.Time.now(),
-        phase_center=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
-        resolution=1 * au.s,
-        verbose=True
-    )
-    print(far_field_delay_model)
-
-    @jax.jit
-    def f(ffdm: BaseFarFieldDelayEngine):
-        return ffdm
-
-    ffdm = f(far_field_delay_model)
-
-    print(ffdm)

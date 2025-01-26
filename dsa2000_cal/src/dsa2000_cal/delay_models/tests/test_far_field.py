@@ -11,7 +11,7 @@ from tomographic_kernel.frames import ENU
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
-from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine, build_far_field_delay_engine
 
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 
@@ -210,3 +210,47 @@ def test_resolution_error(baseline: au.Quantity):
     fig.tight_layout()
     plt.show()
     plt.close('all')
+
+
+def test_build_far_field_delay_engine():
+    far_field_delay_model = build_far_field_delay_engine(
+        antennas=ac.ITRS(
+            x=[0, 0, 0] * au.m, y=[1, 1, 1] * au.m, z=[0, 0, 0] * au.m,
+            obstime=at.Time.now()
+        ).earth_location,
+        start_time=at.Time.now(),
+        end_time=at.Time.now() + 1 * au.s,
+        ref_time=at.Time.now(),
+        phase_center=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
+        resolution=1 * au.s,
+        verbose=True
+    )
+    print(far_field_delay_model)
+
+    @jax.jit
+    def f(ffdm: BaseFarFieldDelayEngine):
+        return ffdm
+
+    ffdm = f(far_field_delay_model)
+
+    print(ffdm)
+
+    # Test with lm_offset
+    num_ant = 3
+    lm_offset = au.Quantity(np.random.uniform(-10, 10, (num_ant, 2)), unit=au.arcmin)
+
+    far_field_delay_model = build_far_field_delay_engine(
+        antennas=ac.ITRS(
+            x=[0, 0, 0] * au.m, y=[1, 1, 1] * au.m, z=[0, 0, 0] * au.m,
+            obstime=at.Time.now()
+        ).earth_location,
+        start_time=at.Time.now(),
+        end_time=at.Time.now() + 1 * au.s,
+        ref_time=at.Time.now(),
+        phase_center=ac.ICRS(ra=0 * au.deg, dec=0 * au.deg),
+        resolution=1 * au.s,
+        verbose=True,
+        lm_offset=lm_offset
+    )
+
+    print(far_field_delay_model)

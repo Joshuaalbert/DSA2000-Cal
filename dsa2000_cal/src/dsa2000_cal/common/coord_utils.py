@@ -133,7 +133,7 @@ def icrs_to_lmn(sources: ac.ICRS, phase_center: ac.ICRS) -> Quantity:
         alpha0=quantity_to_jnp(phase_center.ra),
         dec0=quantity_to_jnp(phase_center.dec)
     )
-    return au.Quantity(np.stack([l, m, n], axis=-1), unit=au.dimensionless_unscaled)
+    return au.Quantity(np.stack([l, m, n], axis=-1), unit=au.rad)
 
 
 def lmn_to_icrs_old(lmn: Quantity, time: at.Time, phase_center: ac.ICRS) -> ac.ICRS:

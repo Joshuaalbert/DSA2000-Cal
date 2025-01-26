@@ -8,6 +8,7 @@ from typing import Tuple, Any, List
 import jax
 import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
+from astropy.coordinates.matrix_utilities import rotation_matrix
 from jax import config, numpy as jnp
 from tomographic_kernel.frames import ENU
 
@@ -282,6 +283,7 @@ def build_near_field_delay_engine(
         resolution: au.Quantity | None = None,
         ref_location: ac.EarthLocation | None = None,
         verbose: bool = False,
+        lm_offset: au.Quantity | None = None
 ) -> BaseNearFieldDelayEngine:
     """
     Build the near field delay engine for a given set of antennas.
@@ -294,6 +296,7 @@ def build_near_field_delay_engine(
         resolution: the resolution of the delay computation.
         ref_location: the reference location for the delay computation.
         verbose: whether to print verbose output.
+        lm_offset: [A, 2] the offset in l and m for each antenna.
 
     Returns:
         the near field delay engine.
@@ -371,6 +374,18 @@ def build_near_field_delay_engine(
     antennas_gcrs = antennas.reshape((1, num_ants)).get_gcrs(
         obstime=interp_times.reshape((num_grid_times, 1))
     )  # [T, num_ants]
+    if lm_offset is not None:
+        if not lm_offset.unit.is_equivalent(au.rad):
+            raise ValueError(f"lm_offset must be in radians got {lm_offset.unit}")
+        if lm_offset.shape != (len(antennas), 2):
+            raise ValueError(f"lm_offset must have shape (num_ant, 2) got {lm_offset.shape}")
+        # convert to GCRS spherical rep, apply offsets, convert back to cartesian
+        R_dec = rotation_matrix(lm_offset[:, 1].to_value(au.rad), axis='x')
+        R_ra = rotation_matrix(lm_offset[:, 0].to_value(au.rad), axis='z')
+        combined_rotation = R_dec @ R_ra
+        antennas_gcrs = antennas_gcrs.realize_frame(
+            antennas_gcrs.represent_as('cartesian').transform(combined_rotation))
+
     antennas_position_gcrs = antennas_gcrs.cartesian.xyz  # [3, T, num_ants]
 
     enu_origin = ref_location.get_gcrs(obstime=interp_times)
