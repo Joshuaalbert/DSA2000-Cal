@@ -67,3 +67,17 @@ def test_beam_gain_model_factory(array_name: str):
         beam_gain_model.model_gains[0, :, :, 0, :, :].imag[mask],
         atol=0.05
     )
+
+# @pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W', 'dsa2000_31b'])
+@pytest.mark.parametrize('array_name', ['dsa2000_31b'])
+def test_beam_gain_model_transforms(array_name: str):
+    t0 = time_mod.time()
+    beam_gain_model = build_beam_gain_model(array_name=array_name)
+    print(f"Built in {time_mod.time() - t0} seconds.")
+    beam_gain_model.plot_regridded_beam()
+
+    ap_beam = beam_gain_model.to_aperture()
+    ap_beam.plot_regridded_beam()
+
+    im_beam = ap_beam.to_image()
+    im_beam.plot_regridded_beam()

@@ -2,7 +2,7 @@ import dataclasses
 import pickle
 import warnings
 from functools import partial
-from typing import Tuple, List, Any
+from typing import Tuple, List, Any, NamedTuple
 
 import jax
 import numpy as np
@@ -10,13 +10,28 @@ from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
 
-from dsa2000_cal.common.array_types import FloatArray, IntArray
+from dsa2000_cal.common.array_types import FloatArray, IntArray, ComplexArray
+from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.gain_model import GainModel
+
+
+class ApertureRepresentation(NamedTuple):
+    aperture_field: ComplexArray  # [..., num_X, ..., num_Y, ...]
+    axes: Tuple[int, int]  # the axes of the x an y dimensions
+    dx: FloatArray  # the pixel size in the x direction
+    dy: FloatArray  # the pixel size in the y direction
+
+
+class ImageRepresentation(NamedTuple):
+    image_field: ComplexArray  # [..., num_l, ..., num_m, ...]
+    axes: Tuple[int, int]  # the axes of the l and m dimensions
+    dl: FloatArray  # the pixel size in the l direction
+    dm: FloatArray  # the pixel size in the m direction
 
 
 @dataclasses.dataclass(eq=False)
@@ -321,6 +336,52 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         return BaseSphericalInterpolatorGainModel(
             model_freqs, model_times, lvec, mvec, model_gains, tile_antennas, full_stokes,
             skip_post_init=True
+        )
+
+    def to_aperture(self) -> 'BaseSphericalInterpolatorGainModel':
+        a = ApertureTransform()
+        image_field = self.model_gains  # [num_model_times, lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
+        axes = (1, 2)
+        dl = self.lvec[1] - self.lvec[0]
+        dm = self.mvec[1] - self.mvec[0]
+        aperture_field = a.to_aperture(image_field, axes, dl, dm)
+        num_l = np.shape(aperture_field)[axes[0]]
+        num_m = np.shape(aperture_field)[axes[1]]
+        dx = 1. / (num_l * dl)
+        dy = 1. / (num_m * dm)
+        xvec = (-num_l * 0.5 + np.arange(num_l)) * dx
+        yvec = (-num_m * 0.5 + np.arange(num_m)) * dy
+        return BaseSphericalInterpolatorGainModel(
+            model_times=self.model_times,
+            model_freqs=self.model_freqs,
+            lvec=xvec,
+            mvec=yvec,
+            model_gains=aperture_field,
+            tile_antennas=self.tile_antennas,
+            full_stokes=self.full_stokes
+        )
+
+    def to_image(self) -> "BaseSphericalInterpolatorGainModel":
+        a = ApertureTransform()
+        aperture_field = self.model_gains  # [num_model_times, lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
+        axes = (1, 2)
+        dx = self.lvec[1] - self.lvec[0]
+        dy = self.mvec[1] - self.mvec[0]
+        image_field = a.to_image(aperture_field, axes, dx, dy)
+        num_x = np.shape(image_field)[axes[0]]
+        num_y = np.shape(image_field)[axes[1]]
+        dl = 1. / (num_x * dx)
+        dm = 1. / (num_y * dy)
+        lvec = (-num_x * 0.5 + np.arange(num_x)) * dl
+        mvec = (-num_y * 0.5 + np.arange(num_y)) * dm
+        return BaseSphericalInterpolatorGainModel(
+            model_times=self.model_times,
+            model_freqs=self.model_freqs,
+            lvec=lvec,
+            mvec=mvec,
+            model_gains=image_field,
+            tile_antennas=self.tile_antennas,
+            full_stokes=self.full_stokes
         )
 
 
