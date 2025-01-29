@@ -1,9 +1,8 @@
-import jax
 import numpy as np
-from jax import numpy as jnp
+import pylab as plt
+import pytest
 
 from dsa2000_cal.common.fourier_utils import ApertureTransform, find_optimal_fft_size
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 
 
 def test_find_next_magic_size():
@@ -21,66 +20,52 @@ def test_find_next_magic_size():
     print(sorted(set(y)))
 
 
-def test_aperture_transform():
-    a = ApertureTransform()
-
-    image = jax.random.normal(jax.random.PRNGKey(0), shape=(128, 128), dtype=jnp.float32)
-    dl = dm = 0.001
-    dx = dy = 1 / (128 * 0.001)
-
-    # Test with_shifts vs without_shifts
-    f_ap = a._to_aperture_physical(image, axes=(-2, -1), dl=dl, dm=dm)
-    f_ap_shifts = a._to_aperture_physical_with_shifts(image, axes=(-2, -1), dl=dl, dm=dm)
-    np.testing.assert_allclose(f_ap, f_ap_shifts, atol=1e-3)
-
-    f_image = a._to_image_physical(f_ap, axes=(-2, -1), dx=dx, dy=dy)
-    f_image_shifts = a._to_image_physical_with_shifts(f_ap, axes=(-2, -1), dx=dx, dy=dy)
-    np.testing.assert_allclose(f_image, f_image_shifts, atol=1e-3)
-
-    f_ap = a.to_aperture(image, axes=(-2, -1), dl=dl, dm=dm)
-
-    import pylab as plt
-
-    plt.imshow(jnp.abs(f_ap), interpolation='nearest')
-    plt.colorbar()
-    plt.show()
-    plt.imshow(np.angle(f_ap), interpolation='nearest')
-    plt.colorbar()
-    plt.show()
-
-    f_image = a.to_image(f_ap, axes=(-2, -1), dx=dx, dy=dy)
-    np.testing.assert_allclose(f_image, image, atol=1e-6)
-
-    plt.imshow(jnp.abs(f_image), interpolation='nearest')
-    plt.colorbar()
-    plt.show()
-    plt.imshow(np.imag(f_image), interpolation='nearest')
-    plt.colorbar()
-    plt.show()
-
-    residual = f_image - image
-    plt.imshow(jnp.abs(residual), interpolation='nearest')
-    plt.colorbar()
-    plt.show()
-    plt.imshow(np.angle(residual), interpolation='nearest')
-    plt.colorbar()
-    plt.show()
-
-
-def test_aperture_transform_2():
-    a = ApertureTransform()
+@pytest.mark.parametrize('convention', ['physical', 'engineering'])
+def test_aperture_transform(convention):
+    a = ApertureTransform(convention=convention)
 
     n = 128
-
-    image = jax.random.normal(jax.random.PRNGKey(0), shape=(n, n), dtype=jnp.float32)
     dl = dm = 0.001
-    dx = dy = 1 / (128 * 0.001)
+    mvec = lvec = (-n * 0.5 + np.arange(n)) * dl
+    L, M = np.meshgrid(lvec, mvec, indexing='ij')
+    image = np.exp(-0.5 * (L ** 2 + M ** 2) / 0.01 ** 2 + 1j * (L + M) / 0.01).astype(np.float32)
+    plt.imshow(
+        np.abs(image).T, interpolation='nearest',
+        origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1])
+    )
+    plt.show()
 
-    # Test with_shifts vs without_shifts
-    f_ap = a._to_aperture_physical(image, axes=(-2, -1), dl=dl, dm=dm)
-    f_ap_shifts = a._to_aperture_physical_with_shifts(image, axes=(-2, -1), dl=dl, dm=dm)
-    np.testing.assert_allclose(f_ap, f_ap_shifts, atol=1e-3)
+    plt.imshow(
+        np.angle(image).T, interpolation='nearest',
+        origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1])
+    )
+    plt.show()
 
-    f_image = a._to_image_physical(f_ap, axes=(-2, -1), dx=dx, dy=dy)
-    f_image_shifts = a._to_image_physical_with_shifts(f_ap, axes=(-2, -1), dx=dx, dy=dy)
-    np.testing.assert_allclose(f_image, f_image_shifts, atol=1e-3)
+    aperture = a.to_aperture(image, axes=(-2, -1), dl=dl, dm=dm)
+    dx = dy = 1 / (n * dl)
+    xvec = yvec = (-n * 0.5 + np.arange(n)) * dx
+    X, Y = np.meshgrid(xvec, yvec, indexing='ij')
+    plt.imshow(
+        np.abs(aperture).T, interpolation='nearest',
+        origin='lower', extent=(xvec[0], xvec[-1], yvec[0], yvec[-1])
+    )
+    plt.show()
+    plt.imshow(
+        np.angle(aperture).T, interpolation='nearest',
+        origin='lower', extent=(xvec[0], xvec[-1], yvec[0], yvec[-1])
+    )
+    plt.show()
+
+    image_recon = a.to_image(aperture, axes=(-2, -1), dx=dx, dy=dy)
+    plt.imshow(
+        np.abs(image_recon).T, interpolation='nearest',
+        origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1])
+    )
+    plt.show()
+    plt.imshow(
+        np.angle(image_recon).T, interpolation='nearest',
+        origin='lower', extent=(lvec[0], lvec[-1], mvec[0], mvec[-1])
+    )
+    plt.show()
+    np.testing.assert_allclose(image_recon.real, image.real, atol=1e-6)
+    np.testing.assert_allclose(image_recon.imag, image.imag, atol=1e-6)
