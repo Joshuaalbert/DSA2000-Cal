@@ -8,7 +8,7 @@ import numpy as np
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
 
 
 @dataclasses.dataclass(eq=False)
@@ -16,7 +16,6 @@ class DishApertureEffects:
     """
     Applies a perturbation to the dish aperture, and computes the resulting far-field beam.
     """
-    num_antennas: int
     dish_diameter: FloatArray  # in m
     focal_length: FloatArray  # in m
 
@@ -58,7 +57,8 @@ class DishApertureEffects:
         R = 0.5 * self.dish_diameter
         return peak_astigmatism * (r / R) ** 2 * cos_2phi
 
-    def apply_dish_aperture_effects(self, key, beam_model: BaseSphericalInterpolatorGainModel) -> BaseSphericalInterpolatorGainModel:
+    def apply_dish_aperture_effects(self, key, beam_model: BaseSphericalInterpolatorGainModel,
+                                    geodesic_model: BaseGeodesicModel) -> BaseSphericalInterpolatorGainModel:
         # Compute path length errors for each model time and model frequency
         aperture_model = beam_model.to_aperture()
         xvec = aperture_model.lvec  # in units of lambda
@@ -79,7 +79,7 @@ class DishApertureEffects:
             if per_time:
                 shape[0] = np.shape(model_times)[0]
             if per_ant:
-                shape[3] = self.num_antennas
+                shape[3] = geodesic_model.num_antennas
             return jax.random.normal(key, shape=shape)
 
         if self.elevation_pointing_error_stddev is not None:
@@ -105,9 +105,13 @@ class DishApertureEffects:
             key, subkey = jax.random.split(key)
             horizon_peak_astigmatism = sample(subkey, per_time=False,
                                               per_ant=True) * self.horizon_peak_astigmatism_stddev
-            elevation = jnp.pi / 2
+            model_time_elevation = jax.vmap(
+                lambda t: geodesic_model.compute_elevation_from_lmn(jnp.asarray([0., 0., 1.]), t)
+            )(model_times)  # [num_model_times]
+            # add dims to broadcast
+            model_time_elevation = model_time_elevation[:, None, None, None, None]  # [num_model_times, 1, 1, 1, 1]
             path_length_errors.append(
-                self.compute_astigmatism_error(X, R, elevation, horizon_peak_astigmatism)
+                self.compute_astigmatism_error(X, R, model_time_elevation, horizon_peak_astigmatism)
             )
         if self.surface_error_mean is not None:
             key, subkey = jax.random.split(key)
@@ -127,12 +131,13 @@ class DishApertureEffects:
 
         aperture_gains = jax.lax.complex(jnp.cos(phase_error), jnp.sin(phase_error))
         if beam_model.tile_antennas:
-            aperture_field = aperture_field[:, :, :, None, ...]  # [num_model_times, lres, mres, 1, num_model_freqs[, 2, 2]]
+            aperture_field = aperture_field[:, :, :, None,
+                             ...]  # [num_model_times, lres, mres, 1, num_model_freqs[, 2, 2]]
         if beam_model.full_stokes:
-            aperture_field *= aperture_gains[..., None, None]  # [num_model_times, lres, mres, num_ant, num_model_freqs[, 2, 2]]
+            aperture_field *= aperture_gains[
+                ..., None, None]  # [num_model_times, lres, mres, num_ant, num_model_freqs[, 2, 2]]
         else:
             aperture_field *= aperture_gains
-        jax.debug.print("{}", (jnp.all(jnp.isfinite(aperture_field)), jnp.abs(aperture_field).max()))
         aperture_model = BaseSphericalInterpolatorGainModel(
             model_times=model_times,
             model_freqs=model_freqs,
@@ -162,7 +167,6 @@ def build_dish_aperture_effects(
         surface_error_stddev: au.Quantity | None = None,
 ) -> DishApertureEffects:
     return DishApertureEffects(
-        num_antennas=num_antennas,
         dish_diameter=quantity_to_jnp(dish_diameter, 'm'),
         focal_length=quantity_to_jnp(focal_length, 'm'),
         elevation_pointing_error_stddev=quantity_to_jnp(elevation_pointing_error_stddev,
@@ -180,32 +184,3 @@ def build_dish_aperture_effects(
         surface_error_mean=quantity_to_jnp(surface_error_mean, 'm') if surface_error_mean is not None else None,
         surface_error_stddev=quantity_to_jnp(surface_error_stddev, 'm') if surface_error_stddev is not None else None,
     )
-
-
-# @pytest.mark.parametrize('array_name', ['dsa2000_31b'])
-# def test_dish_aperture_effects(array_name: str):
-
-if __name__ == '__main__':
-    beam_gain_model = build_beam_gain_model(array_name='dsa2000_31b', full_stokes=True)
-
-    d = build_dish_aperture_effects(
-        num_antennas=5,
-        dish_diameter=5 * au.m,
-        focal_length=2 * au.m,
-        elevation_pointing_error_stddev=2 * au.arcmin,
-        cross_elevation_pointing_error_stddev=2 * au.arcmin,
-        axial_focus_error_stddev=3 * au.mm,
-        elevation_feed_offset_stddev=3 * au.mm,
-        cross_elevation_feed_offset_stddev=3 * au.mm,
-        horizon_peak_astigmatism_stddev=5 * au.mm,
-        surface_error_mean=0 * au.mm,
-        surface_error_stddev=1 * au.mm
-    )
-
-    beam_gain_model.plot_regridded_beam()
-    # beam_gain_model.to_aperture().plot_regridded_beam()
-    # beam_gain_model.to_aperture().to_image().plot_regridded_beam()
-
-    beam_with_effects = jax.block_until_ready(
-        jax.jit(d.apply_dish_aperture_effects)(jax.random.PRNGKey(0), beam_gain_model))
-    beam_with_effects.plot_regridded_beam()
