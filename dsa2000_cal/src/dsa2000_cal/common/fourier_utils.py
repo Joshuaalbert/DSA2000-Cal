@@ -33,8 +33,8 @@ class ApertureTransform:
 
     .. math::
 
-            f_image = int f_aperture(x) e^{-2i pi x l} dm
-            f_aperture = int f_image(l) e^{2i pi x l} dl
+            f_image = int f_aperture(x) e^{-2i pi x l} dm ==> f_image[n] = sum_m f_aperture[m] e^{-2i pi x[m] l[n] / N} dx
+            f_aperture = int f_image(l) e^{2i pi x l} dl ==> f_aperture[m] = sum_n f_image[n] e^{2i pi x[m] l[n] / N} dl
 
     Where x is in dimensionless units (e.g. aperture position divided by wavelength),
     and l is direction cosine of wave vector.
@@ -59,7 +59,7 @@ class ApertureTransform:
             transform = lambda f_aperture, axes, dx, dy, _transform=transform: _transform(f_aperture.conj(), axes, dx, dy).conj()
         if axes != (-2, -1):
             f_aperture, move_back = move_axes_to_end(f_aperture, axes)
-            result = transform(f_aperture, axes, dx, dy)
+            result = transform(f_aperture, (-2, -1), dx, dy)
             return move_back(result)
         return transform(f_aperture, axes, dx, dy)
 
@@ -70,7 +70,7 @@ class ApertureTransform:
                                                                                        dm).conj()
         if axes != (-2, -1):
             f_image, move_back = move_axes_to_end(f_image, axes)
-            result = transform(f_image, axes, dl, dm)
+            result = transform(f_image, (-2, -1), dl, dm)
             return move_back(result)
         return transform(f_image, axes, dl, dm)
 

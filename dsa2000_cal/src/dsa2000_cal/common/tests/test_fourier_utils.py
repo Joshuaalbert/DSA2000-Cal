@@ -21,12 +21,14 @@ def test_find_next_magic_size():
 
 
 @pytest.mark.parametrize('convention', ['physical', 'engineering'])
-def test_aperture_transform(convention):
+@pytest.mark.parametrize('n', [128, 129])
+def test_aperture_transform(convention, n):
     a = ApertureTransform(convention=convention)
 
-    n = 128
     dl = dm = 0.001
-    mvec = lvec = (-n * 0.5 + np.arange(n)) * dl
+    dx = dy = 1 / (n * dl)
+    mvec = lvec = np.fft.fftshift(np.fft.fftfreq(n, dx))
+    xvec = yvec = np.fft.fftshift(np.fft.fftfreq(n, dl))
     L, M = np.meshgrid(lvec, mvec, indexing='ij')
     image = np.exp(-0.5 * (L ** 2 + M ** 2) / 0.01 ** 2 + 1j * (L + M) / 0.01).astype(np.float32)
     plt.imshow(
@@ -42,9 +44,9 @@ def test_aperture_transform(convention):
     plt.show()
 
     aperture = a.to_aperture(image, axes=(-2, -1), dl=dl, dm=dm)
-    dx = dy = 1 / (n * dl)
-    xvec = yvec = (-n * 0.5 + np.arange(n)) * dx
-    X, Y = np.meshgrid(xvec, yvec, indexing='ij')
+    # dx = dy = 1 / (n * dl)
+    # xvec = yvec = (-n * 0.5 + np.arange(n)) * dx
+    # X, Y = np.meshgrid(xvec, yvec, indexing='ij')
     plt.imshow(
         np.abs(aperture).T, interpolation='nearest',
         origin='lower', extent=(xvec[0], xvec[-1], yvec[0], yvec[-1])

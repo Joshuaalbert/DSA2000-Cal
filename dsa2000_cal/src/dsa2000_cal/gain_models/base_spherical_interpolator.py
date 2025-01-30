@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 
 from dsa2000_cal.common.array_types import FloatArray, IntArray, ComplexArray
 from dsa2000_cal.common.fourier_utils import ApertureTransform
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp
+from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
@@ -347,10 +347,13 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         aperture_field = a.to_aperture(image_field, axes, dl, dm)
         num_l = np.shape(aperture_field)[axes[0]]
         num_m = np.shape(aperture_field)[axes[1]]
-        dx = 1. / (num_l * dl)
-        dy = 1. / (num_m * dm)
-        xvec = (-num_l * 0.5 + np.arange(num_l)) * dx
-        yvec = (-num_m * 0.5 + np.arange(num_m)) * dy
+        # If even:
+        # dx = 1. / (num_l * dl)
+        # dy = 1. / (num_m * dm)
+        # xvec = (-num_l * 0.5 + jnp.arange(num_l)) * dx
+        # yvec = (-num_m * 0.5 + jnp.arange(num_m)) * dy
+        xvec = jnp.fft.fftshift(jnp.fft.fftfreq(num_l, dl))
+        yvec = jnp.fft.fftshift(jnp.fft.fftfreq(num_m, dm))
         return BaseSphericalInterpolatorGainModel(
             model_times=self.model_times,
             model_freqs=self.model_freqs,
@@ -370,16 +373,76 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         image_field = a.to_image(aperture_field, axes, dx, dy)
         num_x = np.shape(image_field)[axes[0]]
         num_y = np.shape(image_field)[axes[1]]
-        dl = 1. / (num_x * dx)
-        dm = 1. / (num_y * dy)
-        lvec = (-num_x * 0.5 + np.arange(num_x)) * dl
-        mvec = (-num_y * 0.5 + np.arange(num_y)) * dm
+        # If even:
+        # dl = 1. / (num_x * dx)
+        # dm = 1. / (num_y * dy)
+        # lvec = (-num_x * 0.5 + jnp.arange(num_x)) * dl
+        # mvec = (-num_y * 0.5 + jnp.arange(num_y)) * dm
+        lvec = jnp.fft.fftshift(jnp.fft.fftfreq(num_x, dx))
+        mvec = jnp.fft.fftshift(jnp.fft.fftfreq(num_y, dy))
         return BaseSphericalInterpolatorGainModel(
             model_times=self.model_times,
             model_freqs=self.model_freqs,
             lvec=lvec,
             mvec=mvec,
             model_gains=image_field,
+            tile_antennas=self.tile_antennas,
+            full_stokes=self.full_stokes
+        )
+
+    def interpolate(self, new_model_times: FloatArray | None = None,
+                    new_model_freqs: FloatArray | None = None) -> 'BaseSphericalInterpolatorGainModel':
+        """
+        Interpolate the model to new times and frequencies.
+
+        Args:
+            new_model_times: [num_new_model_times] The new times.
+            new_model_freqs: [num_new_model_freqs] The new frequencies.
+
+        Returns:
+            the interpolated model
+        """
+        if new_model_times is None and new_model_freqs is None:
+            return self
+        model_gains = self.model_gains  # [num_model_times, lres, mres, [num_ant,] num_model_freqs[, 2, 2]]
+        model_times = self.model_times
+        model_freqs = self.model_freqs
+        if model_times is not None:
+            if len(np.shape(model_times)) != 1:
+                raise ValueError("model_times must be 1D.")
+            interp = InterpolatedArray(
+                self.model_times,
+                model_gains,
+                axis=0,
+                regular_grid=True,
+                check_spacing=True,
+                clip_out_of_bounds=True
+            )
+            model_gains = interp(new_model_times)
+            model_times = new_model_times
+        if model_freqs is not None:
+            if len(np.shape(model_freqs)) != 1:
+                raise ValueError("model_freqs must be 1D.")
+            if self.tile_antennas:
+                freq_axis = 3
+            else:
+                freq_axis = 4
+            interp = InterpolatedArray(
+                self.model_freqs,
+                model_gains,
+                axis=freq_axis,
+                regular_grid=True,
+                check_spacing=True,
+                clip_out_of_bounds=True
+            )
+            model_gains = interp(new_model_freqs)
+            model_freqs = new_model_freqs
+        return BaseSphericalInterpolatorGainModel(
+            model_times=model_times,
+            model_freqs=model_freqs,
+            lvec=self.lvec,
+            mvec=self.mvec,
+            model_gains=model_gains,
             tile_antennas=self.tile_antennas,
             full_stokes=self.full_stokes
         )

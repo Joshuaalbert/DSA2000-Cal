@@ -81,3 +81,8 @@ def test_beam_gain_model_transforms(array_name: str):
 
     im_beam = ap_beam.to_image()
     im_beam.plot_regridded_beam()
+
+    np.testing.assert_allclose(im_beam.lvec, beam_gain_model.lvec, atol=1e-6)
+    np.testing.assert_allclose(im_beam.mvec, beam_gain_model.mvec, atol=1e-6)
+    np.testing.assert_allclose(im_beam.model_gains.real, beam_gain_model.model_gains.real, atol=1e-6)
+    np.testing.assert_allclose(im_beam.model_gains.imag, beam_gain_model.model_gains.imag, atol=1e-6)
