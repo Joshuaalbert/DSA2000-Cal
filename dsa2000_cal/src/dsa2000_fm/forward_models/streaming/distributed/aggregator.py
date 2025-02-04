@@ -162,7 +162,7 @@ class _Aggregator:
         self._throughput_period_gauge_s = Gauge(
             "aggregator_throughput_gauge_s",
             description="Aggregator throughput",
-            tags=('task,')
+            tag_keys=('task',)
         )
         self._throughput_period_gauge_s.set_default_tags({'task': 'aggregator'})
 

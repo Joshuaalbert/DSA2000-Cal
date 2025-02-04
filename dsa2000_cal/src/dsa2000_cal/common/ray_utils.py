@@ -255,10 +255,10 @@ async def resource_logger(task: str, cadence: timedelta):
     async def log_resources():
         # logger.info(f"Logging memory usage for task {task} for pid {pid}")
         mem_MB = python_process.memory_info()[0] / 2 ** 20
-        memory_gauge.set(mem_MB, tags={"device_type": "cpu", "task": task})
+        memory_gauge.set(mem_MB, tag_keys={"device_type": "cpu", "task": task})
         # CPU usage by this process
         cpu_usge = python_process.cpu_percent(interval=0.)  # no need to block
-        cpu_gauge.set(cpu_usge, tags={"task": task})
+        cpu_gauge.set(cpu_usge, tag_keys={"task": task})
         # GPU memory usage by this process
         gpu_mem_MB = 0
         for gpu_handle in gpu_handles:
@@ -271,7 +271,7 @@ async def resource_logger(task: str, cadence: timedelta):
                             gpu_mem_MB += process.usedGpuMemory / 2 ** 20
                 except Exception as e:
                     print(f"Error logging GPU memory for process: {e}")
-        memory_gauge.set(gpu_mem_MB, tags={"device_type": "gpu", "task": task})
+        memory_gauge.set(gpu_mem_MB, tag_keys={"device_type": "gpu", "task": task})
 
     await loop_task(log_resources, cadence)
 
