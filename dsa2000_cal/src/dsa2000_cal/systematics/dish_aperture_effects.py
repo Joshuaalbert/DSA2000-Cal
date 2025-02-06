@@ -1,4 +1,7 @@
 import dataclasses
+import pickle
+import warnings
+from typing import Tuple, List, Any
 
 import astropy.units as au
 import jax.lax
@@ -27,6 +30,116 @@ class DishApertureEffects:
     horizon_peak_astigmatism_stddev: FloatArray | None = None  # in m
     surface_error_mean: FloatArray | None = None  # in m
     surface_error_stddev: FloatArray | None = None  # in m
+
+    skip_post_init: bool = False
+
+    def __post_init__(self):
+        if self.skip_post_init:
+            return
+
+
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
+
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "DishApertureEffects") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return (
+            [
+                this.dish_diameter,
+                this.focal_length,
+                this.elevation_pointing_error_stddev,
+                this.cross_elevation_pointing_error_stddev,
+                this.axial_focus_error_stddev,
+                this.elevation_feed_offset_stddev,
+                this.cross_elevation_feed_offset_stddev,
+                this.horizon_peak_astigmatism_stddev,
+                this.surface_error_mean,
+                this.surface_error_stddev
+            ], (
+
+            )
+        )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "DishApertureEffects":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        dish_diameter, focal_length, elevation_pointing_error_stddev, cross_elevation_pointing_error_stddev, \
+        axial_focus_error_stddev, elevation_feed_offset_stddev, cross_elevation_feed_offset_stddev, \
+        horizon_peak_astigmatism_stddev, surface_error_mean, surface_error_stddev = children
+        # _ = aux_data
+        return DishApertureEffects(
+            dish_diameter=dish_diameter,
+            focal_length=focal_length,
+            elevation_pointing_error_stddev=elevation_pointing_error_stddev,
+            cross_elevation_pointing_error_stddev=cross_elevation_pointing_error_stddev,
+            axial_focus_error_stddev=axial_focus_error_stddev,
+            elevation_feed_offset_stddev=elevation_feed_offset_stddev,
+            cross_elevation_feed_offset_stddev=cross_elevation_feed_offset_stddev,
+            horizon_peak_astigmatism_stddev=horizon_peak_astigmatism_stddev,
+            surface_error_mean=surface_error_mean,
+            surface_error_stddev=surface_error_stddev,
+            skip_post_init=True
+        )
 
     def compute_pointing_error(self, x: FloatArray, y: FloatArray, elevation_point_error: FloatArray,
                                cross_elevation_point_error: FloatArray) -> FloatArray:
@@ -149,9 +262,9 @@ class DishApertureEffects:
         )
         return aperture_model.to_image()
 
+DishApertureEffects.register_pytree()
 
 def build_dish_aperture_effects(
-        num_antennas: int,
         # dish parameters
         dish_diameter: au.Quantity,
         focal_length: au.Quantity,

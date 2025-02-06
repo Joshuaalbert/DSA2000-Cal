@@ -5,7 +5,7 @@ from astropy import coordinates as ac, units as au, time as at
 
 from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
-from dsa2000_cal.systematics.dish_aperture_effects import build_dish_aperture_effects
+from dsa2000_cal.systematics.dish_aperture_effects import build_dish_aperture_effects, DishApertureEffects
 
 
 @pytest.mark.parametrize('array_name', ['dsa2000_31b'])
@@ -33,7 +33,6 @@ def test_dish_aperture_effects(array_name: str):
     )
 
     d = build_dish_aperture_effects(
-        num_antennas=5,
         dish_diameter=5 * au.m,
         focal_length=2 * au.m,
         elevation_pointing_error_stddev=2 * au.arcmin,
@@ -46,6 +45,12 @@ def test_dish_aperture_effects(array_name: str):
         surface_error_stddev=1 * au.mm
     )
 
+    @jax.jit
+    def f(d: DishApertureEffects) -> DishApertureEffects:
+        return d
+
+    jax.block_until_ready(f(d))
+
     beam_gain_model.plot_regridded_beam()
     # beam_gain_model.to_aperture().plot_regridded_beam()
     # beam_gain_model.to_aperture().to_image().plot_regridded_beam()
@@ -53,3 +58,5 @@ def test_dish_aperture_effects(array_name: str):
     beam_with_effects = jax.block_until_ready(
         jax.jit(d.apply_dish_aperture_effects)(jax.random.PRNGKey(0), beam_gain_model, geodesic_model))
     beam_with_effects.plot_regridded_beam()
+
+

@@ -35,7 +35,7 @@ def get_image_parameters(meta: MeasurementSetMeta,
 
 
 def get_array_image_parameters(array_name: str, field_of_view: au.Quantity | None = None,
-                               oversample_factor: float = 5.):
+                               oversample_factor: float = 5., threshold: float = 0.1):
     """
     Get the image parameters for imaging
 
@@ -64,9 +64,11 @@ def get_array_image_parameters(array_name: str, field_of_view: au.Quantity | Non
         # Try to get HPFW from the actual beam
         try:
             antenna_model = array.get_antenna_model()
-            _freqs, _beam_widths = get_dish_model_beam_widths(antenna_model)
+            # Thresholds of 0.1 are used for mosaics often, not 0.5
+            _freqs, _beam_widths = get_dish_model_beam_widths(antenna_model, threshold=threshold)
             # Use the mean beam-width for the field of view.
             field_of_view = np.mean(np.interp(freqs, _freqs, _beam_widths))
+            print(f"Using beam width: {field_of_view.to('deg')}")
         except NoMatchFound as e:
             print(f"Failed to get beam width from antenna model: {e}")
             field_of_view = au.Quantity(
@@ -99,15 +101,18 @@ def get_array_image_parameters(array_name: str, field_of_view: au.Quantity | Non
     center_m = 0. * au.rad
 
     print(f"Center x: {center_l}, Center y: {center_m}")
-    print(f"Image size: {num_pixel} x {num_pixel}")
+    print(f"Image size: {num_pixel} x {num_pixel} ({(num_pixel * dl).to('deg')} x {(num_pixel * dm).to('deg')})")
     print(f"Pixel size: {dl.to('arcsec')} x {dm.to('arcsec')}")
     return num_pixel, dl, dm, center_l, center_m
 
 
 def test_get_array_image_parameters():
     num_pixel, dl, dm, l0, m0 = get_array_image_parameters(
-        array_name='dsa2000_31b',
-        field_of_view=au.Quantity(3. * au.deg),
-        oversample_factor=5.
+        array_name='dsa2000_optimal_v1',
+        # field_of_view=au.Quantity(3. * au.deg),
+        oversample_factor=3.3,
+        threshold=0.1
     )
     print(num_pixel, dl, dm, l0, m0)
+    print(find_optimal_fft_size(num_pixel))
+
