@@ -133,4 +133,7 @@ class DFTPredictor:
                     **data_dict
                 )
             )
+            # Ensure there are no nans
+            if np.any(np.isnan(response.vis)):
+                raise ValueError("NaNs in response.")
         return jax.tree.map(np.asarray, response)

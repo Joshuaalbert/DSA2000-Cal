@@ -207,6 +207,9 @@ class SystemGainSimulator:
             )
             gain_model = gain_model
 
+        # check for nans
+        if np.any(np.isnan(gain_model.model_gains)):
+            raise ValueError("NaNs in the gain model.")
         return SystemGainSimulatorResponse(gain_model=gain_model)
 
 

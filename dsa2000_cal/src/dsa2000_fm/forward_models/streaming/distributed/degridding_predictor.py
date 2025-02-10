@@ -120,5 +120,8 @@ class DegriddingPredictor:
                 far_field_delay_engine=far_field_delay_engine,
                 geodesic_model=geodesic_model
             )
+            # Check for nans
+            if np.any(np.isnan(response.vis)):
+                raise ValueError(f"NaNs in the response visibilities.")
 
         return jax.tree.map(np.asarray, response)

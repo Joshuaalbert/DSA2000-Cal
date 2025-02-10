@@ -3,7 +3,7 @@ import logging
 import os
 import warnings
 from datetime import timedelta
-from typing import NamedTuple, List, Generator, AsyncGenerator
+from typing import NamedTuple, List, AsyncGenerator
 
 import numpy as np
 import pylab as plt
@@ -28,9 +28,9 @@ class GridderResponse(NamedTuple):
 
 def compute_gridder_options(run_params: ForwardModellingRunParams):
     if run_params.full_stokes:
-        num_cpus = 32 # 16 inner, 2 outer
+        num_cpus = 32  # 16 inner, 2 outer
     else:
-        num_cpus = 32 # 32 inner, 1 outer
+        num_cpus = 32  # 32 inner, 1 outer
     # memory usage is 18.6GB
     memory = 18.6 * 1024 ** 3
     return {
@@ -158,6 +158,7 @@ class Gridder:
             single_run, 0, 0,
             num_threads=num_threads_outer
         )
+
         _ = cb(pol_array[:, None], pol_array[None, :])
 
         if np.all(image_buffer == 0) or not np.all(np.isfinite(image_buffer)):
@@ -165,14 +166,14 @@ class Gridder:
         if np.all(psf_buffer == 0) or not np.all(np.isfinite(psf_buffer)):
             logger.warning(f"PSF buffer is all zeros or contains NaNs/Infs for freq_idx={sol_int_freq_idx}")
 
-        # Plot histogram of image
-        fig, ax = plt.subplots(1, 1)
-        ax.hist(image_buffer.flatten(), bins='auto')
-        ax.set_title(f"Image buffer histogram for freq_idx={sol_int_freq_idx}")
-        ax.set_xlabel("Value")
-        ax.set_ylabel("Frequency")
-        fig.savefig(os.path.join(self.params.plot_folder, f"image_buffer_hist_{sol_int_freq_idx}.png"))
-        plt.close(fig)
+        # # Plot histogram of image
+        # fig, ax = plt.subplots(1, 1)
+        # ax.hist(image_buffer.flatten(), bins='auto')
+        # ax.set_title(f"Image buffer histogram for freq_idx={sol_int_freq_idx}")
+        # ax.set_xlabel("Value")
+        # ax.set_ylabel("Frequency")
+        # fig.savefig(os.path.join(self.params.plot_folder, f"image_buffer_hist_{sol_int_freq_idx}.png"))
+        # plt.close(fig)
 
         if self.params.full_stokes:
             return GridderResponse(image=image_buffer, psf=psf_buffer)
@@ -180,8 +181,10 @@ class Gridder:
             # remove the last dimensions
             return GridderResponse(image=image_buffer[..., 0, 0], psf=psf_buffer[..., 0, 0])
 
-    async def __call__(self, key, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[GridderResponse, None]:
-        logger.info(f"Gridding visibilities for sol_int_time_idxs={sol_int_time_idxs} and sol_int_freq_idxs={sol_int_freq_idxs}")
+    async def __call__(self, key, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[
+        GridderResponse, None]:
+        logger.info(
+            f"Gridding visibilities for sol_int_time_idxs={sol_int_time_idxs} and sol_int_freq_idxs={sol_int_freq_idxs}")
         await self.init()
 
         cal_response_gen = self._calibrator.stream(key, sol_int_time_idxs, sol_int_freq_idxs)
