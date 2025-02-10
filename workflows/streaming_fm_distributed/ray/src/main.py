@@ -192,7 +192,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
     system_gain_simulator_params = SystemGainSimulatorParams(
         geodesic_model=geodesic_model,
         init_key=jax.random.PRNGKey(0),
-        apply_effects=False,  # Skip for now
+        apply_effects=True,  # Skip for now
         simulate_ionosphere=False  # Skip for now
     )
 

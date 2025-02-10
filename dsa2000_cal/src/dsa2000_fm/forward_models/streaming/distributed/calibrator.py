@@ -122,7 +122,7 @@ class Calibrator:
             num_ant=len(self.params.ms_meta.antennas),
             gain_probabilistic_model=GainPriorModel(
                 full_stokes=self.params.full_stokes,
-                gain_stddev=2.,
+                gain_stddev=1.,
                 dd_dof=1,
                 double_differential=True,
                 di_dof=1,
@@ -148,7 +148,10 @@ class Calibrator:
             verbose=False,
             devices=None
         )
-        self._main_step = calibrator.build_main_step()
+        self._main_step = calibrator.build_main_step(
+            Ts=self.params.chunk_params.num_times_per_sol_int,
+            Cs=self.params.chunk_params.num_freqs_per_sol_int,
+        )
 
         self.calibrate_jit = jax.jit(calibration.step)
 
