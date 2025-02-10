@@ -62,7 +62,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     num_sub_bands = 1
     num_freqs_per_sol_int = 1
 
-    freqs = array.get_channels()[0:1]
+    freqs = array.get_channels()[len(array.get_channels()) // 2]
 
     num_channels = len(freqs)
 

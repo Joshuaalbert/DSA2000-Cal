@@ -275,7 +275,7 @@ class Calibrator:
                 vis_background=_background_vis_model,
                 model_times=jnp_to_time(model_times, self.params.ms_meta.ref_time),
                 model_freqs=au.Quantity(np.asarray(model_freqs), 'Hz'),
-                ref_time=times[0],
+                ref_time=self.params.ms_meta.ref_time,
                 antenna1=antenna1,
                 antenna2=antenna2
             )
