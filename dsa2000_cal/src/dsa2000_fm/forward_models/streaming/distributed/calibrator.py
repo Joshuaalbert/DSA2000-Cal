@@ -240,30 +240,30 @@ class Calibrator:
                     weights,
                     (('XX', 'XY'), ('YX', 'YY')),
                     coherencies
-                )
+                ) # [Ts, B, Cs, 4]
                 _flags = broadcast_translate_corrs(
                     flags,
                     (('XX', 'XY'), ('YX', 'YY')),
                     coherencies
-                )
+                ) # [Ts, B, Cs, 4]
                 _vis_model = broadcast_translate_corrs(
                     vis_model,
                     (('XX', 'XY'), ('YX', 'YY')),
                     coherencies
-                )
+                ) # [D, Tm, B, Cm, 4]
                 _background_vis_model = broadcast_translate_corrs(
                     background_vis_model,
                     (('XX', 'XY'), ('YX', 'YY')),
                     coherencies
-                )
+                ) # [E, Tm, B, Cm, 4]
             else:
                 coherencies = ('I',)
                 # add coh dim
-                _vis_data = vis_data[..., None]
-                _weights = weights[..., None]
-                _flags = flags[..., None]
-                _vis_model = vis_model[..., None]
-                _background_vis_model = background_vis_model[..., None]
+                _vis_data = vis_data[..., None] # [Ts, B, Cs, 1]
+                _weights = weights[..., None] # [Ts, B, Cs, 1]
+                _flags = flags[..., None] # [Ts, B, Cs, 1]
+                _vis_model = vis_model[..., None] # [D, Tm, B, Cm, 1]
+                _background_vis_model = background_vis_model[..., None] # [E, Tm, B, Cm, 1]
 
             main_data = Data(
                 sol_int_time_idx=sol_int_time_idx,
