@@ -537,6 +537,7 @@ def multi_vmap(f: C, in_mapping: str | List[str], out_mapping: str | List[str], 
             raise ValueError(f"Number of outputs {len(outs)} must match output mapping {out_mapping}.")
 
         def _apply_perm(x, in_dims, out_dims):
+            # print('perm', x.shape, in_dims, out_dims)
             perm = _get_permutation(len(np.shape(x)), in_dims, out_dims)
             if np.all(np.diff(perm) == 1):
                 return x

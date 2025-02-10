@@ -35,14 +35,14 @@ def test_dish_aperture_effects(array_name: str):
     d = build_dish_aperture_effects(
         dish_diameter=5 * au.m,
         focal_length=2 * au.m,
-        elevation_pointing_error_stddev=2 * au.arcmin,
-        cross_elevation_pointing_error_stddev=2 * au.arcmin,
-        axial_focus_error_stddev=3 * au.mm,
-        elevation_feed_offset_stddev=3 * au.mm,
-        cross_elevation_feed_offset_stddev=3 * au.mm,
-        horizon_peak_astigmatism_stddev=5 * au.mm,
-        surface_error_mean=0 * au.mm,
-        surface_error_stddev=1 * au.mm
+        elevation_pointing_error_stddev=3 * au.arcmin,
+        cross_elevation_pointing_error_stddev=3 * au.arcmin,
+        # axial_focus_error_stddev=3 * au.mm,
+        # elevation_feed_offset_stddev=3 * au.mm,
+        # cross_elevation_feed_offset_stddev=3 * au.mm,
+        # horizon_peak_astigmatism_stddev=5 * au.mm,
+        # surface_error_mean=0 * au.mm,
+        # surface_error_stddev=1 * au.mm
     )
 
     @jax.jit

@@ -2,7 +2,7 @@ import dataclasses
 import os
 import time
 from functools import partial
-from typing import Generator, Tuple, List
+from typing import Generator, Tuple, List, Any
 from typing import NamedTuple
 
 import astropy.coordinates as ac
@@ -80,6 +80,7 @@ class Data(NamedTuple):
 
 class ReturnData(NamedTuple):
     vis_residuals: ComplexArray  # [T, B, C, num_coh]
+    solver_state: Any
 
 
 @dataclasses.dataclass(eq=False)
@@ -405,8 +406,7 @@ class IterativeCalibrator:
 
         return average
 
-    def run(self, data_generator: Generator[Data, ReturnData, None], Ts: int | None = None, Cs: int | None = None):
-
+    def build_main_step(self, Ts: int | None = None, Cs: int | None = None):
         average = self.build_average_rule(
             num_model_times_per_sol_int=Ts,
             num_model_freqs_per_sol_int=Cs
@@ -415,14 +415,9 @@ class IterativeCalibrator:
         calc_residual = self.build_compute_residual()
 
         # Predict data and model
-        solver_state = None
-        gen_response: ReturnData | None = None
-        while True:
-            try:
-                data: Data = data_generator.send(gen_response)
-            except StopIteration:
-                break
 
+        def _step(data: Data, solver_state=None) -> ReturnData:
+            nonlocal Ts, Cs
             vis_model = jnp.concatenate([data.vis_bright_sources, data.vis_background],
                                         axis=0)  # [S + E, Tm, B, Cm, num_coh]
 
@@ -475,9 +470,12 @@ class IterativeCalibrator:
                 model_times = time_to_jnp(data.model_times, data.ref_time)
                 model_freqs = quantity_to_jnp(data.model_freqs, 'Hz')
                 gains, solver_state, diagnostics = jax.block_until_ready(
-                    calibrate(vis_model, vis_data_avg, weights_avg, flags_avg, model_freqs, model_times,
-                              data.antenna1,
-                              data.antenna2, None)
+                    calibrate(
+                        vis_model, vis_data_avg, weights_avg, flags_avg, model_freqs, model_times,
+                        data.antenna1,
+                        data.antenna2,
+                        solver_state
+                    )
                 )
 
             with TimerLog("Plotting calibration diagnostics"):
@@ -567,9 +565,25 @@ class IterativeCalibrator:
                     vis_residuals = broadcast_translate_corrs(vis_residuals, ('I',), data.coherencies)
 
             # Send back to generator
-            gen_response = ReturnData(
-                vis_residuals=vis_residuals
+            return ReturnData(
+                vis_residuals=vis_residuals,
+                solver_state=solver_state
             )
+
+        return _step
+
+    def run(self, data_generator: Generator[Data, ReturnData, None], Ts: int | None = None, Cs: int | None = None):
+
+        main_step = self.build_main_step(Ts, Cs)
+        # Predict data and model
+        solver_state = None
+        gen_response: ReturnData | None = None
+        while True:
+            try:
+                data: Data = data_generator.send(gen_response)
+            except StopIteration:
+                break
+            gen_response = main_step(data, solver_state)
 
 
 def apply_gains_to_model_vis(vis_model, gains, antenna1, antenna2):

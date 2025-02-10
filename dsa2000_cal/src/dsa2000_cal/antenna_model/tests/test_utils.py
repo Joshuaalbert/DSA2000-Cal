@@ -23,13 +23,24 @@ def _test_bore_sight_coords_to_pixel_coords():
     assert np.allclose(Y, Y2)
 
 
-@pytest.mark.parametrize('array_name', ['lwa_mock', 'dsa2000W_small'])
+# @pytest.mark.parametrize('array_name', ['lwa_mock', 'dsa2000W_small'])
+@pytest.mark.parametrize('array_name', ['dsa2000_optimal_v1'])
 def test_get_beam_width(array_name: str):
     fill_registries()
     antenna_model = array_registry.get_instance(array_registry.get_match(array_name)).get_antenna_model()
-    antenna_model.plot_polar_amplitude()
-    antenna_model.plot_polar_phase()
+    # antenna_model.plot_polar_amplitude()
+    # antenna_model.plot_polar_phase()
     plot_beam_profile(antenna_model, threshold=0.5)
-    freqs, beam_widths = get_dish_model_beam_widths(antenna_model)
+    freqs, beam_widths = get_dish_model_beam_widths(antenna_model, threshold=0.5)
+    print(freqs, beam_widths)
+    assert np.all(beam_widths > 0. * au.deg) and np.all(beam_widths < 180. * au.deg)
+
+    plot_beam_profile(antenna_model, threshold=0.1)
+    freqs, beam_widths = get_dish_model_beam_widths(antenna_model, threshold=0.1)
+    print(freqs, beam_widths)
+    assert np.all(beam_widths > 0. * au.deg) and np.all(beam_widths < 180. * au.deg)
+
+    plot_beam_profile(antenna_model, threshold=0.2)
+    freqs, beam_widths = get_dish_model_beam_widths(antenna_model, threshold=0.2)
     print(freqs, beam_widths)
     assert np.all(beam_widths > 0. * au.deg) and np.all(beam_widths < 180. * au.deg)

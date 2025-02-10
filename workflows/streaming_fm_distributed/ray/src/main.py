@@ -10,11 +10,11 @@ import astropy.units as au
 import jax
 import numpy as np
 import ray
-from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
+from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
@@ -60,19 +60,18 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     # 10000/10 = 1000, 1000/40 = 25
     num_sub_bands = 1
-    num_freqs_per_sol_int = 4
+    num_freqs_per_sol_int = 1
 
-    freqs = array.get_channels()[:num_freqs_per_sol_int * num_sub_bands]
+    freqs = array.get_channels()[0:1]
 
     num_channels = len(freqs)
 
-
-    channel_width = array.get_channel_width()
+    channel_width = 40 * array.get_channel_width()
     solution_interval_freq = num_freqs_per_sol_int * channel_width
     sub_band_interval = channel_width * num_channels / num_sub_bands
     num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
 
-    integration_interval = array.get_integration_time()
+    integration_interval = 4 * array.get_integration_time()
     solution_interval = 6 * au.s
     observation_duration = 624 * au.s
 

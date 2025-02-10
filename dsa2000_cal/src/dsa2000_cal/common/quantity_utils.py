@@ -93,4 +93,4 @@ def jnp_to_time(t: FloatArray, ref_time: at.Time) -> at.Time:
     Returns:
         astropy time
     """
-    return ref_time.tt + t * au.s
+    return ref_time.tt + np.asarray(t) * au.s

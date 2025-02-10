@@ -6,6 +6,7 @@ from datetime import timedelta
 from functools import partial
 from typing import NamedTuple, Tuple, List
 
+import astropy.units as au
 import jax
 import jaxns.framework.context as ctx
 import numpy as np
@@ -14,12 +15,15 @@ import ray
 from jax import numpy as jnp
 from jaxns.framework.ops import simulate_prior_model
 
+from dsa2000_cal.calibration.iterative_calibrator import IterativeCalibrator, Data
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
 from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
     MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
+from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.jax_utils import block_until_ready, simple_broadcast
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_cal.common.quantity_utils import jnp_to_time
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.vec_utils import kron_product
@@ -127,6 +131,25 @@ class Calibrator:
             )
         )
 
+        calibrator = IterativeCalibrator(
+            plot_folder=self.params.plot_folder,
+            run_name=self.params.run_name,
+            gain_probabilistic_model=GainPriorModel(
+                gain_stddev=1.,
+                dd_dof=1,
+                di_dof=1,
+                double_differential=True,
+                dd_type='unconstrained',
+                di_type='unconstrained',
+                full_stokes=self.params.full_stokes
+            ),
+            full_stokes=self.params.full_stokes,
+            antennas=self.params.ms_meta.antennas,
+            verbose=False,
+            devices=None
+        )
+        self._main_step = calibrator.build_main_step()
+
         self.calibrate_jit = jax.jit(calibration.step)
 
         self._compute_residual_jit = jax.jit(compute_residual)
@@ -180,103 +203,184 @@ class Calibrator:
                     uvw=np.asarray(uvw)
                 )
 
+            # Need to send the following to the generator:
+            #     sol_int_time_idx: int
+            #     coherencies: Tuple[str, ...]  # list of coherencies of length num_coh
+            #
+            #     # Full resolution data
+            #     vis_data: ComplexArray  # [T, B, C, num_coh]
+            #     weights: FloatArray  # [T, B, C, num_coh]
+            #     flags: BoolArray  # [T, B, C, num_coh]
+            #
+            #     # Model
+            #     vis_bright_sources: ComplexArray  # [D, Tm, B, Cm, num_coh]
+            #     vis_background: ComplexArray  # [E, Tm, B, Cm, num_coh]
+            #     model_freqs: au.Quantity  # [Cm]
+            #     model_times: at.Time  # [Tm]
+            #     ref_time: at.Time
+            #     antenna1: IntArray  # [B]
+            #     antenna2: IntArray  # [B]
+
             vis_model = model.vis  # [D, Tm, B, Cm[, 2, 2]]
             background_vis_model = model.vis_background  # [E, Tm, B, Cm[, 2, 2]]
             model_freqs = model.model_freqs
             model_times = model.model_times
 
-            # Response generator can be used in an `async for` block.
-            with TimerLog("Getting previous state..."):
-                previous_state = await self._calibration_solution_cache.get_calibration_solution_snapshot(
-                    sol_int_time_idx, sol_int_freq_idx)
-
-            with TimerLog("Averaging data and model visibilities"):
-                # vis_model, vis_data, weights, flags, freqs, times, antenna1, antenna2, state
-                # average data to match model: [Ts, B, Cs[, 2, 2]] -> [Tm, B, Cm[, 2, 2]]
-                time_average_rule = partial(
-                    average_rule,
-                    num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
-                    axis=0
+            if self.params.full_stokes:
+                coherencies = ('XX', 'XY', 'YX', 'YY')
+                _vis_data = broadcast_translate_corrs(
+                    vis_data,
+                    (('XX', 'XY'), ('YX', 'YY')),
+                    coherencies
+                )  # [Ts, B, Cs, 4]
+                _weights = broadcast_translate_corrs(
+                    weights,
+                    (('XX', 'XY'), ('YX', 'YY')),
+                    coherencies
                 )
-                freq_average_rule = partial(
-                    average_rule,
-                    num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
-                    axis=2
+                _flags = broadcast_translate_corrs(
+                    flags,
+                    (('XX', 'XY'), ('YX', 'YY')),
+                    coherencies
                 )
-
-                vis_data_avg = time_average_rule(freq_average_rule(vis_data))
-                weights_avg = np.reciprocal(time_average_rule(freq_average_rule(np.reciprocal(weights))))
-                flags_avg = freq_average_rule(time_average_rule(flags.astype(np.float16))).astype(np.bool_)
-
-            with TimerLog("Calibrating..."):
-                # combine model and background model
-                full_vis_model = np.concatenate([vis_model, background_vis_model], axis=0)
-                gains, solver_state, diagnostics = block_until_ready(self.calibrate_jit(
-                    vis_model=full_vis_model,
-                    vis_data=vis_data_avg,
-                    weights=weights_avg,
-                    flags=flags_avg,
-                    freqs=model_freqs,
-                    times=model_times,
-                    antenna1=antenna1,
-                    antenna2=antenna2,
-                    state=previous_state.solver_state
-                ))
-                diagnostics: MultiStepLevenbergMarquardtDiagnostic
-                # row 1: Plot error
-                # row 2: Plot r
-                # row 3: plot chi-2 (F_norm)
-                # row 4: plot damping
-
-                fig, axs = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
-                axs[0].plot(diagnostics.iteration, diagnostics.error)
-                axs[0].set_title('Error')
-                axs[1].plot(diagnostics.iteration, diagnostics.r)
-                axs[1].set_title('r')
-                axs[2].plot(diagnostics.iteration, diagnostics.F_norm)
-                axs[2].set_title('|F|')
-                axs[3].plot(diagnostics.iteration, diagnostics.damping)
-                axs[3].set_title('Damping')
-                axs[3].set_xlabel('Iteration')
-                plt.savefig(
-                    os.path.join(self.params.plot_folder,
-                                 f'calibration_diagnostics_{sol_int_time_idx}_{sol_int_freq_idx}.png')
+                _vis_model = broadcast_translate_corrs(
+                    vis_model,
+                    (('XX', 'XY'), ('YX', 'YY')),
+                    coherencies
                 )
-                plt.close(fig)
-
-            with TimerLog("Computing residuals..."):
-                # We don't subtract background, just the bright stuff
-                # Trim gains to the ones to be subtracted
-                num_subtract = np.shape(vis_model)[0]
-                subtract_gains = gains[:num_subtract, ...]
-                vis_residual = np.asarray(
-                    self._compute_residual_jit(
-                        vis_model=vis_model,
-                        vis_data=vis_data,
-                        gains=subtract_gains,
-                        antenna1=antenna1,
-                        antenna2=antenna2
-                    )
+                _background_vis_model = broadcast_translate_corrs(
+                    background_vis_model,
+                    (('XX', 'XY'), ('YX', 'YY')),
+                    coherencies
                 )
+            else:
+                coherencies = ('I',)
+                # add coh dim
+                _vis_data = vis_data[..., None]
+                _weights = weights[..., None]
+                _flags = flags[..., None]
+                _vis_model = vis_model[..., None]
 
-            with TimerLog("Storing solving state..."):
-                await self._calibration_solution_cache.store_calibration_solution(
-                    sol_int_time_idx=sol_int_time_idx,
-                    sol_int_freq_idx=sol_int_freq_idx,
-                    solution=CalibrationSolution(
-                        solver_state=solver_state,
-                        gains=np.asarray(gains),
-                        model_freqs=np.asarray(model_freqs),
-                        model_times=np.asarray(model_times)
-                    )
+            main_data = Data(
+                sol_int_time_idx=sol_int_time_idx,
+                coherencies=coherencies,
+                vis_data=_vis_data,
+                weights=_weights,
+                flags=_flags,
+                vis_bright_sources=_vis_model,
+                vis_background=_background_vis_model,
+                model_times=jnp_to_time(model_times, self.params.ms_meta.ref_time),
+                model_freqs=au.Quantity(np.asarray(model_freqs), 'Hz'),
+                ref_time=times[0],
+                antenna1=antenna1,
+                antenna2=antenna2
+            )
+
+            return_data = self._main_step(main_data)
+            if self.params.full_stokes:
+                vis_residual = broadcast_translate_corrs(
+                    return_data.vis_residuals,
+                    coherencies,
+                    (('XX', 'XY'), ('YX', 'YY'))
                 )
+            else:
+                vis_residual = return_data.vis_residuals[..., 0]
 
+            # vis_residual = await self._main_step_old(antenna1, antenna2, background_vis_model, flags, model_freqs,
+            #                                          model_times, sol_int_freq_idx, sol_int_time_idx, vis_data,
+            #                                          vis_model, weights)
+            #
             yield CalibratorResponse(
                 visibilities=np.asarray(vis_residual),
                 weights=np.asarray(weights),
                 flags=np.asarray(flags),
                 uvw=np.asarray(uvw)
             )
+
+    async def _main_step_old(self, antenna1, antenna2, background_vis_model, flags, model_freqs, model_times,
+                             sol_int_freq_idx, sol_int_time_idx, vis_data, vis_model, weights):
+        # Response generator can be used in an `async for` block.
+        with TimerLog("Getting previous state..."):
+            previous_state = await self._calibration_solution_cache.get_calibration_solution_snapshot(
+                sol_int_time_idx, sol_int_freq_idx)
+        with TimerLog("Averaging data and model visibilities"):
+            # vis_model, vis_data, weights, flags, freqs, times, antenna1, antenna2, state
+            # average data to match model: [Ts, B, Cs[, 2, 2]] -> [Tm, B, Cm[, 2, 2]]
+            time_average_rule = partial(
+                average_rule,
+                num_model_size=self.params.chunk_params.num_model_times_per_solution_interval,
+                axis=0
+            )
+            freq_average_rule = partial(
+                average_rule,
+                num_model_size=self.params.chunk_params.num_model_freqs_per_solution_interval,
+                axis=2
+            )
+
+            vis_data_avg = time_average_rule(freq_average_rule(vis_data))
+            weights_avg = np.reciprocal(time_average_rule(freq_average_rule(np.reciprocal(weights))))
+            flags_avg = freq_average_rule(time_average_rule(flags.astype(np.float16))).astype(np.bool_)
+        with TimerLog("Calibrating..."):
+            # combine model and background model
+            full_vis_model = np.concatenate([vis_model, background_vis_model], axis=0)
+            gains, solver_state, diagnostics = block_until_ready(self.calibrate_jit(
+                vis_model=full_vis_model,
+                vis_data=vis_data_avg,
+                weights=weights_avg,
+                flags=flags_avg,
+                freqs=model_freqs,
+                times=model_times,
+                antenna1=antenna1,
+                antenna2=antenna2,
+                state=previous_state.solver_state
+            ))
+            diagnostics: MultiStepLevenbergMarquardtDiagnostic
+            # row 1: Plot error
+            # row 2: Plot r
+            # row 3: plot chi-2 (F_norm)
+            # row 4: plot damping
+
+            fig, axs = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
+            axs[0].plot(diagnostics.iteration, diagnostics.error)
+            axs[0].set_title('Error')
+            axs[1].plot(diagnostics.iteration, diagnostics.r)
+            axs[1].set_title('r')
+            axs[2].plot(diagnostics.iteration, diagnostics.F_norm)
+            axs[2].set_title('|F|')
+            axs[3].plot(diagnostics.iteration, diagnostics.damping)
+            axs[3].set_title('Damping')
+            axs[3].set_xlabel('Iteration')
+            plt.savefig(
+                os.path.join(self.params.plot_folder,
+                             f'calibration_diagnostics_{sol_int_time_idx}_{sol_int_freq_idx}.png')
+            )
+            plt.close(fig)
+        with TimerLog("Computing residuals..."):
+            # We don't subtract background, just the bright stuff
+            # Trim gains to the ones to be subtracted
+            num_subtract = np.shape(vis_model)[0]
+            subtract_gains = gains[:num_subtract, ...]
+            vis_residual = np.asarray(
+                self._compute_residual_jit(
+                    vis_model=vis_model,
+                    vis_data=vis_data,
+                    gains=subtract_gains,
+                    antenna1=antenna1,
+                    antenna2=antenna2
+                )
+            )
+        with TimerLog("Storing solving state..."):
+            await self._calibration_solution_cache.store_calibration_solution(
+                sol_int_time_idx=sol_int_time_idx,
+                sol_int_freq_idx=sol_int_freq_idx,
+                solution=CalibrationSolution(
+                    solver_state=solver_state,
+                    gains=np.asarray(gains),
+                    model_freqs=np.asarray(model_freqs),
+                    model_times=np.asarray(model_times)
+                )
+            )
+        return vis_residual
 
 
 def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):

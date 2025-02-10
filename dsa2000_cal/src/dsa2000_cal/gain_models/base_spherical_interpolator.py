@@ -216,14 +216,16 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         fig, axs = plt.subplots(2, 1, figsize=(8, 12), sharex=True, sharey=True, squeeze=False)
         # Plot log10(amp)
         sc = axs[0, 0].imshow(
-            np.log10(np.abs(gain_screen.T)),
+            10. * np.log10(np.abs(gain_screen.T)),
             extent=(self.lvec[0], self.lvec[-1],
                     self.mvec[0], self.mvec[-1]),
             origin='lower',
             cmap='PuOr',
-            interpolation='none'
+            interpolation='none',
+            vmin=-80,
+            vmax=0
         )
-        fig.colorbar(sc, ax=axs[0, 0])
+        fig.colorbar(sc, ax=axs[0, 0], label='Amplitude (dB)')
         axs[0, 0].set_ylabel('m (proj. rad.)')
         axs[0, 0].set_title(f'Gridded log10(Amplitude)[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
         # Plot phase
@@ -237,7 +239,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
             vmax=np.pi,
             interpolation='none'
         )
-        fig.colorbar(sc, ax=axs[1, 0])
+        fig.colorbar(sc, ax=axs[1, 0], label='Phase (rad)')
         axs[1, 0].set_xlabel('l (proj. rad.)')
         axs[1, 0].set_ylabel('m (proj. rad.)')
         axs[1, 0].set_title(f'Gridded Phase[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')

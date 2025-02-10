@@ -67,7 +67,7 @@ def get_array_image_parameters(array_name: str, field_of_view: au.Quantity | Non
             # Thresholds of 0.1 are used for mosaics often, not 0.5
             _freqs, _beam_widths = get_dish_model_beam_widths(antenna_model, threshold=threshold)
             # Use the mean beam-width for the field of view.
-            field_of_view = np.mean(np.interp(freqs, _freqs, _beam_widths))
+            field_of_view = np.mean(np.interp(freqs.to('MHz').value, _freqs.to('MHz').value, _beam_widths.to('deg').value)) * au.deg
             print(f"Using beam width: {field_of_view.to('deg')}")
         except NoMatchFound as e:
             print(f"Failed to get beam width from antenna model: {e}")
