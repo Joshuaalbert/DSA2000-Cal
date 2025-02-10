@@ -661,9 +661,11 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
         )
         def apply_gains(g1, g2, vis):
             if np.shape(g1) != np.shape(g1):
-                raise ValueError("Gains must have the same shape.")
+                raise ValueError(f"Gains must have the same shape, "
+                                 f"got {np.shape(g1)} and {np.shape(vis)}.")
             if np.shape(vis) != np.shape(g1):
-                raise ValueError("Gains and visibilities must have the same shape.")
+                raise ValueError(f"Gains and visibilities must have the same shape, "
+                                 f"got {np.shape(g1)} and {np.shape(vis)}.")
             if np.shape(g1) == (2, 2):
                 return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
             elif np.shape(g1) == ():
@@ -676,7 +678,8 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
 
     if np.shape(vis_model)[0] != np.shape(gains)[0]:
         raise ValueError(
-            f"Model visibilities and gains must have the same number of directions, got {np.shape(vis_model)[0]} and {np.shape(gains)[0]}")
+            f"Model visibilities and gains must have the same number of directions, "
+            f"got {np.shape(vis_model)[0]} and {np.shape(gains)[0]}")
 
     # num_directions = np.shape(vis_model)[0]
 
