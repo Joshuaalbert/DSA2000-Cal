@@ -649,12 +649,41 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
         [Ts, B, Cs[, 2, 2]] the residuals
     """
 
-    accumulate = apply_gains_to_model_vis(
-        vis_model=vis_model, gains=gains, antenna1=antenna1, antenna2=antenna2
-    )
+    def body_fn(accumulate, x):
+        vis_model, gains = x
+
+        g1 = gains[:, antenna1, :, ...]  # [Tm, B, Cm[, 2, 2]]
+        g2 = gains[:, antenna2, :, ...]  # [Tm, B, Cm[, 2, 2]]
+
+        @partial(
+            simple_broadcast,  # [Tm,B,Cm,...]
+            leading_dims=3
+        )
+        def apply_gains(g1, g2, vis):
+            if np.shape(g1) != np.shape(g1):
+                raise ValueError("Gains must have the same shape.")
+            if np.shape(vis) != np.shape(g1):
+                raise ValueError("Gains and visibilities must have the same shape.")
+            if np.shape(g1) == (2, 2):
+                return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
+            elif np.shape(g1) == ():
+                return mp_policy.cast_to_vis(g1 * vis * g2.conj())
+            else:
+                raise ValueError(f"Invalid shape: {np.shape(g1)}")
+
+        delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
+        return accumulate + delta_vis, ()
+
+    if np.shape(vis_model)[0] != np.shape(gains)[0]:
+        raise ValueError(
+            f"Model visibilities and gains must have the same number of directions, got {np.shape(vis_model)[0]} and {np.shape(gains)[0]}")
+
+    # num_directions = np.shape(vis_model)[0]
+
+    accumulate = jnp.zeros(np.shape(vis_model)[1:], dtype=vis_model.dtype)
+    accumulate, _ = jax.lax.scan(body_fn, accumulate, (vis_model, gains))
 
     # Invert average rule with tile
-    # TODO: using conv_transpose for performance (test that)
     time_rep = np.shape(vis_data)[0] // np.shape(accumulate)[0]  # Ts / Tm
     freq_rep = np.shape(vis_data)[2] // np.shape(accumulate)[2]  # Cs / Cm
     tile_reps = [1] * len(np.shape(accumulate))
