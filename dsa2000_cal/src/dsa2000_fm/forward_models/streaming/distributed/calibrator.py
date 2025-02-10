@@ -265,6 +265,7 @@ class Calibrator:
                 _vis_model = vis_model[..., None] # [D, Tm, B, Cm, 1]
                 _background_vis_model = background_vis_model[..., None] # [E, Tm, B, Cm, 1]
 
+
             main_data = Data(
                 sol_int_time_idx=sol_int_time_idx,
                 coherencies=coherencies,
@@ -279,6 +280,8 @@ class Calibrator:
                 antenna1=antenna1,
                 antenna2=antenna2
             )
+
+            print(jax.tree.map(np.shape, main_data))
 
             return_data = self._main_step(main_data)
             if self.params.full_stokes:
@@ -401,6 +404,7 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
     Returns:
         [Ts, B, Cs[, 2, 2]] the residuals
     """
+    print(jax.tree.map(np.shape, (vis_model, vis_data, gains, antenna1, antenna2)))
 
     def body_fn(accumulate, x):
         vis_model, gains = x
