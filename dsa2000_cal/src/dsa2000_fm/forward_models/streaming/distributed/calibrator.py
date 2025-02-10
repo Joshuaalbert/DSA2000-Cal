@@ -219,103 +219,104 @@ class Calibrator:
                     flags=np.asarray(flags),
                     uvw=np.asarray(uvw)
                 )
+            else:
 
-            # Need to send the following to the generator:
-            #     sol_int_time_idx: int
-            #     coherencies: Tuple[str, ...]  # list of coherencies of length num_coh
-            #
-            #     # Full resolution data
-            #     vis_data: ComplexArray  # [T, B, C, num_coh]
-            #     weights: FloatArray  # [T, B, C, num_coh]
-            #     flags: BoolArray  # [T, B, C, num_coh]
-            #
-            #     # Model
-            #     vis_bright_sources: ComplexArray  # [D, Tm, B, Cm, num_coh]
-            #     vis_background: ComplexArray  # [E, Tm, B, Cm, num_coh]
-            #     model_freqs: au.Quantity  # [Cm]
-            #     model_times: at.Time  # [Tm]
-            #     ref_time: at.Time
-            #     antenna1: IntArray  # [B]
-            #     antenna2: IntArray  # [B]
-
-            with TimerLog("Preparing data for calibration"):
-
-                vis_model = model.vis  # [D, Tm, B, Cm[, 2, 2]]
-                background_vis_model = model.vis_background  # [E, Tm, B, Cm[, 2, 2]]
-                model_freqs = model.model_freqs
-                model_times = model.model_times
-
-                if self.params.full_stokes:
-                    coherencies = ('XX', 'XY', 'YX', 'YY')
-                    _vis_data = broadcast_translate_corrs(
-                        vis_data,
-                        (('XX', 'XY'), ('YX', 'YY')),
-                        coherencies
-                    )  # [Ts, B, Cs, 4]
-                    _weights = broadcast_translate_corrs(
-                        weights,
-                        (('XX', 'XY'), ('YX', 'YY')),
-                        coherencies
-                    )  # [Ts, B, Cs, 4]
-                    _flags = broadcast_translate_corrs(
-                        flags,
-                        (('XX', 'XY'), ('YX', 'YY')),
-                        coherencies
-                    )  # [Ts, B, Cs, 4]
-                    _vis_model = broadcast_translate_corrs(
-                        vis_model,
-                        (('XX', 'XY'), ('YX', 'YY')),
-                        coherencies
-                    )  # [D, Tm, B, Cm, 4]
-                    _background_vis_model = broadcast_translate_corrs(
-                        background_vis_model,
-                        (('XX', 'XY'), ('YX', 'YY')),
-                        coherencies
-                    )  # [E, Tm, B, Cm, 4]
-                else:
-                    coherencies = ('I',)
-                    # add coh dim
-                    _vis_data = vis_data[..., None]  # [Ts, B, Cs, 1]
-                    _weights = weights[..., None]  # [Ts, B, Cs, 1]
-                    _flags = flags[..., None]  # [Ts, B, Cs, 1]
-                    _vis_model = vis_model[..., None]  # [D, Tm, B, Cm, 1]
-                    _background_vis_model = background_vis_model[..., None]  # [E, Tm, B, Cm, 1]
-
-                main_data = Data(
-                    sol_int_time_idx=sol_int_time_idx,
-                    coherencies=coherencies,
-                    vis_data=_vis_data,
-                    weights=_weights,
-                    flags=_flags,
-                    vis_bright_sources=_vis_model,
-                    vis_background=_background_vis_model,
-                    model_times=jnp_to_time(model_times, self.params.ms_meta.ref_time),
-                    model_freqs=au.Quantity(np.asarray(model_freqs), 'Hz'),
-                    ref_time=self.params.ms_meta.ref_time,
-                    antenna1=antenna1,
-                    antenna2=antenna2
-                )
-            with TimerLog("Running calibration"):
-                return_data = self._main_step(main_data)
-                if self.params.full_stokes:
-                    vis_residual = broadcast_translate_corrs(
-                        return_data.vis_residuals,
-                        coherencies,
-                        (('XX', 'XY'), ('YX', 'YY'))
-                    )
-                else:
-                    vis_residual = return_data.vis_residuals[..., 0]
-
-                # vis_residual = await self._main_step_old(antenna1, antenna2, background_vis_model, flags, model_freqs,
-                #                                          model_times, sol_int_freq_idx, sol_int_time_idx, vis_data,
-                #                                          vis_model, weights)
+                # Need to send the following to the generator:
+                #     sol_int_time_idx: int
+                #     coherencies: Tuple[str, ...]  # list of coherencies of length num_coh
                 #
-            yield CalibratorResponse(
-                visibilities=np.asarray(vis_residual),
-                weights=np.asarray(weights),
-                flags=np.asarray(flags),
-                uvw=np.asarray(uvw)
-            )
+                #     # Full resolution data
+                #     vis_data: ComplexArray  # [T, B, C, num_coh]
+                #     weights: FloatArray  # [T, B, C, num_coh]
+                #     flags: BoolArray  # [T, B, C, num_coh]
+                #
+                #     # Model
+                #     vis_bright_sources: ComplexArray  # [D, Tm, B, Cm, num_coh]
+                #     vis_background: ComplexArray  # [E, Tm, B, Cm, num_coh]
+                #     model_freqs: au.Quantity  # [Cm]
+                #     model_times: at.Time  # [Tm]
+                #     ref_time: at.Time
+                #     antenna1: IntArray  # [B]
+                #     antenna2: IntArray  # [B]
+
+                with TimerLog("Preparing data for calibration"):
+
+                    vis_model = model.vis  # [D, Tm, B, Cm[, 2, 2]]
+                    background_vis_model = model.vis_background  # [E, Tm, B, Cm[, 2, 2]]
+                    model_freqs = model.model_freqs
+                    model_times = model.model_times
+
+                    if self.params.full_stokes:
+                        coherencies = ('XX', 'XY', 'YX', 'YY')
+                        _vis_data = broadcast_translate_corrs(
+                            vis_data,
+                            (('XX', 'XY'), ('YX', 'YY')),
+                            coherencies
+                        )  # [Ts, B, Cs, 4]
+                        _weights = broadcast_translate_corrs(
+                            weights,
+                            (('XX', 'XY'), ('YX', 'YY')),
+                            coherencies
+                        )  # [Ts, B, Cs, 4]
+                        _flags = broadcast_translate_corrs(
+                            flags,
+                            (('XX', 'XY'), ('YX', 'YY')),
+                            coherencies
+                        )  # [Ts, B, Cs, 4]
+                        _vis_model = broadcast_translate_corrs(
+                            vis_model,
+                            (('XX', 'XY'), ('YX', 'YY')),
+                            coherencies
+                        )  # [D, Tm, B, Cm, 4]
+                        _background_vis_model = broadcast_translate_corrs(
+                            background_vis_model,
+                            (('XX', 'XY'), ('YX', 'YY')),
+                            coherencies
+                        )  # [E, Tm, B, Cm, 4]
+                    else:
+                        coherencies = ('I',)
+                        # add coh dim
+                        _vis_data = vis_data[..., None]  # [Ts, B, Cs, 1]
+                        _weights = weights[..., None]  # [Ts, B, Cs, 1]
+                        _flags = flags[..., None]  # [Ts, B, Cs, 1]
+                        _vis_model = vis_model[..., None]  # [D, Tm, B, Cm, 1]
+                        _background_vis_model = background_vis_model[..., None]  # [E, Tm, B, Cm, 1]
+
+                    main_data = Data(
+                        sol_int_time_idx=sol_int_time_idx,
+                        coherencies=coherencies,
+                        vis_data=_vis_data,
+                        weights=_weights,
+                        flags=_flags,
+                        vis_bright_sources=_vis_model,
+                        vis_background=_background_vis_model,
+                        model_times=jnp_to_time(model_times, self.params.ms_meta.ref_time),
+                        model_freqs=au.Quantity(np.asarray(model_freqs), 'Hz'),
+                        ref_time=self.params.ms_meta.ref_time,
+                        antenna1=antenna1,
+                        antenna2=antenna2
+                    )
+                with TimerLog("Running calibration"):
+                    return_data = self._main_step(main_data)
+                    if self.params.full_stokes:
+                        vis_residual = broadcast_translate_corrs(
+                            return_data.vis_residuals,
+                            coherencies,
+                            (('XX', 'XY'), ('YX', 'YY'))
+                        )
+                    else:
+                        vis_residual = return_data.vis_residuals[..., 0]
+
+                    # vis_residual = await self._main_step_old(antenna1, antenna2, background_vis_model, flags, model_freqs,
+                    #                                          model_times, sol_int_freq_idx, sol_int_time_idx, vis_data,
+                    #                                          vis_model, weights)
+                    #
+                yield CalibratorResponse(
+                    visibilities=np.asarray(vis_residual),
+                    weights=np.asarray(weights),
+                    flags=np.asarray(flags),
+                    uvw=np.asarray(uvw)
+                )
 
     async def _main_step_old(self, antenna1, antenna2, background_vis_model, flags, model_freqs, model_times,
                              sol_int_freq_idx, sol_int_time_idx, vis_data, vis_model, weights):
