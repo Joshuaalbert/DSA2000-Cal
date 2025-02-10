@@ -473,10 +473,10 @@ class IterativeCalibrator:
                 weights = broadcast_translate_corrs(data.weights, data.coherencies, (('XX', 'XY'), ('YX', 'YY')))
                 flags = broadcast_translate_corrs(data.flags, data.coherencies, (('XX', 'XY'), ('YX', 'YY')))
             else:
-                vis_model = broadcast_translate_corrs(vis_model, data.coherencies, ('I',))
-                vis_data = broadcast_translate_corrs(data.vis_data, data.coherencies, ('I',))
-                weights = broadcast_translate_corrs(data.weights, data.coherencies, ('I',))
-                flags = broadcast_translate_corrs(data.flags, data.coherencies, ('I',))
+                vis_model = broadcast_translate_corrs(vis_model, data.coherencies, ('I',))[..., 0]
+                vis_data = broadcast_translate_corrs(data.vis_data, data.coherencies, ('I',))[..., 0]
+                weights = broadcast_translate_corrs(data.weights, data.coherencies, ('I',))[..., 0]
+                flags = broadcast_translate_corrs(data.flags, data.coherencies, ('I',))[..., 0]
 
             # Average using average rule to match model: [Ts, B, Cs[, 2, 2]] -> [Tm, B, Cm[, 2, 2]]
             with TimerLog("Averaging data"):
@@ -581,7 +581,7 @@ class IterativeCalibrator:
                     vis_residuals = broadcast_translate_corrs(vis_residuals, (('XX', 'XY'), ('YX', 'YY')),
                                                               data.coherencies)
                 else:
-                    vis_residuals = broadcast_translate_corrs(vis_residuals, ('I',), data.coherencies)
+                    vis_residuals = broadcast_translate_corrs(vis_residuals[..., None], ('I',), data.coherencies)
 
             # Send back to generator
             return ReturnData(
