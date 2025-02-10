@@ -13,6 +13,7 @@ import numpy as np
 import pylab as plt
 import ray
 from astropy import constants
+from jax import block_until_ready
 from ray.runtime_env import RuntimeEnv
 
 import dsa2000_cal.common.context as ctx
@@ -20,8 +21,8 @@ from dsa2000_cal.common.array_types import FloatArray, ComplexArray, IntArray
 from dsa2000_cal.common.fourier_utils import ApertureTransform
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.ray_utils import resource_logger
+from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np, time_to_jnp
+from dsa2000_cal.common.ray_utils import resource_logger, TimerLog
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
@@ -137,18 +138,14 @@ class SystemGainSimulator:
             freqs=self.params.ms_meta.freqs,
             full_stokes=self.params.full_stokes
         )
-        dish_aperture_effects = DishApertureEffects(
-            dish_diameter=self.params.dish_effects_params.dish_diameter,
-            focal_length=self.params.dish_effects_params.focal_length,
-            elevation_pointing_error_stddev=self.params.dish_effects_params.elevation_pointing_error_stddev,
-            cross_elevation_pointing_error_stddev=self.params.dish_effects_params.cross_elevation_pointing_error_stddev
-        )
-        self.beam_model = dish_aperture_effects.apply_dish_aperture_effects(
-            key=jax.random.PRNGKey(0),
-            beam_model=self.beam_model,
-            geodesic_model=self.system_gain_simulator_params.geodesic_model
-        )
+
         if self.system_gain_simulator_params.apply_effects:
+            dish_aperture_effects = DishApertureEffects(
+                dish_diameter=self.params.dish_effects_params.dish_diameter,
+                focal_length=self.params.dish_effects_params.focal_length,
+                elevation_pointing_error_stddev=self.params.dish_effects_params.elevation_pointing_error_stddev,
+                cross_elevation_pointing_error_stddev=self.params.dish_effects_params.cross_elevation_pointing_error_stddev
+            )
             self.beam_model = dish_aperture_effects.apply_dish_aperture_effects(
                 key=jax.random.PRNGKey(0),
                 beam_model=self.beam_model,
@@ -186,31 +183,31 @@ class SystemGainSimulator:
 
         if self.system_gain_simulator_params.simulate_ionosphere:
             raise NotImplementedError("Ionosphere simulation not implemented yet.")
-        #
-        # # Determine the beam model
-        # if not self.system_gain_simulator_params.apply_effects:
-        #     gain_model = self.beam_model
-        # else:
-        #     time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
-        #     freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
-        #     with TimerLog("Simulating dish gains..."):
-        #         gain_model, model_gains_aperture = block_until_ready(
-        #             self.compute_dish_model_jit(key, time[None], freq[None], self.state))
-        #     gain_model: BaseSphericalInterpolatorGainModel = jax.tree.map(np.asarray, gain_model)
-        #     model_gains_aperture = jax.tree_map(np.asarray, model_gains_aperture)
-        #     plot_aperture_model_host(
-        #         beam_aperture=model_gains_aperture,
-        #         dl=self.state.dl,
-        #         dm=self.state.dm,
-        #         plot_folder=self.params.plot_folder,
-        #         name=f"dish_gains_aperture_T{time_idx}_F{freq_idx}"
-        #     )
-        #     gain_model.plot_regridded_beam(
-        #         save_fig=os.path.join(self.params.plot_folder, f'regridded_beam_T{time_idx}_F{freq_idx}.png')
-        #     )
-        #     gain_model = gain_model
 
-        return SystemGainSimulatorResponse(gain_model=self.beam_model)
+        # Determine the beam model
+        if not self.system_gain_simulator_params.apply_effects:
+            gain_model = self.beam_model
+        else:
+            time = time_to_jnp(self.params.ms_meta.times[time_idx], self.params.ms_meta.ref_time)
+            freq = quantity_to_jnp(self.params.ms_meta.freqs[freq_idx], 'Hz')
+            with TimerLog("Simulating dish gains..."):
+                gain_model, model_gains_aperture = block_until_ready(
+                    self.compute_dish_model_jit(key, time[None], freq[None], self.state))
+            gain_model: BaseSphericalInterpolatorGainModel = jax.tree.map(np.asarray, gain_model)
+            model_gains_aperture = jax.tree_map(np.asarray, model_gains_aperture)
+            plot_aperture_model_host(
+                beam_aperture=model_gains_aperture,
+                dl=self.state.dl,
+                dm=self.state.dm,
+                plot_folder=self.params.plot_folder,
+                name=f"dish_gains_aperture_T{time_idx}_F{freq_idx}"
+            )
+            gain_model.plot_regridded_beam(
+                save_fig=os.path.join(self.params.plot_folder, f'regridded_beam_T{time_idx}_F{freq_idx}.png')
+            )
+            gain_model = gain_model
+
+        return SystemGainSimulatorResponse(gain_model=gain_model)
 
 
 @dataclasses.dataclass(eq=False)
