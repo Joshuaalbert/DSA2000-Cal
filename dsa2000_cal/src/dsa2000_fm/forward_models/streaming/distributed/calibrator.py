@@ -263,6 +263,7 @@ class Calibrator:
                 _weights = weights[..., None]
                 _flags = flags[..., None]
                 _vis_model = vis_model[..., None]
+                _background_vis_model = background_vis_model[..., None]
 
             main_data = Data(
                 sol_int_time_idx=sol_int_time_idx,
