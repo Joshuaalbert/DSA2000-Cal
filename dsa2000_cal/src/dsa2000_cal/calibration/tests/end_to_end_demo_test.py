@@ -1,38 +1,40 @@
+import os
+
+os.environ['JAX_PLATFORMS'] = 'cuda,cpu'
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+
+from dsa2000_cal.common.mixed_precision_utils import mp_policy
+
+
 import dataclasses
 import os
 import time
 from functools import partial
 from typing import Generator, Tuple, List
-from typing import Literal
 
 import astropy.time as at
 import jax
 import jax.numpy as jnp
-import jaxns.framework.context as ctx
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from astropy import units as au, coordinates as ac
-from jaxns import PriorModelType, Prior
-from jaxns.framework.ops import simulate_prior_model
 from matplotlib import pyplot as plt
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
-from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, \
-    MultiStepLevenbergMarquardtDiagnostic, MultiStepLevenbergMarquardt
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
+from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import GainPriorModel
+from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtDiagnostic
+from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray
 from dsa2000_cal.common.astropy_utils import create_spherical_spiral_grid
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
-from dsa2000_cal.common.jax_utils import simple_broadcast
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
 from dsa2000_cal.common.pure_callback_utils import construct_threaded_callback
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp, quantity_to_np
 from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_cal.common.wgridder import vis_to_image_np
 from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine, BaseFarFieldDelayEngine
 from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
@@ -70,7 +72,8 @@ def build_mock_obs_setup(array_name: str, num_sol_ints_time: int, frac_aperture:
     array_location = array.get_array_location()
 
     ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
-    num_times = num_sol_ints_time
+    num_times_per_sol_int = 1
+    num_times = num_times_per_sol_int * num_sol_ints_time
     obstimes = ref_time + np.arange(num_times) * array.get_integration_time()
 
     phase_center = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
@@ -110,7 +113,7 @@ def build_mock_obs_setup(array_name: str, num_sol_ints_time: int, frac_aperture:
 
     system_equivalent_flux_density, chan_width, integration_time = array.get_system_equivalent_flux_density(), array.get_channel_width(), array.get_integration_time()
 
-    chan_width *= 40  # simulate widre band to lower nosie
+    chan_width *= 40  # simulate wider band to lower nosie
     integration_time *= 4  # simulate longer integration time
 
     return ref_time, obstimes, freqs, phase_center, antennas, geodesic_model, far_field_delay_engine, near_field_delay_engine, system_equivalent_flux_density, chan_width, integration_time
@@ -125,7 +128,9 @@ def create_sky_model(phase_center: ac.ICRS, num_sources: int, model_freqs: au.Qu
         A = np.ones((num_sources, num_model_freqs)) * au.Jy
 
     cal_source_pointings = create_spherical_spiral_grid(
-        pointing=phase_center, num_points=num_sources, angular_radius=fov * 0.5
+        pointing=phase_center,
+        num_points=num_sources,
+        angular_radius=fov * 0.5
     )
 
     point_model_data = build_point_source_model(
@@ -149,10 +154,13 @@ def create_sky_model(phase_center: ac.ICRS, num_sources: int, model_freqs: au.Qu
             )
         )
 
-    background_source_pointings = create_spherical_spiral_grid(pointing=phase_center, num_points=2 * num_sources,
-                                                               angular_radius=fov * 0.5)
-    background_source_pointings = background_source_pointings[
-                                  1:]  # remove the first source which overlaps with central one
+    background_source_pointings = create_spherical_spiral_grid(
+        pointing=phase_center,
+        num_points=2 * num_sources,
+        angular_radius=fov * 0.5
+    )
+    # remove the first source which overlaps with central one
+    background_source_pointings = background_source_pointings[1:]
     plt.scatter(cal_source_pointings.ra.deg, cal_source_pointings.dec.deg, label='cal sources', marker='*', color='r')
     plt.scatter(background_source_pointings.ra.deg, background_source_pointings.dec.deg, label='background sources',
                 marker='o', color='b')
@@ -163,8 +171,8 @@ def create_sky_model(phase_center: ac.ICRS, num_sources: int, model_freqs: au.Qu
                                    (len(background_source_pointings), num_model_freqs, 1, 1)) * au.Jy
     else:
         total_flux = np.ones((len(background_source_pointings), num_model_freqs)) * au.Jy
-    major_axis = 10 * np.ones((len(background_source_pointings))) * psf_size
-    minor_axis = 5 * np.ones((len(background_source_pointings))) * psf_size
+    major_axis = 100 * np.ones((len(background_source_pointings))) * psf_size
+    minor_axis = 50 * np.ones((len(background_source_pointings))) * psf_size
     position_angle = np.random.uniform(-np.pi, np.pi, size=(len(background_source_pointings))) * au.rad
 
     gaussian_model_data = build_gaussian_source_model(
@@ -174,349 +182,11 @@ def create_sky_model(phase_center: ac.ICRS, num_sources: int, model_freqs: au.Qu
         A=total_flux,
         major_axis=major_axis,
         minor_axis=minor_axis,
-        pos_angle=position_angle
+        pos_angle=position_angle,
+        order_approx=1
     )
 
     return point_model_data, gaussian_model_data, cal_sky_models
-
-
-def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
-    """
-    Compute the residual between the model visibilities and the observed visibilities.
-
-    Args:
-        vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
-        vis_data: [Ts, B, Cs[,2,2]] the data visibilities, Ts = 0 mod Tm, Cs = 0 mod Cm i.e. Ts % Tm = 0, Cs % Cm = 0
-        gains: [D, Tm, A, Cm[,2,2]] the gains
-        antenna1: [B] the antenna1
-        antenna2: [B] the antenna2
-
-    Returns:
-        [Ts, B, Cs[, 2, 2]] the residuals
-    """
-
-    def body_fn(accumulate, x):
-        vis_model, gains = x
-
-        g1 = gains[:, antenna1, :, ...]  # [Tm, B, Cm[, 2, 2]]
-        g2 = gains[:, antenna2, :, ...]  # [Tm, B, Cm[, 2, 2]]
-
-        @partial(
-            simple_broadcast,  # [Tm,B,Cm,...]
-            leading_dims=3
-        )
-        def apply_gains(g1, g2, vis):
-            if np.shape(g1) != np.shape(g1):
-                raise ValueError("Gains must have the same shape.")
-            if np.shape(vis) != np.shape(g1):
-                raise ValueError("Gains and visibilities must have the same shape.")
-            if np.shape(g1) == (2, 2):
-                return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
-            elif np.shape(g1) == ():
-                return mp_policy.cast_to_vis(g1 * vis * g2.conj())
-            else:
-                raise ValueError(f"Invalid shape: {np.shape(g1)}")
-
-        delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
-        return accumulate + delta_vis, ()
-
-    if np.shape(vis_model)[0] != np.shape(gains)[0]:
-        raise ValueError(
-            f"Model visibilities and gains must have the same number of directions, got {np.shape(vis_model)[0]} and {np.shape(gains)[0]}")
-
-    # num_directions = np.shape(vis_model)[0]
-
-    accumulate = jnp.zeros(np.shape(vis_model)[1:], dtype=vis_model.dtype)
-    accumulate, _ = jax.lax.scan(body_fn, accumulate, (vis_model, gains))
-
-    # Invert average rule with tile
-    time_rep = np.shape(vis_data)[0] // np.shape(accumulate)[0]  # Ts / Tm
-    freq_rep = np.shape(vis_data)[2] // np.shape(accumulate)[2]  # Cs / Cm
-    tile_reps = [1] * len(np.shape(accumulate))
-    tile_reps[0] = time_rep
-    tile_reps[2] = freq_rep
-    if np.prod(tile_reps) > 1:
-        # print(f"Replicating accumulated model vis {tile_reps}")
-        accumulate = jnp.tile(accumulate, tile_reps)
-    return vis_data - accumulate
-
-
-@dataclasses.dataclass(eq=False)
-class GainPriorModel(AbstractGainPriorModel):
-    """
-    A gain model with unconstrained complex Gaussian priors with zero mean.
-    """
-    gain_stddev: float = 2.
-    full_stokes: bool = True
-
-    dd_type: Literal['unconstrained', 'rice', 'phase_only', 'amplitude_only'] = 'unconstrained'
-    dd_dof: int = 4
-
-    double_differential: bool = True
-    di_dof: int = 4
-    di_type: Literal['unconstrained', 'rice', 'phase_only', 'amplitude_only'] = 'unconstrained'
-
-    def _make_gains_model_unconstrained(self, shape, name: str):
-        ones = jnp.ones(shape)
-        scale = jnp.full(shape, self.gain_stddev)
-        gains_real = yield Prior(
-            tfpd.Normal(loc=ones,
-                        scale=scale
-                        ),
-            name=f'{name}_gains_real'
-        ).parametrised()
-        gains_imag = yield Prior(
-            tfpd.Normal(loc=ones,
-                        scale=scale
-                        ),
-            name=f'{name}_gains_imag'
-        ).parametrised()
-        gains = jax.lax.complex(gains_real, gains_imag)
-        return gains
-
-    def _make_gains_model_phase(self, shape, name: str):
-        ones = jnp.ones(shape)
-        gains_phase = yield Prior(
-            tfpd.Uniform(
-                low=-jnp.pi * ones,
-                high=jnp.pi * ones
-            ),
-            name=f'{name}_gains_phase'
-        ).parametrised()
-        gains = jax.lax.complex(jnp.cos(gains_phase), jnp.sin(gains_phase))  # [num_source, num_ant]
-        return gains
-
-    def _make_gains_model_amplitude(self, shape, name: str):
-        ones = jnp.ones(shape)
-        # Rice distribution for X ~ N[1, sigma^2], Y ~ U[0, sigma^2] then R^2 = X^2 + Y^2 ~ Rice(1, sigma^2)
-        # We use noncentral chi^2 distribution to generate the squared amplitude.
-        gains_amplitude_2 = yield Prior(
-            tfpd.NoncentralChi2(
-                noncentrality=ones / self.gain_stddev ** 2,
-                df=2,
-            ),
-            name=f'{name}_gains_amplitude_squared'
-        ).parametrised()
-        gains_amplitude = self.gain_stddev * jnp.sqrt(gains_amplitude_2)
-        gains = gains_amplitude  # [num_source, num_ant]
-        return gains
-
-    def _make_gains_model_rice(self, shape, name: str):
-        gains_amplitude = yield from self._make_gains_model_amplitude(shape, name)
-        gains_phase = yield from self._make_gains_model_phase(shape, name)
-        gains = gains_amplitude * gains_phase
-        return gains
-
-    def build_prior_model(self, num_source: int, num_ant: int, freqs: FloatArray, times: FloatArray) -> PriorModelType:
-        T = len(times)
-        F = len(freqs)
-        D = num_source
-        A = num_ant
-
-        def prior_model():
-            def di_make_gains_model(shape):
-                if self.di_type == 'unconstrained':
-                    return (yield from self._make_gains_model_unconstrained(shape, 'di'))
-                elif self.di_type == 'rice':
-                    return (yield from self._make_gains_model_rice(shape, 'di'))
-                elif self.di_type == 'phase_only':
-                    return (yield from self._make_gains_model_phase(shape, 'di'))
-                elif self.di_type == 'amplitude_only':
-                    return (yield from self._make_gains_model_amplitude(shape, 'di'))
-                else:
-                    raise ValueError(f"Unsupported di_type, {self.di_type}")
-
-            def dd_make_gains_model(shape):
-                if self.dd_type == 'unconstrained':
-                    return (yield from self._make_gains_model_unconstrained(shape, 'dd'))
-                elif self.dd_type == 'rice':
-                    return (yield from self._make_gains_model_rice(shape, 'dd'))
-                elif self.dd_type == 'phase_only':
-                    return (yield from self._make_gains_model_phase(shape, 'dd'))
-                elif self.dd_type == 'amplitude_only':
-                    return (yield from self._make_gains_model_amplitude(shape, 'dd'))
-                else:
-                    raise ValueError(f"Unsupported dd_type, {self.dd_type}")
-
-            if self.full_stokes:
-                if self.dd_dof == 1:
-                    gains = yield from dd_make_gains_model((D, T, A, F))
-                    # Set diag
-                    gains = jax.vmap(jax.vmap(jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.stack([g, g]))))))(
-                        gains)  # [D,T,A,F,2,2]
-                elif self.dd_dof == 2:
-                    gains = yield from dd_make_gains_model((D, T, A, F, 2))
-                    # Set diag
-                    gains = jax.vmap(jax.vmap(jax.vmap(jax.vmap(jnp.diag))))(gains)  # [D,T,A,F,2,2]
-                elif self.dd_dof == 4:
-                    gains = yield from dd_make_gains_model((D, T, A, F, 2, 2))  # [D,T,A,F,2,2]
-                else:
-                    raise ValueError(f"Unsupported dof, {self.dd_dof}")
-            else:
-                if self.dd_dof != 1:
-                    raise ValueError("Cannot have full_stokes=False and dof > 1")
-                gains = yield from dd_make_gains_model((D, T, A, F))  # [D,T,A,F]
-            if self.double_differential:
-                # construct an outer gains, without the leading D dimension, and multiply the gains by them
-                if self.full_stokes:
-                    if self.di_dof == 1:
-                        gains_di = yield from di_make_gains_model((T, A, F))
-                        # Set diag
-                        gains_di = jax.vmap(jax.vmap(jax.vmap(lambda g: jnp.diag(jnp.stack([g, g])))))(
-                            gains_di)  # [T,A,F,2,2]
-                    elif self.di_dof == 2:
-                        gains_di = yield from di_make_gains_model((T, A, F, 2))
-                        # Set diag
-                        gains_di = jax.vmap(jax.vmap(jax.vmap(jnp.diag)))(gains_di)
-                    elif self.di_dof == 4:
-                        gains_di = yield from di_make_gains_model((T, A, F, 2, 2))
-                    else:
-                        raise ValueError(f"Unsupported double_differential_dof, {self.di_dof}")
-                    gains = gains_di @ gains  # [D,T,A,F,2,2]
-                else:
-                    if self.di_dof != 1:
-                        raise ValueError("Cannot have full_stokes=False and double_differential_dof > 1")
-                    gains_di = yield from di_make_gains_model((T, A, F))
-                    gains = gains_di * gains  # [D,T,A,F]
-            return mp_policy.cast_to_gain(gains)
-
-        return prior_model
-
-
-@dataclasses.dataclass(eq=False)
-class Calibration:
-    gain_probabilistic_model: AbstractGainPriorModel
-    full_stokes: bool
-    num_ant: int
-    verbose: bool = True
-
-    def step(self,
-             vis_model: ComplexArray,
-             vis_data: ComplexArray,
-             weights: FloatArray,
-             flags: BoolArray,
-             freqs: FloatArray,
-             times: FloatArray,
-             antenna1: IntArray,
-             antenna2: IntArray,
-             state: MultiStepLevenbergMarquardtState | None = None
-             ) -> Tuple[ComplexArray, MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
-        """
-        Calibrate and subtract model visibilities from data visibilities.
-
-        Args:
-            vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
-            vis_data: [Tm, B, Cm[,2,2]] the data visibilities
-            weights: [Tm, B, Cm[,2,2]] the weights
-            flags: [Tm, B, Cm[,2,2]] the flags
-            freqs: [Cm] the frequencies
-            times: [Tm] the times
-            antenna1: [B] the antenna1
-            antenna2: [B] the antenna2
-            state: MultiStepLevenbergMarquardtState the state of the solver (optional)
-
-        Returns:
-            gains: [D, Tm, A, Cm[,2,2]] the gains
-            state: MultiStepLevenbergMarquardtState the state of the solver
-            diagnostics: the diagnostics of the solver
-        """
-        if np.shape(vis_model)[1:] != np.shape(vis_data):
-            raise ValueError(
-                f"Model visibilities and data visibilities must have the same shape, got {np.shape(vis_model)[1:]} "
-                f"and {np.shape(vis_data)}")
-
-        # calibrate and subtract
-        key = jax.random.PRNGKey(0)
-
-        D, Tm, B, Cm = np.shape(vis_model)[:4]
-
-        # Create gain prior model
-        def get_gains():
-            # TODO: pass in probabilitic model
-            prior_model = self.gain_probabilistic_model.build_prior_model(
-                num_source=D,
-                num_ant=self.num_ant,
-                freqs=freqs,
-                times=times
-            )
-            (gains,), _ = simulate_prior_model(key, prior_model)  # [D, Tm, A, Cm[,2,2]]
-            return gains  # [D, Tm, A, Cm[,2,2]]
-
-        get_gains_transformed = ctx.transform(get_gains)
-
-        compute_residuals_fn = self.build_compute_residuals_fn()
-
-        # Create residual_fn
-        def residual_fn(params: ComplexArray) -> ComplexArray:
-            gains = get_gains_transformed.apply(params, key).fn_val
-            return compute_residuals_fn(vis_model, vis_data, weights, flags, gains, antenna1, antenna2)
-
-        solver = MultiStepLevenbergMarquardt(
-            residual_fn=residual_fn,
-            num_approx_steps=0,
-            num_iterations=100,
-            verbose=self.verbose,
-            gtol=1e-4
-        )
-
-        # Get solver state
-        if state is None:
-            init_params = get_gains_transformed.init(key).params
-            state = solver.create_initial_state(init_params)
-        else:
-            # TODO: EKF forward update on data
-            state = solver.update_initial_state(state)
-        state, diagnostics = solver.solve(state)
-
-        gains = get_gains_transformed.apply(state.x, key).fn_val
-
-        return gains, state, diagnostics
-
-    def build_compute_residuals_fn(self):
-        def compute_residuals_fn(
-                vis_model: ComplexArray,
-                vis_data: ComplexArray,
-                weights: FloatArray,
-                flags: BoolArray,
-                gains: ComplexArray,
-                antenna1: IntArray,
-                antenna2: IntArray
-        ):
-            """
-            Compute the residual between the model visibilities and the observed visibilities.
-
-            Args:
-                vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
-                vis_data: [Ts, B, Cs[,2,2]] the data visibilities
-                weights: [Ts, B, Cs[,2,2]] the data weights
-                flags: [Ts, B, Cs[,2,2]] the data flags
-                gains: [D, Tm, A, Cm[,2, 2]] the gains
-                antenna1: [B] the antenna1
-                antenna2: [B] the antenna2
-
-            Returns:
-                residuals: [Ts, B, Cs[,2,2]]
-            """
-
-            if np.shape(weights) != np.shape(flags):
-                raise ValueError(
-                    f"Weights and flags must have the same shape, got {np.shape(weights)} and {np.shape(flags)}")
-            if np.shape(vis_data) != np.shape(weights):
-                raise ValueError(
-                    f"Visibilities and weights must have the same shape, got {np.shape(vis_data)} and {np.shape(weights)}")
-
-            residuals = compute_residual(
-                vis_model=vis_model,
-                vis_data=vis_data,
-                gains=gains,
-                antenna1=antenna1,
-                antenna2=antenna2
-            )
-            weights *= jnp.logical_not(flags).astype(weights.dtype)  # [Tm, B, Cm[,2,2]]
-            residuals *= jnp.sqrt(weights)  # [Tm, B, Cm[,2,2]]
-            return residuals.real, residuals.imag
-
-        return compute_residuals_fn
 
 
 def grid_residuls(visibilities: ComplexArray, weights: FloatArray,
