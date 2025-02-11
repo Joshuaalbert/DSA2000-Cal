@@ -68,7 +68,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     num_channels = len(freqs)
 
-    channel_width = 5000 * array.get_channel_width()
+    channel_width = 500 * array.get_channel_width()
     solution_interval_freq = num_freqs_per_sol_int * channel_width
     sub_band_interval = channel_width * num_channels / num_sub_bands
     num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
@@ -107,7 +107,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         array_location=array_location,
         phase_center=phase_center,
         pointings=pointing,
-        channel_width=array.get_channel_width(),
+        channel_width=channel_width,
         integration_time=integration_interval,
         coherencies=('XX', 'XY', 'YX', 'YY') if full_stokes else ('I',),
         times=obstimes,
