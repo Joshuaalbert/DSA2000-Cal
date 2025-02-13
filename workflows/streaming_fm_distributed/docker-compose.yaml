@@ -1,0 +1,144 @@
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=5GB'
+    volumes:
+      - ./prometheus/config:/etc/prometheus
+      - prometheus-data:/prometheus
+      - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "http://localhost:9090/-/healthy" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  grafana:
+    image: grafana/grafana-oss:10.2.2 # TODO: Consider updating
+    container_name: grafana
+    env_file:
+      - .env
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_PATHS_CONFIG=/etc/grafana/grafana.ini
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    ports:
+      - "3033:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana:/etc/grafana
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  ray_head:
+    image: ray
+    container_name: ray_head
+    build:
+      context: ../..
+      dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+    ports:
+      - "6379:6379"        # GCS server port
+      - "8265:8265"        # Dashboard UI port
+      - "10001:10001"      # Ray client server port
+      - "50052:50052"      # Dashboard gRPC port
+      - "12345:12345"      # Node manager port
+      - "12346:12346"      # Object manager port
+      - "12347:12347"      # Runtime env agent port
+      - "12348:12348"      # Dashboard agent gRPC port
+      - "52365:52365"      # Dashboard agent HTTP port
+      - "8090:8090"      # Metrics export port
+      - "20000-20100:20000-20100"  # Worker ports range
+      - "6380:6380"        # Redis shard port
+      - "6381:6381"        # Redis shard port
+      - "8899:8888"        # Jupyter
+      - "8501:8501"        # Streamlit
+    env_file:
+      - .env
+    cap_add:
+      - SYS_PTRACE
+    pid: host # Use host PID namespace so GPU metrics are available
+    environment:
+      - IS_RAY_HEAD=true
+      - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
+      - NODE_NAME=${NODE_NAME}
+      - RAY_GRAFANA_HOST=http://grafana:3000
+      - RAY_PROMETHEUS_HOST=http://prometheus:9090
+      - RAY_GRAFANA_IFRAME_HOST=http://grafana:3000
+      - XLA_FLAGS=${XLA_FLAGS}
+      - PYTHONMALLOC=${PYTHONMALLOC}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
+      - SSH_CONFIG_DIR=/root/tmp_ssh
+    #    shm_size: '100gb'
+    volumes:
+      - /dev/shm:/dev/shm
+      - ${HOST_RUN_DIR}:/dsa/run
+      - ../../dsa2000_cal:/dsa/code/package
+      - ~/.ssh:/root/.ssh:ro
+      - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+  ray_worker:
+    image: ray
+    container_name: ray_worker
+    build:
+      context: ../..
+      dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+    ports:
+      - "12345:12345"      # Node manager port
+      - "12346:12346"      # Object manager port
+      - "12347:12347"      # Runtime env agent port
+      - "12348:12348"      # Dashboard agent gRPC port
+      - "52365:52365"      # Dashboard agent HTTP port
+      - "8090:8090"      # Metrics export port
+      - "20000-20100:20000-20100"  # Worker ports range
+    env_file:
+      - .env
+    pid: host # Use host PID namespace so GPU metrics are available
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      - IS_RAY_HEAD=false
+      - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
+      - NODE_NAME=${NODE_NAME}
+      - XLA_FLAGS=${XLA_FLAGS}
+      - PYTHONMALLOC=${PYTHONMALLOC}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
+      - SSH_CONFIG_DIR=/root/tmp_ssh
+    #    shm_size: '100gb'
+    volumes:
+      - /dev/shm:/dev/shm
+      - ${HOST_RUN_DIR}:/dsa/run
+      - ../../dsa2000_cal:/dsa/code/package
+      - ~/.ssh:/root/.ssh:ro
+      - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+volumes:
+  grafana-data:
+  prometheus-data:
+
+

@@ -1,0 +1,14 @@
+{
+  "Subscription": {
+    "purpose": "Subscribe to a topic",
+    "payload_spec": {
+      "event": "subscribe:{topic}"
+    }
+  },
+  "Unsubscription": {
+    "purpose": "Unsubscribe from a topic",
+    "payload_spec": {
+      "event": "unsubscribe:{topic}"
+    }
+  }
+}
