@@ -1,0 +1,2 @@
+This module defines the forward model as a single iterative kernel written in JAX. This approach has been disfavoured
+due to its inefficient use of resources, and complexity of managing state. Eventaully, this module will be removed.

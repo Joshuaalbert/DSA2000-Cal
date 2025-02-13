@@ -28,9 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           cd dsa2000_cal
-          pip install -r requirements.txt
-          pip install -r requirements-tests.txt
-          pip install .
+          pip install .[tests]
       - name: Lint with flake8
         run: |
           # stop the build if there are Python syntax errors or undefined names
@@ -39,4 +37,4 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       - name: Test with pytest
         run: |
-          JAX_ENABLE_X64=True pytest
+          MPLBACKEND=Agg SKIP_CONTENT_SYNC=1 pytest -s
