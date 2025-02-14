@@ -191,7 +191,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         return gains
 
     def plot_regridded_beam(self, save_fig: str | None = None, time_idx: int = 0, ant_idx: int = 0, freq_idx: int = 0,
-                            p_idx: int = 0, q_idx: int = 0):
+                            p_idx: int = 0, q_idx: int = 0, is_aperture: bool = False):
         """
         Plot the beam gain model screen over plane of sky wrt antenna pointing.
 
@@ -226,7 +226,10 @@ class BaseSphericalInterpolatorGainModel(GainModel):
             vmax=0
         )
         fig.colorbar(sc, ax=axs[0, 0], label='Amplitude (dB)')
-        axs[0, 0].set_ylabel('m (proj. rad.)')
+        if is_aperture:
+            axs[0, 0].set_ylabel('X (wavelengths)')
+        else:
+            axs[0, 0].set_ylabel('m (proj. rad.)')
         axs[0, 0].set_title(f'Gridded log10(Amplitude)[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
         # Plot phase
         sc = axs[1, 0].imshow(
@@ -240,8 +243,12 @@ class BaseSphericalInterpolatorGainModel(GainModel):
             interpolation='none'
         )
         fig.colorbar(sc, ax=axs[1, 0], label='Phase (rad)')
-        axs[1, 0].set_xlabel('l (proj. rad.)')
-        axs[1, 0].set_ylabel('m (proj. rad.)')
+        if is_aperture:
+            axs[1, 0].set_xlabel('-Y (wavelengths)')
+            axs[1, 0].set_ylabel('X (wavelengths)')
+        else:
+            axs[1, 0].set_xlabel('l (proj. rad.)')
+            axs[1, 0].set_ylabel('m (proj. rad.)')
         axs[1, 0].set_title(f'Gridded Phase[T={time_idx},A={ant_idx},F={freq_idx},P={p_idx},Q={q_idx}]')
 
         fig.tight_layout()
