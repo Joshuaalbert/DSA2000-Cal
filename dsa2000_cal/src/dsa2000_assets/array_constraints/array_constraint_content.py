@@ -1,10 +1,8 @@
 import os
 from typing import Tuple, List
 
-import numpy as np
-
-from dsa2000_common.abc import RegionSampler, AbstractArrayConstraint
-from dsa2000_common.common.base_content import BaseContent
+from dsa2000_fm.abc import RegionSampler, AbstractArrayConstraint
+from dsa2000_assets.base_content import BaseContent
 
 try:
     import geopandas as gpd
@@ -26,7 +24,7 @@ def _test_region_sampler():
         assert sampler.closest_approach_to_boundary(*sample)[1] > 0
 
 
-class ArrayConstraintsV1(AbstractArrayConstraint):
+class ArrayConstraintsV1(BaseContent, AbstractArrayConstraint):
     """
     Abstract array class.
     """
@@ -76,7 +74,7 @@ class ArrayConstraintsV1(AbstractArrayConstraint):
         ]
 
 
-class ArrayConstraintsV2(AbstractArrayConstraint):
+class ArrayConstraintsV2(BaseContent, AbstractArrayConstraint):
     """
     Abstract array class.
     """
@@ -146,7 +144,7 @@ class ArrayConstraintsV2(AbstractArrayConstraint):
         ]
 
 
-class ArrayConstraintsV3(AbstractArrayConstraint):
+class ArrayConstraintsV3(BaseContent, AbstractArrayConstraint):
     """
     Abstract array class.
     """
@@ -216,14 +214,3 @@ class ArrayConstraintsV3(AbstractArrayConstraint):
         ]
 
 
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance between two points
-    """
-
-    # Haversine formula
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-    c = 2 * np.arcsin(np.sqrt(a))
-    return c

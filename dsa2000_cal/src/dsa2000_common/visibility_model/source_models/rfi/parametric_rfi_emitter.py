@@ -21,7 +21,6 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
     channel_lower: FloatArray  # [chan]
     channel_upper: FloatArray  # [chan]
     resolution: int = 32  # Should be chosen so that channel width / resolution ~ PFB kernel resolution
-    convention: str = 'physical'  # Doesn't matter for the ACF
     skip_post_init: bool = False
 
     def __post_init__(self):
@@ -69,12 +68,7 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
             # memory changes fastest over the last axis better for DFT
             spectrum = jax.vmap(sinc, in_axes=0, out_axes=1)(channel_abscissa)  # [E, R]
             # Compute the ACF at tau using inverse Fourier transform
-            if self.convention == 'physical':  # +2pi
-                acf = jnp.sum(spectrum * jnp.exp(2j * jnp.pi * channel_abscissa * tau), axis=1) * dnu  # [E]
-            elif self.convention == 'engineering':
-                acf = jnp.sum(spectrum * jnp.exp(-2j * jnp.pi * channel_abscissa * tau), axis=1) * dnu  # [E]
-            else:
-                raise ValueError(f"Invalid convention {self.convention}")
+            acf = jnp.sum(spectrum * jnp.exp(2j * jnp.pi * channel_abscissa * tau), axis=1) * dnu  # [E]
             return left_broadcast_multiply(self.spectral_power, acf)  # [E[,2,2]]
 
         # TODO: Need to filer for freq
@@ -140,7 +134,7 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
         return (
             [this.mu, this.fwhp, this.spectral_power,
              this.channel_lower, this.channel_upper], (
-                this.resolution, this.convention))
+                this.resolution))
 
     @classmethod
     def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "ParametricDelayACF":
@@ -158,7 +152,7 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
         mu, fwhp, spectral_power, channel_lower, channel_upper = children
         return ParametricDelayACF(mu=mu, fwhp=fwhp, spectral_power=spectral_power,
                                   channel_lower=channel_lower, channel_upper=channel_upper,
-                                  resolution=resolution, convention=convention,
+                                  resolution=resolution,
                                   skip_post_init=True)
 
 
