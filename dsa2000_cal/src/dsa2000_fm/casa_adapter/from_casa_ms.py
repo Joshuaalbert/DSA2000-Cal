@@ -8,7 +8,7 @@ import numpy as np
 
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_common.common.corr_utils import CASA_CORR_TYPES
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet, MeasurementSetMeta, \
+from dsa2000_fm.measurement_sets.measurement_set import MeasurementSet, MeasurementSetMeta, \
     VisibilityData
 
 

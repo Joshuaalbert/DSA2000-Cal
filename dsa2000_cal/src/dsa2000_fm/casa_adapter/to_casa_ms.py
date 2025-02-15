@@ -8,7 +8,7 @@ import numpy as np
 import pyrap.tables as pt
 
 from dsa2000_casa.assets.templates.templates import Templates
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet, MeasurementSetMeta
+from dsa2000_fm.measurement_sets.measurement_set import  MeasurementSet, MeasurementSetMeta
 
 
 def create_makems_config(casa_ms: str,

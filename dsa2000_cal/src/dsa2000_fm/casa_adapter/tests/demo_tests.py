@@ -4,7 +4,7 @@ import numpy as np
 import tables as tb
 from astropy import time as at, coordinates as ac, units as au
 
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
+from dsa2000_fm.measurement_sets.measurement_set import MeasurementSetMeta
 from dsa2000_casa.adapter.from_casa_ms import transfer_from_casa
 from dsa2000_casa.adapter.to_casa_ms import create_makems_config
 

@@ -19,7 +19,7 @@ from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
 from dsa2000_cal.common.ray_utils import resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.imaging.base_imagor import fit_beam
+from dsa2000_fm.imaging import fit_beam
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_fm.forward_models.streaming.distributed.gridder import GridderResponse

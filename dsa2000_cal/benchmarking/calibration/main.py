@@ -33,8 +33,8 @@ from astropy import units as au, coordinates as ac
 from matplotlib import pyplot as plt
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import GainPriorModel
 from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtDiagnostic, \
     MultiStepLevenbergMarquardtState
@@ -55,7 +55,7 @@ from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_
     BaseNearFieldDelayEngine
 
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
-from dsa2000_cal.imaging.utils import get_array_image_parameters
+from dsa2000_fm.imaging import get_array_image_parameters
 from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model, \
     BaseGaussianSourceModel
 

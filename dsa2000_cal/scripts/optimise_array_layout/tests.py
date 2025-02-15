@@ -6,8 +6,8 @@ from astropy import time as at
 from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
 from main import rotation_matrix_change_dec, rotate_coords, compute_ideal_psf_distribution
 
 

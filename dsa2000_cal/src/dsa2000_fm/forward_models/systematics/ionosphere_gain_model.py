@@ -10,8 +10,8 @@ from astropy import units as au, coordinates as ac, time as at
 from tomographic_kernel.frames import ENU
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
-from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_assets.content_registry import fill_registries, NoMatchFound
+from dsa2000_assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_grid_old, create_spherical_earth_grid
 from dsa2000_common.common.coord_utils import earth_location_to_enu, icrs_to_lmn
 from dsa2000_common.common.interp_utils import convolved_interp

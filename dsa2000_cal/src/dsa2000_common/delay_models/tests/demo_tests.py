@@ -11,8 +11,8 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.quantity_utils import time_to_jnp
 
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine

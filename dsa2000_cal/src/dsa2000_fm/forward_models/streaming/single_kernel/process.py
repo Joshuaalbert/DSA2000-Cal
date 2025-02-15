@@ -22,8 +22,8 @@ import numpy as np
 from tomographic_kernel.frames import ENU
 
 import dsa2000_cal.common.context as ctx
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
 from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_cal.common.datetime_utils import current_utc
 from dsa2000_common.common.jax_utils import block_until_ready

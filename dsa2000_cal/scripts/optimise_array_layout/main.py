@@ -21,11 +21,11 @@ import astropy.units as au
 import pylab as plt
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraintV3
+from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintV3
 
 from dsa2000_common.common.array_types import FloatArray
 
