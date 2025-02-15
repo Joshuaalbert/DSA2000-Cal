@@ -57,7 +57,7 @@ from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model, B
 from dsa2000_cal.imaging.utils import get_array_image_parameters
 from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model, \
     BaseGaussianSourceModel
-from dsa2000_common.visibility_model.source_models import build_point_source_model, \
+from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import build_point_source_model, \
     BasePointSourceModel
 from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
 
