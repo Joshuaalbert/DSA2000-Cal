@@ -12,8 +12,10 @@ from ray.runtime_env import RuntimeEnv
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_common.delay_models import BaseFarFieldDelayEngine
-from dsa2000_common.delay_models import BaseNearFieldDelayEngine
+from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
+
+from dsa2000_common.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
+
 from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_common.visibility_model.source_models import BaseFITSSourceModel
