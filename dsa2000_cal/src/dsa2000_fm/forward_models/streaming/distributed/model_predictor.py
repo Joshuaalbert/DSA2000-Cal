@@ -19,16 +19,13 @@ from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
-
 from dsa2000_common.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
-
 from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_common.gain_models.gain_model import GainModel
-
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_common.visibility_model.source_models import BaseFITSSourceModel, \
+from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
     build_calibration_fits_source_models_from_wsclean
-from dsa2000_common.visibility_model.source_models import \
+from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import \
     build_calibration_point_source_models_from_wsclean, BasePointSourceModel
 from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
@@ -53,8 +50,8 @@ class ModelPredictorParams(SerialisableBaseModel):
 class ModelPredictorResponse(NamedTuple):
     vis: np.ndarray  # [D,  T, B, C[, 2, 2]]
     vis_background: np.ndarray  # [E, T, B, C[, 2, 2]] the background visibilities, not subtracted
-    model_times: np.ndarray # [T]
-    model_freqs: np.ndarray # [C]
+    model_times: np.ndarray  # [T]
+    model_freqs: np.ndarray  # [C]
 
 
 def compute_model_predictor_options(run_params: ForwardModellingRunParams):
@@ -126,7 +123,8 @@ class ModelPredictor:
 
         # self._step_jit = jax.jit(model_predict.step)
 
-    async def __call__(self, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[ModelPredictorResponse, None]:
+    async def __call__(self, sol_int_time_idxs: List[int], sol_int_freq_idxs: List[int]) -> AsyncGenerator[
+        ModelPredictorResponse, None]:
         await self.init()
 
         async def get_response(sol_int_time_idx: int, sol_int_freq_idx: int):

@@ -7,15 +7,13 @@ import astropy.units as au
 import numpy as np
 from tomographic_kernel.models.cannonical_models import SPECIFICATION
 
+from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.astropy_utils import create_spherical_grid
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_fm.forward_models.streaming.single_kernel.abc import AbstractCoreStep
-from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-
-, \
+from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel, \
     build_spherical_interpolator
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
+from dsa2000_fm.forward_models.streaming.single_kernel.abc import AbstractCoreStep
 
 
 class SimulateIonosphereState(NamedTuple):
@@ -62,7 +60,6 @@ class SimulateIonosphereStep(AbstractCoreStep[SimulateIonosphereState, SimulateI
         # Create antenna grid
         antenna_grid = ...
 
-
     def get_state(self) -> SimulateIonosphereState:
         # Create realisation of the ionosphere over window size
         window_times = quantity_to_jnp(np.arange(1, self.window_size + 1) * self.window_resolution)
@@ -74,8 +71,6 @@ class SimulateIonosphereStep(AbstractCoreStep[SimulateIonosphereState, SimulateI
             ref_time=self.ref_time,
             pointings=self.pointings,
         )
-
-
 
         geodesic_model.compute_far_field_geodesic()
 

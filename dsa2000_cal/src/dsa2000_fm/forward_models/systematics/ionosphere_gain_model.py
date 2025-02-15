@@ -17,8 +17,8 @@ from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_lmn
 from dsa2000_cal.common.interp_utils import convolved_interp
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_common.gain_models import phi_theta_from_lmn, BaseSphericalInterpolatorGainModel, \
-    build_spherical_interpolator
+from dsa2000_common.gain_models.base_spherical_interpolator import phi_theta_from_lmn, \
+    BaseSphericalInterpolatorGainModel, build_spherical_interpolator
 from dsa2000_fm.forward_models.systematics.ionosphere_simulation import TEC_CONV, IonosphereSimulation
 
 tfpd = tfp.distributions
@@ -223,15 +223,15 @@ def build_ionosphere_gain_model(pointing: ac.ICRS | ENU,
 
     fig, ax = plt.subplots(1, 1, squeeze=True, figsize=(10, 10))
     ax.scatter(antennas_enu[:, 0].to('m'), antennas_enu[:, 1].to('m'), marker='*', c='grey', alpha=0.5,
-                     label="Array Antennas")
+               label="Array Antennas")
     ax.scatter(model_antennas_enu[:, 0].to('m'), model_antennas_enu[:, 1].to('m'), marker='+',
-                     label='Model Antennas')
+               label='Model Antennas')
     ax.set_xlabel(f"East (m)")
     ax.set_ylabel(f"North (m)")
     ax.set_title(f"Model Antenna Locations")
 
     ax.scatter(x0[0].to('m'), x0[1].to('m'), marker='o', color='red',
-                     label="Reference Antenna")
+               label="Reference Antenna")
 
     ax.legend()
     fig.savefig(os.path.join(plot_folder, "model_antenna_locations.png"))
