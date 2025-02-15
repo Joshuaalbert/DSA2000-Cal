@@ -23,9 +23,9 @@ from dsa2000_common.delay_models import BaseNearFieldDelayEngine
 from dsa2000_common.gain_models import build_beam_gain_model
 from dsa2000_common.gain_models import GainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
+from dsa2000_common.visibility_model.source_models import BaseFITSSourceModel, \
     build_calibration_fits_source_models_from_wsclean
-from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import \
+from dsa2000_common.visibility_model.source_models import \
     build_calibration_point_source_models_from_wsclean, BasePointSourceModel
 from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams

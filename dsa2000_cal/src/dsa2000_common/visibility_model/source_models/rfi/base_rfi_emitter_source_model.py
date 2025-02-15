@@ -20,8 +20,8 @@ from dsa2000_common.delay_models import BaseFarFieldDelayEngine
 from dsa2000_common.delay_models import BaseNearFieldDelayEngine
 from dsa2000_common.gain_models import GainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
-from dsa2000_cal.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction
+from dsa2000_common.visibility_model.source_models.abc import AbstractSourceModel
+from dsa2000_common.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction
 
 
 class RFIEmitterModelData(NamedTuple):

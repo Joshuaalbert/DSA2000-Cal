@@ -28,7 +28,7 @@ from dsa2000_common.delay_models import BaseNearFieldDelayEngine
 from dsa2000_common.delay_models import perley_lmn_from_icrs, perley_icrs_from_lmn
 from dsa2000_common.gain_models import GainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.abc import AbstractSourceModel
+from dsa2000_common.visibility_model.source_models.abc import AbstractSourceModel
 
 
 def _prepare_model(freq, time, antenna1, antenna2, model_freqs, image, ra, dec, dl, dm,

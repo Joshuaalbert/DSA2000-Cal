@@ -16,7 +16,7 @@ from dsa2000_common.delay_models import BaseFarFieldDelayEngine
 from dsa2000_common.delay_models import BaseNearFieldDelayEngine
 from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel
+from dsa2000_common.visibility_model.source_models import BaseFITSSourceModel
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 
 logger = logging.getLogger('ray')

@@ -10,7 +10,7 @@ from jax import numpy as jnp
 
 from dsa2000_cal.common.array_types import FloatArray, ComplexArray
 from dsa2000_cal.common.interp_utils import left_broadcast_multiply
-from dsa2000_cal.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction
+from dsa2000_common.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction
 
 
 @dataclasses.dataclass(eq=False)

@@ -7,7 +7,7 @@ from dsa2000_cal.assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams
 from dsa2000_cal.common.astropy_utils import fraunhofer_far_field_limit
 from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
+from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 
 @rfi_model_registry(template='mock_cell_tower')

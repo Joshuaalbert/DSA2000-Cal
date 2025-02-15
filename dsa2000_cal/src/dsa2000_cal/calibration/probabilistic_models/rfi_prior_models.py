@@ -12,8 +12,8 @@ from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.gain_models import GainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_cal.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
-from dsa2000_cal.visibility_model.source_models.rfi.base_rfi_emitter_source_model import RFIEmitterModelData
+from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
+from dsa2000_common.visibility_model.source_models.rfi.base_rfi_emitter_source_model import RFIEmitterModelData
 
 tfpd = tfp.distributions
 
