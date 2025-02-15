@@ -8,7 +8,7 @@ from scipy.spatial import KDTree
 
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraint
+from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV1
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
@@ -244,7 +244,7 @@ def compute_obj_fn(antenna_locations: jax.Array, lmn: jax.Array,
 
 def sample_aoi(num_samples, array_location: ac.EarthLocation, additional_distance):
     radius = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
-    array_constraint = ArrayConstraint()
+    array_constraint = ArrayConstraintsV1()
     samples = []
     aoi_data = array_constraint.get_area_of_interest_regions()
     constraint_data = array_constraint.get_constraint_regions()
@@ -343,7 +343,7 @@ def relocate_antennas(antennas: ac.EarthLocation, obstime: at.Time, array_locati
 
 def get_closest_point_dist(locations: ac.EarthLocation, array_location: ac.EarthLocation, additional_distance):
     radius = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
-    array_constraint = ArrayConstraint()
+    array_constraint = ArrayConstraintsV1()
     aoi_data = array_constraint.get_area_of_interest_regions()
     constraint_data = array_constraint.get_constraint_regions()
 

@@ -5,7 +5,7 @@ import astropy.units as au
 from dsa2000_fm.antenna_model.abc import AbstractAntennaModel
 from dsa2000_fm.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_fm.antenna_model.matlab_amplitude_only_model import MatlabAntennaModelV1
-from dsa2000_assets.beam_models.beam_model import AbstractBeamModel
+from dsa2000_common.abc import AbstractBeamModel
 from dsa2000_assets.registries import beam_model_registry
 
 

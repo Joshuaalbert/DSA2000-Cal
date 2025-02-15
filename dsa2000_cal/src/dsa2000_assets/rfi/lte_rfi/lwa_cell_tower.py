@@ -7,7 +7,7 @@ from astropy import units as au
 from scipy.io import loadmat
 
 from dsa2000_assets.registries import rfi_model_registry
-from dsa2000_assets.rfi.rfi_emitter_model import RFIEmitterSourceModelParams, AbstractRFIEmitterData
+from dsa2000_common.abc import RFIEmitterSourceModelParams, AbstractRFIEmitterData
 from dsa2000_cal.common.astropy_utils import fraunhofer_far_field_limit
 from dsa2000_common.common.interp_utils import InterpolatedArray
 

@@ -25,7 +25,7 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
-from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintV3
+from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV3
 
 from dsa2000_common.common.array_types import FloatArray
 
@@ -38,7 +38,7 @@ import tensorflow_probability.substrates.jax as tfp
 
 tfpd = tfp.distributions
 
-array_constraint = ArrayConstraintV3()
+array_constraint = ArrayConstraintsV3()
 aoi_data = array_constraint.get_area_of_interest_regions()
 constraint_data = array_constraint.get_constraint_regions()
 

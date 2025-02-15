@@ -1,11 +1,8 @@
 import re
 from typing import List, Any
 
-from dsa2000_assets.arrays.array import AbstractArray
-from dsa2000_assets.beam_models.beam_model import AbstractBeamModel
+from dsa2000_common.abc import AbstractArray, AbstractBeamModel, AbstractRFIEmitterData, AbstractWSCleanSourceModel
 from dsa2000_assets.content_registry import ContentRegistry, ContentMap, AbstractContentFactory, SetKwargsFactory
-from dsa2000_assets.rfi.rfi_emitter_model import AbstractRFIEmitterData
-from dsa2000_assets.source_models.source_model import AbstractWSCleanSourceModel
 
 
 def match_func(match_pattern: str, template: str) -> bool:

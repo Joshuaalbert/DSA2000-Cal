@@ -3,7 +3,7 @@ import os
 from typing import List
 
 from dsa2000_assets.registries import source_model_registry
-from dsa2000_assets.source_models.source_model import AbstractWSCleanSourceModel
+from dsa2000_common.abc import AbstractWSCleanSourceModel
 
 
 @source_model_registry(template='tau_a')

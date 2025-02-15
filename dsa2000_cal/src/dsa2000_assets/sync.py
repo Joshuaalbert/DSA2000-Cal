@@ -1,4 +1,9 @@
-from dsa2000_assets.base_content import BaseContent
+from dsa2000_common.common.base_content import BaseContent
+
+
+class BaseSync(BaseContent):
+    ...
+
 
 if __name__ == '__main__':
-    BaseContent(seed='sync')
+    BaseSync(seed='sync')
