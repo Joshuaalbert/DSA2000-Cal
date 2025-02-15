@@ -17,7 +17,9 @@ from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarField
 
 from dsa2000_common.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 
-from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
+from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
+
+
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_source_model import \
     BaseGaussianSourceModel

@@ -25,7 +25,9 @@ from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np, t
 from dsa2000_cal.common.ray_utils import resource_logger, TimerLog
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import DishEffectsParams
-from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
+from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
+
+
 from dsa2000_common.gain_models import build_beam_gain_model
 from dsa2000_common.gain_models.gain_model import GainModel
 

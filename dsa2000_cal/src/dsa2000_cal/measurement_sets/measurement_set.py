@@ -26,7 +26,9 @@ from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarField
 
 from dsa2000_common.delay_models import build_far_field_delay_engine
 from dsa2000_common.delay_models import build_near_field_delay_engine
-from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
+from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
+
+
 from dsa2000_common.gain_models import build_beam_gain_model
 from dsa2000_common.gain_models.gain_model import GainModel
 

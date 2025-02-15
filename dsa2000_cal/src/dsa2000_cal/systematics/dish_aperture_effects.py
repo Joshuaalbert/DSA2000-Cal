@@ -10,7 +10,9 @@ import numpy as np
 
 from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
+from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
+
+
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 
 
