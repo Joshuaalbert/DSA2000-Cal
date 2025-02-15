@@ -15,7 +15,7 @@ jax.config.update("jax_explain_cache_misses", True)
 import tensorflow_probability.substrates.jax as tfp
 from jaxns import Prior, Model
 
-from dsa2000_cal.solvers import MultiStepLevenbergMarquardt
+from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt
 
 tfpd = tfp.distributions
 

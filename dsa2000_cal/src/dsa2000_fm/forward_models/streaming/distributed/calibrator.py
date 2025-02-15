@@ -17,8 +17,8 @@ from jaxns.framework.ops import simulate_prior_model
 from ray.runtime_env import RuntimeEnv
 
 from dsa2000_cal.iterative_calibrator import IterativeCalibrator, Data
-from dsa2000_cal.probabilistic_models import AbstractGainPriorModel, GainPriorModel
-from dsa2000_cal.solvers import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
+from dsa2000_cal.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
+from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
     MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs

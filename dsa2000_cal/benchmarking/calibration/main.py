@@ -35,8 +35,8 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
-from dsa2000_cal.probabilistic_models import GainPriorModel
-from dsa2000_cal.solvers import MultiStepLevenbergMarquardtDiagnostic, \
+from dsa2000_cal.probabilistic_models.gain_prior_models import GainPriorModel
+from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtDiagnostic, \
     MultiStepLevenbergMarquardtState
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray
 from dsa2000_cal.common.astropy_utils import create_spherical_spiral_grid
