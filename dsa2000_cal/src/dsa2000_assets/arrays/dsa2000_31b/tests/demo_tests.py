@@ -1,4 +1,4 @@
-from dsa2000_cal.antenna_model.h5_efield_model import H5AntennaModelV1
+from dsa2000_fm.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_assets.arrays.dsa2000_31b.array import DSA200031b
 
 

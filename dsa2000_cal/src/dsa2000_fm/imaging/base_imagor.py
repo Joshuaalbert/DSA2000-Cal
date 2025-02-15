@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import lax
 
-from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_common.common.ellipse_utils import Gaussian

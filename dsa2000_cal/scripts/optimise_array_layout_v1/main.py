@@ -2,7 +2,7 @@ import itertools
 import os
 from typing import Optional, Tuple
 
-from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.solvers import MultiStepLevenbergMarquardt
 from jaxns.framework.special_priors import SpecialPrior
 from scipy.spatial import KDTree
 

@@ -1,6 +1,6 @@
 import os
 
-from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
+from dsa2000_fm.antenna_model.abc import AbstractAntennaModel
 from dsa2000_assets.arrays.dsa2000W.array import DSA2000WArray
 from dsa2000_assets.registries import array_registry, beam_model_registry
 

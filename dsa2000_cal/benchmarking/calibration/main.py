@@ -21,7 +21,7 @@ from typing import Generator, Tuple, List
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 
-from dsa2000_cal.calibration.iterative_calibrator import CalibrationStep, compute_residual
+from dsa2000_cal.iterative_calibrator import CalibrationStep, compute_residual
 from dsa2000_common.common.jax_utils import create_mesh
 
 import astropy.time as at
@@ -35,8 +35,8 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
-from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import GainPriorModel
-from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtDiagnostic, \
+from dsa2000_cal.probabilistic_models import GainPriorModel
+from dsa2000_cal.solvers import MultiStepLevenbergMarquardtDiagnostic, \
     MultiStepLevenbergMarquardtState
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray
 from dsa2000_cal.common.astropy_utils import create_spherical_spiral_grid

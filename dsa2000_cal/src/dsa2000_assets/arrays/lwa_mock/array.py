@@ -5,8 +5,8 @@ import astropy.units as au
 import numpy as np
 from astropy import coordinates as ac
 
-from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
-from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaModel
+from dsa2000_fm.antenna_model.abc import AbstractAntennaModel
+from dsa2000_fm.antenna_model.antenna_beam import AltAzAntennaModel
 from dsa2000_assets.arrays.lwa.array import LWAArray
 from dsa2000_assets.registries import array_registry
 from dsa2000_cal.common.astropy_utils import create_spherical_earth_grid

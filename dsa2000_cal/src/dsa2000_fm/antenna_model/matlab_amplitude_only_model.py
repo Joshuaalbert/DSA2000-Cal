@@ -5,7 +5,7 @@ import numpy as np
 from astropy import units as au
 from scipy.io import loadmat
 
-from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaModel
+from dsa2000_fm.antenna_model.antenna_beam import AltAzAntennaModel
 
 
 class MatlabAntennaModelV1(AltAzAntennaModel):

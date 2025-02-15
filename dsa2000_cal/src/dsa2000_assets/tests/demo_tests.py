@@ -3,7 +3,7 @@ import os
 import pylab as plt
 import pytest
 
-from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
+from dsa2000_fm.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_assets.rfi.lte_rfi.lwa_cell_tower import LWACellTower

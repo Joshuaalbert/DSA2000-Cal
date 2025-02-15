@@ -17,7 +17,7 @@ import numpy as np
 from astropy import time as at, units as au, coordinates as ac
 from jax import numpy as jnp
 
-from dsa2000_cal.calibration.iterative_calibrator import create_data_input_gen, Data, IterativeCalibrator, DataGenInput
+from dsa2000_cal.iterative_calibrator import create_data_input_gen, Data, IterativeCalibrator, DataGenInput
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 
 

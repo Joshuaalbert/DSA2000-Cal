@@ -5,7 +5,7 @@ from jax import numpy as jnp
 from jaxns.framework import context as ctx
 from jaxns.framework.ops import simulate_prior_model
 
-from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import GainPriorModel
+from dsa2000_cal.probabilistic_models.gain_prior_models import GainPriorModel
 
 
 @pytest.mark.parametrize(

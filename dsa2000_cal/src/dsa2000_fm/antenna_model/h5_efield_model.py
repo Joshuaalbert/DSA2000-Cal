@@ -6,7 +6,7 @@ import numpy as np
 import tables as tb
 from astropy import units as au
 
-from dsa2000_cal.antenna_model.antenna_beam import AltAzAntennaModel
+from dsa2000_fm.antenna_model.antenna_beam import AltAzAntennaModel
 
 
 def convert_spherical_e_field_to_cartesian(e_phi, e_theta, phi, theta):

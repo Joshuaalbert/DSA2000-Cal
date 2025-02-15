@@ -5,7 +5,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.solvers import MultiStepLevenbergMarquardt
 from dsa2000_common.common.jax_utils import block_until_ready
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 

@@ -18,8 +18,8 @@ from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 from jaxns.framework.ops import simulate_prior_model
 
-from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
-from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, \
+from dsa2000_cal.probabilistic_models import AbstractGainPriorModel, GainPriorModel
+from dsa2000_cal.solvers import MultiStepLevenbergMarquardtState, \
     MultiStepLevenbergMarquardtDiagnostic, MultiStepLevenbergMarquardt
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs

@@ -4,7 +4,7 @@ import astropy.units as au
 import numpy as np
 from astropy import constants
 
-from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
+from dsa2000_fm.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.fourier_utils import find_optimal_fft_size
