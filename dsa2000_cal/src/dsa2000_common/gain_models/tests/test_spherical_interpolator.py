@@ -3,10 +3,10 @@ import pytest
 from astropy import units as au, coordinates as ac, time as at
 from jax import numpy as jnp
 
-from dsa2000_cal.gain_models.base_spherical_interpolator import regrid_to_regular_grid, lmn_from_phi_theta, \
+from dsa2000_common.gain_models.base_spherical_interpolator import regrid_to_regular_grid, lmn_from_phi_theta, \
     phi_theta_from_lmn, build_spherical_interpolator
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
-from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
+from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
 
 
 def test_lmn_from_phi_theta():

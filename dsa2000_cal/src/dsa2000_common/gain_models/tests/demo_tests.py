@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 
 from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.gain_models.base_spherical_interpolator import lmn_from_phi_theta, phi_theta_from_lmn
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_common.gain_models.base_spherical_interpolator import lmn_from_phi_theta, phi_theta_from_lmn
+from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 
 
 # @pytest.mark.parametrize('array_name', ['lwa', 'dsa2000W', 'dsa2000_31b'])

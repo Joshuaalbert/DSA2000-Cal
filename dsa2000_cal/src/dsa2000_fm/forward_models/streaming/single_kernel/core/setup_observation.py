@@ -11,12 +11,12 @@ import dsa2000_cal.common.context as ctx
 from dsa2000_cal.common.array_types import FloatArray, IntArray, BoolArray
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
-from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
+from dsa2000_common.delay_models import BaseFarFieldDelayEngine
+from dsa2000_common.delay_models import build_far_field_delay_engine
+from dsa2000_common.delay_models import build_near_field_delay_engine, \
     BaseNearFieldDelayEngine
 from dsa2000_fm.forward_models.streaming.single_kernel.abc import AbstractCoreStep
-from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel, build_geodesic_model
+from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel, build_geodesic_model
 
 
 class SetupObservationState(NamedTuple):

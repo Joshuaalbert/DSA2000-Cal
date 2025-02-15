@@ -22,13 +22,13 @@ from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
-from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
-from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
-from dsa2000_cal.gain_models.gain_model import GainModel
-from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
+from dsa2000_common.delay_models import BaseFarFieldDelayEngine
+from dsa2000_common.delay_models import build_far_field_delay_engine
+from dsa2000_common.delay_models import build_near_field_delay_engine
+from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
+from dsa2000_common.gain_models import build_beam_gain_model
+from dsa2000_common.gain_models import GainModel
+from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
 
 
 class MeasurementSetMeta(SerialisableBaseModel):

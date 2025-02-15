@@ -6,11 +6,13 @@ from astropy import units as au, time as at
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.interp_utils import select_interpolation_points
-from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel, \
+from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel, \
     build_spherical_interpolator
 
 
-def build_beam_gain_model(array_name: str, times: at.Time | None = None, ref_time: at.Time | None = None,
+def build_beam_gain_model(array_name: str,
+                          times: at.Time | None = None,
+                          ref_time: at.Time | None = None,
                           freqs: au.Quantity | None = None,
                           full_stokes: bool = True,
                           resolution:int=257) -> BaseSphericalInterpolatorGainModel:

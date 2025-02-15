@@ -16,8 +16,8 @@ from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.vec_utils import kron_inv, kron_product
 from dsa2000_cal.common.wgridder import vis_to_image
-from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
+from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
+from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.imaging.utils import get_image_parameters
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
 

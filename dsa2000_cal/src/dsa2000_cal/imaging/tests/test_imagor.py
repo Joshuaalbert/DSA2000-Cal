@@ -12,7 +12,7 @@ from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_common.gain_models import build_beam_gain_model
 from dsa2000_cal.imaging.base_imagor import fit_beam, evaluate_beam, divide_out_beam
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta, MeasurementSet
 

@@ -13,10 +13,10 @@ from dsa2000_cal.common.array_types import FloatArray
 from dsa2000_cal.common.jax_utils import block_until_ready
 from dsa2000_cal.common.ray_utils import TimerLog, set_all_gpus_visible, get_gpu_with_most_memory, resource_logger
 from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
-from dsa2000_cal.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
-from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-from dsa2000_cal.geodesics.base_geodesic_model import BaseGeodesicModel
+from dsa2000_common.delay_models import BaseFarFieldDelayEngine
+from dsa2000_common.delay_models import BaseNearFieldDelayEngine
+from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
+from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import \
     BaseGaussianSourceModel
 from dsa2000_cal.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel

@@ -5,8 +5,8 @@ from astropy import coordinates as ac, time as at, units as au
 
 from dsa2000_cal.common.array_types import IntArray
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.gain_model import GainModel, ProductGainModel
-from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
+from dsa2000_common.gain_models.gain_model import GainModel, ProductGainModel
+from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
 
 
 class MockGainModel(GainModel):

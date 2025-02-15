@@ -18,7 +18,7 @@ from dsa2000_cal.common.types import DishEffectsParams
 from dsa2000_fm.forward_models.streaming.single_kernel.abc import AbstractCoreStep
 from dsa2000_fm.forward_models.streaming.single_kernel.core.setup_observation import SetupObservationOutput
 from dsa2000_fm.forward_models.streaming.single_kernel.core.simulate_beam import SimulateBeamOutput
-from dsa2000_cal.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
+from dsa2000_common.gain_models import BaseSphericalInterpolatorGainModel
 
 
 class SimulationParams(NamedTuple):

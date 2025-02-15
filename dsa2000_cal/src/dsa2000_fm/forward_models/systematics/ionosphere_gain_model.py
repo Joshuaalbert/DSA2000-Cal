@@ -17,7 +17,7 @@ from dsa2000_cal.common.coord_utils import earth_location_to_enu, icrs_to_lmn
 from dsa2000_cal.common.interp_utils import convolved_interp
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.gain_models.base_spherical_interpolator import phi_theta_from_lmn, BaseSphericalInterpolatorGainModel, \
+from dsa2000_common.gain_models import phi_theta_from_lmn, BaseSphericalInterpolatorGainModel, \
     build_spherical_interpolator
 from dsa2000_fm.forward_models.systematics.ionosphere_simulation import TEC_CONV, IonosphereSimulation
 

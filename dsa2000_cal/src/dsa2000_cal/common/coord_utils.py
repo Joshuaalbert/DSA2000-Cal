@@ -7,7 +7,7 @@ from astropy.units import Quantity
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
+from dsa2000_common.delay_models import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
 def create_uvw_frame(obs_time: at.Time, phase_center: ac.ICRS, barycentre: str = 'earth') -> ac.SkyOffsetFrame:

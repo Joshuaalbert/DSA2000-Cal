@@ -46,10 +46,10 @@ from dsa2000_cal.common.pure_callback_utils import construct_threaded_callback
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp, quantity_to_np
 from dsa2000_cal.common.types import VisibilityCoords
 from dsa2000_cal.common.wgridder import vis_to_image_np
-from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine, BaseFarFieldDelayEngine
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \
+from dsa2000_common.delay_models import build_far_field_delay_engine, BaseFarFieldDelayEngine
+from dsa2000_common.delay_models import build_near_field_delay_engine, \
     BaseNearFieldDelayEngine
-from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
+from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model, BaseGeodesicModel
 from dsa2000_cal.imaging.utils import get_array_image_parameters
 from dsa2000_cal.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model, \
     BaseGaussianSourceModel

@@ -11,9 +11,9 @@ from tomographic_kernel.frames import ENU
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
-from dsa2000_cal.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine, build_far_field_delay_engine
+from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 
-from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 
 
 def test_far_field_delay_engine():

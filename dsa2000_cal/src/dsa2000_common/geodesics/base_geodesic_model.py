@@ -18,7 +18,7 @@ from dsa2000_cal.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.jax_utils import multi_vmap
 from dsa2000_cal.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
+from dsa2000_common.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
 
 
 @dataclasses.dataclass(eq=False)

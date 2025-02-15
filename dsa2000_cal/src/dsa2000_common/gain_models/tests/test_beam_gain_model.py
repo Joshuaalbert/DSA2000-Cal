@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 
 from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.gain_models.base_spherical_interpolator import lmn_from_phi_theta, phi_theta_from_lmn
-from dsa2000_cal.gain_models.beam_gain_model import build_beam_gain_model
+from dsa2000_common.gain_models.base_spherical_interpolator import lmn_from_phi_theta, phi_theta_from_lmn
+from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 
 
 def test_pytree_serialisation():
@@ -21,7 +21,7 @@ def test_pytree_serialisation():
 
 
 # @pytest.mark.parametrize('array_name', ['lwa_mock', 'dsa2000W_small'])
-@pytest.mark.parametrize('array_name', ['dsa2000W'])
+@pytest.mark.parametrize('array_name', ['dsa2000_optimal_v1'])
 def test_beam_gain_model_factory(array_name: str):
     t0 = time_mod.time()
     beam_gain_model = build_beam_gain_model(array_name=array_name)
@@ -79,3 +79,6 @@ def test_beam_gain_model_factory(array_name: str):
         beam_gain_model.model_gains[0, :, :, 0, :, :].imag[mask],
         atol=0.05
     )
+
+    aperture_beam = beam_gain_model.to_aperture()
+    aperture_beam.plot_regridded_beam(is_aperture=True)
