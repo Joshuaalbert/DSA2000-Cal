@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.pure_callback_utils import construct_threaded_pure_callback, _build_batch_shape_determiner, \
+from dsa2000_common.common.pure_callback_utils import construct_threaded_pure_callback, _build_batch_shape_determiner, \
     construct_threaded_callback
 
 

@@ -2,7 +2,7 @@ import jax
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.common.corr_utils import INV_CASA_CORR_TYPES, translate_corrs, detect_mixed_corrs, \
+from dsa2000_common.common.corr_utils import INV_CASA_CORR_TYPES, translate_corrs, detect_mixed_corrs, \
     broadcast_translate_corrs
 
 

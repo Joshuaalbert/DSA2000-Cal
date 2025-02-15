@@ -18,7 +18,7 @@ from ray.runtime_env import RuntimeEnv
 
 import dsa2000_cal.common.context as ctx
 from dsa2000_common.common.array_types import FloatArray, ComplexArray, IntArray
-from dsa2000_cal.common.fourier_utils import ApertureTransform
+from dsa2000_common.common.fourier_utils import ApertureTransform
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, quantity_to_np, time_to_jnp

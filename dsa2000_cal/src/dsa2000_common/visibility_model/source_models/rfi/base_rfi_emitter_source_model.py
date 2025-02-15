@@ -15,13 +15,10 @@ from dsa2000_common.common.jax_utils import multi_vmap
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.common.types import VisibilityCoords
-from dsa2000_cal.common.vec_utils import kron_product
+from dsa2000_common.common.vec_utils import kron_product
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
-
 from dsa2000_common.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
-
 from dsa2000_common.gain_models.gain_model import GainModel
-
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_common.visibility_model.source_models.abc import AbstractSourceModel
 from dsa2000_common.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction

@@ -2,7 +2,7 @@ import numpy as np
 import pylab as plt
 import pytest
 
-from dsa2000_cal.common.fourier_utils import ApertureTransform, find_optimal_fft_size
+from dsa2000_common.common.fourier_utils import ApertureTransform, find_optimal_fft_size
 
 
 def test_find_next_magic_size():

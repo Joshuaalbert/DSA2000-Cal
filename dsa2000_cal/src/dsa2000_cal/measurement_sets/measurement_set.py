@@ -15,7 +15,7 @@ import tables as tb
 from astropy import time as at
 from pydantic import Field
 
-from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
+from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray
 from dsa2000_common.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_common.common.mixed_precision_utils import mp_policy

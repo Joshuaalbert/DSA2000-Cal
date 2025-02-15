@@ -4,7 +4,7 @@ import pytest
 from jax import random as random, numpy as jnp
 from jax._src.tree_util import Partial
 
-from dsa2000_cal.common.nearest_neighbours import ApproximateTreeNN2D, GridTree2D, kd_tree_nn
+from dsa2000_common.common.nearest_neighbours import ApproximateTreeNN2D, GridTree2D, kd_tree_nn
 
 
 @pytest.fixture

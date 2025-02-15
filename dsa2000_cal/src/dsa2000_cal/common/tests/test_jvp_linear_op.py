@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
+from dsa2000_common.common.jvp_linear_op import JVPLinearOp
 
 
 @pytest.mark.parametrize('linearize', [True, False])

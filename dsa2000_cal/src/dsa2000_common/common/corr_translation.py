@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.vec_utils import unvec, vec
+from dsa2000_common.common.vec_utils import unvec, vec
 
 
 def flatten_coherencies(coherencies: jax.Array) -> jax.Array:

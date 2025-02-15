@@ -9,12 +9,12 @@ from jax import lax
 
 from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardt
 from dsa2000_common.common.array_types import FloatArray
-from dsa2000_cal.common.corr_translation import unflatten_coherencies, flatten_coherencies
-from dsa2000_cal.common.ellipse_utils import Gaussian
+from dsa2000_common.common.corr_translation import unflatten_coherencies, flatten_coherencies
+from dsa2000_common.common.ellipse_utils import Gaussian
 from dsa2000_common.common.jax_utils import multi_vmap, simple_broadcast
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.vec_utils import kron_inv, kron_product
+from dsa2000_common.common.vec_utils import kron_inv, kron_product
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 

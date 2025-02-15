@@ -7,7 +7,7 @@ import numpy as np
 
 from dsa2000_cal.common.ad_utils import tree_norm, tree_dot
 from dsa2000_common.common.array_types import FloatArray, IntArray
-from dsa2000_cal.common.jvp_linear_op import JVPLinearOp
+from dsa2000_common.common.jvp_linear_op import JVPLinearOp
 
 X = TypeVar('X', bound=Union[jax.Array, Any])
 Y = TypeVar('Y', bound=Union[jax.Array, Any])

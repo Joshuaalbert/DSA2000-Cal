@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.vec_utils import vec, unvec, kron_product, kron_inv
+from dsa2000_common.common.vec_utils import vec, unvec, kron_product, kron_inv
 
 
 def test_vec():

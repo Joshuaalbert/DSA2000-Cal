@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from dsa2000_cal.common.corr_translation import linear_to_circular, \
+from dsa2000_common.common.corr_translation import linear_to_circular, \
     circular_to_linear, linear_to_stokes, circular_to_stokes, stokes_to_linear, stokes_to_circular
 
 # From https://casa.nrao.edu/active/docs/doxygen/html/classcasa_1_1Stokes.html

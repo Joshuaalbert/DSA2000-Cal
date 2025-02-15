@@ -3,7 +3,7 @@ import pytest
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 
-from dsa2000_cal.common.coord_utils import icrs_to_lmn, lmn_to_icrs
+from dsa2000_common.common.coord_utils import icrs_to_lmn, lmn_to_icrs
 from dsa2000_common.delay_models.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian, \
     cartesian_to_celestial
 

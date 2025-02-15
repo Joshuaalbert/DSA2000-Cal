@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.ellipse_utils import Gaussian, ellipse_rotation
+from dsa2000_common.common.ellipse_utils import Gaussian, ellipse_rotation
 
 
 def test_ellipse():

@@ -7,8 +7,8 @@ import pytest
 from jax import random as random, numpy as jnp, lax
 
 from dsa2000_common.common.jax_utils import block_until_ready
-from dsa2000_cal.common.nearest_neighbours import ApproximateTreeNN2D
-from dsa2000_cal.common.vec_utils import kron_product, unvec, kron, vec
+from dsa2000_common.common.nearest_neighbours import ApproximateTreeNN2D
+from dsa2000_common.common.vec_utils import kron_product, unvec, kron, vec
 
 
 def brute_force_nearest_neighbors(points: jnp.ndarray, test_point: jnp.ndarray, k: int) -> Tuple[

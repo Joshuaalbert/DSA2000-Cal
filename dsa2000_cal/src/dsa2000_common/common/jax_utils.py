@@ -22,7 +22,7 @@ from jax._src.numpy.util import check_arraylike, promote_dtypes_inexact
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.mesh_utils import create_device_mesh
 
-from dsa2000_cal.common.jvp_linear_op import isinstance_namedtuple
+from dsa2000_common.common.jvp_linear_op import isinstance_namedtuple
 
 V = TypeVar('V')
 

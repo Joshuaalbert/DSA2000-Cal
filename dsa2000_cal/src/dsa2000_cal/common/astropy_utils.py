@@ -6,7 +6,7 @@ from astropy import units as au
 from astropy.coordinates import Angle
 from astropy.coordinates.angles import offset_by
 
-from dsa2000_cal.common.coord_utils import lmn_to_icrs
+from dsa2000_common.common.coord_utils import lmn_to_icrs
 
 
 def create_random_spherical_layout(num_sources: int, key=None) -> ac.ICRS:
@@ -45,11 +45,11 @@ def choose_dr(field_of_view: au.Quantity, total_n: int) -> au.Quantity:
 def create_spherical_spiral_grid(pointing: ac.ICRS, num_points: int, angular_radius: au.Quantity) -> ac.ICRS:
     ra0 = pointing.ra
     dec0 = pointing.dec
-    dtheta = 2 * np.pi / num_points**0.5
+    dtheta = 2 * np.pi / num_points ** 0.5
     ra_grid = []
     dec_grid = []
     for i in range(num_points):
-        r = angular_radius * (i  / (num_points - 1))**0.5
+        r = angular_radius * (i / (num_points - 1)) ** 0.5
         theta = i * dtheta
         ra_i, dec_i = offset_by(ra0, dec0, theta, r)
         ra_grid.append(ra_i)

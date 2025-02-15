@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.corr_translation import flatten_coherencies, unflatten_coherencies, stokes_to_linear, \
+from dsa2000_common.common.corr_translation import flatten_coherencies, unflatten_coherencies, stokes_to_linear, \
     linear_to_stokes, stokes_to_circular, circular_to_stokes, linear_to_circular, circular_to_linear
 
 

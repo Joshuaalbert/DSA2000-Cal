@@ -1,7 +1,7 @@
 import astropy.coordinates as ac
 import astropy.time as at
 
-from dsa2000_cal.common.coord_utils import lmn_to_icrs
+from dsa2000_common.common.coord_utils import lmn_to_icrs
 
 
 def get_lm_coords_image(fits_file, time: at.Time, phase_center: ac.ICRS):
@@ -11,7 +11,7 @@ def get_lm_coords_image(fits_file, time: at.Time, phase_center: ac.ICRS):
     from astropy.io import fits
     from astropy.wcs import WCS
 
-    from dsa2000_cal.common.coord_utils import icrs_to_lmn
+    from dsa2000_common.common.coord_utils import icrs_to_lmn
 
     with fits.open(fits_file) as hdul0:
         # image = hdul0[0].data.T[:, :, 0, 0].T # [Nm, Nl]

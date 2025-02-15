@@ -5,7 +5,7 @@ from ducc0 import wgridder
 
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, IntArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.pure_callback_utils import construct_threaded_pure_callback
+from dsa2000_common.common.pure_callback_utils import construct_threaded_pure_callback
 
 __all__ = [
     'image_to_vis',

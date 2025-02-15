@@ -13,7 +13,7 @@ from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_common.common.array_types import FloatArray, IntArray
-from dsa2000_cal.common.coord_utils import icrs_to_lmn
+from dsa2000_common.common.coord_utils import icrs_to_lmn
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.jax_utils import multi_vmap
 from dsa2000_common.common.mixed_precision_utils import mp_policy

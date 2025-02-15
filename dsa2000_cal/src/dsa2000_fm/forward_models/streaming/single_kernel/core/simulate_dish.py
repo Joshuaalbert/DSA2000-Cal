@@ -11,7 +11,7 @@ from astropy import constants
 
 import dsa2000_cal.common.context as ctx
 from dsa2000_common.common.array_types import FloatArray
-from dsa2000_cal.common.fourier_utils import ApertureTransform
+from dsa2000_common.common.fourier_utils import ApertureTransform
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, quantity_to_np
 from dsa2000_common.common.types import DishEffectsParams
