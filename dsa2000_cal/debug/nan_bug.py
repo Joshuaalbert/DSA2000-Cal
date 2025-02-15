@@ -9,8 +9,12 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.wgridder import image_to_vis
-from dsa2000_common.delay_models import build_far_field_delay_engine
-from dsa2000_common.delay_models import build_near_field_delay_engine
+from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+
+
+from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+
+
 from dsa2000_common.delay_models import perley_icrs_from_lmn
 from dsa2000_common.gain_models import build_spherical_interpolator
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
