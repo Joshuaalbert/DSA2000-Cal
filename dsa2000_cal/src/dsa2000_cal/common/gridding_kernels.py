@@ -5,8 +5,8 @@ import jax.numpy as jnp
 from astropy import constants
 from jax._src.typing import SupportsDType
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.mixed_precision_utils import complex_type
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.mixed_precision_utils import complex_type
 
 
 @dataclass(eq=False)

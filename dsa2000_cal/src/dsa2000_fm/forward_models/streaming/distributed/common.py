@@ -1,7 +1,7 @@
 from astropy import units as au
 
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import DishEffectsParams
+from dsa2000_common.common.types import DishEffectsParams
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
 
 

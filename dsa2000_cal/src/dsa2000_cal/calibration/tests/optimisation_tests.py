@@ -7,8 +7,8 @@ from typing import NamedTuple
 import jax
 from jax import numpy as jnp
 
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.jax_utils import block_until_ready
+from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.jax_utils import block_until_ready
 
 jax.config.update("jax_explain_cache_misses", True)
 

@@ -8,7 +8,7 @@ import pytest
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.ellipse_utils import Gaussian
-from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
+from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.wgridder import image_to_vis
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine

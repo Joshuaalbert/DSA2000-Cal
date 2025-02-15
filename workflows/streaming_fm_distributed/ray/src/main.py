@@ -42,7 +42,7 @@ from dsa2000_fm.forward_models.streaming.distributed.model_predictor import Mode
 from dsa2000_fm.forward_models.streaming.distributed.supervisor import create_supervisor
 from dsa2000_fm.forward_models.streaming.distributed.system_gain_simulator import SystemGainSimulator, \
     SystemGainSimulatorParams, compute_system_gain_simulator_options
-from dsa2000_rcp.actors.namespace import NAMESPACE
+from dsa2000_fm.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 

@@ -6,7 +6,7 @@ from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarq
 from jaxns.framework.special_priors import SpecialPrior
 from scipy.spatial import KDTree
 
-from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_common.common.array_types import FloatArray
 from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.assets.array_constraints.array_constraint_content import ArrayConstraint
 
@@ -29,9 +29,9 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.jax_utils import create_mesh
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.jax_utils import create_mesh
 
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map

@@ -4,7 +4,7 @@ import numpy as np
 from astropy import coordinates as ac, time as at, units as au
 from jax._src.partition_spec import PartitionSpec
 
-from dsa2000_cal.common.array_types import FloatArray, IntArray
+from dsa2000_common.common.array_types import FloatArray, IntArray
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 

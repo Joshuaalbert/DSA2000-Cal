@@ -10,10 +10,10 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.interp_utils import InterpolatedArray
-from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.quantity_utils import time_to_jnp
+from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.jax_utils import multi_vmap
+from dsa2000_common.common.quantity_utils import time_to_jnp
 
 tfpd = tfp.distributions
 

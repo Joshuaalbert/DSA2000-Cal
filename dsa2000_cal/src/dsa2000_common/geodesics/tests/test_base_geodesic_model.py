@@ -5,9 +5,9 @@ from jax import numpy as jnp
 from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import icrs_to_lmn
-from dsa2000_cal.common.interp_utils import InterpolatedArray
-from dsa2000_cal.common.jax_utils import block_until_ready
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
+from dsa2000_common.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.jax_utils import block_until_ready
+from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
 

@@ -5,7 +5,7 @@ import numpy as np
 from jax import lax, numpy as jnp, tree_util
 from tensorflow_probability.substrates.jax import math as tfp_math
 
-from dsa2000_cal.common.mixed_precision_utils import int_type
+from dsa2000_common.common.mixed_precision_utils import int_type
 
 X = TypeVar('X')
 V = TypeVar('V')

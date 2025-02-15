@@ -11,7 +11,7 @@ import ujson
 from pydantic import BaseModel
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 C = TypeVar('C')

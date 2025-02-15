@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, auto_multi_vmap, \
+from dsa2000_common.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, auto_multi_vmap, \
     convert_to_ufunc, _get_permutation, simple_broadcast
 
 

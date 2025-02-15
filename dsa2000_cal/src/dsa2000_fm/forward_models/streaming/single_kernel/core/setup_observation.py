@@ -8,9 +8,9 @@ import astropy.units as au
 import jax.numpy as jnp
 
 import dsa2000_cal.common.context as ctx
-from dsa2000_cal.common.array_types import FloatArray, IntArray, BoolArray
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.array_types import FloatArray, IntArray, BoolArray
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine, \

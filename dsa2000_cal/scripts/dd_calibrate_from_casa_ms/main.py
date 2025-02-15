@@ -15,9 +15,9 @@ import numpy as np
 import pyrap.tables as pt
 
 from dsa2000_cal.common.corr_utils import CASA_CORR_TYPES, broadcast_translate_corrs
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
+from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
+from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 
 
 class MSData(NamedTuple):

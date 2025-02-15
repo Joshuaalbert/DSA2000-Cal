@@ -9,7 +9,7 @@ import uvloop
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_rcp.actors.jax_coordinator.actor import JaxCoordinator, JaxCoordinatorParams
-from dsa2000_rcp.actors.namespace import NAMESPACE
+from dsa2000_fm.namespace import NAMESPACE
 from dsa2000_cal.common.ray_utils import get_head_node_id, get_free_port
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 

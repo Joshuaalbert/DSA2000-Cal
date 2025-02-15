@@ -8,7 +8,7 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_cal.common.coord_utils import earth_location_to_uvw_approx, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
     icrs_to_enu, enu_to_icrs, lmn_to_icrs_old
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 
 
 def test_enu_to_uvw():

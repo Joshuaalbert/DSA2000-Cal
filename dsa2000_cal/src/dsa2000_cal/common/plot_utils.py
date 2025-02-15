@@ -5,7 +5,7 @@ import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dsa2000_cal.common.types import SystemGains
+from dsa2000_common.common.types import SystemGains
 
 
 def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from jax import random as random, numpy as jnp, lax
 
-from dsa2000_cal.common.jax_utils import block_until_ready
+from dsa2000_common.common.jax_utils import block_until_ready
 from dsa2000_cal.common.nearest_neighbours import ApproximateTreeNN2D
 from dsa2000_cal.common.vec_utils import kron_product, unvec, kron, vec
 

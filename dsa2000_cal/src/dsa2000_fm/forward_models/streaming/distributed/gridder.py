@@ -6,12 +6,11 @@ from datetime import timedelta
 from typing import NamedTuple, List, AsyncGenerator
 
 import numpy as np
-import pylab as plt
 import ray
 
-from dsa2000_cal.common.array_types import FloatArray, ComplexArray, BoolArray
+from dsa2000_common.common.array_types import FloatArray, ComplexArray, BoolArray
 from dsa2000_cal.common.pure_callback_utils import construct_threaded_callback
-from dsa2000_cal.common.quantity_utils import quantity_to_np
+from dsa2000_common.common.quantity_utils import quantity_to_np
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.wgridder import vis_to_image_np
 from dsa2000_fm.forward_models.streaming.distributed.calibrator import CalibratorResponse

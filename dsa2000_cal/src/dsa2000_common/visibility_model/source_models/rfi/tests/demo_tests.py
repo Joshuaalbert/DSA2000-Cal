@@ -2,7 +2,7 @@ import jax
 from astropy import units as au
 from jax import numpy as jnp
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
 

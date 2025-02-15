@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
+from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_cal.common.wgridder import vis_to_image
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 

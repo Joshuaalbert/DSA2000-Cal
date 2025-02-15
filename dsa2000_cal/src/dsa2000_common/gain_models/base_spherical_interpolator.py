@@ -10,13 +10,13 @@ from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
 
-from dsa2000_cal.common.array_types import FloatArray, IntArray, ComplexArray
+from dsa2000_common.common.array_types import FloatArray, IntArray, ComplexArray
 from dsa2000_cal.common.fourier_utils import ApertureTransform
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, apply_interp, InterpolatedArray
-from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.interp_utils import get_interp_indices_and_weights, apply_interp, InterpolatedArray
+from dsa2000_common.common.jax_utils import multi_vmap
+from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.nearest_neighbours import kd_tree_nn
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.gain_models.gain_model import GainModel
 
 

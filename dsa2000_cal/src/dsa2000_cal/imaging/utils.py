@@ -8,8 +8,8 @@ from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_wi
 from dsa2000_cal.assets.content_registry import fill_registries, NoMatchFound
 from dsa2000_cal.assets.registries import array_registry
 from dsa2000_cal.common.fourier_utils import find_optimal_fft_size
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_np
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import quantity_to_np
 from dsa2000_cal.measurement_sets.measurement_set import MeasurementSetMeta
 
 

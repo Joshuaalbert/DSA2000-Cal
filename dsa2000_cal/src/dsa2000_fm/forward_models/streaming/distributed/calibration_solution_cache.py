@@ -10,11 +10,11 @@ from jax import numpy as jnp
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray
+from dsa2000_common.common.array_types import ComplexArray, FloatArray
 from dsa2000_cal.common.ray_utils import get_head_node_id, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
-from dsa2000_rcp.actors.namespace import NAMESPACE
+from dsa2000_fm.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 

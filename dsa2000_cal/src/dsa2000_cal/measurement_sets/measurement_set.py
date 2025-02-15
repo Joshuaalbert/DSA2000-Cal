@@ -16,12 +16,12 @@ from astropy import time as at
 from pydantic import Field
 
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray
-from dsa2000_cal.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
+from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray
+from dsa2000_common.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_common.common.types import VisibilityCoords
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine

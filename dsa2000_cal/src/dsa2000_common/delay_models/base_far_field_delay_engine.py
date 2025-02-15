@@ -12,12 +12,12 @@ from astropy import coordinates as ac, time as at, units as au, constants as con
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from jax import config, numpy as jnp
 
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.interp_utils import InterpolatedArray
-from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.jax_utils import multi_vmap
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.types import VisibilityCoords
 from dsa2000_common.delay_models.uvw_utils import perley_icrs_from_lmn, celestial_to_cartesian, norm, norm2
 
 

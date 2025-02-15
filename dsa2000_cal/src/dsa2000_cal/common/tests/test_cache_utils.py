@@ -4,7 +4,7 @@ from astropy import units as au, time as at, coordinates as ac
 from jax import numpy as jnp
 
 from dsa2000_cal.common.cache_utils import check_cache
-from dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 

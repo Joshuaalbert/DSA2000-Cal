@@ -1,8 +1,6 @@
 import os
 from typing import Generator
 
-import jax
-
 # TODO: Set environment variables for JAX at top of script before imports
 # To use all GPU's on a single machine, set the following environment variable
 # os.environ['JAX_PLATFORMS'] = 'cuda'  # Use GPU devices by default
@@ -20,7 +18,7 @@ from astropy import time as at, units as au, coordinates as ac
 from jax import numpy as jnp
 
 from dsa2000_cal.calibration.iterative_calibrator import create_data_input_gen, Data, IterativeCalibrator, DataGenInput
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.mixed_precision_utils import mp_policy
 
 
 def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int):

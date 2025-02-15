@@ -6,11 +6,10 @@ from astropy import coordinates as ac
 from astropy import units as au
 
 from dsa2000_cal.antenna_model.abc import AbstractAntennaModel
-from dsa2000_cal.antenna_model.matlab_amplitude_only_model import MatlabAntennaModelV1
 from dsa2000_cal.assets.arrays.array import AbstractArray, extract_itrs_coords
 from dsa2000_cal.assets.registries import array_registry, beam_model_registry
 from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.common.types import DishEffectsParams
+from dsa2000_common.common.types import DishEffectsParams
 
 
 @array_registry(template='dsa2000W')

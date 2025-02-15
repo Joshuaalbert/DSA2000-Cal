@@ -4,7 +4,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.array_types import FloatArray
+from dsa2000_common.common.array_types import FloatArray
 
 
 @dataclasses.dataclass(eq=False)

@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from dsa2000_cal.common.array_types import IntArray, FloatArray
+from dsa2000_common.common.array_types import IntArray, FloatArray
 
 
 @dataclasses.dataclass(eq=False)

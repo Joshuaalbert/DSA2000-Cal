@@ -4,7 +4,7 @@ from astropy import units as au
 from pydantic import Field
 
 from dsa2000_cal.assets.base_content import BaseContent
-from dsa2000_cal.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 

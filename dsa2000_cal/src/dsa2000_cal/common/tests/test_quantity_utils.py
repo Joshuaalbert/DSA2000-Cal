@@ -3,7 +3,7 @@ import pytest
 from astropy import units as au
 from jax import numpy as jnp
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 
 
 def test_quantity_to_jnp():

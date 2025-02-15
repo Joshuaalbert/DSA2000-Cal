@@ -14,8 +14,8 @@ import ray
 from dsa2000_cal.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry, array_registry
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
+from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine

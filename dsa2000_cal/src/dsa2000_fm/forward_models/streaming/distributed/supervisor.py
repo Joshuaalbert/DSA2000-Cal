@@ -11,7 +11,7 @@ from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
-from dsa2000_rcp.actors.namespace import NAMESPACE
+from dsa2000_fm.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 

@@ -10,7 +10,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from scipy.ndimage import zoom
 
-from dsa2000_cal.common.quantity_utils import quantity_to_np
+from dsa2000_common.common.quantity_utils import quantity_to_np
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 
 logger = logging.getLogger(__name__)

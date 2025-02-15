@@ -8,8 +8,8 @@ import numpy as np
 from astropy import units as au
 from jax import numpy as jnp
 
-from dsa2000_cal.common.array_types import FloatArray, ComplexArray
-from dsa2000_cal.common.interp_utils import left_broadcast_multiply
+from dsa2000_common.common.array_types import FloatArray, ComplexArray
+from dsa2000_common.common.interp_utils import left_broadcast_multiply
 from dsa2000_common.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction
 
 

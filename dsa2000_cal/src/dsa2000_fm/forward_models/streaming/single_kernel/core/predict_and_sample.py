@@ -12,12 +12,12 @@ from jax.experimental.shard_map import shard_map
 import dsa2000_cal.common.context as ctx
 from dsa2000_cal.assets.content_registry import fill_registries
 from dsa2000_cal.assets.registries import source_model_registry
-from dsa2000_cal.common.array_types import ComplexArray
-from dsa2000_cal.common.jax_utils import create_mesh
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.array_types import ComplexArray
+from dsa2000_common.common.jax_utils import create_mesh
+from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.noise import calc_baseline_noise
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.types import VisibilityCoords
 from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel, \
     build_fits_source_model_from_wsclean_components
 from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_source_model import \

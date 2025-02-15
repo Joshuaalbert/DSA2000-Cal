@@ -21,11 +21,11 @@ from jaxns.framework.ops import simulate_prior_model
 from dsa2000_cal.calibration.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
 from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, \
     MultiStepLevenbergMarquardtDiagnostic, MultiStepLevenbergMarquardt
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
+from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
-from dsa2000_cal.common.jax_utils import simple_broadcast, create_mesh
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp, jnp_to_time
+from dsa2000_common.common.jax_utils import simple_broadcast, create_mesh
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp, jnp_to_time
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
 

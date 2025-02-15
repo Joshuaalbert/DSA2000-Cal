@@ -9,7 +9,7 @@ import pylab as plt
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.common.interp_utils import optimized_interp_jax_safe, multilinear_interp_2d, \
+from dsa2000_common.common.interp_utils import optimized_interp_jax_safe, multilinear_interp_2d, \
     get_interp_indices_and_weights, left_broadcast_multiply, convolved_interp, get_centred_insert_index, apply_interp, \
     InterpolatedArray, select_interpolation_points
 

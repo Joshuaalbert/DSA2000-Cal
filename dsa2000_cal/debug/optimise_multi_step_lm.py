@@ -4,12 +4,12 @@ import time
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from dsa2000_cal.calibration.solvers.multi_step_lm import MultiStepLevenbergMarquardt
-from dsa2000_cal.common.jax_utils import create_mesh, tree_device_put
+from dsa2000_common.common.jax_utils import create_mesh, tree_device_put
 
 import jax
 import jax.numpy as jnp
 
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.mixed_precision_utils import mp_policy
 
 
 def main():

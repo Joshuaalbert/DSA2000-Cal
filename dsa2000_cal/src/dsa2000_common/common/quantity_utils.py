@@ -4,8 +4,8 @@ import numpy as np
 from astropy import units as au, time as at
 from jax._src.typing import SupportsDType
 
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.mixed_precision_utils import float_type, int_type, complex_type, mp_policy
+from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.mixed_precision_utils import float_type, int_type, complex_type, mp_policy
 
 
 def quantity_to_np(q: au.Quantity, decompose_unit: au.Unit | str | None = None,

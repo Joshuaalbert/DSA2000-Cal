@@ -14,14 +14,14 @@ from astropy.wcs import WCS
 from jax import numpy as jnp, lax
 
 from dsa2000_cal.common import wgridder
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray
+from dsa2000_common.common.array_types import ComplexArray, FloatArray
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
-from dsa2000_cal.common.interp_utils import InterpolatedArray, select_interpolation_points
-from dsa2000_cal.common.jax_utils import multi_vmap
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.interp_utils import InterpolatedArray, select_interpolation_points
+from dsa2000_common.common.jax_utils import multi_vmap
+from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_cal.common.pure_callback_utils import construct_threaded_callback
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, quantity_to_np
-from dsa2000_cal.common.types import VisibilityCoords
+from dsa2000_common.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_common.common.types import VisibilityCoords
 from dsa2000_cal.common.vec_utils import kron_product
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 

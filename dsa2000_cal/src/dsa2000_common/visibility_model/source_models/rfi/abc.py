@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
 
-from dsa2000_cal.common.array_types import ComplexArray, FloatArray
+from dsa2000_common.common.array_types import ComplexArray, FloatArray
 
 
 class AbstractRFIAutoCorrelationFunction(ABC):

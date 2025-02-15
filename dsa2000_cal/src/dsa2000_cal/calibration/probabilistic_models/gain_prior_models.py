@@ -7,8 +7,8 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 from jaxns import PriorModelType, Prior
 
-from dsa2000_cal.common.array_types import FloatArray
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.mixed_precision_utils import mp_policy
 
 tfpd = tfp.distributions
 

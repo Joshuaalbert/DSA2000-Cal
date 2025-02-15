@@ -12,9 +12,9 @@ from astropy.coordinates.matrix_utilities import rotation_matrix
 from jax import config, numpy as jnp
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.interp_utils import InterpolatedArray
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
+from dsa2000_common.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_common.delay_models.uvw_utils import norm
 
 

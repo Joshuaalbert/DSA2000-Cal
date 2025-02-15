@@ -17,14 +17,14 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.common.corr_utils import broadcast_translate_corrs
 from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
 from dsa2000_cal.common.ray_utils import resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.imaging.base_imagor import fit_beam
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
 from dsa2000_fm.forward_models.streaming.distributed.gridder import GridderResponse
 from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
-from dsa2000_rcp.actors.namespace import NAMESPACE
+from dsa2000_fm.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 
@@ -189,7 +189,6 @@ class _Aggregator:
             ) + sol_int_freq_idx * self.params.fm_run_params.chunk_params.num_freqs_per_sol_int
             self._freq_idxs.extend(freq_idxs.tolist())
 
-
     def health_check(self):
         """
         Announce health check.
@@ -276,7 +275,8 @@ class _Aggregator:
             psf_path=psf_path
         )
 
-    async def stream(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[AggregatorResponse, None]:
+    async def stream(self, key, sol_int_time_idxs: List[int], save_to_disk: bool) -> AsyncGenerator[
+        AggregatorResponse, None]:
         logger.info(f"Aggregating {sol_int_time_idxs}")
         await self.init()
 

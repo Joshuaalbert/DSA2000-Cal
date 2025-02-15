@@ -7,9 +7,9 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 from jaxns import PriorModelType, Prior
 
-from dsa2000_cal.common.interp_utils import InterpolatedArray
-from dsa2000_cal.common.mixed_precision_utils import mp_policy
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.gain_models.gain_model import GainModel
 
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
