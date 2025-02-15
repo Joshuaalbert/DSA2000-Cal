@@ -33,7 +33,7 @@ def create_makems_config(casa_ms: str,
     step_time = meta.integration_time.to('s').value
     phase_center = meta.pointings
     num_freqs = len(meta.freqs)
-    num_times = len(meta.x)
+    num_times = len(meta.times)
 
     antennas_itrs = antennas.get_itrs()
     array_table = f"{meta.array_name}_ANTENNA"

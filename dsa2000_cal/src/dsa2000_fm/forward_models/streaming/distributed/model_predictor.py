@@ -22,7 +22,7 @@ from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarField
 
 from dsa2000_common.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 
-from dsa2000_common.gain_models import build_beam_gain_model
+from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_common.gain_models.gain_model import GainModel
 
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel

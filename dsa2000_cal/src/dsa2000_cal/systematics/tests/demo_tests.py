@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from astropy import coordinates as ac, units as au, time as at
 
-from dsa2000_common.gain_models import build_beam_gain_model
+from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
 from dsa2000_cal.systematics.dish_aperture_effects import build_dish_aperture_effects, DishApertureEffects
 

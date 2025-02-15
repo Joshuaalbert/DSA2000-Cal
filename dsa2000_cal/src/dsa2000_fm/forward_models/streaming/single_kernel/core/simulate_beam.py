@@ -11,7 +11,7 @@ from dsa2000_fm.forward_models.streaming.single_kernel.core.setup_observation im
 from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 
 
-from dsa2000_common.gain_models import build_beam_gain_model
+from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 
 
 class SimulateBeamState(NamedTuple):

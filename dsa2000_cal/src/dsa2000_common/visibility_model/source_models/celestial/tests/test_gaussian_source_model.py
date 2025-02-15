@@ -13,15 +13,12 @@ from dsa2000_cal.common.ellipse_utils import Gaussian
 from dsa2000_cal.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.wgridder import image_to_vis
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
-
-
 from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
-
-
-from dsa2000_common.delay_models import perley_icrs_from_lmn
-from dsa2000_common.gain_models import build_spherical_interpolator
+from dsa2000_common.delay_models.uvw_utils import perley_icrs_from_lmn
+from dsa2000_common.gain_models.base_spherical_interpolator import build_spherical_interpolator
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
-from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_source_model import build_gaussian_source_model
+from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_source_model import \
+    build_gaussian_source_model
 
 
 def build_mock_gaussian_source_model(num_model_freqs: int, num_source: int, full_stokes: bool,
