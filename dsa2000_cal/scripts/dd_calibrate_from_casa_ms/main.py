@@ -1,6 +1,6 @@
 import os
 
-from dsa2000_fm.forward_models.streaming.distributed.calibrator import Calibration
+from dsa2000_fm.forward_models.streaming.calibrator import Calibration
 
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 

@@ -11,13 +11,12 @@ import jax.numpy as jnp
 import numpy as np
 import ray
 
-from dsa2000_fm.antenna_model import get_dish_model_beam_widths
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import source_model_registry, array_registry
-from dsa2000_common.common.array_types import FloatArray
-from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 from dsa2000_common.delay_models.base_near_field_delay_engine import BaseNearFieldDelayEngine
 from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
@@ -27,12 +26,13 @@ from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_mo
     build_calibration_fits_source_models_from_wsclean
 from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import \
     build_calibration_point_source_models_from_wsclean, BasePointSourceModel
-from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
-from dsa2000_fm.forward_models.streaming.distributed.common import ForwardModellingRunParams
-from dsa2000_fm.forward_models.streaming.distributed.degridding_predictor import DegriddingPredictor, \
+from dsa2000_fm.antenna_model.antenna_model_utils import get_dish_model_beam_widths
+from dsa2000_fm.forward_models.streaming.average_utils import average_rule
+from dsa2000_fm.forward_models.streaming.common import ForwardModellingRunParams
+from dsa2000_fm.forward_models.streaming.degridding_predictor import DegriddingPredictor, \
     DegriddingPredictorResponse
-from dsa2000_fm.forward_models.streaming.distributed.dft_predictor import DFTPredictorResponse
-from dsa2000_fm.forward_models.streaming.distributed.supervisor import Supervisor
+from dsa2000_fm.forward_models.streaming.dft_predictor import DFTPredictorResponse
+from dsa2000_fm.forward_models.streaming.supervisor import Supervisor
 
 logger = logging.getLogger('ray')
 

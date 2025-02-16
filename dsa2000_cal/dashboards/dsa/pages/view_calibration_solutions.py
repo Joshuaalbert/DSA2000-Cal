@@ -3,7 +3,7 @@ import asyncio
 import ray
 import streamlit as st
 
-from dsa2000_fm.forward_models.streaming.distributed.calibration_solution_cache import CalibrationSolutionCache, \
+from dsa2000_fm.forward_models.streaming.calibration_solution_cache import CalibrationSolutionCache, \
     CalibrationSolution
 
 

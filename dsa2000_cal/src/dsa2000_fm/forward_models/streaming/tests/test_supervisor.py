@@ -3,7 +3,7 @@ import asyncio
 import pytest
 import ray
 
-from dsa2000_fm.forward_models.streaming.distributed.supervisor import create_supervisor, Supervisor
+from dsa2000_fm.forward_models.streaming.supervisor import create_supervisor, Supervisor
 
 
 @pytest.mark.asyncio
@@ -32,7 +32,6 @@ async def test_run_supervisor():
     results = await asyncio.gather(*[assert_(a) for a in range(100)])
 
     second_supervisor = create_supervisor(MockActor, 'other_test', 10)
-
 
 
 @pytest.mark.asyncio

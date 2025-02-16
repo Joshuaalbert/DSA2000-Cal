@@ -1,7 +1,7 @@
 import os
 
 from dsa2000_cal.iterative_calibrator import compute_residual
-from dsa2000_fm.forward_models.streaming.distributed.calibrator import Calibration
+from dsa2000_fm.forward_models.streaming.calibrator import Calibration
 
 os.environ['JAX_PLATFORMS'] = 'cuda,cpu'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
@@ -47,7 +47,7 @@ from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_sourc
     BaseGaussianSourceModel
 from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import build_point_source_model, \
     BasePointSourceModel
-from dsa2000_fm.forward_models.streaming.distributed.average_utils import average_rule
+from dsa2000_fm.forward_models.streaming.average_utils import average_rule
 
 tfpd = tfp.distributions
 

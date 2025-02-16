@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import List, Generic, TypeVar
+from typing import List
 from typing import Type
 from uuid import uuid4
 
@@ -10,8 +10,8 @@ from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_cal.common.ray_utils import get_head_node_id
-from dsa2000_fm.namespace import NAMESPACE
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_fm.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
 
@@ -101,6 +101,7 @@ class NodeResourceMonitor:
     async def num_available(self) -> int:
         return await self._actor.num_available.remote()
 
+
 class _NodeResourceMonitor:
     def __init__(self, params: NodeResourceMonitorParams):
         self.params = params
@@ -173,4 +174,5 @@ def create_supervisor(remote: ray.actor.ActorClass, name: str, num_actors: int, 
         the supervisor
     """
     actors = [remote.remote(*args, **kwargs) for _ in range(num_actors)]
-    return NodeResourceMonitor(worker_id=f"{name.upper()}-{str(uuid4())}", params=NodeResourceMonitorParams(name=name, actors=actors))
+    return NodeResourceMonitor(worker_id=f"{name.upper()}-{str(uuid4())}",
+                               params=NodeResourceMonitorParams(name=name, actors=actors))
