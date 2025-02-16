@@ -252,7 +252,7 @@ class ArrayConstraintsV4(BaseContent, AbstractArrayConstraint):
             (RegionSampler(os.path.join(folder, "Existing Access Paths.shp")), _30ft),
             (RegionSampler(os.path.join(folder, "aoi_NHD_V2_Flowlines.shp")), _60ft),
             (RegionSampler(os.path.join(folder, "aoi_NHD_V2_Waterbodies.shp")), _200ft),
-            (RegionSampler(os.path.join(folder, "aoi_NWI_Wetland.shp")), _200ft),
+            (RegionSampler(os.path.join(folder, "aoi_NWI_Wetland.shp")), _60ft),
             (RegionSampler(os.path.join(folder, "Ephemeral Streams.shp")), _60ft),
             (RegionSampler(os.path.join(folder, "Intermittent Streams.shp")), _60ft),
             (RegionSampler(os.path.join(folder, "Perennial Streams- Observed.shp")), _60ft),
