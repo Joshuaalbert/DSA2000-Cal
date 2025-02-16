@@ -288,15 +288,9 @@ class ArrayConstraintsV4(BaseContent, AbstractArrayConstraint):
 
 
 def test_merge_aoi():
-    aoi = ArrayConstraintsV3()
+    aoi = ArrayConstraintsV4()
     aoi.get_area_of_interest_regions()
-    samplers = [sampler for sampler, _ in aoi.get_area_of_interest_regions()]
-    merged_aoi = samplers[0]
-    merged_aoi.info()
-    for sampler in samplers[1:]:
-        sampler.info()
-        merged_aoi = RegionSampler.merge([merged_aoi, sampler])
-    # merged_aoi = RegionSampler.merge([sampler for sampler, _ in aoi.get_area_of_interest_regions()])
+    merged_aoi = RegionSampler.merge([sampler for sampler, _ in aoi.get_area_of_interest_regions()])
     merged_aoi.info()
     area = sum([sampler.total_area for sampler, _ in aoi.get_area_of_interest_regions()])
     assert merged_aoi.total_area <= area

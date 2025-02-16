@@ -211,6 +211,20 @@ class RegionSampler:
         if not samplers:
             raise ValueError("No RegionSampler instances provided.")
 
+        if len(samplers) == 1:
+            return samplers[0]
+
+        elif len(samplers) > 2:
+            merged_aoi = samplers[0]
+            for sampler in samplers[1:]:
+                try:
+                    merged_aoi = cls.merge([merged_aoi, sampler])
+                except Exception as e:
+                    merged_aoi.info()
+                    sampler.info()
+                    raise e
+            return merged_aoi
+
         # Ensure all samplers have the same CRS
         target_crs = samplers[0].target_crs
         for sampler in samplers:
