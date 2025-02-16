@@ -11,7 +11,6 @@ import networkx as nx
 import numpy as np
 import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
-from dsa2000_cal.common.astropy_utils import mean_itrs
 from matplotlib import pyplot as plt
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
@@ -22,6 +21,7 @@ from tomographic_kernel.frames import ENU
 from tqdm import tqdm
 
 from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV3
+from dsa2000_cal.common.astropy_utils import mean_itrs
 from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
@@ -424,11 +424,16 @@ def get_pareto_eqs(hull: ConvexHull):
     normals = eqs[:, :2]  # [nfacet, 2]
     offsets = eqs[:, 2]  # [nfacet]
     # Keep simplex if normal points towards increasing log(L) of PSF and decreasing distance of minimal spanning tree
-    keep_mask = (normals[:, 1] > 0) | ((normals[:, 0] < 0) & (normals[:, 1] > 0))
-    normals = normals[keep_mask]
-    offsets = offsets[keep_mask]
-    verticies = np.unique(simplices[keep_mask].flatten())
-    return normals, offsets, verticies
+    keep_mask = (normals[:, 0] < 0) & (normals[:, 1] > 0)
+    if not np.any(keep_mask):
+        keep_mask = normals[:, 1] > 0
+    # normals = normals[keep_mask]
+    # offsets = offsets[keep_mask]
+    simplices_lengths = np.linalg.norm(hull.points[simplices[:, 0]] - hull.points[simplices[:, 1]], axis=1)
+    simplices = simplices[keep_mask].flatten()
+    simplices_lengths = simplices_lengths[keep_mask]
+    vertex_idxs = np.unique(simplices)
+    return normals, offsets, simplices, simplices_lengths, vertex_idxs
 
 
 # Example usage
@@ -668,33 +673,35 @@ def point_generator(
             )
             evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
             results.evaluations.append(evaluation)
-        hull = ConvexHull(points=np.asarray([[e.cost, e.quality] for e in results.evaluations]), incremental=True)
-        _, _, vertex_idxs = get_pareto_eqs(hull)
-        while len(vertex_idxs) == 0:
-            # Choose a random antenna to replace
-            replace_idx = np.random.choice(len(antennas))
-            antennas = sample_aoi(
-                replace_idx=replace_idx,
-                antennas=antennas,
-                array_location=results.array_location,
-                obstime=results.obstime,
-                additional_buffer=additional_buffer_m,
-                minimal_antenna_sep=minimal_antenna_sep_m,
-                aoi_data=aoi_data,
-                constraint_data=constraint_data
-            )
-            evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
-            results.evaluations.append(evaluation)
-            hull.add_points(np.asarray([evaluation.cost, evaluation.quality])[None, :], restart=False)
-            _, _, vertex_idxs = get_pareto_eqs(hull)
-        del hull
+        # hull = ConvexHull(points=np.asarray([[e.cost, e.quality] for e in results.evaluations]), incremental=True)
+        # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
+        # while len(vertex_idxs) == 0:
+        #  #   Choose a random antenna to replace
+            # replace_idx = np.random.choice(len(antennas))
+            # antennas = sample_aoi(
+            #     replace_idx=replace_idx,
+            #     antennas=antennas,
+            #     array_location=results.array_location,
+            #     obstime=results.obstime,
+            #     additional_buffer=additional_buffer_m,
+            #     minimal_antenna_sep=minimal_antenna_sep_m,
+            #     aoi_data=aoi_data,
+            #     constraint_data=constraint_data
+            # )
+            # evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
+            # results.evaluations.append(evaluation)
+            # hull.add_points(np.asarray([evaluation.cost, evaluation.quality])[None, :], restart=False)
+            # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
+        # del hull
 
     hull = ConvexHull(points=np.asarray([[e.cost, e.quality] for e in results.evaluations]), incremental=True)
     pbar = tqdm(itertools.count())
     while True:
-        normals, offsets, vertex_idxs = get_pareto_eqs(hull)
+        normals, offsets, simplices, simplices_lengths, vertex_idxs = get_pareto_eqs(hull)
         # Choose a frontier point at random, as a seed point for iteration
-        vertex_idx = np.random.choice(vertex_idxs)
+        simplicies_probs = simplices_lengths / np.sum(simplices_lengths)
+        simplex_idx = np.random.choice(len(simplices_lengths), p=simplicies_probs)
+        vertex_idx = np.random.choice(simplices[simplex_idx, :])
         vertex_antennas = results.evaluations[vertex_idx].antennas
         # Choose a random antenna to replace
         replace_idx = np.random.choice(len(vertex_antennas))
@@ -713,7 +720,7 @@ def point_generator(
         # Check if the new point is on the Pareto front using eqs
         for normal, offset in zip(normals, offsets):
             if np.dot(normal, point) + offset > 0:
-                # The new point is not on the Pareto front
+                # The new point is on the hull
                 results.evaluations.append(evaluation)
                 hull.add_points(point[None, :], restart=False)
                 # protect from KeyboardInterrupt
@@ -792,11 +799,11 @@ def plot_solution(plot_folder: str, solution_file: str, aoi_data: List[Tuple[Reg
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
     array_location = mean_itrs(antennas.get_itrs()).earth_location
 
-    antennas_enu = antennas.get_itrs(
-        obstime=obstime, location=array_location
-    ).transform_to(
-        ENU(obstime=obstime, location=array_location)
-    ).cartesian.xyz.to('m').value.T
+    # antennas_enu = antennas.get_itrs(
+    #     obstime=obstime, location=array_location
+    # ).transform_to(
+    #     ENU(obstime=obstime, location=array_location)
+    # ).cartesian.xyz.to('m').value.T
 
     # Plot along with regions
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
