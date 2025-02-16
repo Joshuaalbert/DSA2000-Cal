@@ -352,22 +352,28 @@ VT = TypeVar('VT')
 
 def field_dunder(binary_op, self: 'InterpolatedArray',
                  other: FloatArray | ComplexArray | 'InterpolatedArray') -> 'InterpolatedArray':
+    """
+    Perform binary operation on two fields.
+
+    Args:
+        binary_op: the binary operation to perform
+        self: the first field
+        other: the second field
+
+    Returns:
+        the resulting field
+    """
     if isinstance(other, InterpolatedArray):
-        if other.axis != self.axis:
-            raise ValueError("InterpolatedArrays must have the same axis.")
-        # assumes x values are the same, only check shapes though
-        if np.shape(other.x) != np.shape(self.x):
-            raise ValueError("InterpolatedArrays must have the same x values. Only shape checks performed.")
-        if np.shape(other.values) != np.shape(self.values):
-            raise ValueError("InterpolatedArrays must have the same shape. Broadcast not supported.")
-        values_sum = jax.tree_map(lambda x, y: binary_op(x, y), self.values, other.values)
+        values = jax.vmap(
+            lambda x, y: binary_op(x, y), in_axes=(self.axis, other.axis), out_axes=self.axis
+        )(self.values, other.values)
         return InterpolatedArray(
-            self.x, values_sum, axis=self.axis, regular_grid=self.regular_grid,
+            self.x, values, axis=self.axis, regular_grid=self.regular_grid,
             check_spacing=self.check_spacing, clip_out_of_bounds=self.clip_out_of_bounds,
             normalise=self.normalise, auto_reorder=self.auto_reorder
         )
     else:
-        values = jax.tree.map(lambda x: binary_op(x, other), self.values)
+        values = jax.vmap(lambda x: binary_op(x, other), in_axes=self.axis, out_axes=self.axis)(self.values)
         return InterpolatedArray(
             self.x, values, axis=self.axis, regular_grid=self.regular_grid,
             check_spacing=self.check_spacing, clip_out_of_bounds=self.clip_out_of_bounds,

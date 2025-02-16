@@ -21,10 +21,10 @@ class AbstractRFIAutoCorrelationFunction(ABC):
         Evaluate the auto-correlation function at the given delay times.
 
         Args:
-            freq: the frequency
+            freq: the central frequency of channel in Hz.
             tau: the delay time
 
         Returns:
-            [[,2,2]] the auto-correlation function
+            [E[,2,2]] the auto-correlation function
         """
         ...

@@ -12,6 +12,7 @@ from astropy.coordinates.matrix_utilities import rotation_matrix
 from jax import config, numpy as jnp
 from tomographic_kernel.frames import ENU
 
+from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
@@ -26,6 +27,17 @@ class BaseNearFieldDelayEngine:
     x_antennas_gcrs: InterpolatedArray  # (t) -> [A, 3]
     enu_origin_gcrs: InterpolatedArray  # (t) -> [3]
     enu_coords_gcrs: InterpolatedArray  # (t) -> [3, 3]
+    skip_post_init: bool = False
+
+    def __post_init__(self):
+        if self.skip_post_init:
+            return
+        if len(self.x_antennas_gcrs.shape) != 2:
+            raise ValueError(f"x_antennas_gcrs must be [A, 3] got {self.x_antennas_gcrs.shape}")
+        if len(self.enu_origin_gcrs.shape) != 1:
+            raise ValueError(f"enu_origin_gcrs must be [3] got {self.enu_origin_gcrs.shape}")
+        if len(self.enu_coords_gcrs.shape) != 2:
+            raise ValueError(f"enu_coords_gcrs must be [3, 3] got {self.enu_coords_gcrs.shape}")
 
     @staticmethod
     def construct_x_0_gcrs(interp_times: at.Time, ref_time: at.Time, emitter: ac.EarthLocation,
@@ -64,7 +76,7 @@ class BaseNearFieldDelayEngine:
         )  # (t) -> [E, 3]
 
     def construct_x_0_gcrs_from_projection(self,
-                                           a_east: jax.Array, a_north: jax.Array, a_up: jax.Array
+                                           a_east: FloatArray, a_north: FloatArray, a_up: FloatArray
                                            ) -> InterpolatedArray:
         """
         Construct the emitter location as a linear combination of radius vectors from first antenna to antennas 1,2,3.
@@ -104,9 +116,9 @@ class BaseNearFieldDelayEngine:
             i2: the index of the second antenna.
 
         Returns:
-            delay: the delay in meters, i.e. light travel distance.
-            dist2: the distance in meters, for baseline b=x2-x0.
-            dist1: the distance in meters, for baseline b=x1-x0.
+            delay: [E] the delay in meters, i.e. light travel distance.
+            dist2: [E] the distance in meters, for baseline b=x2-x0.
+            dist1: [E] the distance in meters, for baseline b=x1-x0.
         """
 
         if np.shape(t1) != () or np.shape(i1) != () or np.shape(i2) != ():
@@ -409,7 +421,8 @@ def build_near_field_delay_engine(
     interp_times_jax = jnp.asarray((interp_times.tt - ref_time.tt).sec)  # [T]
 
     x_antennas_gcrs = quantity_to_jnp(
-        np.transpose(antennas_position_gcrs, (1, 2, 0))
+        np.transpose(antennas_position_gcrs, (1, 2, 0)),
+        'm'
     )  # [T, num_ants, 3]
     x_antennas_gcrs = InterpolatedArray(
         x=interp_times_jax,
@@ -419,7 +432,8 @@ def build_near_field_delay_engine(
     )
 
     enu_origin_gcrs = quantity_to_jnp(
-        np.transpose(enu_origin_gcrs, (1, 0))
+        np.transpose(enu_origin_gcrs, (1, 0)),
+        'm'
     )  # [T, 3]
     enu_origin_gcrs = InterpolatedArray(
         x=interp_times_jax,

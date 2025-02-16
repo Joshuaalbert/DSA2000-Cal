@@ -18,8 +18,7 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
     mu: FloatArray  # [E]
     fwhp: FloatArray  # [E]
     spectral_power: FloatArray  # [E[,2,2]] in Jy*m^2/Hz
-    channel_lower: FloatArray  # [chan]
-    channel_upper: FloatArray  # [chan]
+    channel_width: FloatArray  # width of each channel in Hz, assumed all channels have the same width
     resolution: int = 32  # Should be chosen so that channel width / resolution ~ PFB kernel resolution
     skip_post_init: bool = False
 
@@ -35,17 +34,8 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
         if np.shape(self.spectral_power) not in [(len(self.mu), 2, 2), (len(self.mu),)]:
             raise ValueError(f"spectral_power must have the shape [E[,2,2]] got {np.shape(self.spectral_power)}")
 
-        if len(np.shape(self.channel_lower)) != 1:
-            raise ValueError(f"channel_lower must be 1D, got {np.shape(self.channel_lower)}")
-
-        if np.shape(self.channel_lower) != np.shape(self.channel_upper):
-            raise ValueError("channel_lower and channel_upper must have the same shape")
-
-    @property
     def shape(self):
-        shape = list(np.shape(self.spectral_power))
-        shape.insert(1, np.shape(self.channel_lower)[0])
-        return tuple(shape)
+        return np.shape(self.spectral_power)
 
     @staticmethod
     def get_resolution(channel_width: au.Quantity) -> int:
@@ -68,12 +58,10 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
             # memory changes fastest over the last axis better for DFT
             spectrum = jax.vmap(sinc, in_axes=0, out_axes=1)(channel_abscissa)  # [E, R]
             # Compute the ACF at tau using inverse Fourier transform
-            acf = jnp.sum(spectrum * jnp.exp(2j * jnp.pi * channel_abscissa * tau), axis=1) * dnu  # [E]
+            acf = jnp.sum(spectrum * jnp.exp(-2j * jnp.pi * channel_abscissa * tau), axis=1) * dnu  # [E]
             return left_broadcast_multiply(self.spectral_power, acf)  # [E[,2,2]]
 
-        # TODO: Need to filer for freq
-        return jax.vmap(single_channel_acf, in_axes=0, out_axes=1)(
-            self.channel_lower, self.channel_upper)  # [E, chan[,2,2]]
+        return single_channel_acf(freq - 0.5 * self.channel_width, freq + 0.5 * self.channel_width)  # [E, [,2,2]]
 
     def save(self, filename: str):
         """
@@ -133,8 +121,8 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
         """
         return (
             [this.mu, this.fwhp, this.spectral_power,
-             this.channel_lower, this.channel_upper], (
-                this.resolution))
+             this.channel_width], (this.resolution,)
+        )
 
     @classmethod
     def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "ParametricDelayACF":
@@ -149,9 +137,9 @@ class ParametricDelayACF(AbstractRFIAutoCorrelationFunction):
             the unflattened model
         """
         resolution, convention = aux_data
-        mu, fwhp, spectral_power, channel_lower, channel_upper = children
+        mu, fwhp, spectral_power, channel_width = children
         return ParametricDelayACF(mu=mu, fwhp=fwhp, spectral_power=spectral_power,
-                                  channel_lower=channel_lower, channel_upper=channel_upper,
+                                  channel_width=channel_width,
                                   resolution=resolution,
                                   skip_post_init=True)
 

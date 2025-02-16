@@ -48,7 +48,7 @@ class AbstractSourceModel(ABC):
     def predict(
             self,
             visibility_coords: VisibilityCoords,
-            gain_model: GainModel,
+            gain_model: GainModel | None,
             near_field_delay_engine: BaseNearFieldDelayEngine,
             far_field_delay_engine: BaseFarFieldDelayEngine,
             geodesic_model: BaseGeodesicModel

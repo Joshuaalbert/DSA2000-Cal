@@ -30,9 +30,13 @@ class RFIEmitterModelData(NamedTuple):
 
 
 @dataclasses.dataclass(eq=False)
-class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
+class RFIEmitterSourceModel(AbstractSourceModel):
     """
     Predict vis for point source.
+
+    Args:
+        position_enu: [E, 3] ENU coordinates of the emitters
+        delay_acf: (t) -> [E,[2,2]] Delay ACF for each emitter
     """
     position_enu: FloatArray  # [E, 3]
     delay_acf: AbstractRFIAutoCorrelationFunction  # [E,[2,2]]
@@ -74,14 +78,7 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
     def is_full_stokes(self) -> bool:
         return len(self.delay_acf.shape()) == 3 and self.delay_acf.shape[-2:] == (2, 2)
 
-    def get_model_slice(self, freq: FloatArray, time: FloatArray,
-                        geodesic_model: BaseGeodesicModel) -> RFIEmitterModelData:
-        return RFIEmitterModelData(
-            position_enu=self.position_enu,
-            delay_acf=self.delay_acf
-        )
-
-    def predict(self, visibility_coords: VisibilityCoords, gain_model: GainModel,
+    def predict(self, visibility_coords: VisibilityCoords, gain_model: GainModel | None,
                 near_field_delay_engine: BaseNearFieldDelayEngine, far_field_delay_engine: BaseFarFieldDelayEngine,
                 geodesic_model: BaseGeodesicModel) -> ComplexArray:
 
@@ -113,16 +110,10 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
                 vis_accumulation: [B, 2, 2] visibility for given baseline, accumulated over all provided directions.
             """
 
-            model_data = self.get_model_slice(
-                freq=freq,
-                time=time,
-                geodesic_model=geodesic_model
-            )  # [num_sources, 2, 2]
-
             if gain_model is not None:
                 lmn_geodesic = geodesic_model.compute_near_field_geodesics(
                     times=time[None],
-                    source_positions_enu=model_data.position_enu
+                    source_positions_enu=self.position_enu
                 )  # [1, num_ant, num_sources, 3]
                 # Compute the gains
                 gains = gain_model.compute_gain(
@@ -132,23 +123,26 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
                 )  # [1, num_ant, 1, num_sources,[, 2, 2]]
                 g1 = gains[0, visibility_coords.antenna1, 0, :, ...]  # [B, num_sources[, 2, 2]]
                 g2 = gains[0, visibility_coords.antenna2, 0, :, ...]  # [B, num_sources[, 2, 2]]
+                if self.is_full_stokes():
+                    gain_mapping = "[B,S,2,2]"
+                else:
+                    gain_mapping = "[B,S]"
             else:
                 g1 = g2 = None
+                gain_mapping = "[]"
 
             if self.is_full_stokes():
-                gain_mapping = "[B,S,2,2]"
                 out_mapping = "[B,~P,~Q]"
             else:
-                gain_mapping = "[B,S]"
                 out_mapping = "[B]"
 
             @partial(
                 multi_vmap,
-                in_mapping=f"[S,3],[B,3],{gain_mapping},{gain_mapping}",
+                in_mapping=f"[B,3],{gain_mapping},{gain_mapping},[B],[B]",
                 out_mapping=out_mapping,
                 verbose=True
             )
-            def compute_visibilities_rfi_over_sources(uvw, g1, g2):
+            def compute_visibilities_rfi_over_sources(uvw, g1, g2, i1, i2):
                 """
                 Compute visibilities for a single direction, accumulating over sources.
 
@@ -161,32 +155,49 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
                     vis_accumulation: [B[, 2, 2]] visibility for given baseline, accumulated over all provided directions.
                 """
                 x_0_gcrs = near_field_delay_engine.construct_x_0_gcrs_from_projection(
-                    a_east=model_data.position_enu[:, 0],
-                    a_north=model_data.position_enu[:, 1],
-                    a_up=model_data.position_enu[:, 2]
+                    a_east=self.position_enu[:, 0],
+                    a_north=self.position_enu[:, 1],
+                    a_up=self.position_enu[:, 2]
                 )  # [S, 3]
 
                 delay, dist20, dist10 = near_field_delay_engine.compute_delay(
                     x_0_gcrs=x_0_gcrs,
                     t1=time,
-                    i1=_a1,
-                    i2=_a2
+                    i1=i1,
+                    i2=i2
                 )  # [S], [S], [S]
+                c = quantity_to_jnp(const.c)
 
-                vis = self._single_compute_visibilty(
-                    freq=freq,
-                    delay=delay,
-                    w=uvw[2],
-                    delay_acf=model_data.delay_acf,
-                    dist10=dist10,
-                    dist20=dist20,
-                    g1=g1,
-                    g2=g2
-                )  # [S[,2,2]]
+                delay_acf_val = self.delay_acf.eval(freq=freq, tau=mp_policy.cast_to_time(delay / c))  # [S,[2,2]]
 
-                return jnp.sum(vis, axis=0)  # [[2,2]]
+                def body(accumulate, x):
+                    (delay, delay_acf_val, dist10, dist20, g1, g2) = x
 
-            return compute_visibilities_rfi_over_sources(model_data.lmn, uvw, g1, g2, )
+                    vis = self._compute_visibilty(
+                        freq=freq,
+                        delay=delay,
+                        w=uvw[2],
+                        delay_acf_val=delay_acf_val,
+                        dist10=dist10,
+                        dist20=dist20,
+                        g1=g1,
+                        g2=g2
+                    )  # [[,2,2]]
+                    return accumulate + vis, None
+
+                accumulate = jnp.zeros(
+                    (2, 2) if self.is_full_stokes() else (),
+                    dtype=mp_policy.vis_dtype
+                )
+
+                vis_accumulation, _ = jax.lax.scan(
+                    body,
+                    accumulate,
+                    (delay, delay_acf_val, dist10, dist20, g1, g2)
+                )
+                return vis_accumulation
+
+            return compute_visibilities_rfi_over_sources(uvw, g1, g2, _a1, _a2)
 
         visibilities = compute_baseline_visibilities_point(
             visibility_coords.uvw,
@@ -195,8 +206,8 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
         )  # [num_times, num_baselines, num_freqs[,2, 2]]
         return visibilities
 
-    def _single_compute_visibilty(self, freq, delay, w, delay_acf: AbstractRFIAutoCorrelationFunction, dist10, dist20,
-                                  g1, g2):
+    def _compute_visibilty(self, freq, delay, w, delay_acf_val: FloatArray, dist10: FloatArray, dist20: FloatArray,
+                           g1, g2):
         """
         Compute the visibility from a single direction for a single baseline.
 
@@ -204,28 +215,26 @@ class RFIEmitterSourceModel(AbstractSourceModel[RFIEmitterModelData]):
             freq: []
             delay: []
             w: []
-            delay_acf: [[2, 2]]
+            delay_acf_val: [[,2, 2]]
             dist10: []
             dist20: []
             g1: [[2, 2]]
             g2: [[2, 2]]
 
         Returns:
-            [[2, 2]] visibility in given direction for given baseline.
+            [[,2, 2]] visibility in given direction for given baseline.
         """
 
-        delay_s = mp_policy.cast_to_time(delay / quantity_to_jnp(const.c))
+        c = quantity_to_jnp(const.c)
 
-        delay_acf_val = delay_acf.eval(freq=freq, tau=delay_s)
-
-        wavelength = quantity_to_jnp(const.c) / freq  # []
+        wavelength = c / freq  # []
         # delay ~ l*u + m*v + n*w
-        # -2j pi delay / wavelength + 2j pi w / wavelength = -2j pi (delay - w) / wavelength
-        # = -2j pi (l*u + m*v + n*w - w) / wavelength
-        # = -2j pi (l*u + m*v + (n-1)*w) / wavelength
+        # 2j pi delay / wavelength + 2j pi w / wavelength = -2j pi (delay - w) / wavelength
+        # = 2j pi (l*u + m*v + n*w - w) / wavelength
+        # = 2j pi (l*u + m*v + (n-1)*w) / wavelength
         phase = -2j * jnp.pi * delay / wavelength  # []
 
-        # e^(-2j pi w) so that get -2j pi w (n-1) term
+        # e^(2j pi w) so that get -2j pi w (n-1) term
         tracking_delay = 2j * jnp.pi * w / wavelength  # []
         phase += tracking_delay
 

@@ -186,9 +186,10 @@ class SerialisableBaseModel(BaseModel):
         return cls(**kwargs)
 
     @classmethod
-    def parse_obj(cls: Type[C], obj: Dict[str, Any]) -> C:
+    def parse_obj(cls: Type[C], obj: Dict[str, Any] | List[Any]) -> C:
         model_fields = cls.__fields__  # get fields of the model
-
+        if isinstance(obj, List):
+            return list(map(cls.parse_obj, obj))
         for name, field in model_fields.items():
             # if isinstance(field.type_, type) and issubclass(field.type_, np.ndarray):
             #     if name in obj and isinstance(obj[name], dict):

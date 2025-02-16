@@ -1,7 +1,10 @@
 import os
 from typing import Tuple, List
 
-from dsa2000_fm.abc import RegionSampler, AbstractArrayConstraint
+import matplotlib.pyplot as plt
+
+from dsa2000_fm.abc import AbstractArrayConstraint
+from dsa2000_fm.array_layout.geo_constraints import RegionSampler
 from dsa2000_assets.base_content import BaseContent
 
 try:
@@ -214,3 +217,15 @@ class ArrayConstraintsV3(BaseContent, AbstractArrayConstraint):
         ]
 
 
+def test_merge_aoi():
+    aoi = ArrayConstraintsV3()
+    aoi.get_area_of_interest_regions()
+    merged_aoi = RegionSampler.merge([sampler for sampler, _ in aoi.get_area_of_interest_regions()])
+    merged_aoi.info()
+    area = sum([sampler.total_area for sampler, _ in aoi.get_area_of_interest_regions()])
+    assert merged_aoi.total_area <= area
+    fig, axs = plt.subplots(2,1)
+    merged_aoi.plot_region(axs[0])
+    for sampler, _ in aoi.get_area_of_interest_regions():
+        sampler.plot_region(axs[1])
+    plt.show()
