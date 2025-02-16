@@ -430,9 +430,9 @@ def get_pareto_eqs(hull: ConvexHull):
     # normals = normals[keep_mask]
     # offsets = offsets[keep_mask]
     simplices_lengths = np.linalg.norm(hull.points[simplices[:, 0]] - hull.points[simplices[:, 1]], axis=1)
-    simplices = simplices[keep_mask].flatten()
+    simplices = simplices[keep_mask]
     simplices_lengths = simplices_lengths[keep_mask]
-    vertex_idxs = np.unique(simplices)
+    vertex_idxs = np.unique(simplices.flatten())
     return normals, offsets, simplices, simplices_lengths, vertex_idxs
 
 
