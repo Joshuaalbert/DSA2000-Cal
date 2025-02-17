@@ -5,11 +5,11 @@ import astropy.time as at
 import astropy.units as au
 import numpy as np
 
-from dsa2000_cal.assets.content_registry import fill_registries
-from dsa2000_cal.assets.registries import array_registry
-from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
-from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
+from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
 
 
 @dataclasses.dataclass(eq=False)
