@@ -4,7 +4,7 @@ from astropy import units as au
 
 from dsa2000_assets.base_content import BaseContent
 from dsa2000_assets.registries import rfi_model_registry
-from dsa2000_cal.common.astropy_utils import fraunhofer_far_field_limit
+from dsa2000_common.common.astropy_utils import fraunhofer_far_field_limit
 from dsa2000_common.abc import AbstractRFIEmitterData
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction

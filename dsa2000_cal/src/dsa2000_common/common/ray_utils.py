@@ -70,6 +70,38 @@ def get_head_node_id() -> str:
     return head_node_id
 
 
+def get_head_ip() -> str:
+    head_node_id = get_head_node_id()
+    logger.info(f"Attempting to connect to Ray head node {head_node_id}...")
+    # Retrieve all node information
+    nodes_info = ray.nodes()
+
+    # Find the IP address corresponding to the actor's node ID
+    head_node_ip = None
+    for node in nodes_info:
+        if node["NodeID"] == head_node_id:
+            head_node_ip = node["NodeManagerAddress"]
+            break
+    if head_node_ip is None:
+        raise RuntimeError("Head node IP address not found")
+    return head_node_ip
+
+
+def get_node_ip(node_id: str) -> str:
+    # Retrieve all node information
+    nodes_info = ray.nodes()
+
+    # Find the IP address corresponding to the actor's node ID
+    node_ip = None
+    for node in nodes_info:
+        if node["NodeID"] == node_id:
+            node_ip = node["NodeManagerAddress"]
+            break
+    if node_ip is None:
+        raise RuntimeError(f"Node IP address not found for node {node_id}")
+    return node_ip
+
+
 def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
     """Get a running async event loop if one exists, otherwise create one.
 

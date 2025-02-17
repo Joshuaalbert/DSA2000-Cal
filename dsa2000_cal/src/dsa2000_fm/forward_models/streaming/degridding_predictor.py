@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray.runtime_env import RuntimeEnv
 
-from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
+from dsa2000_common.common.ray_utils import TimerLog, resource_logger
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.types import VisibilityCoords
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine

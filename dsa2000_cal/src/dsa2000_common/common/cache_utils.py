@@ -3,7 +3,7 @@ import numpy as np
 from astropy import units as au, time as at, coordinates as ac
 
 from dsa2000_common.common.interp_utils import InterpolatedArray
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 
 
 def check_cache(cache_model: SerialisableBaseModel, **kwargs):

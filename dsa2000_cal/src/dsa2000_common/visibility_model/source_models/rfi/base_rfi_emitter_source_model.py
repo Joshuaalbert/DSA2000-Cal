@@ -2,7 +2,7 @@ import dataclasses
 import pickle
 import warnings
 from functools import partial
-from typing import NamedTuple, Tuple, List, Any
+from typing import Tuple, List, Any
 
 import jax
 import numpy as np
@@ -22,11 +22,6 @@ from dsa2000_common.gain_models.gain_model import GainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_common.visibility_model.source_models.abc import AbstractSourceModel
 from dsa2000_common.visibility_model.source_models.rfi.abc import AbstractRFIAutoCorrelationFunction
-
-
-class RFIEmitterModelData(NamedTuple):
-    position_enu: FloatArray  # [E, 3]
-    delay_acf: AbstractRFIAutoCorrelationFunction  # [E[,2, 2]]
 
 
 @dataclasses.dataclass(eq=False)

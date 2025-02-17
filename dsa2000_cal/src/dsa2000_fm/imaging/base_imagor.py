@@ -15,7 +15,7 @@ from dsa2000_common.common.jax_utils import multi_vmap, simple_broadcast
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.common.vec_utils import kron_inv, kron_product
-from dsa2000_cal.common.wgridder import vis_to_image
+from dsa2000_common.common.wgridder import vis_to_image
 from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
 
 

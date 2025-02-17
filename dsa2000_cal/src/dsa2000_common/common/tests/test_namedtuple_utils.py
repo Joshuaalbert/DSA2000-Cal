@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from dsa2000_cal.common.namedtuple_utils import deserialise_namedtuple, serialise_ndarray, issubclass_namedtuple, \
+from dsa2000_common.common.namedtuple_utils import deserialise_namedtuple, serialise_ndarray, issubclass_namedtuple, \
     serialise_namedtuple, isinstance_namedtuple
 
 

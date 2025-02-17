@@ -21,8 +21,8 @@ from tomographic_kernel.frames import ENU
 from tqdm import tqdm
 
 from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV3
-from dsa2000_cal.common.astropy_utils import mean_itrs
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.astropy_utils import mean_itrs
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_np

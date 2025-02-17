@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from dsa2000_cal.common.alert_utils import post_completed_forward_modelling_run
+from dsa2000_common.common.alert_utils import post_completed_forward_modelling_run
 
 
 def test_post_completed_forward_modelling_run():

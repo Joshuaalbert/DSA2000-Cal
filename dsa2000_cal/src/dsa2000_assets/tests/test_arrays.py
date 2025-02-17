@@ -2,7 +2,7 @@ import os
 
 from astropy import units as au
 
-from dsa2000_cal.common.astropy_utils import extract_itrs_coords
+from dsa2000_common.common.astropy_utils import extract_itrs_coords
 
 
 def test_extract_itrs_coords():

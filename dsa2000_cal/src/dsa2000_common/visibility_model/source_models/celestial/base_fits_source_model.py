@@ -13,7 +13,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from jax import numpy as jnp, lax
 
-from dsa2000_cal.common import wgridder
+from dsa2000_common.common import wgridder
 from dsa2000_common.common.array_types import ComplexArray, FloatArray
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_common.common.interp_utils import InterpolatedArray, select_interpolation_points

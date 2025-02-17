@@ -20,7 +20,7 @@ from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArra
 from dsa2000_common.common.interp_utils import get_interp_indices_and_weights, get_centred_insert_index
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.common.types import VisibilityCoords
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
 

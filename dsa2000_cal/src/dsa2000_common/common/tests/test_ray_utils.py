@@ -1,7 +1,7 @@
 import os
 import time
 
-from dsa2000_cal.common.ray_utils import MemoryLogger
+from dsa2000_common.common.ray_utils import MemoryLogger
 
 
 def test_memory_logger(tmp_path):

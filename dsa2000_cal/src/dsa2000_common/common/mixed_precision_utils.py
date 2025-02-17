@@ -14,7 +14,7 @@ if not jax.config.read('jax_enable_x64'):
 if jnp.array(1., jnp.float64).dtype != jnp.float64:
     raise RuntimeError("Failed to set float64 as default dtype.")
 
-from dsa2000_cal.common.alert_utils import get_grandparent_info
+from dsa2000_common.common.alert_utils import get_grandparent_info
 
 float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)

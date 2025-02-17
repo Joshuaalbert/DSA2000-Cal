@@ -14,9 +14,9 @@ from jax import numpy as jnp
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import source_model_registry
-from dsa2000_cal.common.noise import calc_baseline_noise
-from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.noise import calc_baseline_noise
+from dsa2000_common.common.ray_utils import TimerLog, resource_logger
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.common.array_types import FloatArray, ComplexArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp

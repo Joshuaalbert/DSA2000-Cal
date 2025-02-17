@@ -16,8 +16,8 @@ from jax import numpy as jnp
 from jaxns.framework.ops import simulate_prior_model
 from ray.runtime_env import RuntimeEnv
 
-from dsa2000_cal.common.ray_utils import TimerLog, resource_logger
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.ray_utils import TimerLog, resource_logger
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.iterative_calibrator import IterativeCalibrator, Data
 from dsa2000_cal.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
 from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \

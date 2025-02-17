@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from dsa2000_cal.common.ad_utils import tree_norm, tree_dot
+from dsa2000_common.common.ad_utils import tree_norm, tree_dot
 from dsa2000_common.common.array_types import FloatArray, IntArray
 from dsa2000_common.common.jvp_linear_op import JVPLinearOp
 

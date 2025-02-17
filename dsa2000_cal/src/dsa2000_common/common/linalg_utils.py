@@ -1,13 +1,77 @@
 import functools
 import math
-from typing import Any, Callable
-from typing import Tuple
+from typing import Tuple, Callable, Any
 
 import jax
-import jax.numpy as jnp
 import numpy as np
+from jax import numpy as jnp
 
-__all__ = ["sqrtm", "sqrtm_only", "inv_sqrtm_only"]
+
+def randomized_svd(key, A, k, p):
+    # Step 2: Parameters
+    l = k + p
+    m, n = A.shape
+
+    # Step 3: Random Test Matrix
+    Omega = jax.random.normal(key, (n, l))
+
+    # Step 4: Sample Matrix
+    Y = A @ Omega
+
+    # Step 5: Orthonormalize Y
+    Q, _ = jnp.linalg.qr(Y)
+
+    # Step 6: Project A to lower dimension
+    B = Q.T @ A
+
+    # Step 7: Compute SVD of B
+    tilde_U, Sigma, VT = jnp.linalg.svd(B, full_matrices=False)
+
+    # Step 8: Approximate U
+    U = Q @ tilde_U
+    return U, Sigma, VT
+
+
+def randomized_pinv(key, A, k, p):
+    U, Sigma, VT = randomized_svd(key, A, k, p)
+    # Step 10: Compute pseudoinverse
+    Sigma_plus = jnp.diag(jnp.where(Sigma > 1e-10, jnp.reciprocal(Sigma), 0.))
+    A_pinv = VT.T @ Sigma_plus @ U.T
+    return A_pinv
+
+
+def msqrt(A):
+    """
+    Computes the matrix square-root using SVD, which is robust to poorly conditioned covariance matrices.
+    Computes, M such that M @ M.T = A
+
+    Args:
+    A: [N,N] Square matrix to take square root of.
+
+    Returns: [N,N] matrix.
+    """
+    U, s, Vh = jnp.linalg.svd(A)
+    L = U * jnp.sqrt(s)
+    max_eig = jnp.max(s)
+    min_eig = jnp.min(s)
+    return max_eig, min_eig, L
+
+
+def randomised_msqrt(key, A, k, p):
+    """
+    Computes the matrix square-root using SVD, which is robust to poorly conditioned covariance matrices.
+    Computes, M such that M @ M.T = A
+
+    Args:
+    A: [N,N] Square matrix to take square root of.
+
+    Returns: [N,N] matrix.
+    """
+    U, s, Vh = randomized_svd(key, A, k, p)
+    L = U * jnp.sqrt(s)
+    max_eig = jnp.max(s)
+    min_eig = jnp.min(s)
+    return max_eig, min_eig, L
 
 
 @functools.partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5))
@@ -214,13 +278,6 @@ def sqrtm_bwd(
     return vjp_cot_sqrt + vjp_cot_inv_sqrt,
 
 
-sqrtm.defvjp(sqrtm_fwd, sqrtm_bwd)
-
-
-# Specialized versions of sqrtm that compute only the square root or inverse.
-# These functions have lower complexity gradients than sqrtm.
-
-
 @functools.partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5))
 def sqrtm_only(  # noqa: D103
         x: jnp.ndarray,
@@ -262,9 +319,6 @@ def sqrtm_only_bwd(  # noqa: D103
         axis2=-1
     )
     return vjp,
-
-
-sqrtm_only.defvjp(sqrtm_only_fwd, sqrtm_only_bwd)
 
 
 @functools.partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5))
@@ -320,12 +374,6 @@ def inv_sqrtm_only_bwd(  # noqa: D103
         axis2=-2
     )
     return vjp,
-
-
-inv_sqrtm_only.defvjp(inv_sqrtm_only_fwd, inv_sqrtm_only_bwd)
-
-
-## Fixed point loop
 
 
 def fixpoint_iter(
@@ -539,9 +587,27 @@ def fixpoint_iter_bwd(
     return g_constants, g_state
 
 
-# definition of backprop friendly variant of fixpoint_iter.
 fixpoint_iter_backprop = jax.custom_vjp(
     fixpoint_iter, nondiff_argnums=(0, 1, 2, 3, 4)
 )
+
+
+
+sqrtm.defvjp(sqrtm_fwd, sqrtm_bwd)
+
+
+# Specialized versions of sqrtm that compute only the square root or inverse.
+# These functions have lower complexity gradients than sqrtm.
+
+
+sqrtm_only.defvjp(sqrtm_only_fwd, sqrtm_only_bwd)
+
+inv_sqrtm_only.defvjp(inv_sqrtm_only_fwd, inv_sqrtm_only_bwd)
+
+
+## Fixed point loop
+
+
+# definition of backprop friendly variant of fixpoint_iter.
 
 fixpoint_iter_backprop.defvjp(fixpoint_iter_fwd, fixpoint_iter_bwd)

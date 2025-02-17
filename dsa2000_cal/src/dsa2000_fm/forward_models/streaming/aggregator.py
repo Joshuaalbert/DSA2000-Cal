@@ -15,9 +15,9 @@ from pydantic import Field
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
-from dsa2000_cal.common.ray_utils import resource_logger
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.fits_utils import ImageModel, save_image_to_fits
+from dsa2000_common.common.ray_utils import resource_logger
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_fm.forward_models.streaming.common import ForwardModellingRunParams

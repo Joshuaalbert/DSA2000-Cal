@@ -3,7 +3,7 @@ import pytest
 from astropy import coordinates as ac, units as au
 from matplotlib import pyplot as plt
 
-from dsa2000_cal.common.astropy_utils import random_discrete_skymodel, mean_icrs, \
+from dsa2000_common.common.astropy_utils import random_discrete_skymodel, mean_icrs, \
     create_spherical_grid_old, create_spherical_earth_grid, create_random_spherical_layout, create_mosaic_tiling, \
     fibonacci_celestial_sphere, create_spherical_spiral_grid
 

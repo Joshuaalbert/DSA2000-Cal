@@ -5,7 +5,7 @@ from astropy import coordinates as ac, time as at, units as au
 from jax._src.partition_spec import PartitionSpec
 
 from dsa2000_common.common.array_types import FloatArray, IntArray
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 
 
 class VisibilityCoords(NamedTuple):
@@ -17,18 +17,6 @@ class VisibilityCoords(NamedTuple):
     freqs: FloatArray | PartitionSpec  # [num_freqs] the frequency of the visibility
     antenna1: IntArray | PartitionSpec  # [num_baselines] the first antenna
     antenna2: IntArray | PartitionSpec  # [num_baselines] the second antenna
-
-
-class SystemGains(SerialisableBaseModel):
-    """
-    Simulated system gains, stored in a serialisable format.
-    """
-    directions: ac.ICRS  # [source]
-    times: at.Time  # [time]
-    antennas: ac.EarthLocation  # [ant]
-    antenna_labels: List[str]  # [ant]
-    freqs: au.Quantity  # [chan]
-    gains: np.ndarray  # [source, time, ant, chan, 2, 2]
 
 
 class DishEffectsParams(SerialisableBaseModel):

@@ -9,8 +9,8 @@ import ray
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from dsa2000_cal.common.ray_utils import get_head_node_id
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.ray_utils import get_head_node_id
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')

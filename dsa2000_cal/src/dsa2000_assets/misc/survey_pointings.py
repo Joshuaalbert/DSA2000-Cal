@@ -5,7 +5,7 @@ import astropy.coordinates as ac
 from dsa2000_assets.base_content import BaseContent
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import misc_registry
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 
 
 @misc_registry(template='survey_pointings')

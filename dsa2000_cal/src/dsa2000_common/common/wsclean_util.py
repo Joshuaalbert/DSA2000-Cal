@@ -4,7 +4,7 @@ from typing import NamedTuple
 import numpy as np
 from astropy import coordinates as ac, units as au
 
-from dsa2000_cal.common.astropy_utils import dimensionless
+from dsa2000_common.common.astropy_utils import dimensionless
 
 
 def parse_wsclean_source_line(line):

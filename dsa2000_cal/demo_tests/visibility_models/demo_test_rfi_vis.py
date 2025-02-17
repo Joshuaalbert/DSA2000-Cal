@@ -9,8 +9,8 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
-from dsa2000_cal.common.fits_utils import ImageModel, save_image_to_fits
-from dsa2000_cal.common.wgridder import vis_to_image_np
+from dsa2000_common.common.fits_utils import ImageModel, save_image_to_fits
+from dsa2000_common.common.wgridder import vis_to_image_np
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp, quantity_to_np
 from dsa2000_common.visibility_model.source_models.rfi.base_rfi_emitter_source_model import RFIEmitterSourceModel
 from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
