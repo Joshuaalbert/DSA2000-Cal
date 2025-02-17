@@ -7,7 +7,7 @@ from typing import NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 
-from dsa2000_cal.common.jax_utils import block_until_ready
+from dsa2000_common.common.jax_utils import block_until_ready
 
 
 class ProblemState(NamedTuple):

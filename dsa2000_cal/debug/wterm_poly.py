@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 
 
 def wterm(l, m, w):

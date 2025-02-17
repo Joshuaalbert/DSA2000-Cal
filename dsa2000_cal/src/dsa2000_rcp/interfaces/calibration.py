@@ -5,7 +5,7 @@ import astropy.units as au
 import jax
 import jax.numpy as jnp
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_rcp.interfaces.shared_data import SharedData
 from dsa2000_rcp.interfaces.socket_interface import SocketInterface
 

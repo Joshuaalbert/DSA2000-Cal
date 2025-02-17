@@ -13,13 +13,13 @@ from tomographic_kernel.models.cannonical_models import SPECIFICATION, build_ion
 from tomographic_kernel.tomographic_kernel import GeodesicTuple, TomographicKernel
 from tomographic_kernel.utils import make_coord_array
 
-from dsa2000_cal.common.cache_utils import check_cache
-from dsa2000_cal.common.coord_utils import earth_location_to_enu, lmn_to_enu
-from dsa2000_cal.common.jax_utils import pad_to_chunksize, chunked_pmap
-from dsa2000_cal.common.linalg_utils import msqrt
-from dsa2000_cal.common.mixed_precision_utils import complex_type
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp
-from dsa2000_cal.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.cache_utils import check_cache
+from dsa2000_common.common.linalg_utils import msqrt
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
+from dsa2000_common.common.coord_utils import earth_location_to_enu, lmn_to_enu
+from dsa2000_common.common.jax_utils import pad_to_chunksize, chunked_pmap
+from dsa2000_common.common.mixed_precision_utils import complex_type
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 
 TEC_CONV: float = -8.4479745 * au.rad * au.MHz  # rad MHz / mTECU
 

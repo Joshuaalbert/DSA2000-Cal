@@ -1,6 +1,6 @@
 import os
 
-from dsa2000_cal.measurement_sets.measurement_set import  MeasurementSet
+from dsa2000_fm.measurement_sets.measurement_set import  MeasurementSet
 from dsa2000_casa.adapter.to_casa_ms import transfer_to_casa
 
 

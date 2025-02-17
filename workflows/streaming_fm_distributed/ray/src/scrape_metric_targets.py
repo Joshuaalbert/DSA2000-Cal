@@ -8,8 +8,7 @@ import os
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from dsa2000_cal.common.ray_utils import get_head_node_id
-from dsa2000_fm.forward_models.streaming.single_kernel.process_actor import get_node_ip
+from dsa2000_common.common.ray_utils import get_head_node_id, get_node_ip
 
 logger = logging.getLogger('ray')
 

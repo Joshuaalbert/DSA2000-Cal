@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.common.linalg_utils import msqrt
+from dsa2000_common.common.linalg_utils import msqrt
 from dsa2000_fm.forward_models.systematics.ionosphere_gain_model import interpolate_antennas
 
 

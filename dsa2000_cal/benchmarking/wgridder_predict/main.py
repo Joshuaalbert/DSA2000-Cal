@@ -7,12 +7,12 @@ import jax
 import numpy as np
 from tomographic_kernel.frames import ENU
 
-from dsa2000_cal.common.quantity_utils import quantity_to_jnp, time_to_jnp
-from dsa2000_cal.common.types import VisibilityCoords
-from dsa2000_cal.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
-from dsa2000_cal.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
-from dsa2000_cal.geodesics.base_geodesic_model import build_geodesic_model
-from dsa2000_cal.visibility_model.source_models.celestial.base_fits_source_model import build_fits_source_model
+from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
+from dsa2000_common.common.types import VisibilityCoords
+from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
+from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
+from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
+from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_model import build_fits_source_model
 
 
 def build_mock_obs_setup(ant: int, time: int, num_freqs: int):
