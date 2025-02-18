@@ -721,12 +721,12 @@ def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
 
 
 class DataGenInput(NamedTuple):
-    sol_int_time_idx: int
-    time_idxs: IntArray
-    freq_idxs: IntArray
-    model_times: at.Time
-    model_freqs: au.Quantity
-    ref_time: at.Time
+    sol_int_time_idx: int  # the solution interval time index
+    time_idxs: IntArray  # [Ts] the time indices, starting at 0
+    freq_idxs: IntArray  # [Cs] the frequency indices, starting at 0
+    model_times: at.Time  # [Tm] the model times
+    model_freqs: au.Quantity  # [Cm] the model frequencies
+    ref_time: at.Time  # the reference time
 
 
 def create_data_input_gen(sol_int_freq_idx: int, T: int, C: int, Tm: int, Cm: int, obsfreqs: au.Quantity,
@@ -736,10 +736,10 @@ def create_data_input_gen(sol_int_freq_idx: int, T: int, C: int, Tm: int, Cm: in
 
     Args:
         sol_int_freq_idx: the solution interval frequency index to produce data for.
-        T: the solution interval size in time
-        C: the solution interval size in frequency
-        Tm: the model size in time
-        Cm: the model size in frequency
+        T: the solution interval size in time, this many times will be averaged to Ts.
+        C: the solution interval size in frequency, this many frequencies will be averaged to Cs.
+        Tm: the model size in time, must divide Ts. This many times will be used to model the Ts data
+        Cm: the model size in frequency, must divide Cs. This many frequencies will be used to model the Cs data.
         obsfreqs: the observed frequencies
         obstimes: the observed times
         ref_time: the reference time

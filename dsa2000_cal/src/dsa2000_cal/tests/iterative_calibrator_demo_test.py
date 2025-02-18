@@ -1,16 +1,33 @@
 import os
+
+import jax
+
+from dsa2000_cal.probabilistic_models.gain_prior_models import GainPriorModel
+
+use_cpu = True
+if use_cpu:
+    # Use all CPU's on a single machine
+    os.environ['JAX_PLATFORMS'] = 'cpu'  # Use CPUs by default
+    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"  # Use all CPUs
+
+    devices = None
+    # devices = jax.devices(backend='cpu') # uncomment to use all CPUs, untested
+else:
+
+    # TODO: Set environment variables for JAX at top of script before imports
+    # To use a GPU on a single machine, set the following environment variable
+    os.environ['JAX_PLATFORMS'] = 'cuda'  # Use GPU devices by default
+    # use either XLA_PYTHON_CLIENT_MEM_FRACTION or XLA_PYTHON_CLIENT_PREALLOCATE
+    os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'  # uncomment to specify how much memory to preallocate
+    # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'  # On-demand GPU memory allocation
+
+    from dsa2000_common.common.ray_utils import get_gpu_with_most_memory
+
+    gpu_idx, free_mem = get_gpu_with_most_memory()
+    print(f"Using GPU {gpu_idx} with {free_mem} free memory.")
+    devices = jax.devices(backend='gpu')[gpu_idx:gpu_idx + 1]
+
 from typing import Generator
-
-# TODO: Set environment variables for JAX at top of script before imports
-# To use all GPU's on a single machine, set the following environment variable
-# os.environ['JAX_PLATFORMS'] = 'cuda'  # Use GPU devices by default
-# os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'  # On-demand GPU memory allocation
-# devices = jax.devices(backend='gpu')
-# To use all CPU's on a single machine for XLA, set the following environment variable
-os.environ[
-    "XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"  # Use all CPU's on a single machine
-os.environ['JAX_PLATFORMS'] = 'cpu'  # Use CPUs by default
-
 import itertools
 
 import numpy as np
@@ -25,8 +42,10 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
     for input_data in input_gen:
         # Get the data corresponding to the input_data from somewhere and prepare the data
 
+        # input_data is a DataGenInput object
         print(input_data)
 
+        # ---- This section should come from your data (e.g. MS's) ----
         antenna1, antenna2 = jnp.asarray(list(itertools.combinations_with_replacement(range(num_ant), 2)),
                                          dtype=mp_policy.index_dtype).T
         B = len(antenna1)
@@ -36,12 +55,28 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
         num_bright_sources = 3
         num_background_sources = 1
 
+        # These are the high resolution visibilities from the data.
+        # Shape: [T, B, C, coh]
+        # T: number of times, unaveraged
+        # B: number of baselines
+        # C: number of channels, unaveraged
+        # coh: number of coherencies
+
         vis_data = np.random.normal(size=vis_data_shape) + 1j * np.random.normal(size=vis_data_shape)
         weights = np.ones(vis_data_shape)
         flags = np.zeros(vis_data_shape)
 
-        # These are the model visibilities for the bright sources and background sources, computed at the model times and frequencies.
-        # If they are precomputed at a different resolution, they should be interpolated to the model times and frequencies.
+        # There are two model visibilities:
+        # 1. vis_bright_sources: visibilities from D bright sources, that will be subtracted.
+        # 2. vis_background: visibilities from E background sources, which are not subtracted.
+
+        # vis_bright_sources: visibilities from D bright sources, that will be subtracted.
+        # Shape: [D, Tm, B, Cm, coh]
+        # D: number of bright sources
+        # Tm: number of model times, i.e. len(input_data.model_times)
+        # B: number of baselines
+        # Cm: number of model frequencies, i.e. len(input_data.model_freqs)
+        # coh: number of coherencies
         vis_bright_sources = np.random.normal(
             size=(
                 num_bright_sources,
@@ -57,6 +92,14 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
                 len(input_data.model_freqs),
                 len(coherencies))
         )
+
+        # vis_background: visibilities from E background sources, which are not subtracted.
+        # Shape: [E, Tm, B, Cm, coh]
+        # E: number of background sources
+        # Tm: number of model times, i.e. len(input_data.model_times)
+        # B: number of baselines
+        # Cm: number of model frequencies, i.e. len(input_data.model_freqs)
+        # coh: number of coherencies
 
         vis_background = np.random.normal(
             size=(
@@ -74,6 +117,8 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
                 len(coherencies))
         )
 
+        # ---- End of data preparation ----
+
         return_data = yield Data(
             sol_int_time_idx=input_data.sol_int_time_idx,
             coherencies=coherencies,
@@ -89,17 +134,30 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
             ref_time=input_data.ref_time
         )
 
+        # ---- This section where you should store the return_data ----
+
+        # The return_data is a ReturnData object
+        # Shape: [T, B, C, coh]
+        # The gains have been applied to vis_bright_sources, and tiled to match the raw visibilities, and subtracted.
+
         # Store return_data if desired
         print(f"Storing residuals for solution interval {input_data.sol_int_time_idx}")
         # print(return_data.vis_residuals)
 
+        # ---- End of data storage ----
+
 
 def main():
-    # devices = jax.devices()
-    devices = None # single process, single device
+    # ---- This section is where you create the generator that will be used to drive calibration ----
 
-    # Get obs data from somewhere, like MS
-    ref_time = at.Time.now()  # Can choose to be first time in obs, use the right scale, likely TAI, UTC, or TT.
+    # Get these from your MS
+    # ref_time: astropy Time object, the reference time for the observation, e.g. the start time of the observation
+    # integration_time: astropy Quantity object, the integration time of the observation
+    # obstimes: astropy Time object, the times you will calibrate over, unaveraged
+    # obsfreqs: astropy Quantity object, the frequencies you will calibrate over, unaveraged
+    # antennas: astropy EarthLocation object, the locations of the antennas used in the observation
+
+    ref_time = at.Time.now()  # Use the right scale, likely TAI, UTC, or TT.
     integration_time = 1.5 * au.s
     obstimes = ref_time + np.arange(8) * integration_time
     obsfreqs = np.linspace(700, 2000, 10000) * au.MHz
@@ -109,7 +167,7 @@ def main():
         10e3 * np.random.uniform(size=10) * au.m
     )
 
-    # Create this utility generator to drive your data generation
+    # Use this utility function to feed your data generator. Read it's docstring for more information.
     input_gen = create_data_input_gen(
         sol_int_freq_idx=0,
         T=4,
@@ -121,18 +179,50 @@ def main():
         ref_time=ref_time
     )
 
-    # Can create IterativeCalibrator yourself, or else use the create_simple_calibrator function.
-    calibrator = IterativeCalibrator.create_simple_calibrator(
+    your_generator = data_generator(input_gen, num_ant=len(antennas))
+
+    # ---- End of generator creation ----
+
+    # ---- This section is where you create the calibrator and run the calibration ----
+
+    full_stokes = True
+
+    gain_prior_model = GainPriorModel(
+        gain_stddev=1.,
+        dd_dof=1,
+        di_dof=1,
+        double_differential=True,
+        dd_type='unconstrained',
+        di_type='unconstrained',
+        full_stokes=full_stokes
+    )
+    calibrator = IterativeCalibrator(
         plot_folder='demo_plots',
         run_name='demo',
-        full_stokes=True,
+        gain_probabilistic_model=gain_prior_model,
+        full_stokes=full_stokes,
         antennas=antennas,
-        verbose=True,
+        verbose=True,  # if using GPU's set to False
         devices=devices
     )
 
+    # Alternatively, the above could have been done using the following:
+    # calibrator = IterativeCalibrator.create_simple_calibrator(
+    #     plot_folder='demo_plots',
+    #     run_name='demo',
+    #     full_stokes=True,
+    #     antennas=antennas,
+    #     verbose=True,
+    #     devices=devices
+    # )
+
     # Run the calibration
-    calibrator.run(data_generator(input_gen, num_ant=len(antennas)), Ts=None, Cs=None)
+    # Ts and Cs are optional. You can fight decoherence by using larger Ts and Cs.
+    # Ts: your solution interval data is averaged down to this many time chunks. default is 1
+    # Cs: your solution interval data is averaged down to this many frequency chunks. default is 1
+    calibrator.run(your_generator, Ts=None, Cs=None)
+
+    # ---- End of calibration ----
 
 
 if __name__ == '__main__':
