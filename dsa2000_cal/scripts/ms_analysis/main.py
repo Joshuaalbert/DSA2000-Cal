@@ -1,12 +1,13 @@
 # Matplotlib backend for server
 import matplotlib
+
 matplotlib.use('Agg')
 
 import astropy.coordinates as ac
 import numpy as np
 import pylab as plt
 
-from dsa2000_cal.measurement_sets.measurement_set import MeasurementSet
+from dsa2000_fm.measurement_sets.measurement_set import MeasurementSet
 
 
 def main(ms_folder: str):
@@ -40,7 +41,7 @@ def main(ms_folder: str):
         kind='apparent',
         longitude=antennas.reshape((-1, 1)).lon
     )  # [num_ant, num_times]
-    ra = ms.meta.phase_tracking.ra
+    ra = ms.meta.phase_center.ra
     ha = lst - ra
     print(f"Hour angle: {ha}")
 
