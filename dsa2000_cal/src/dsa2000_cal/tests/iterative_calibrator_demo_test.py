@@ -46,9 +46,22 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
         print(input_data)
 
         # ---- This section should come from your data (e.g. MS's) ----
+
+
+        time_idxs = input_data.time_idxs # [T] the time indices to get from the MS
+        freq_idxs = input_data.freq_idxs # [C] the frequency indices to get from the MS
+        sol_int_time_idx = input_data.sol_int_time_idx
+        # Note: in MS vis are shaped [rows, channels, coh]
+        # Rows are time-major stacked, so to get the `sol_int_time_idx` block do:
+        B = ... # N*(N+1)/2 with auto-correlations, or N*(N-1)/2 without auto-correlations
+        block_size = B * len(time_idxs)
+        # visibilities = ms.get_data('DATA', startrow=sol_int_time_idx * block_size, nrow=block_size)
+
         antenna1, antenna2 = jnp.asarray(list(itertools.combinations_with_replacement(range(num_ant), 2)),
                                          dtype=mp_policy.index_dtype).T
         B = len(antenna1)
+
+
 
         coherencies = ('XX', 'XY', 'YX', 'YY')
         vis_data_shape = (len(input_data.time_idxs), B, len(input_data.freq_idxs), len(coherencies))
