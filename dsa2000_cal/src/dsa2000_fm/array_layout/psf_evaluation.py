@@ -21,11 +21,11 @@ from tomographic_kernel.frames import ENU
 from tqdm import tqdm
 
 from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV3
-from dsa2000_common.common.astropy_utils import mean_itrs
-from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.astropy_utils import mean_itrs
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_np
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.abc import AbstractArrayConstraint
 from dsa2000_fm.array_layout.geo_constraints import RegionSampler, haversine
 
@@ -677,21 +677,21 @@ def point_generator(
         # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
         # while len(vertex_idxs) == 0:
         #  #   Choose a random antenna to replace
-            # replace_idx = np.random.choice(len(antennas))
-            # antennas = sample_aoi(
-            #     replace_idx=replace_idx,
-            #     antennas=antennas,
-            #     array_location=results.array_location,
-            #     obstime=results.obstime,
-            #     additional_buffer=additional_buffer_m,
-            #     minimal_antenna_sep=minimal_antenna_sep_m,
-            #     aoi_data=aoi_data,
-            #     constraint_data=constraint_data
-            # )
-            # evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
-            # results.evaluations.append(evaluation)
-            # hull.add_points(np.asarray([evaluation.cost, evaluation.quality])[None, :], restart=False)
-            # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
+        # replace_idx = np.random.choice(len(antennas))
+        # antennas = sample_aoi(
+        #     replace_idx=replace_idx,
+        #     antennas=antennas,
+        #     array_location=results.array_location,
+        #     obstime=results.obstime,
+        #     additional_buffer=additional_buffer_m,
+        #     minimal_antenna_sep=minimal_antenna_sep_m,
+        #     aoi_data=aoi_data,
+        #     constraint_data=constraint_data
+        # )
+        # evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
+        # results.evaluations.append(evaluation)
+        # hull.add_points(np.asarray([evaluation.cost, evaluation.quality])[None, :], restart=False)
+        # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
         # del hull
 
     hull = ConvexHull(points=np.asarray([[e.cost, e.quality] for e in results.evaluations]), incremental=True)
@@ -849,7 +849,7 @@ def plot_solution(plot_folder: str, solution_file: str, aoi_data: List[Tuple[Reg
                 plt.show()
 
 
-def main():
+def test_point_generator():
     antennas = ac.EarthLocation.from_geocentric(
         [0, 0, 0, 1, 2, 3] * au.km,
         [0, 1, 0, 2, 3, 4] * au.km,
@@ -892,7 +892,3 @@ def main():
 
         if count > 50:
             break
-
-
-if __name__ == '__main__':
-    main()
