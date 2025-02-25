@@ -191,7 +191,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
         return gains
 
     def plot_regridded_beam(self, save_fig: str | None = None, time_idx: int = 0, ant_idx: int = 0, freq_idx: int = 0,
-                            p_idx: int = 0, q_idx: int = 0, is_aperture: bool = False):
+                            p_idx: int = 0, q_idx: int = 0, is_aperture: bool = False, show: bool = True):
         """
         Plot the beam gain model screen over plane of sky wrt antenna pointing.
 
@@ -255,9 +255,11 @@ class BaseSphericalInterpolatorGainModel(GainModel):
 
         if save_fig is not None:
             plt.savefig(save_fig)
-            plt.close(fig)
-        else:
+
+        if show:
             plt.show()
+
+        return fig
 
     def save(self, filename: str):
         """
