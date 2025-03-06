@@ -1,420 +1,15 @@
 import dataclasses
-import inspect
-import itertools
-import os
-import time
+import pickle
 import warnings
-from functools import partial
-from typing import Callable, Any
-from typing import NamedTuple, TypeVar, Generic, Union, Tuple
-
-import numpy as np
-
-os.environ['JAX_PLATFORMS'] = 'cuda'
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
+from typing import NamedTuple, Any, Callable, TypeVar, Generic, Union, Tuple, List
 
 import jax
 import jax.numpy as jnp
-
-if not jax.config.read('jax_enable_x64'):
-    warnings.warn("JAX x64 is not enabled. Setting it now, but check for errors.")
-    jax.config.update('jax_enable_x64', False)
-
-# Create a float scalar to lock in dtype choices.
-if jnp.array(1., jnp.float64).dtype != jnp.float32:
-    raise RuntimeError("Failed to set float64 as default dtype.")
-
-PRNGKey = jax.Array
-Array = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-]
-ComplexArray = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-    complex
-]
-FloatArray = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-    float,  # valid scalars
-]
-IntArray = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-    int,  # valid scalars
-]
-BoolArray = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-    np.bool_, bool,  # valid scalars
-]
-
-Array.__doc__ = "Type annotation for JAX array-like objects, with no scalar types."
-
-ComplexArray.__doc__ = "Type annotation for JAX array-like objects, with complex scalar types."
-
-FloatArray.__doc__ = "Type annotation for JAX array-like objects, with float scalar types."
-
-IntArray.__doc__ = "Type annotation for JAX array-like objects, with int scalar types."
-
-BoolArray.__doc__ = "Type annotation for JAX array-like objects, with bool scalar types."
-
-
-def get_grandparent_info(relative_depth: int = 7):
-    """
-    Get the file, line number and function name of the caller of the caller of this function.
-
-    Args:
-        relative_depth: the number of frames to go back from the caller of this function. Default is 6. Should be
-        enough to get out of a jax.tree.map call.
-
-    Returns:
-        str: a string with the file, line number and function name of the caller of the caller of this function.
-    """
-    # Get the grandparent frame (caller of the caller)
-    s = []
-    for depth in range(1, min(1 + relative_depth, len(inspect.stack()) - 1) + 1):
-        caller_frame = inspect.stack()[depth]
-        caller_file = caller_frame.filename
-        caller_line = caller_frame.lineno
-        caller_func = caller_frame.function
-        s.append(f"{os.path.basename(caller_file)}:{caller_line} in {caller_func}")
-    s = s[::-1]
-    s = f"at {' -> '.join(s)}"
-    return s
-
-
-def isinstance_namedtuple(obj) -> bool:
-    """
-    Check if object is a namedtuple.
-
-    Args:
-        obj: object
-
-    Returns:
-        bool
-    """
-    return (
-            isinstance(obj, tuple) and
-            hasattr(obj, '_asdict') and
-            hasattr(obj, '_fields')
-    )
-
-
-def tree_dot(x, y):
-    dots = jax.tree.leaves(jax.tree.map(jnp.vdot, x, y))
-    return sum(dots[1:], start=dots[0])
-
-
-def tree_norm(x):
-    return jnp.sqrt(tree_dot(x, x).real)
-
-
-_dot = partial(jnp.dot, precision=jax.lax.Precision.HIGHEST)
-_vdot = partial(jnp.vdot, precision=jax.lax.Precision.HIGHEST)
-_einsum = partial(jnp.einsum, precision=jax.lax.Precision.HIGHEST)
-
-
-# aliases for working with pytrees
-def _vdot_real_part(x, y):
-    """Vector dot-product guaranteed to have a real valued result despite
-       possibly complex input. Thus neglects the real-imaginary cross-terms.
-       The result is a real float.
-    """
-    # all our uses of vdot() in CG are for computing an operator of the form
-    #  z^H M z
-    #  where M is positive definite and Hermitian, so the result is
-    # real valued:
-    # https://en.wikipedia.org/wiki/Definiteness_of_a_matrix#Definitions_for_complex_matrices
-    result = _vdot(x.real, y.real)
-    if jnp.iscomplexobj(x) or jnp.iscomplexobj(y):
-        result += _vdot(x.imag, y.imag)
-    return result
-
-
-def _vdot_real_tree(x, y):
-    return sum(jax.tree.leaves(jax.tree.map(_vdot_real_part, x, y)))
-
-
-def _vdot_tree(x, y):
-    return sum(jax.tree.leaves(jax.tree.map(partial(
-        jnp.vdot, precision=jax.lax.Precision.HIGHEST), x, y)))
-
-
-def _norm(x):
-    xs = jax.tree.leaves(x)
-    return jnp.sqrt(sum(map(_vdot_real_part, xs, xs)))
-
-
-def _mul(scalar, tree):
-    return jax.tree.map(partial(jax.lax.mul, scalar), tree)
-
-
-_add = partial(jax.tree.map, jax.lax.add)
-_sub = partial(jax.tree.map, jax.lax.sub)
-_dot_tree = partial(jax.tree.map, _dot)
-
-
-def astype_single(x):
-    def _astype_single(x):
-        if jnp.issubdtype(jnp.result_type(x), jnp.complexfloating):
-            return x.astype(jnp.complex64)
-        elif jnp.issubdtype(jnp.result_type(x), jnp.floating):
-            return x.astype(jnp.float32)
-        elif jnp.issubdtype(jnp.result_type(x), jnp.integer):
-            return x.astype(jnp.int32)
-        elif jnp.issubdtype(jnp.result_type(x), jnp.bool_):
-            return x.astype(jnp.bool_)
-        return x
-    return jax.tree.map(_astype_single, x)
-
-
-def _identity(x):
-    return x
-
-
-def _cg_solve(A, b, x0=None, *, maxiter, tol=1e-5, atol=0.0, M=_identity):
-    # tolerance handling uses the "non-legacy" behavior of scipy.sparse.linalg.cg
-    bs = _vdot_real_tree(b, b)
-    atol2 = jnp.maximum(jnp.square(tol) * bs, jnp.square(atol))
-
-    # https://en.wikipedia.org/wiki/Conjugate_gradient_method#The_preconditioned_conjugate_gradient_method
-
-    def cond_fun(value):
-        _, r, gamma, _, k = value
-        rs = gamma.real if M is _identity else _vdot_real_tree(r, r)
-        return (rs > atol2) & (k < maxiter)
-
-    def body_fun(value):
-        x, r, gamma, p, k = value
-        Ap = A(p)
-        alpha = gamma / _vdot_real_tree(p, Ap).astype(dtype)
-        x_ = _add(x, _mul(alpha, p))
-        r_ = _sub(r, _mul(alpha, Ap))
-        z_ = M(r_)
-        gamma_ = _vdot_real_tree(r_, z_).astype(dtype)
-        beta_ = gamma_ / gamma
-        p_ = _add(z_, _mul(beta_, p))
-        return x_, r_, gamma_, p_, k + 1
-
-    r0 = _sub(b, A(x0))
-    p0 = z0 = M(r0)
-    dtype = jnp.result_type(*jax.tree.leaves(p0))
-    gamma0 = _vdot_real_tree(r0, z0).astype(dtype)
-    initial_value = (x0, r0, gamma0, p0, 0)
-
-    x_final, r, gamma, p, k = jax.lax.while_loop(cond_fun, body_fun, initial_value)
-
-    return x_final, k
-
-
-def make_linear(f: Callable, *primals0):
-    """
-    Make a linear function that approximates f around primals0.
-
-    Args:
-        f: the function to linearize
-        *primals0: the point around which to linearize
-
-    Returns:
-        the linearized function
-    """
-    f0, f_jvp = jax.linearize(f, *primals0)
-
-    def f_linear(*primals):
-        diff_primals = jax.tree.map(lambda x, x0: x - x0, primals, primals0)
-        df = f_jvp(*diff_primals)
-        return jax.tree.map(lambda y0, dy: y0 + dy, f0, df)
-
-    return f_linear
-
-
-@dataclasses.dataclass(eq=False)
-class JVPLinearOp:
-    """
-    Represents J_ij = d/d x_j f_i(x), where x is the primal value.
-
-    This is a linear operator that represents the Jacobian of a function.
-    """
-    fn: Callable  # A function R^n -> R^m
-    primals: Any | None = None  # The primal value, i.e. where jacobian is evaluated
-    more_outputs_than_inputs: bool = False  # If True, the operator is tall, i.e. m > n
-    adjoint: bool = False  # If True, the operator is transposed
-    promote_dtypes: bool = True  # If True, promote dtypes to match primal during JVP, and cotangent to match primal_out during VJP
-    linearize: bool = True  # If True, use linearized function for JVP
-
-    def __post_init__(self):
-        if not callable(self.fn):
-            raise ValueError('`fn` must be a callable.')
-
-        if self.primals is not None:
-            if isinstance_namedtuple(self.primals) or (not isinstance(self.primals, tuple)):
-                self.primals = (self.primals,)
-            if self.linearize:
-                self.linear_fn = make_linear(self.fn, *self.primals)
-
-    def __call__(self, *primals: Any) -> 'JVPLinearOp':
-        return JVPLinearOp(
-            fn=self.fn,
-            primals=primals,
-            more_outputs_than_inputs=self.more_outputs_than_inputs,
-            adjoint=self.adjoint,
-            promote_dtypes=self.promote_dtypes,
-            linearize=self.linearize
-        )
-
-    def __neg__(self):
-        return JVPLinearOp(
-            fn=lambda *args, **kwargs: jax.lax.neg(self.fn(*args, **kwargs)),
-            primals=self.primals,
-            more_outputs_than_inputs=self.more_outputs_than_inputs,
-            adjoint=self.adjoint,
-            promote_dtypes=self.promote_dtypes,
-            linearize=self.linearize
-        )
-
-    def __matmul__(self, other):
-        if not isinstance(other, (jax.Array, np.ndarray)):
-            raise ValueError(
-                'Dunder methods currently only defined for operation on arrays. '
-                'Use .matmul(...) for general tangents.'
-            )
-        if len(np.shape(other)) == 1:
-            return self.matvec(other, adjoint=self.adjoint)
-        return self.matmul(other, adjoint=self.adjoint, left_multiply=True)
-
-    def __rmatmul__(self, other):
-        if not isinstance(other, (jax.Array, np.ndarray)):
-            raise ValueError(
-                'Dunder methods currently only defined for operation on arrays. '
-                'Use .matmul(..., left_multiply=False) for general tangents.'
-            )
-        if len(np.shape(other)) == 1:
-            return self.matvec(other, adjoint=not self.adjoint)
-        return self.matmul(other, adjoint=not self.adjoint, left_multiply=False)
-
-    @property
-    def T(self) -> 'JVPLinearOp':
-        return JVPLinearOp(
-            fn=self.fn,
-            primals=self.primals,
-            more_outputs_than_inputs=self.more_outputs_than_inputs,
-            adjoint=not self.adjoint,
-            promote_dtypes=self.promote_dtypes,
-            linearize=self.linearize
-        )
-
-    def matmul(self, *tangents: Any, adjoint: bool = False, left_multiply: bool = True):
-        """
-        Implements matrix multiplication from matvec using vmap.
-
-        Args:
-            tangents: pytree of the same structure as the primals, but with appropriate more columns for adjoint=False,
-                or more rows for adjoint=True.
-            adjoint: if True, compute J.T @ v, else compute J @ v
-            left_multiply: if True, compute M @ J, else compute J @ M
-
-        Returns:
-            pytree of matching either f-space (output) or x-space (primals)
-        """
-        if left_multiply:
-            # J.T @ M or J @ M
-            in_axes = -1
-            out_axes = -1
-        else:
-            # M @ J.T or M @ J
-            in_axes = 0
-            out_axes = 0
-        if adjoint:
-            return jax.vmap(lambda *_tangent: self.matvec(*_tangent, adjoint=adjoint),
-                            in_axes=in_axes, out_axes=out_axes)(*tangents)
-        return jax.vmap(lambda *_tangent: self.matvec(*_tangent, adjoint=adjoint),
-                        in_axes=in_axes, out_axes=out_axes)(*tangents)
-
-    def matvec(self, *tangents: Any, adjoint: bool = False):
-        """
-        Compute J @ v = sum_j(J_ij * v_j) using a JVP, if adjoint is False.
-        Compute J.T @ v = sum_i(v_i * J_ij) using a VJP, if adjoint is True.
-
-        Args:
-            tangents: if adjoint=False, then  pytree of the same structure as the primals, else pytree of the same
-                structure as the output.
-            adjoint: if True, compute J.T @ v, else compute J @ v
-
-        Returns:
-            pytree of matching either f-space (output) if adjoint=False, else x-space (primals)
-        """
-        if self.primals is None:
-            raise ValueError("The primal value must be set to compute the Jacobian.")
-
-        if adjoint:
-            co_tangents = tangents
-
-            def _get_results_type(primal_out: jax.Array):
-                return primal_out.dtype
-
-            def _adjoint_promote_dtypes(co_tangent: jax.Array, dtype: jnp.dtype):
-                if co_tangent.dtype != dtype:
-                    warnings.warn(
-                        f"Promoting co-tangent dtype from {co_tangent.dtype} to {dtype}, {get_grandparent_info()}."
-                    )
-                return co_tangent.astype(dtype)
-
-            # v @ J
-            if self.linearize:
-                f_vjp = jax.linear_transpose(self.linear_fn, *self.primals)
-                primals_out = jax.eval_shape(self.linear_fn, *self.primals)
-            else:
-                primals_out, f_vjp = jax.vjp(self.fn, *self.primals)
-
-            if isinstance_namedtuple(primals_out) or (not isinstance(primals_out, tuple)):
-                # JAX squeezed structure to a single element, as the function only returns one output
-                co_tangents = co_tangents[0]
-
-            if self.promote_dtypes:
-                result_type = jax.tree.map(_get_results_type, primals_out)
-                co_tangents = jax.tree.map(_adjoint_promote_dtypes, co_tangents, result_type)
-
-            del primals_out
-            output = f_vjp(co_tangents)
-            if len(output) == 1:
-                return output[0]
-            return output
-
-        def _promote_dtype(primal: jax.Array, dtype: jnp.dtype):
-            if primal.dtype != dtype:
-                warnings.warn(f"Promoting primal dtype from {primal.dtype} to {dtype}, at {get_grandparent_info()}.")
-            return primal.astype(dtype)
-
-        def _get_result_type(primal: jax.Array):
-            return primal.dtype
-
-        primals = self.primals
-        if self.promote_dtypes:
-            result_types = jax.tree.map(_get_result_type, primals)
-            tangents = jax.tree.map(_promote_dtype, tangents, result_types)
-        # We use linearised function, so that repeated applications are cheaper.
-        if self.linearize:
-            primal_out, tangent_out = jax.jvp(self.linear_fn, primals, tangents)
-        else:
-            primal_out, tangent_out = jax.jvp(self.fn, primals, tangents)
-        return tangent_out
-
-    def to_dense(self) -> jax.Array:
-        """
-        Compute the dense Jacobian at a point.
-
-        Returns:
-            [m, n] array
-        """
-        if self.primals is None:
-            raise ValueError("The primal value must be set to compute the Jacobian.")
-
-        if self.more_outputs_than_inputs:
-            return jax.jacfwd(self.fn)(*self.primals)
-        return jax.jacrev(self.fn)(*self.primals)
-
+import numpy as np
+
+from dsa2000_common.common.ad_utils import tree_norm, tree_dot
+from dsa2000_common.common.array_types import FloatArray, IntArray
+from dsa2000_common.common.jvp_linear_op import JVPLinearOp
 
 X = TypeVar('X', bound=Union[jax.Array, Any])
 Y = TypeVar('Y', bound=Union[jax.Array, Any])
@@ -513,7 +108,12 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
 
     verbose: bool = False
 
+    skip_post_init: bool = False
+
     def __post_init__(self):
+        if self.skip_post_init:
+            return
+
         if self.num_approx_steps < 0:
             raise ValueError("num_approx_steps must be non-negative")
         if isinstance(self.mu_min, float) and self.mu_min <= 0:
@@ -554,6 +154,119 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
                                            dtype=jnp.int32) if self.init_cg_maxiter is not None else None
 
         self._residual_fn = self.wrap_residual_fn(self.residual_fn)
+
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
+
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "MultiStepLevenbergMarquardt") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        # Leaves are the arrays (x, values), and auxiliary data is the rest
+
+        return (
+            [ # things that are arrays
+                this.p_any_improvement,
+                this.p_less_newton,
+                this.p_more_newton,
+                this.c_more_newton,
+                this.c_less_newton,
+                this.gtol,
+                this.xtol,
+                this.min_cg_maxiter,
+                this.init_cg_maxiter,
+                this.gtol,
+                this.xtol,
+            ],
+            ( # Things that are not traceable
+                this.residual_fn,
+                this.num_iterations,
+                this.num_approx_steps,
+                this.verbose
+             )
+        )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "MultiStepLevenbergMarquardt":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        p_any_improvement, p_less_newton, p_more_newton, c_more_newton, c_less_newton, gtol, xtol, min_cg_maxiter, init_cg_maxiter, gtol, xtol = aux_data
+        residual_fn, num_iterations, num_approx_steps, verbose = children
+        output = MultiStepLevenbergMarquardt(
+            residual_fn=residual_fn,
+            num_iterations=num_iterations,
+            num_approx_steps=num_approx_steps,
+            p_any_improvement=p_any_improvement,
+            p_less_newton=p_less_newton,
+            p_more_newton=p_more_newton,
+            c_more_newton=c_more_newton,
+            c_less_newton=c_less_newton,
+            gtol=gtol,
+            xtol=xtol,
+            min_cg_maxiter=min_cg_maxiter,
+            init_cg_maxiter=init_cg_maxiter,
+            verbose=verbose,
+            skip_post_init=True
+        )
+        return output
+
 
     @staticmethod
     def wrap_residual_fn(residual_fn: Callable[[X], Y]) -> Callable[[X], Y]:
@@ -691,10 +404,8 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
         J_bare = JVPLinearOp(fn=residual_fn)
 
         def build_matvec(J: JVPLinearOp, damping: jax.Array):
-            damping = astype_single(damping)
             def matvec(v: X) -> X:
-                v = astype_single(v)
-                JTJv = astype_single(J.matvec(astype_single(J.matvec(v)), adjoint=True))
+                JTJv = J.matvec(J.matvec(v), adjoint=True)
                 return jax.tree.map(lambda x, y: x + damping * y, JTJv, v)
 
             return matvec
@@ -710,12 +421,12 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             damping = state.mu * state.error  # [obj]^2/[x]^2 -> mu is 1/[x]
 
             matvec = build_matvec(J, damping)
-            delta_x, cg_iters_used = _cg_solve(
+            delta_x, _ = jax.scipy.sparse.linalg.cg(
                 A=matvec,
-                b=astype_single(jax.tree.map(jax.lax.neg, JTF)),
-                x0=astype_single(state.delta_x),
+                b=jax.tree.map(jax.lax.neg, JTF),
+                x0=state.delta_x,
                 maxiter=state.cg_maxiter,
-            )
+            )  # Info returned is not used
 
             # Determine predicted vs actual reduction gain ratio
             x_prop = jax.tree.map(lambda x, dx: x + dx, state.x, delta_x)
@@ -789,14 +500,14 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
             if self.verbose:
                 jax.debug.print(
                     "Iter: {iteration}, Exact Step: {exact_step} Approx Step: {approx_step}, "
-                    "cg_maxiter: {cg_maxiter}, cg_iters_used: {cg_iters_used}, "
+                    "cg_maxiter: {cg_maxiter}, "
                     "mu: {mu}, damping: {damping}, r: {r}, pred: {predicted_reduction}, act: {actual_reduction}, "
                     "any_improvement: {any_improvement}, "
                     "more_newton: {more_newton}, less_newton: {less_newton}:\n"
                     "\tF_norm -> {F_norm}, delta_norm -> {delta_norm}, error -> {error}",
                     iteration=state.iteration,
                     exact_step=exact_step, approx_step=approx_step,
-                    cg_maxiter=state.cg_maxiter, cg_iters_used=cg_iters_used,
+                    cg_maxiter=state.cg_maxiter,
                     r=r,
                     predicted_reduction=predicted_reduction, actual_reduction=actual_reduction,
                     any_improvement=any_improvement,
@@ -894,99 +605,4 @@ class MultiStepLevenbergMarquardt(Generic[X, Y]):
 
         return state, diagnostics
 
-
-def kron_product_2x2(M0: jax.Array, M1: jax.Array, M2: jax.Array) -> jax.Array:
-    # Matrix([[a0*(a1*a2 + b1*c2) + b0*(a2*c1 + c2*d1), a0*(a1*b2 + b1*d2) + b0*(b2*c1 + d1*d2)], [c0*(a1*a2 + b1*c2) + d0*(a2*c1 + c2*d1), c0*(a1*b2 + b1*d2) + d0*(b2*c1 + d1*d2)]])
-    # 36
-    # ([(x0, a1*a2 + b1*c2), (x1, a2*c1 + c2*d1), (x2, a1*b2 + b1*d2), (x3, b2*c1 + d1*d2)], [Matrix([
-    # [a0*x0 + b0*x1, a0*x2 + b0*x3],
-    # [c0*x0 + d0*x1, c0*x2 + d0*x3]])])
-    a0, b0, c0, d0 = M0[0, 0], M0[0, 1], M0[1, 0], M0[1, 1]
-    a1, b1, c1, d1 = M1[0, 0], M1[0, 1], M1[1, 0], M1[1, 1]
-    a2, b2, c2, d2 = M2[0, 0], M2[0, 1], M2[1, 0], M2[1, 1]
-    x0 = a1 * a2 + b1 * c2
-    x1 = a2 * c1 + c2 * d1
-    x2 = a1 * b2 + b1 * d2
-    x3 = b2 * c1 + d1 * d2
-
-    # flat = jnp.stack([a0 * x0 + b0 * x1, c0 * x0 + d0 * x1, a0 * x2 + b0 * x3, c0 * x2 + d0 * x3], axis=-1)
-    # return unvec(flat, (2, 2))
-    flat = jnp.stack([a0 * x0 + b0 * x1, a0 * x2 + b0 * x3, c0 * x0 + d0 * x1, c0 * x2 + d0 * x3], axis=-1)
-    return jax.lax.reshape(flat, (2, 2))
-
-
-def main(num_dir: int, num_ant: int, full_stokes: bool, verbose: bool):
-    complex_dtype = jnp.complex64
-    antenna1, antenna2 = jnp.asarray(list(itertools.combinations_with_replacement(range(num_ant), 2)),
-                                     dtype=jnp.int64).T
-
-    def residual_fn(g, vis_model, antenna1, antenna2):
-        g1 = g[antenna1, :]
-        g2 = g[antenna2, :]
-
-        # Apply gains
-        @jax.vmap
-        @jax.vmap
-        def apply(g1, g2, vis_model):
-            if np.shape(g1) == (2, 2):
-                return kron_product_2x2(g1, vis_model, g2.conj().T)
-            else:
-                return g1 * vis_model * g2.conj()
-
-        residual = apply(g1, g2, vis_model).sum(0).astype(complex_dtype)
-        return (residual.real, residual.imag)
-
-    B = np.shape(antenna1)[0]
-    if full_stokes:
-        vis_model = jnp.ones((B, num_dir, 2, 2), dtype=complex_dtype)
-        g = jnp.ones((num_ant, num_dir, 2, 2), dtype=complex_dtype)
-    else:
-        vis_model = jnp.ones((B, num_dir), dtype=complex_dtype)
-        g = jnp.ones((num_ant, num_dir), dtype=complex_dtype)
-    solver = MultiStepLevenbergMarquardt(
-        residual_fn=partial(residual_fn, vis_model=vis_model, antenna1=antenna1, antenna2=antenna2),
-        verbose=verbose,
-        min_cg_maxiter=1,
-        init_cg_maxiter=1,
-        num_iterations=1,
-        num_approx_steps=0
-    )
-    state = solver.create_initial_state(g)
-    state = state._replace(cg_maxiter=jnp.ones_like(state.cg_maxiter))
-
-    def solve(state, vis_model, antenna1, antenna2):
-        solver = MultiStepLevenbergMarquardt(
-            residual_fn=partial(residual_fn, vis_model=vis_model, antenna1=antenna1, antenna2=antenna2),
-            verbose=verbose,
-            min_cg_maxiter=1,
-            init_cg_maxiter=1,
-            num_iterations=1,
-            num_approx_steps=0
-        )
-        return solver.solve(state)
-
-    t0 = time.time()
-    solve_compiled = jax.jit(solve).lower(state, vis_model, antenna1, antenna2).compile()
-    t1 = time.time()
-    print(f"Compilation time: {t1 - t0}")
-
-
-
-    import nvtx
-
-    with nvtx.annotate("first_solve", color="green"):
-        t0 = time.time()
-        state, diagnostics = jax.block_until_ready(solve_compiled(state, vis_model, antenna1, antenna2))
-        t1 = time.time()
-        print(f"First Execution time: {t1 - t0}")
-
-
-    with nvtx.annotate("solve", color="red"):
-        t0 = time.time()
-        state, diagnostics = jax.block_until_ready(solve_compiled(state, vis_model, antenna1, antenna2))
-        t1 = time.time()
-        print(f"Second Execution time: {t1 - t0}")
-
-
-if __name__ == '__main__':
-    main(2, 2048, True, False)
+MultiStepLevenbergMarquardt.register_pytree()
