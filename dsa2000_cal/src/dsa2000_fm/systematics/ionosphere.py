@@ -275,6 +275,85 @@ class AbstractIonosphereLayer(ABC):
         mean = mean1 - mean0
         return K, mean
 
+    def compute_conditional_tec_kernel(self, antennas_gcrs: InterpolatedArray,
+                                       times: FloatArray, directions_gcrs: InterpolatedArray,
+                                       times_other: FloatArray, resolution: int):
+        x1, s1, t1 = self.compute_geodesic_coords(antennas_gcrs, times, directions_gcrs)
+        x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs, times_other, directions_gcrs)
+        K = self.compute_kernel(
+            x1, s1, t1, x2, s2, t2, s_normed=True, resolution=resolution
+        )
+        return K
+
+    def compute_conditional_dtec_kernel(self,
+                                        reference_antenna_gcrs: InterpolatedArray,
+                                        antennas_gcrs: InterpolatedArray,
+                                        times: FloatArray,
+                                        directions_gcrs: InterpolatedArray,
+                                        times_other: FloatArray,
+                                        resolution: int = 27):
+        x1, s1, t1 = self.compute_geodesic_coords(antennas_gcrs, times, directions_gcrs)
+        x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs, times_other, directions_gcrs)
+        K11 = self.compute_kernel(
+            x1, s1, t1, x2, s2, t2, s_normed=True, resolution=resolution
+        )
+        x0, s0, t0 = self.compute_geodesic_coords(reference_antenna_gcrs, times, directions_gcrs)
+        x0_, s0_, t0_ = self.compute_geodesic_coords(reference_antenna_gcrs, times_other, directions_gcrs)
+        K01 = self.compute_kernel(
+            x0, s0, t0, x2, s2, t2, s_normed=True, resolution=resolution
+        )
+        K10 = self.compute_kernel(
+            x1, s1, t1, x0_, s0_, t0_, s_normed=True, resolution=resolution
+        )
+        K00 = self.compute_kernel(
+            x0, s0, t0, x0_, s0_, t0_, s_normed=True, resolution=resolution
+        )
+        K = K11 + K00 - (K01 + K10)
+        return K
+
+    def _sample_mvn(self, key, mean, K, jitter_mtec=0.5):
+        # Efficient add to diagonal
+        diag_idxs = jnp.diag_indices(K.shape[0])
+        K = K.at[diag_idxs].add(jitter_mtec ** 2)
+        sample = tfpd.MultivariateNormalTriL(
+            loc=mean,
+            scale_tril=jnp.linalg.cholesky(K)
+        ).sample(
+            seed=key
+        )
+        return sample
+
+    def _marginal_sample(self, key, K, mean, jitter_mtec=0.5):
+        D, T, A = np.shape(mean)
+        K = jax.lax.reshape(K, (D * T * A, D * T * A))
+        mean = jax.lax.reshape(mean, [D * T * A])
+        sample = self._sample_mvn(key, mean, K, jitter_mtec)
+        sample = jax.lax.reshape(sample, [D, T, A])
+        return sample
+
+    def _conditional_sample(self, key, K_ss, mean_s, K_xx, mean_x, K_sx, y_other, jitter_mtec=0.5):
+        # reshape
+        D, T, A = np.shape(mean_s)
+        _, T_, _ = np.shape(mean_x)
+
+        K_ss = jax.lax.reshape(K_ss, (D * T * A, D * T * A))
+        mean_s = jax.lax.reshape(mean_s, [D * T * A])
+        K_xx = jax.lax.reshape(K_xx, (D * T_ * A, D * T_ * A))
+        mean_x = jax.lax.reshape(mean_x, [D * T_ * A])
+        K_sx = jax.lax.reshape(K_sx, (D * T * A, D * T_ * A))
+
+        y_other = jax.lax.reshape(y_other, (D * T_ * A, ))
+
+        # more efficiently
+        diag_idxs = jnp.diag_indices(K_xx.shape[0])
+        K_xx = K_xx.at[diag_idxs].add(jitter_mtec ** 2)
+        J_xs = jnp.linalg.solve(K_xx, K_sx.T)
+        K = K_ss - K_sx @ J_xs
+        mean = mean_s + J_xs.T @ (y_other - mean_x)
+        sample = self._sample_mvn(key, mean, K, jitter_mtec)
+        sample = jax.lax.reshape(sample, [D, T, A])
+        return sample
+
     def sample_tec(self, key, antennas_gcrs: InterpolatedArray,
                    times: FloatArray,
                    directions_gcrs: InterpolatedArray,
@@ -294,26 +373,7 @@ class AbstractIonosphereLayer(ABC):
             [D, T, A] shaped array of DTEC or TEC
         """
         K, mean = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
-        D, T, A = np.shape(mean)
-
-        K = jax.lax.reshape(K, (D * T * A, D * T * A))
-        mean = jax.lax.reshape(mean, [D * T * A])
-
-        # Sample now
-
-        # Efficient add to diagonal
-        diag_idxs = jnp.diag_indices(K.shape[0])
-        K = K.at[diag_idxs].add(jitter_mtec ** 2)
-
-        sample = tfpd.MultivariateNormalTriL(
-            loc=mean,
-            scale_tril=jnp.linalg.cholesky(K)
-        ).sample(
-            seed=key
-        )
-
-        sample = jax.lax.reshape(sample, [D, T, A])
-        return sample
+        return self._marginal_sample(key, K, mean, jitter_mtec)
 
     def sample_dtec(self, key,
                     reference_antenna_gcrs: InterpolatedArray,
@@ -338,27 +398,52 @@ class AbstractIonosphereLayer(ABC):
         """
         K, mean = self.compute_dtec_process_params(reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs,
                                                    resolution)
+        return self._marginal_sample(key, K, mean, jitter_mtec)
 
-        D, T, A = np.shape(mean)
+    def sample_conditional_tec(
+            self,
+            key, antennas_gcrs: InterpolatedArray,
+            times: FloatArray,
+            directions_gcrs: InterpolatedArray,
+            times_other: FloatArray,
+            tec_other: FloatArray,
+            jitter_mtec=0.5, resolution: int = 27):
+        """
+        Sample ionosphere TEC.
 
-        K = jax.lax.reshape(K, (D * T * A, D * T * A))
-        mean = jax.lax.reshape(mean, [D * T * A])
+        Args:
+            key: PRNGKey
+            antennas_gcrs: [A] antennas (time) -> [A, 3]
+            times: [T] times
+            directions_gcrs: [D] directions (time) -> [D, 3]
+            times_other: [T'] times
+            tec_other: [D, T', A] TEC
+            jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
+            resolution: how many resolution elements to use, default tuned to DSA2000
 
-        # Sample now
+        Returns:
+            [D, T, A] shaped array of DTEC or TEC
+        """
+        K_xx, mean_x = self.compute_tec_process_params(antennas_gcrs, times_other, directions_gcrs, resolution)
+        K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
+        K_sx = self.compute_conditional_tec_kernel(antennas_gcrs, times, directions_gcrs, times_other, resolution)
+        return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, tec_other, jitter_mtec)
 
-        # Efficient add to diagonal
-        diag_idxs = jnp.diag_indices(K.shape[0])
-        K = K.at[diag_idxs].add(jitter_mtec ** 2)
-
-        sample = tfpd.MultivariateNormalTriL(
-            loc=mean,
-            scale_tril=jnp.linalg.cholesky(K)
-        ).sample(
-            seed=key
-        )
-
-        sample = jax.lax.reshape(sample, [D, T, A])
-        return sample
+    def sample_conditional_dtec(self, key,
+                                reference_antenna_gcrs: InterpolatedArray,
+                                antennas_gcrs: InterpolatedArray,
+                                times: FloatArray,
+                                directions_gcrs: InterpolatedArray,
+                                times_other: FloatArray,
+                                dtec_other: FloatArray,
+                                jitter_mtec=0.5, resolution: int = 27):
+        K_xx, mean_x = self.compute_dtec_process_params(reference_antenna_gcrs, antennas_gcrs, times_other,
+                                                        directions_gcrs, resolution)
+        K_ss, mean_s = self.compute_dtec_process_params(reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs,
+                                                        resolution)
+        K_sx = self.compute_conditional_dtec_kernel(reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs,
+                                                    times_other, resolution)
+        return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec)
 
 
 @dataclasses.dataclass(eq=False)
