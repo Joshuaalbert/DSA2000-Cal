@@ -30,7 +30,7 @@ def deterministic_uuid(seed: str) -> uuid.UUID:
 
 class BaseContent:
     """
-    Represents an entity with UUID and content path.
+    Represents an entity with sync'd content path.
     """
 
     def __init__(self, *, seed: str):
