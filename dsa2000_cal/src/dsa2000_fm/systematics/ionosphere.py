@@ -1,6 +1,7 @@
 import dataclasses
 import pickle
 import warnings
+from abc import abstractmethod, ABC
 from functools import partial
 from typing import Tuple, List, Any
 
@@ -53,17 +54,6 @@ def compute_ionosphere_intersection(
     smin = - xk + jnp.sqrt(xk ** 2 - (xx - vmin ** 2))
     smax = - xk + jnp.sqrt(xk ** 2 - (xx - vmax ** 2))
     return smin, smax
-
-
-def test_compute_ionosphere_intersection():
-    x_gcrs = jnp.array([0.0, 0.0, 0.0])
-    k_gcrs = jnp.array([0.0, 0.0, 1.0])
-    x0_gcrs = jnp.array([0.0, 0.0, 0.0])
-    bottom = 0.5
-    width = 1.0
-    smin, smax = compute_ionosphere_intersection(x_gcrs, k_gcrs, x0_gcrs, bottom, width)
-    assert smin == 0.5
-    assert smax == 1.5
 
 
 def calc_intersections(x, s, x0_radius, bottom, width, s_normed: bool = False):
@@ -172,8 +162,207 @@ class GaussianLineIntegral:
         return integral
 
 
+class AbstractIonosphereLayer(ABC):
+
+    @abstractmethod
+    def compute_kernel(self, x1, s1, t1, x2, s2, t2, resolution: int, s_normed: bool = False):
+        """
+        Compute the covariance.
+
+        Args:
+            x1: [D, T, A] GCRS position of antenna 1
+            s1: [D, T, A] the GCRS direction of geodesic 1
+            t1: [D, T, A] the TT earth time at antenna 1
+            x2: [D', T', A'] GCRS position of antenna 2
+            s2: [D', T', A'] the GCRS direction of geodesic 2
+            t2: [D', T', A'] the TT earth time at antenna 2
+            resolution: the number of points to use for the integral
+            s_normed: whether direction is normed
+
+        Returns:
+            the covariance between both geodesics.
+        """
+        ...
+
+    @abstractmethod
+    def compute_mean(self, x, s, t, s_normed: bool = False):
+        """
+        Compute the mean.
+
+        Args:
+            x: [D, T, A] the GCRS position of antenna
+            s: [D, T, A] the GCRS direction of geodesic
+            t: [D, T, A] the times
+            s_normed: whether the directions are normed
+
+        Returns:
+            the mean
+        """
+        ...
+
+    def compute_geodesic_coords(
+            self,
+            antennas_gcrs: InterpolatedArray,
+            times: FloatArray,
+            directions_gcrs: InterpolatedArray
+    ):
+        """
+        Compute the covariance and mean of generative marginal process.
+
+        Args:
+            antennas_gcrs: interp (t) -> [A, 3]
+            times: [T] times
+            directions_gcrs: interp (t) -> [D, 3]
+
+        Returns:
+            [D,T,A] x, shat, t
+        """
+
+        @partial(
+            multi_vmap,
+            in_mapping="[T]",
+            out_mapping="[T,...],[T,...],[T]"
+        )
+        def get_coords(time):
+            x = antennas_gcrs(time)  # [A, 3]
+            s = directions_gcrs(time)  # [D, 3]
+            shat = s / jnp.linalg.norm(s, axis=-1, keepdims=True)
+            x, shat = jnp.broadcast_arrays(x[None, :, :], shat[:, None, :])
+            t = jnp.broadcast_to(time[None, None], np.shape(x)[:-1])
+            return x, shat, t
+
+        x, shat, t = get_coords(times)  # [T, D, A, 3], [T, D, A, 3], [T, D, A]
+        x = jax.lax.transpose(x, [1, 0, 2, 3])
+        shat = jax.lax.transpose(shat, [1, 0, 2, 3])
+        t = jax.lax.transpose(t, [1, 0, 2])
+        D, T, A = jnp.shape(t)
+        return x, shat, t
+
+    def compute_tec_process_params(self, antennas_gcrs: InterpolatedArray,
+                                   times: FloatArray, directions_gcrs: InterpolatedArray, resolution: int):
+        x1, s1, t1 = x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs, times, directions_gcrs)
+        K = self.compute_kernel(
+            x1, s1, t1, x2, s2, t2, s_normed=True, resolution=resolution
+        )
+        mean = self.compute_mean(x1, s1, t1, s_normed=True)
+        return K, mean
+
+    def compute_dtec_process_params(self,
+                                    reference_antenna_gcrs: InterpolatedArray,
+                                    antennas_gcrs: InterpolatedArray,
+                                    times: FloatArray,
+                                    directions_gcrs: InterpolatedArray,
+                                    resolution: int = 27):
+        x1, s1, t1 = x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs, times, directions_gcrs)
+        K11 = self.compute_kernel(
+            x1, s1, t1, x2, s2, t2, s_normed=True, resolution=resolution
+        )
+        mean1 = self.compute_mean(x1, s1, t1, s_normed=True)
+
+        x0, s0, t0 = self.compute_geodesic_coords(reference_antenna_gcrs, times, directions_gcrs)
+        K01 = self.compute_kernel(
+            x0, s0, t0, x2, s2, t2, s_normed=True, resolution=resolution
+        )
+        K10 = self.compute_kernel(
+            x1, s1, t1, x0, s0, t0, s_normed=True, resolution=resolution
+        )
+        K00 = self.compute_kernel(
+            x0, s0, t0, x0, s0, t0, s_normed=True, resolution=resolution
+        )
+        mean0 = self.compute_mean(x0, s0, t0, s_normed=True)
+
+        K = K11 + K00 - (K01 + K10)
+        mean = mean1 - mean0
+        return K, mean
+
+    def sample_tec(self, key, antennas_gcrs: InterpolatedArray,
+                   times: FloatArray,
+                   directions_gcrs: InterpolatedArray,
+                   jitter_mtec=0.5, resolution: int = 27):
+        """
+        Sample ionosphere TEC.
+
+        Args:
+            key: PRNGKey
+            antennas_gcrs: [A] antennas (time) -> [A, 3]
+            times: [T] times
+            directions_gcrs: [D] directions (time) -> [D, 3]
+            jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
+            resolution: how many resolution elements to use, default tuned to DSA2000
+
+        Returns:
+            [D, T, A] shaped array of DTEC or TEC
+        """
+        K, mean = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
+        D, T, A = np.shape(mean)
+
+        K = jax.lax.reshape(K, (D * T * A, D * T * A))
+        mean = jax.lax.reshape(mean, [D * T * A])
+
+        # Sample now
+
+        # Efficient add to diagonal
+        diag_idxs = jnp.diag_indices(K.shape[0])
+        K = K.at[diag_idxs].add(jitter_mtec ** 2)
+
+        sample = tfpd.MultivariateNormalTriL(
+            loc=mean,
+            scale_tril=jnp.linalg.cholesky(K)
+        ).sample(
+            seed=key
+        )
+
+        sample = jax.lax.reshape(sample, [D, T, A])
+        return sample
+
+    def sample_dtec(self, key,
+                    reference_antenna_gcrs: InterpolatedArray,
+                    antennas_gcrs: InterpolatedArray,
+                    times: FloatArray,
+                    directions_gcrs: InterpolatedArray,
+                    jitter_mtec=0.5, resolution: int = 27):
+        """
+        Sample ionosphere DTEC.
+
+        Args:
+            key: PRNGKey
+            reference_antenna_gcrs: [1] atennas (time) -> [1, 3]
+            antennas_gcrs: [A] antennas (time) -> [A, 3]
+            times: [T] times
+            directions_gcrs: [D] directions (time) -> [D, 3]
+            jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
+            resolution: how many resolution elements to use, default tuned to DSA2000
+
+        Returns:
+            [D, T, A] shaped array of DTEC or TEC
+        """
+        K, mean = self.compute_dtec_process_params(reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs,
+                                                   resolution)
+
+        D, T, A = np.shape(mean)
+
+        K = jax.lax.reshape(K, (D * T * A, D * T * A))
+        mean = jax.lax.reshape(mean, [D * T * A])
+
+        # Sample now
+
+        # Efficient add to diagonal
+        diag_idxs = jnp.diag_indices(K.shape[0])
+        K = K.at[diag_idxs].add(jitter_mtec ** 2)
+
+        sample = tfpd.MultivariateNormalTriL(
+            loc=mean,
+            scale_tril=jnp.linalg.cholesky(K)
+        ).sample(
+            seed=key
+        )
+
+        sample = jax.lax.reshape(sample, [D, T, A])
+        return sample
+
+
 @dataclasses.dataclass(eq=False)
-class IonosphereLayerIntegral:
+class IonosphereLayer(AbstractIonosphereLayer):
     """
     An ionosphere layer with Gaussian radial basis function parametrisation. This is equivalent to traditional RBF,
     or exponentiated quadratic kernel.
@@ -295,7 +484,7 @@ class IonosphereLayerIntegral:
             delta_pole=self.latitude_pole
         )
 
-    def compute_kernel(self, x1, s1, t1, x2, s2, t2, resolution: int, s_normed: bool = False):
+    def _compute_kernel(self, x1, s1, t1, x2, s2, t2, resolution: int, s_normed: bool = False):
         """
         Compute the kernel.
 
@@ -309,7 +498,7 @@ class IonosphereLayerIntegral:
             resolution: how many resolution elements to use, default tuned to DSA2000
 
         Returns:
-            the covariance between both geodesics.
+            the TEC covariance between both geodesics.
         """
         # project both to intersections with layer
         x1_bottom, x1_top = self.project_geodesic(x1, s1, s_normed=s_normed)
@@ -335,7 +524,19 @@ class IonosphereLayerIntegral:
                 zero, one, zero, one, resolution=resolution
             )
 
-    def compute_mean(self, x, s, t, s_normed: bool = False):
+    def _compute_mean(self, x, s, t, s_normed: bool = False):
+        """
+        Compute the mean.
+
+        Args:
+            x: [3] the GCRS position of antenna
+            s: [3] the GCRS direction of geodesic
+            t: the time
+            s_normed: whether direction is normed
+
+        Returns:
+            the mean TEC
+        """
         x_bottom, x_top = self.project_geodesic(x, s, s_normed=s_normed)
         # Apply frozen flow, to find point in reference field
         x_bottom = self.apply_frozen_flow(x_bottom, t)
@@ -344,107 +545,29 @@ class IonosphereLayerIntegral:
         intersection_length = jnp.sqrt(jnp.sum(jnp.square(s)))
         return intersection_length * self.fed_mu
 
-    def compute_process_params(
-            self,
-            antennas_gcrs: InterpolatedArray,
-            times: FloatArray,
-            directions_gcrs: InterpolatedArray,
-            resolution: int = 27
-    ):
-        """
-        Compute the covariance and mean of generative marginal process.
-
-        Args:
-            antennas_gcrs: interp (t) -> [A, 3]
-            times: [T] times
-            directions_gcrs: interp (t) -> [D, 3]
-            resolution: how many resolution elements to use, default tuned to DSA2000
-
-        Returns:
-            [D,T,A,D,T,A] covariance and [D,T,A] mean
-        """
-
-        @partial(
-            multi_vmap,
-            in_mapping="[T]",
-            out_mapping="[T,...],[T,...],[T]"
-        )
-        def get_coords(time):
-            x = antennas_gcrs(time)  # [A, 3]
-            s = directions_gcrs(time)  # [D, 3]
-            shat = s / jnp.linalg.norm(s, axis=-1, keepdims=True)
-            x, shat = jnp.broadcast_arrays(x[None, :, :], shat[:, None, :])
-            t = jnp.broadcast_to(time[None, None], np.shape(x)[:-1])
-            return x, shat, t
-
-        x, shat, t = get_coords(times)  # [T, D, A, 3], [T, D, A, 3], [T, D, A]
-        x = jax.lax.transpose(x, [1, 0, 2, 3])
-        shat = jax.lax.transpose(shat, [1, 0, 2, 3])
-        t = jax.lax.transpose(t, [1, 0, 2])
-
-        # return x, s, t
-
-        D, T, A = jnp.shape(t)
-
-        @partial(
-            multi_vmap,
-            in_mapping="[D,T,A,3],[D,T,A,3],[D,T,A]",
-            out_mapping="[D,T,A]"
-        )
-        def get_mean(x, s_hat, t):
-            return self.compute_mean(x, s_hat, t, s_normed=True)
-
+    def compute_kernel(self, x1, s1, t1, x2, s2, t2, resolution: int, s_normed: bool = False):
         @partial(
             multi_vmap,
             in_mapping="[D,T,A,3],[D,T,A,3],[D,T,A],[D',T',A',3],[D',T',A',3],[D',T',A']",
             out_mapping="[D,T,A,D',T',A']"
         )
         def get_kernel(x1, s1_hat, t1, x2, s2_hat, t2):
-            return self.compute_kernel(x1, s1_hat, t1, x2, s2_hat, t2, s_normed=True, resolution=resolution)
+            return self._compute_kernel(x1, s1_hat, t1, x2, s2_hat, t2, s_normed=s_normed, resolution=resolution)
 
-        K = get_kernel(x, shat, t, x, shat, t)  # [D,T,A,D',T',A']
+        K = get_kernel(x1, s1, t1, x2, s2, t2)  # [D,T,A,D',T',A']
+        return K
 
-        mean = get_mean(x, shat, t)  # [D, T, A]
-        return K, mean
-
-    def sample(self, key, antennas_gcrs: InterpolatedArray, times: FloatArray, directions_gcrs: InterpolatedArray,
-               jitter_mtec=0.5, resolution: int = 27):
-        """
-        Sample ionosphere DTEC or TEC.
-
-        Args:
-            key: PRNGKey
-            antennas_gcrs: [A] antennas (time) -> [A, 3]
-            times: [T] times
-            directions_gcrs: [D] directions (time) -> [D, 3]
-            jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
-            resolution: how many resolution elements to use, default tuned to DSA2000
-
-        Returns:
-            [D, T, A] shaped array of DTEC or TEC
-        """
-
-        K, mean = self.compute_process_params(antennas_gcrs, times, directions_gcrs, resolution=resolution)
-        D, T, A = np.shape(mean)
-
-        K = jax.lax.reshape(K, (D * T * A, D * T * A))
-        mean = jax.lax.reshape(mean, [D * T * A])
-
-        # Sample now
-
-        # Efficient add to diagonal
-        diag_idxs = jnp.diag_indices(K.shape[0])
-        K = K.at[diag_idxs].add(jitter_mtec ** 2)
-
-        sample = tfpd.MultivariateNormalTriL(
-            loc=mean,
-            scale_tril=jnp.linalg.cholesky(K)
-        ).sample(
-            seed=key
+    def compute_mean(self, x, s, t, s_normed: bool = False):
+        @partial(
+            multi_vmap,
+            in_mapping="[D,T,A,3],[D,T,A,3],[D,T,A]",
+            out_mapping="[D,T,A]"
         )
+        def get_mean(x, s_hat, t):
+            return self._compute_mean(x, s_hat, t, s_normed=s_normed)
 
-        sample = jax.lax.reshape(sample, [D, T, A])
-        return sample
+        mean = get_mean(x, s, t)  # [D, T, A]
+        return mean
 
     def save(self, filename: str):
         """
@@ -492,7 +615,7 @@ class IonosphereLayerIntegral:
 
     # an abstract classmethod
     @classmethod
-    def flatten(cls, this: "IonosphereLayerIntegral") -> Tuple[List[Any], Tuple[Any, ...]]:
+    def flatten(cls, this: "IonosphereLayer") -> Tuple[List[Any], Tuple[Any, ...]]:
         """
         Flatten the model.
 
@@ -510,7 +633,7 @@ class IonosphereLayerIntegral:
         )
 
     @classmethod
-    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "IonosphereLayerIntegral":
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "IonosphereLayer":
         """
         Unflatten the model.
 
@@ -522,8 +645,8 @@ class IonosphereLayerIntegral:
             the unflattened model
         """
         length_scale, longitude_pole, latitude_pole, bottom_velocity, radial_velocity, x0_radius, bottom, width, fed_mu, fed_sigma = children
-        (method,) = this.method
-        return IonosphereLayerIntegral(
+        (method,) = aux_data
+        return IonosphereLayer(
             length_scale=length_scale, longitude_pole=longitude_pole, latitude_pole=latitude_pole,
             bottom_velocity=bottom_velocity, radial_velocity=radial_velocity, x0_radius=x0_radius,
             bottom=bottom, width=width, fed_mu=fed_mu, fed_sigma=fed_sigma, method=method,
@@ -531,10 +654,109 @@ class IonosphereLayerIntegral:
         )
 
 
-IonosphereLayerIntegral.register_pytree()
+IonosphereLayer.register_pytree()
 
 
-def calibrate_resolution(layer: IonosphereLayerIntegral, max_sep, max_angle, target_rtol=0.01):
+@dataclasses.dataclass(eq=False)
+class IonosphereMultiLayer(AbstractIonosphereLayer):
+    layers: List[IonosphereLayer]
+
+    def compute_mean(self, x, s, t, s_normed: bool = False):
+        means = []
+        for layer in self.layers:
+            means.append(layer.compute_mean(x, s, t, s_normed))
+        return sum(means[1:], start=means[0])
+
+    def compute_kernel(self, x1, s1, t1, x2, s2, t2, resolution: int, s_normed: bool = False):
+        kernels = []
+        for layer in self.layers:
+            kernels.append(layer.compute_kernel(x1, s1, t1, x2, s2, t2, resolution, s_normed))
+        return sum(kernels[1:], start=kernels[0])
+
+    def save(self, filename: str):
+        """
+        Serialise the model to file.
+
+        Args:
+            filename: the filename
+        """
+        if not filename.endswith('.pkl'):
+            warnings.warn(f"Filename {filename} does not end with .pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename: str):
+        """
+        Load the model from file.
+
+        Args:
+            filename: the filename
+
+        Returns:
+            the model
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+
+    def __reduce__(self):
+        # Return the class method for deserialization and the actor as an argument
+        children, aux_data = self.flatten(self)
+        children_np = jax.tree.map(np.asarray, children)
+        serialised = (aux_data, children_np)
+        return (self._deserialise, (serialised,))
+
+    @classmethod
+    def _deserialise(cls, serialised):
+        # Create a new instance, bypassing __init__ and setting the actor directly
+        (aux_data, children_np) = serialised
+        children_jax = jax.tree.map(jnp.asarray, children_np)
+        return cls.unflatten(aux_data, children_jax)
+
+    @classmethod
+    def register_pytree(cls):
+        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
+
+    # an abstract classmethod
+    @classmethod
+    def flatten(cls, this: "IonosphereMultiLayer") -> Tuple[List[Any], Tuple[Any, ...]]:
+        """
+        Flatten the model.
+
+        Args:
+            this: the model
+
+        Returns:
+            the flattened model
+        """
+        return [
+            this.layers
+        ], (
+
+        )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "IonosphereMultiLayer":
+        """
+        Unflatten the model.
+
+        Args:
+            children: the flattened model
+            aux_data: the auxiliary
+
+        Returns:
+            the unflattened model
+        """
+        [layers] = children
+        return IonosphereMultiLayer(
+            layers=layers
+        )
+
+
+IonosphereMultiLayer.register_pytree()
+
+
+def calibrate_resolution(layer: IonosphereLayer, max_sep, max_angle, target_rtol=0.01):
     """
     Get a resolution value that bounds error.
 
@@ -611,30 +833,10 @@ def calibrate_resolution(layer: IonosphereLayerIntegral, max_sep, max_angle, tar
     return upper_res
 
 
-def test_calibrate_resolution():
-    layer = IonosphereLayerIntegral(
-        length_scale=5.,
-        longitude_pole=0.,
-        latitude_pole=np.pi / 2,
-        bottom_velocity=0.1,
-        radial_velocity=0.,
-        x0_radius=6300.,
-        bottom=200.,
-        width=200.,
-        fed_mu=10.,
-        fed_sigma=0.1
-    )
-    fov = 8 / 57  # rad
-    max_baseline = 20
-    height = 400
-    max_sep = 0.5 * fov * height + max_baseline
-    resolution = calibrate_resolution(layer, max_sep, fov)
-
-
 def construct_eval_interp_struct(antennas: ac.EarthLocation, ref_location: ac.EarthLocation, times: at.Time,
                                  ref_time: at.Time, directions: ac.ICRS, dt=1 * au.min):
     x0_radius = np.linalg.norm(ref_location.get_gcrs(ref_time).cartesian.xyz.to('km')).value
-    T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    T = int((times.max() - times.min()) / dt) + 1
     model_times = times.min() + np.arange(0., T) * au.min
     model_times_jax = time_to_jnp(model_times, ref_time)
     times_jax = time_to_jnp(times, ref_time)
@@ -647,7 +849,8 @@ def construct_eval_interp_struct(antennas: ac.EarthLocation, ref_location: ac.Ea
     )
     directions_gcrs = InterpolatedArray(
         model_times_jax,
-        directions.transform_to(ref_location.get_gcrs(model_times[:, None])).cartesian.xyz.value.transpose((1, 2, 0)),
+        directions.transform_to(ref_location.get_gcrs(model_times[:, None])).cartesian.xyz.value.transpose(
+            (1, 2, 0)),
         axis=0,
         regular_grid=True,
         check_spacing=True

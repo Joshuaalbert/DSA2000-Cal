@@ -3,15 +3,20 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from scipy.integrate import quad
+from tomographic_kernel.frames import ENU
 
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
 from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt
-from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral
+from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral, construct_eval_interp_struct, \
+    IonosphereLayer, compute_ionosphere_intersection, calibrate_resolution
 from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_antennas, calc_intersections
 
 
 def gaussian_numerical_line_integral(t1, t2, a, u, mu, Sigma):
     """Numerical integration of line integral through 3D Gaussian"""
     Sigma_inv = np.linalg.inv(Sigma)
+
     def integrand(t):
         x = a + t * u
         dx = x - mu
@@ -169,7 +174,6 @@ def test_calc_intersections():
     np.testing.assert_allclose(s_top ** 2, s_top2_exp)
 
 
-
 def test_ionosphere():
     ref_time = at.Time.now()
     times = ref_time + 60 * np.arange(2) * au.s
@@ -185,9 +189,7 @@ def test_ionosphere():
         antennas, ref_location, times, ref_time, directions
     )
 
-    key = jax.random.PRNGKey(0)
-
-    ionosphere = IonosphereLayerIntegral(
+    ionosphere = IonosphereLayer(
         length_scale=2.,
         longitude_pole=0.,
         latitude_pole=np.pi / 2.,
@@ -218,3 +220,34 @@ def test_ionosphere():
     # Since rdot=0
     np.testing.assert_allclose(np.linalg.norm(x_bottom_ff), x0_radius + ionosphere.bottom)
     np.testing.assert_allclose(np.linalg.norm(x_top_ff), x0_radius + ionosphere.bottom + ionosphere.width)
+
+
+def test_compute_ionosphere_intersection():
+    x_gcrs = jnp.array([0.0, 0.0, 0.0])
+    k_gcrs = jnp.array([0.0, 0.0, 1.0])
+    x0_gcrs = jnp.array([0.0, 0.0, 0.0])
+    bottom = 0.5
+    width = 1.0
+    smin, smax = compute_ionosphere_intersection(x_gcrs, k_gcrs, x0_gcrs, bottom, width)
+    assert smin == 0.5
+    assert smax == 1.5
+
+
+def test_calibrate_resolution():
+    layer = IonosphereLayer(
+        length_scale=5.,
+        longitude_pole=0.,
+        latitude_pole=np.pi / 2,
+        bottom_velocity=0.1,
+        radial_velocity=0.,
+        x0_radius=6300.,
+        bottom=200.,
+        width=200.,
+        fed_mu=10.,
+        fed_sigma=0.1
+    )
+    fov = 8 / 57  # rad
+    max_baseline = 20
+    height = 400
+    max_sep = 0.5 * fov * height + max_baseline
+    resolution = calibrate_resolution(layer, max_sep, fov)
