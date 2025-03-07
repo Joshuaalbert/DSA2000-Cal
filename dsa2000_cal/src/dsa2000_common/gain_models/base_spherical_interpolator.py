@@ -542,7 +542,8 @@ def build_spherical_interpolator(
         model_gains: au.Quantity,  # [num_model_times, num_model_dir, [num_ant,] num_model_freqs, 2, 2]
         ref_time: at.Time,
         tile_antennas: bool,
-        resolution: int = 257
+        resolution: int = 257,
+        include_backlobe: bool = False, #TODO: add extra dimension to model gains size two 0: n > 0, 1: n <= 0
 ):
     """
     Uses nearest neighbour interpolation to construct the gain model.
@@ -564,7 +565,11 @@ def build_spherical_interpolator(
             If tile_antennas=False then the model gains much include antenna dimension, otherwise they are assume
             identical per antenna and tiled.
         tile_antennas: If True, the model gains are assumed to be identical for each antenna and are tiled.
+        include_backlobe: If True add back lobe to beam. Not implemented yet.
     """
+
+    if include_backlobe:
+        raise ValueError("include_backlobe=True not implemented yet.")
 
     # make sure all 1D
     if model_freqs.isscalar:

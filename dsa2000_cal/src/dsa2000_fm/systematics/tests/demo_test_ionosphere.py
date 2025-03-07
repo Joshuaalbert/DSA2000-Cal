@@ -54,7 +54,7 @@ def test_ionosphere_dtec_gain_model():
 
 def test_ionosphere_tec_multi_layer_conditional_flow():
     ref_time = at.Time.now()
-    times = ref_time + 10 * np.arange(10) * au.s
+    times = ref_time + 6 * np.arange(100) * au.s
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
     antennas = array.get_antennas()[::3]
@@ -65,12 +65,9 @@ def test_ionosphere_tec_multi_layer_conditional_flow():
 
     T = int((times.max() - times.min()) / (1 * au.min)) + 1
     model_times = times.min() + np.arange(0., T) * au.min
-
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
         antennas, ref_location, times, ref_time, directions, model_times
     )
-
-    key = jax.random.PRNGKey(0)
 
     layer1 = IonosphereLayer(
         length_scale=1.,
@@ -104,43 +101,55 @@ def test_ionosphere_tec_multi_layer_conditional_flow():
 
     ionosphere = IonosphereMultiLayer([layer1, layer2])
 
-    # Get the initial field
+    def gen():
 
-    past_sample = None
+        key = jax.random.PRNGKey(0)
 
-    sample_tec_jit = jax.jit(ionosphere.sample_tec)
-    conditional_sample_tec_jit = jax.jit(ionosphere.sample_conditional_tec)
+        past_sample = deque(maxlen=1)
 
-    for t in range(len(times_jax)):
-        sample_key, key = jax.random.split(key)
-        if past_sample is None:
-            sample = sample_tec_jit(
-                key=sample_key,
-                antennas_gcrs=antennas_gcrs,
-                directions_gcrs=directions_gcrs,
-                times=times_jax[t:t + 1]
-            )
-            past_sample = sample
-        else:
-            sample = conditional_sample_tec_jit(
-                key=sample_key,
-                antennas_gcrs=antennas_gcrs,
-                times=times_jax[t:t + 1],
-                directions_gcrs=directions_gcrs,
-                times_other=times_jax[t - 1:t],
-                tec_other=past_sample
-            )
-            past_sample = sample
+        sample_tec_jit = jax.jit(ionosphere.sample_tec)
+        conditional_sample_tec_jit = jax.jit(ionosphere.sample_conditional_tec)
 
-        sc = plt.scatter(antennas.lon, antennas.lat, c=sample[0, 0, :])
-        plt.title(f"Time: {t}")
-        plt.colorbar(sc)
-        plt.show()
+        for t in range(len(times_jax)):
+            sample_key, key = jax.random.split(key)
+
+            if len(past_sample) == 0:
+                sample = sample_tec_jit(
+                    key=sample_key,
+                    antennas_gcrs=antennas_gcrs,
+                    directions_gcrs=directions_gcrs,
+                    times=times_jax[t:t + 1]
+                )
+                past_sample.append(sample)
+            else:
+                n_past = len(past_sample)
+                sample, _ = conditional_sample_tec_jit(
+                    key=sample_key,
+                    antennas_gcrs=antennas_gcrs,
+                    times=times_jax[t:t + 1],
+                    directions_gcrs=directions_gcrs,
+                    antennas_gcrs_other=antennas_gcrs,
+                    times_other=times_jax[t - n_past:t],
+                    directions_gcrs_other=directions_gcrs,
+                    tec_other=jnp.concatenate(past_sample, axis=1)
+                )
+                past_sample.append(sample)
+            fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+            sc = ax.scatter(antennas.lon, antennas.lat, c=sample[0, 0, :], cmap='jet')
+            ax.set_title(f"Time: {t}")
+            plt.colorbar(sc, ax=ax, label=r'$\mathrm{TEC}$')
+            ax.set_xlabel('Longitude (deg)')
+            ax.set_ylabel('Latitude (deg)')
+            fig.tight_layout()
+            yield fig
+            plt.close(fig)
+
+    figs_to_gif(gen(), 'multi_layer_conditional_tec_flow_3.gif', duration=5, loop=0, dpi=100)
 
 
 def test_ionosphere_dtec_multi_layer_conditional_flow():
     ref_time = at.Time.now()
-    times = ref_time + 10 * np.arange(60) * au.s
+    times = ref_time + 6 * np.arange(100) * au.s
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
     antennas = array.get_antennas()[::3]
@@ -194,11 +203,13 @@ def test_ionosphere_dtec_multi_layer_conditional_flow():
         key = jax.random.PRNGKey(0)
 
         past_sample = deque(maxlen=1)
+        cache = None
 
         sample_dtec_jit = jax.jit(ionosphere.sample_dtec)
         conditional_sample_dtec_jit = jax.jit(ionosphere.sample_conditional_dtec)
 
         for t in range(len(times_jax)):
+            t0 = time.time()
             sample_key, key = jax.random.split(key)
 
             if len(past_sample) == 0:
@@ -212,16 +223,23 @@ def test_ionosphere_dtec_multi_layer_conditional_flow():
                 past_sample.append(sample)
             else:
                 n_past = len(past_sample)
-                sample = conditional_sample_dtec_jit(
-                    key=sample_key,
-                    reference_antenna_gcrs=reference_antenna_gcrs,
-                    antennas_gcrs=antennas_gcrs,
-                    times=times_jax[t:t + 1],
-                    directions_gcrs=directions_gcrs,
-                    times_other=times_jax[t - n_past:t],
-                    dtec_other=jnp.concatenate(past_sample, axis=1)
+                sample, cache = jax.block_until_ready(
+                    conditional_sample_dtec_jit(
+                        key=sample_key,
+                        reference_antenna_gcrs=reference_antenna_gcrs,
+                        antennas_gcrs=antennas_gcrs,
+                        times=times_jax[t:t + 1],
+                        directions_gcrs=directions_gcrs,
+                        antennas_gcrs_other=antennas_gcrs,
+                        times_other=times_jax[t - n_past:t],
+                        directions_gcrs_other=directions_gcrs,
+                        dtec_other=jnp.concatenate(past_sample, axis=1),
+                        cache=cache
+                    )
                 )
                 past_sample.append(sample)
+            t1 = time.time()
+            print(f"Sample iteration took {t1 - t0:.2f}s")
             fig, ax = plt.subplots(1, 1, figsize=(10, 10))
             sc = ax.scatter(antennas.lon, antennas.lat, c=sample[0, 0, :], vmin=-50, vmax=50, cmap='jet')
             ax.set_title(f"Time: {t}")
@@ -232,7 +250,7 @@ def test_ionosphere_dtec_multi_layer_conditional_flow():
             yield fig
             plt.close(fig)
 
-    figs_to_gif(gen(), 'multi_layer_conditional_flow_2.gif', duration=5, loop=0, dpi=100)
+    figs_to_gif(gen(), 'multi_layer_conditional_flow_4.gif', duration=5, loop=0, dpi=100)
 
 
 def test_ionosphere_frozen_flow_dtec_multi_layer():

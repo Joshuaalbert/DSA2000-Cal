@@ -1,5 +1,6 @@
 import dataclasses
 import pickle
+import time
 import warnings
 from abc import abstractmethod, ABC
 from collections import deque
@@ -14,6 +15,7 @@ import numpy as np
 import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
+from typing_extensions import NamedTuple
 
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.astropy_utils import create_spherical_earth_grid, mean_itrs
@@ -133,6 +135,17 @@ class GaussianLineIntegral:
         integral = jnp.exp(exponent) * jnp.sqrt((2 * np.pi) / A)
         integral = jnp.where(A < 1e-12, 0., integral)
         return integral
+
+
+class ConditionalCache(NamedTuple):
+    """
+    A cache for kernel calculations, which can be reused if system considered not to change much.
+    """
+    K_xx: FloatArray  # [N, N]
+    mean_x: FloatArray  # [N]
+    K_ss: FloatArray  # [M, M]
+    mean_s: FloatArray  # [M]
+    K_sx: FloatArray  # [M, N]
 
 
 class AbstractIonosphereLayer(ABC):
@@ -323,12 +336,58 @@ class AbstractIonosphereLayer(ABC):
         # more efficiently
         diag_idxs = jnp.diag_indices(K_xx.shape[0])
         K_xx = K_xx.at[diag_idxs].add(jitter_mtec ** 2)
-        J_xs = jnp.linalg.solve(K_xx, K_sx.T)
-        K = K_ss - K_sx @ J_xs
-        mean = mean_s + J_xs.T @ (y_other - mean_x)
+
+        # Compute the Cholesky factorization: K_xx = L L^T.
+        L = jnp.linalg.cholesky(K_xx)
+
+        # Solve for Z = L^{-1} K_sx.T using a triangular solve.
+        Z = jax.scipy.linalg.solve_triangular(L, K_sx.T, lower=True)
+
+        # K_ss - K_sx K_xx^{-1} K_sx.T = K_ss - Z^T Z
+        K = K_ss - Z.T @ Z
+
+        # For the  mean: m_s + K_sx K_xx^{-1} (y_x - m_x) = m_s + Z^T L^{-1} (y_x - m_x)
+        v = jax.scipy.linalg.solve_triangular(L, y_other - mean_x, lower=True)
+        mean = mean_s + Z.T @ v
+
         sample = self._sample_mvn(key, mean, K, jitter_mtec)
         sample = jax.lax.reshape(sample, [D, T, A])
         return sample
+
+    def _conditional_predict(self, K_ss, mean_s, K_xx, mean_x, K_sx, y_other, jitter_mtec=0.5):
+        # reshape
+        D, T, A = np.shape(mean_s)
+        _, T_, _ = np.shape(mean_x)
+
+        K_ss = jax.lax.reshape(K_ss, (D * T * A, D * T * A))
+        mean_s = jax.lax.reshape(mean_s, [D * T * A])
+        K_xx = jax.lax.reshape(K_xx, (D * T_ * A, D * T_ * A))
+        mean_x = jax.lax.reshape(mean_x, [D * T_ * A])
+        K_sx = jax.lax.reshape(K_sx, (D * T * A, D * T_ * A))
+
+        y_other = jax.lax.reshape(y_other, (D * T_ * A,))
+
+        # more efficiently
+        diag_idxs = jnp.diag_indices(K_xx.shape[0])
+        K_xx = K_xx.at[diag_idxs].add(jitter_mtec ** 2)
+
+        # Compute the Cholesky factorization: K_xx = L L^T.
+        L = jnp.linalg.cholesky(K_xx)
+
+        # Solve for Z = L^{-1} K_sx.T using a triangular solve.
+        Z = jax.scipy.linalg.solve_triangular(L, K_sx.T, lower=True)
+
+        # Predictive variance:
+        # K_ss - K_sx @ K_xx^{-1} @ K_sx.T = K_ss - Z^T Z; extract the diagonal as sum of squares.
+        pred_var = jnp.diag(K_ss) - jnp.sum(Z ** 2, axis=0)
+
+        # For the predictive mean
+        v = jax.scipy.linalg.solve_triangular(L, y_other - mean_x, lower=True)
+        mean = mean_s + Z.T @ v
+
+        mean = jax.lax.reshape(mean, [D, T, A])
+        pred_var = jax.lax.reshape(pred_var, [D, T, A])
+        return mean, pred_var
 
     def sample_tec(self, key, antennas_gcrs: InterpolatedArray,
                    times: FloatArray,
@@ -386,7 +445,9 @@ class AbstractIonosphereLayer(ABC):
             times_other: FloatArray,
             directions_gcrs_other: InterpolatedArray,
             tec_other: FloatArray,
-            jitter_mtec=0.5, resolution: int = 27):
+            jitter_mtec=0.5, resolution: int = 27,
+            cache: ConditionalCache | None = None
+    ):
         """
         Sample ionosphere TEC.
 
@@ -396,21 +457,37 @@ class AbstractIonosphereLayer(ABC):
             times: [T] times
             directions_gcrs: [D] directions (time) -> [D, 3]
             times_other: [T'] times
-            tec_other: [D, T', A] TEC
+            directions_gcrs_other: [D'] directions (time) -> [D', 3]
+            tec_other: [D', T', A'] TEC
             jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
             resolution: how many resolution elements to use, default tuned to DSA2000
 
         Returns:
             [D, T, A] shaped array of DTEC or TEC
         """
-        K_xx, mean_x = self.compute_tec_process_params(
-            antennas_gcrs_other, times_other, directions_gcrs_other, resolution
-        )
-        K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
-        K_sx = self.compute_conditional_tec_kernel(
-            antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
-        )
-        return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, tec_other, jitter_mtec)
+        if cache is None:
+            K_xx, mean_x = self.compute_tec_process_params(
+                antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+            )
+            K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
+            K_sx = self.compute_conditional_tec_kernel(
+                antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other,
+                resolution
+            )
+            cache = ConditionalCache(
+                K_xx=K_xx,
+                mean_x=mean_x,
+                K_ss=K_ss,
+                mean_s=mean_s,
+                K_sx=K_sx
+            )
+        else:
+            K_xx = cache.K_xx
+            mean_x = cache.mean_x
+            K_ss = cache.K_ss
+            mean_s = cache.mean_s
+            K_sx = cache.K_sx
+        return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, tec_other, jitter_mtec), cache
 
     def sample_conditional_dtec(self, key,
                                 reference_antenna_gcrs: InterpolatedArray,
@@ -421,18 +498,159 @@ class AbstractIonosphereLayer(ABC):
                                 times_other: FloatArray,
                                 directions_gcrs_other: InterpolatedArray,
                                 dtec_other: FloatArray,
-                                jitter_mtec=0.5, resolution: int = 27):
-        K_xx, mean_x = self.compute_dtec_process_params(
-            reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
-        )
-        K_ss, mean_s = self.compute_dtec_process_params(
-            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
-        )
-        K_sx = self.compute_conditional_dtec_kernel(
-            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
-            directions_gcrs_other, resolution
-        )
-        return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec)
+                                jitter_mtec=0.5, resolution: int = 27,
+                                cache: ConditionalCache | None = None):
+        """
+        Sample ionosphere DTEC.
+
+        Args:
+            key: PRNGKey
+            reference_antenna_gcrs: the reference antenna (time) -> [1, 3]
+            antennas_gcrs: [A] antennas (time) -> [A, 3]
+            times: [T] times
+            directions_gcrs: [D] directions (time) -> [D, 3]
+            antennas_gcrs_other: [A'] antennas (time) -> [A', 3]
+            times_other: [T'] times
+            directions_gcrs_other: [D'] directions (time) -> [D', 3]
+            dtec_other: [D', T', A'] TEC
+            jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
+            resolution: how many resolution elements to use, default tuned to DSA2000
+
+        Returns:
+            [D, T, A] shaped mean and var
+        """
+        if cache is None:
+            K_xx, mean_x = self.compute_dtec_process_params(
+                reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+            )
+            K_ss, mean_s = self.compute_dtec_process_params(
+                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
+            )
+            K_sx = self.compute_conditional_dtec_kernel(
+                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
+                directions_gcrs_other, resolution
+            )
+            cache = ConditionalCache(
+                K_xx=K_xx,
+                mean_x=mean_x,
+                K_ss=K_ss,
+                mean_s=mean_s,
+                K_sx=K_sx
+            )
+        else:
+            K_xx = cache.K_xx
+            mean_x = cache.mean_x
+            K_ss = cache.K_ss
+            mean_s = cache.mean_s
+            K_sx = cache.K_sx
+        return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec), cache
+
+    def predict_conditional_tec(
+            self,
+            antennas_gcrs: InterpolatedArray,
+            times: FloatArray,
+            directions_gcrs: InterpolatedArray,
+            antennas_gcrs_other: InterpolatedArray,
+            times_other: FloatArray,
+            directions_gcrs_other: InterpolatedArray,
+            tec_other: FloatArray,
+            jitter_mtec=0.5, resolution: int = 27,
+            cache: ConditionalCache | None = None):
+        """
+        Predict ionosphere TEC.
+
+        Args:
+            antennas_gcrs: [A] antennas (time) -> [A, 3]
+            times: [T] times
+            directions_gcrs: [D] directions (time) -> [D, 3]
+            antennas_gcrs_other: [A'] antennas (time) -> [A', 3]
+            times_other: [T'] times
+            directions_gcrs_other: [D'] directions (time) -> [D', 3]
+            tec_other: [D', T', A'] TEC
+            jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
+            resolution: how many resolution elements to use, default tuned to DSA2000
+
+        Returns:
+            [D, T, A] shaped mean and var
+        """
+        if cache is None:
+            K_xx, mean_x = self.compute_tec_process_params(
+                antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+            )
+            K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
+            K_sx = self.compute_conditional_tec_kernel(
+                antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other,
+                resolution
+            )
+            cache = ConditionalCache(
+                K_xx=K_xx,
+                mean_x=mean_x,
+                K_ss=K_ss,
+                mean_s=mean_s,
+                K_sx=K_sx
+            )
+        else:
+            K_xx = cache.K_xx
+            mean_x = cache.mean_x
+            K_ss = cache.K_ss
+            mean_s = cache.mean_s
+            K_sx = cache.K_sx
+        return self._conditional_predict(K_ss, mean_s, K_xx, mean_x, K_sx, tec_other, jitter_mtec), cache
+
+    def predict_conditional_dtec(self,
+                                 reference_antenna_gcrs: InterpolatedArray,
+                                 antennas_gcrs: InterpolatedArray,
+                                 times: FloatArray,
+                                 directions_gcrs: InterpolatedArray,
+                                 antennas_gcrs_other: InterpolatedArray,
+                                 times_other: FloatArray,
+                                 directions_gcrs_other: InterpolatedArray,
+                                 dtec_other: FloatArray,
+                                 jitter_mtec=0.5, resolution: int = 27,
+                                 cache: ConditionalCache | None = None):
+        """
+        Predict ionosphere DTEC.
+
+        Args:
+            reference_antenna_gcrs: the reference antenna (time) -> [1, 3]
+            antennas_gcrs: [A] antennas (time) -> [A, 3]
+            times: [T] times
+            directions_gcrs: [D] directions (time) -> [D, 3]
+            antennas_gcrs_other: [A'] antennas (time) -> [A', 3]
+            times_other: [T'] times
+            directions_gcrs_other: [D'] directions (time) -> [D', 3]
+            dtec_other: [D', T', A'] TEC
+            jitter_mtec: how much diagonal jitter, equivalent to adding white noise.
+            resolution: how many resolution elements to use, default tuned to DSA2000
+
+        Returns:
+            [D, T, A] shaped mean and var
+        """
+        if cache is None:
+            K_xx, mean_x = self.compute_dtec_process_params(
+                reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+            )
+            K_ss, mean_s = self.compute_dtec_process_params(
+                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
+            )
+            K_sx = self.compute_conditional_dtec_kernel(
+                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
+                directions_gcrs_other, resolution
+            )
+            cache = ConditionalCache(
+                K_xx=K_xx,
+                mean_x=mean_x,
+                K_ss=K_ss,
+                mean_s=mean_s,
+                K_sx=K_sx
+            )
+        else:
+            K_xx = cache.K_xx
+            mean_x = cache.mean_x
+            K_ss = cache.K_ss
+            mean_s = cache.mean_s
+            K_sx = cache.K_sx
+        return self._conditional_predict(key, K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec), cache
 
 
 @dataclasses.dataclass(eq=False)
@@ -1038,7 +1256,7 @@ def build_ionosphere_gain_model(
 
     @jax.jit
     def sample_conditional_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                                directions_gcrs, times, times_other, dtec_other):
+                                directions_gcrs, times, times_other, dtec_other, cache=None):
         return ionosphere.sample_conditional_dtec(
             key=key,
             reference_antenna_gcrs=reference_antenna_gcrs,
@@ -1048,39 +1266,47 @@ def build_ionosphere_gain_model(
             antennas_gcrs_other=antennas_gcrs,
             times_other=times_other,
             directions_gcrs_other=directions_gcrs,
-            dtec_other=dtec_other
+            dtec_other=dtec_other,
+            cache=cache
         )  # [D, T, A]
 
     past_sample = deque(maxlen=1)
+    cache = None
 
     key = jax.random.PRNGKey(0)
     for t in range(len(times_jax)):
         sample_key, key = jax.random.split(key)
-
+        t0 = time.time()
         if len(past_sample) == 0:
-            sample = sample_dtec(
-                key=sample_key,
-                ionosphere=ionosphere,
-                reference_antenna_gcrs=reference_antenna_gcrs,
-                antennas_gcrs=antennas_gcrs,
-                directions_gcrs=directions_gcrs,
-                times=times_jax[t:t + 1]
+            sample = jax.block_until_ready(
+                sample_dtec(
+                    key=sample_key,
+                    ionosphere=ionosphere,
+                    reference_antenna_gcrs=reference_antenna_gcrs,
+                    antennas_gcrs=antennas_gcrs,
+                    directions_gcrs=directions_gcrs,
+                    times=times_jax[t:t + 1]
+                )
             )
             past_sample.append(sample)
         else:
             n_past = len(past_sample)
-            sample = sample_conditional_dtec(
-                key=sample_key,
-                ionosphere=ionosphere,
-                reference_antenna_gcrs=reference_antenna_gcrs,
-                antennas_gcrs=antennas_gcrs,
-                times=times_jax[t:t + 1],
-                directions_gcrs=directions_gcrs,
-                times_other=times_jax[t - n_past:t],
-                dtec_other=jnp.concatenate(past_sample, axis=1)
+            sample, cache = jax.block_until_ready(
+                sample_conditional_dtec(
+                    key=sample_key,
+                    ionosphere=ionosphere,
+                    reference_antenna_gcrs=reference_antenna_gcrs,
+                    antennas_gcrs=antennas_gcrs,
+                    times=times_jax[t:t + 1],
+                    directions_gcrs=directions_gcrs,
+                    times_other=times_jax[t - n_past:t],
+                    dtec_other=jnp.concatenate(past_sample, axis=1),
+                    cache=cache
+                )
             )
             past_sample.append(sample)
-
+        t1 = time.time()
+        print(f"Conditional sample iteration took {t1 - t0:.2f} seconds")
     dtec_samples = jnp.concatenate(past_sample, axis=1).transpose((1, 0, 2))  # [D, T, A] -> [T, D, A]
     phase_factor = quantity_to_jnp(TEC_CONV / model_freqs, 'rad')  # [F]
     phase = dtec_samples[..., None] * phase_factor  # [T, D, A, F]
