@@ -10,7 +10,7 @@ from dsa2000_assets.registries import array_registry
 from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt
 from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral, construct_eval_interp_struct, \
     IonosphereLayer, compute_ionosphere_intersection, calibrate_resolution
-from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_antennas, calc_intersections
+from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_gcrs, calc_intersections
 
 
 def gaussian_numerical_line_integral(t1, t2, a, u, mu, Sigma):
@@ -125,7 +125,7 @@ def test_infer_params():
     print(omega, alpha_pole, delta_pole)
 
 
-def test_evolve_antennas():
+def test_evolve_gcrs():
     import astropy.coordinates as ac
     import astropy.time as at
     import astropy.units as au
@@ -147,7 +147,7 @@ def test_evolve_antennas():
     a_gcrs_xyz_from = a_gcrs.cartesian.xyz.to('km').value
     a_gcrs_xyz_to = a.get_gcrs(t_next).cartesian.xyz.to('km').value
 
-    np.testing.assert_allclose(evolve_antennas(a_gcrs_xyz_from, 3600), a_gcrs_xyz_to, atol=0.001)
+    np.testing.assert_allclose(evolve_gcrs(a_gcrs_xyz_from, 3600), a_gcrs_xyz_to, atol=0.001)
 
 
 def test_calc_intersections():
@@ -185,8 +185,11 @@ def test_ionosphere():
 
     directions = phase_center[None]
 
+    T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    model_times = times.min() + np.arange(0., T) * au.min
+
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
-        antennas, ref_location, times, ref_time, directions
+        antennas, ref_location, times, ref_time, directions, model_times
     )
 
     ionosphere = IonosphereLayer(

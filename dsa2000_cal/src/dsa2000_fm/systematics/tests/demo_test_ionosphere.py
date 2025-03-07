@@ -20,7 +20,7 @@ def test_ionosphere_dtec_gain_model():
     times = ref_time + 2 * np.arange(10) * au.s
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
-    antennas = array.get_antennas()[:1]
+    antennas = array.get_antennas()[:2]
     ref_location = array.get_array_location()
     phase_center = ENU(0, 0, 1, obstime=ref_time, location=ref_location).transform_to(ac.ICRS())
 
@@ -232,7 +232,7 @@ def test_ionosphere_dtec_multi_layer_conditional_flow():
             yield fig
             plt.close(fig)
 
-    figs_to_gif(gen(), 'multi_layer_conditional_flow.gif', duration=5, loop=0, dpi=100)
+    figs_to_gif(gen(), 'multi_layer_conditional_flow_2.gif', duration=5, loop=0, dpi=100)
 
 
 def test_ionosphere_frozen_flow_dtec_multi_layer():

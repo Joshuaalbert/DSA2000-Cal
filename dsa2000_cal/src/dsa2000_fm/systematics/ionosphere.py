@@ -250,9 +250,11 @@ class AbstractIonosphereLayer(ABC):
 
     def compute_conditional_tec_kernel(self, antennas_gcrs: InterpolatedArray,
                                        times: FloatArray, directions_gcrs: InterpolatedArray,
-                                       times_other: FloatArray, resolution: int):
+                                       antennas_gcrs_other: InterpolatedArray,
+                                       times_other: FloatArray, directions_gcrs_other: InterpolatedArray,
+                                       resolution: int):
         x1, s1, t1 = self.compute_geodesic_coords(antennas_gcrs, times, directions_gcrs)
-        x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs, times_other, directions_gcrs)
+        x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs_other, times_other, directions_gcrs_other)
         K = self.compute_kernel(
             x1, s1, t1, x2, s2, t2, s_normed=True, resolution=resolution
         )
@@ -263,15 +265,16 @@ class AbstractIonosphereLayer(ABC):
                                         antennas_gcrs: InterpolatedArray,
                                         times: FloatArray,
                                         directions_gcrs: InterpolatedArray,
-                                        times_other: FloatArray,
+                                        antennas_gcrs_other: InterpolatedArray,
+                                        times_other: FloatArray, directions_gcrs_other: InterpolatedArray,
                                         resolution: int = 27):
         x1, s1, t1 = self.compute_geodesic_coords(antennas_gcrs, times, directions_gcrs)
-        x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs, times_other, directions_gcrs)
+        x2, s2, t2 = self.compute_geodesic_coords(antennas_gcrs_other, times_other, directions_gcrs_other)
         K11 = self.compute_kernel(
             x1, s1, t1, x2, s2, t2, s_normed=True, resolution=resolution
         )
         x0, s0, t0 = self.compute_geodesic_coords(reference_antenna_gcrs, times, directions_gcrs)
-        x0_, s0_, t0_ = self.compute_geodesic_coords(reference_antenna_gcrs, times_other, directions_gcrs)
+        x0_, s0_, t0_ = self.compute_geodesic_coords(reference_antenna_gcrs, times_other, directions_gcrs_other)
         K01 = self.compute_kernel(
             x0, s0, t0, x2, s2, t2, s_normed=True, resolution=resolution
         )
@@ -375,10 +378,13 @@ class AbstractIonosphereLayer(ABC):
 
     def sample_conditional_tec(
             self,
-            key, antennas_gcrs: InterpolatedArray,
+            key,
+            antennas_gcrs: InterpolatedArray,
             times: FloatArray,
             directions_gcrs: InterpolatedArray,
+            antennas_gcrs_other: InterpolatedArray,
             times_other: FloatArray,
+            directions_gcrs_other: InterpolatedArray,
             tec_other: FloatArray,
             jitter_mtec=0.5, resolution: int = 27):
         """
@@ -397,9 +403,13 @@ class AbstractIonosphereLayer(ABC):
         Returns:
             [D, T, A] shaped array of DTEC or TEC
         """
-        K_xx, mean_x = self.compute_tec_process_params(antennas_gcrs, times_other, directions_gcrs, resolution)
+        K_xx, mean_x = self.compute_tec_process_params(
+            antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+        )
         K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
-        K_sx = self.compute_conditional_tec_kernel(antennas_gcrs, times, directions_gcrs, times_other, resolution)
+        K_sx = self.compute_conditional_tec_kernel(
+            antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+        )
         return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, tec_other, jitter_mtec)
 
     def sample_conditional_dtec(self, key,
@@ -407,15 +417,21 @@ class AbstractIonosphereLayer(ABC):
                                 antennas_gcrs: InterpolatedArray,
                                 times: FloatArray,
                                 directions_gcrs: InterpolatedArray,
+                                antennas_gcrs_other: InterpolatedArray,
                                 times_other: FloatArray,
+                                directions_gcrs_other: InterpolatedArray,
                                 dtec_other: FloatArray,
                                 jitter_mtec=0.5, resolution: int = 27):
-        K_xx, mean_x = self.compute_dtec_process_params(reference_antenna_gcrs, antennas_gcrs, times_other,
-                                                        directions_gcrs, resolution)
-        K_ss, mean_s = self.compute_dtec_process_params(reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs,
-                                                        resolution)
-        K_sx = self.compute_conditional_dtec_kernel(reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs,
-                                                    times_other, resolution)
+        K_xx, mean_x = self.compute_dtec_process_params(
+            reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+        )
+        K_ss, mean_s = self.compute_dtec_process_params(
+            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
+        )
+        K_sx = self.compute_conditional_dtec_kernel(
+            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
+            directions_gcrs_other, resolution
+        )
         return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec)
 
 
@@ -1027,9 +1043,11 @@ def build_ionosphere_gain_model(
             key=key,
             reference_antenna_gcrs=reference_antenna_gcrs,
             antennas_gcrs=antennas_gcrs,
-            directions_gcrs=directions_gcrs,
             times=times,
+            directions_gcrs=directions_gcrs,
+            antennas_gcrs_other=antennas_gcrs,
             times_other=times_other,
+            directions_gcrs_other=directions_gcrs,
             dtec_other=dtec_other
         )  # [D, T, A]
 
@@ -1076,6 +1094,13 @@ def build_ionosphere_gain_model(
     plt.colorbar(sc)
     plt.show()
 
+    sc = plt.scatter(directions.ra.rad, directions.dec.rad, c=phase[0, :, 0, 0])
+    plt.colorbar(sc)
+    plt.show()
+    sc = plt.scatter(directions.ra.rad, directions.dec.rad, c=phase[0, :, -1, 0])
+    plt.colorbar(sc)
+    plt.show()
+
     # The samples are now in past_sample
     # Get gains into [num_model_times, num_model_dir, num_ant, num_model_freqs, 2, 2]
     # Will need to get the lmn of the directions
@@ -1107,22 +1132,23 @@ def build_ionosphere_gain_model(
 # simulate ionosphere over a give resolution
 
 
-def evolve_antennas(x0_gcrs, dt):
+def evolve_gcrs(gcrs, dt):
     """
-    Evolve antennas in GCRS by a time step.
+    Evolve GCRS coordinates in time via rotation around Earth's rotational pole.
 
     Args:
-        x0_gcrs: [3] the initial position in GCRS
-        dt: the amount of time
+        gcrs: [3] the initial GCRS coordinate.
+        dt: the amount of time, positive or negative.
 
     Returns:
         [3] the evolved position in GCRS
     """
+    # TODO: could replace InterpolatedArrays with application of this about a reference time.
     omega = 7.292115315411851e-05  # ~ 2 * np.pi / ((23 + 56 / 60) * 3600)
     alpha_pole = 0.015949670685007602
     delta_pole = 1.5683471107500062
     return efficient_rodriges_rotation(
-        x_proj=x0_gcrs,
+        x_proj=gcrs,
         rdot=0.,
         omega=omega,
         dt=dt,
