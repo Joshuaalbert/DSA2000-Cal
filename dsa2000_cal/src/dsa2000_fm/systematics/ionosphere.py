@@ -11,17 +11,20 @@ import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import jax
+import matplotlib.dates as mdates
 import numpy as np
 import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
+from matplotlib.widgets import Slider
 from typing_extensions import NamedTuple
 
-from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.array_types import FloatArray, IntArray
 from dsa2000_common.common.astropy_utils import create_spherical_earth_grid, mean_itrs
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.jax_utils import multi_vmap
 from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
+from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.delay_models.uvw_utils import perley_lmn_from_icrs
 from dsa2000_common.gain_models.base_spherical_interpolator import phi_theta_from_lmn, build_spherical_interpolator, \
     BaseSphericalInterpolatorGainModel
@@ -323,15 +326,14 @@ class AbstractIonosphereLayer(ABC):
     def _conditional_sample(self, key, K_ss, mean_s, K_xx, mean_x, K_sx, y_other, jitter_mtec=0.5):
         # reshape
         D, T, A = np.shape(mean_s)
-        _, T_, _ = np.shape(mean_x)
+        D_, T_, A_ = np.shape(mean_x)
 
         K_ss = jax.lax.reshape(K_ss, (D * T * A, D * T * A))
         mean_s = jax.lax.reshape(mean_s, [D * T * A])
-        K_xx = jax.lax.reshape(K_xx, (D * T_ * A, D * T_ * A))
-        mean_x = jax.lax.reshape(mean_x, [D * T_ * A])
-        K_sx = jax.lax.reshape(K_sx, (D * T * A, D * T_ * A))
-
-        y_other = jax.lax.reshape(y_other, (D * T_ * A,))
+        K_xx = jax.lax.reshape(K_xx, (D_ * T_ * A_, D_ * T_ * A_))
+        mean_x = jax.lax.reshape(mean_x, [D_ * T_ * A_])
+        K_sx = jax.lax.reshape(K_sx, (D * T * A, D_ * T_ * A_))
+        y_other = jax.lax.reshape(y_other, (D_ * T_ * A_,))
 
         # more efficiently
         diag_idxs = jnp.diag_indices(K_xx.shape[0])
@@ -357,15 +359,14 @@ class AbstractIonosphereLayer(ABC):
     def _conditional_predict(self, K_ss, mean_s, K_xx, mean_x, K_sx, y_other, jitter_mtec=0.5):
         # reshape
         D, T, A = np.shape(mean_s)
-        _, T_, _ = np.shape(mean_x)
+        D_, T_, A_ = np.shape(mean_x)
 
         K_ss = jax.lax.reshape(K_ss, (D * T * A, D * T * A))
         mean_s = jax.lax.reshape(mean_s, [D * T * A])
-        K_xx = jax.lax.reshape(K_xx, (D * T_ * A, D * T_ * A))
-        mean_x = jax.lax.reshape(mean_x, [D * T_ * A])
-        K_sx = jax.lax.reshape(K_sx, (D * T * A, D * T_ * A))
-
-        y_other = jax.lax.reshape(y_other, (D * T_ * A,))
+        K_xx = jax.lax.reshape(K_xx, (D_ * T_ * A_, D_ * T_ * A_))
+        mean_x = jax.lax.reshape(mean_x, [D_ * T_ * A_])
+        K_sx = jax.lax.reshape(K_sx, (D * T * A, D_ * T_ * A_))
+        y_other = jax.lax.reshape(y_other, (D_ * T_ * A_,))
 
         # more efficiently
         diag_idxs = jnp.diag_indices(K_xx.shape[0])
@@ -650,7 +651,7 @@ class AbstractIonosphereLayer(ABC):
             K_ss = cache.K_ss
             mean_s = cache.mean_s
             K_sx = cache.K_sx
-        return self._conditional_predict(key, K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec), cache
+        return self._conditional_predict(K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec), cache
 
 
 @dataclasses.dataclass(eq=False)
@@ -953,6 +954,10 @@ IonosphereLayer.register_pytree()
 class IonosphereMultiLayer(AbstractIonosphereLayer):
     layers: List[IonosphereLayer]
 
+    def __post_init__(self):
+        if len(self.layers) == 0:
+            raise ValueError('Got no layers.')
+
     def compute_mean(self, x, s, t, s_normed: bool = False):
         means = []
         for layer in self.layers:
@@ -1125,9 +1130,13 @@ def calibrate_resolution(layer: IonosphereLayer, max_sep, max_angle, target_rtol
     return upper_res
 
 
+def compute_x0_radius(ref_location: ac.EarthLocation, ref_time: at.Time):
+    return np.linalg.norm(ref_location.get_gcrs(ref_time).cartesian.xyz.to('km')).value
+
+
 def construct_eval_interp_struct(antennas: ac.EarthLocation, ref_location: ac.EarthLocation, times: at.Time,
                                  ref_time: at.Time, directions: ac.ICRS, model_times: at.Time):
-    x0_radius = np.linalg.norm(ref_location.get_gcrs(ref_time).cartesian.xyz.to('km')).value
+    x0_radius = compute_x0_radius(ref_location, ref_time)
     model_times_jax = time_to_jnp(model_times, ref_time)
     times_jax = time_to_jnp(times, ref_time)
     antennas_gcrs = InterpolatedArray(
@@ -1191,7 +1200,64 @@ def create_model_antennas(antennas: ac.EarthLocation, spatial_resolution: au.Qua
     return model_antennas
 
 
+def construct_canonical_ionosphere(x0_radius: FloatArray, turbulent: bool = True, dawn: bool = True,
+                                   high_sun_spot: bool = True):
+    _bottom_E = 90
+    _width_E = 10
+    _bottom_F = 250
+    _width_F = 100
+    _bottom_velocity_E = 0.2
+    _bottom_velocity_F = 0.3
+    _radial_velocity_E = 0.
+    _radial_velocity_F = 0.
+    if high_sun_spot:
+        _fed_mu_E = 10.  # 10^11 e / m^3
+        _fed_mu_F = 200.  # 2 * 10^12 e / m^3
+    else:
+        _fed_mu_E = 1.  # 10^10 e / m^3
+        _fed_mu_F = 50.  # 5 * 10^11 e / m^3
+    if turbulent:
+        _sigma_factor = 0.5
+    else:
+        _sigma_factor = 0.25
+    if dawn:
+        _length_scale_E = 1.
+        _length_scale_F = 5.
+    else:
+        _length_scale_E = 2.
+        _length_scale_F = 10.
+
+    layers = [
+        IonosphereLayer(
+            length_scale=_length_scale_E,
+            longitude_pole=0.,
+            latitude_pole=np.pi / 2.,
+            bottom_velocity=_bottom_velocity_E,
+            radial_velocity=_radial_velocity_E,
+            x0_radius=x0_radius,
+            bottom=_bottom_E,
+            width=_width_E,
+            fed_mu=_fed_mu_E,
+            fed_sigma=_fed_mu_E * _sigma_factor
+        ),
+        IonosphereLayer(
+            length_scale=_length_scale_F,
+            longitude_pole=0.,
+            latitude_pole=np.pi / 2.,
+            bottom_velocity=_bottom_velocity_F,
+            radial_velocity=_radial_velocity_F,
+            x0_radius=x0_radius,
+            bottom=_bottom_F,
+            width=_width_F,
+            fed_mu=_fed_mu_F,
+            fed_sigma=_fed_mu_F * _sigma_factor
+        )
+    ]
+    return IonosphereMultiLayer(layers)
+
+
 def build_ionosphere_gain_model(
+        ionosphere: AbstractIonosphereLayer,
         model_freqs: au.Quantity,
         antennas: ac.EarthLocation,
         ref_location: ac.EarthLocation,
@@ -1199,10 +1265,38 @@ def build_ionosphere_gain_model(
         ref_time: at.Time,
         directions: ac.ICRS,
         phase_centre: ac.ICRS,
-        dt=1 * au.min
+        spatial_resolution: au.Quantity = 2 * au.km,
+        save_file: str | None = None
 ) -> BaseSphericalInterpolatorGainModel:
-    T = int((times.max() - times.min()) / dt) + 1
-    model_times = times.min() + np.arange(0., T) * dt
+    """
+    Simulate ionosphere gain model.
+
+    Args:
+        model_freqs: the frequencies to evaluate at.
+        antennas: [A] the antennas
+        ref_location: the reference location for simulation (need not be an antenna)
+        times: [T] the times
+        ref_time: the ref time things are relative to
+        directions: [D] the directions
+        phase_centre: the pointing and phase tracking center
+        save_file: save dtec to file to explore later
+
+    Returns:
+        a gain model (note directions far from a `direction` are ill-defined).
+    """
+
+    model_dt = 1 * au.min
+    T = int((times.max() - times.min()) / model_dt) + 1
+    model_times = times.min() + np.arange(0., T) * model_dt
+
+    model_antennas = create_model_antennas(antennas, spatial_resolution=spatial_resolution)
+    model_antennas_gcrs = InterpolatedArray(
+        time_to_jnp(model_times, ref_time),
+        model_antennas.get_gcrs(model_times[:, None]).cartesian.xyz.to('km').value.transpose((1, 2, 0)),
+        axis=0,
+        regular_grid=True,
+        check_spacing=True
+    )
 
     # construct the evaluation and interpolation structure
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
@@ -1210,38 +1304,6 @@ def build_ionosphere_gain_model(
     )
 
     reference_antenna_gcrs = antennas_gcrs[0:1]
-
-    layer1 = IonosphereLayer(
-        length_scale=1.,
-        longitude_pole=0.,
-        latitude_pole=np.pi / 2.,
-        bottom_velocity=0.120,
-        radial_velocity=0.,
-        x0_radius=x0_radius,
-        bottom=200,
-        width=200,
-        # fed_mu=50.,  # 5 * 10^11 e-/m^3 (low sun spot noon)
-        # fed_sigma=25.  # 2.5 * 10^11 e-/m^3 (low sun spot noon)
-        fed_mu=200.,  # 2 * 10^12 e-/m^3 (high sun spot noon)
-        fed_sigma=50.  # 5 * 10^11 e-/m^3 (high sun spot noon)
-    )
-
-    layer2 = IonosphereLayer(
-        length_scale=2.,
-        longitude_pole=0.,
-        latitude_pole=np.pi / 2.,
-        bottom_velocity=0.120,
-        radial_velocity=0.,
-        x0_radius=x0_radius,
-        bottom=100,
-        width=100,
-        # fed_mu=50.,  # 5 * 10^11 e-/m^3 (low sun spot noon)
-        # fed_sigma=25.  # 2.5 * 10^11 e-/m^3 (low sun spot noon)
-        fed_mu=200.,  # 2 * 10^12 e-/m^3 (high sun spot noon)
-        fed_sigma=50.  # 5 * 10^11 e-/m^3 (high sun spot noon)
-    )
-
-    ionosphere = IonosphereMultiLayer([layer1, layer2])
 
     @jax.jit
     def sample_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
@@ -1255,8 +1317,8 @@ def build_ionosphere_gain_model(
         )  # [D, T, A]
 
     @jax.jit
-    def sample_conditional_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                                directions_gcrs, times, times_other, dtec_other, cache=None):
+    def sample_conditional_dtec_in_time(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
+                                        directions_gcrs, times, times_other, dtec_other, cache=None):
         return ionosphere.sample_conditional_dtec(
             key=key,
             reference_antenna_gcrs=reference_antenna_gcrs,
@@ -1270,9 +1332,30 @@ def build_ionosphere_gain_model(
             cache=cache
         )  # [D, T, A]
 
-    past_sample = deque(maxlen=1)
-    cache = None
+    @jax.jit
+    def predict_conditional_dtec_in_antenna(
+            dir_idx: IntArray,
+            ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
+            directions_gcrs, times, model_antennas_gcrs, dtec_other, cache=None
+    ):
+        dtec_other = dtec_other[dir_idx][None]  # [1, T, A]
+        directions_gcrs = directions_gcrs[dir_idx][None]  # [1]
+        (pred_mean, _), cache = ionosphere.predict_conditional_dtec(
+            reference_antenna_gcrs=reference_antenna_gcrs,
+            antennas_gcrs=antennas_gcrs,
+            times=times,
+            directions_gcrs=directions_gcrs,
+            antennas_gcrs_other=model_antennas_gcrs,
+            times_other=times,
+            directions_gcrs_other=directions_gcrs,
+            dtec_other=dtec_other,
+            cache=cache
+        )  # [1, T, A]
+        return pred_mean, cache
 
+    past_sample = deque(maxlen=1)
+    samples = []
+    flow_cache = None
     key = jax.random.PRNGKey(0)
     for t in range(len(times_jax)):
         sample_key, key = jax.random.split(key)
@@ -1283,49 +1366,72 @@ def build_ionosphere_gain_model(
                     key=sample_key,
                     ionosphere=ionosphere,
                     reference_antenna_gcrs=reference_antenna_gcrs,
-                    antennas_gcrs=antennas_gcrs,
+                    antennas_gcrs=model_antennas_gcrs,
                     directions_gcrs=directions_gcrs,
                     times=times_jax[t:t + 1]
                 )
             )
-            past_sample.append(sample)
         else:
             n_past = len(past_sample)
-            sample, cache = jax.block_until_ready(
-                sample_conditional_dtec(
+            sample, flow_cache = jax.block_until_ready(
+                sample_conditional_dtec_in_time(
                     key=sample_key,
                     ionosphere=ionosphere,
                     reference_antenna_gcrs=reference_antenna_gcrs,
-                    antennas_gcrs=antennas_gcrs,
+                    antennas_gcrs=model_antennas_gcrs,
                     times=times_jax[t:t + 1],
                     directions_gcrs=directions_gcrs,
                     times_other=times_jax[t - n_past:t],
                     dtec_other=jnp.concatenate(past_sample, axis=1),
-                    cache=cache
+                    cache=flow_cache
                 )
             )
-            past_sample.append(sample)
+        past_sample.append(sample)
+        samples.append(sample)
         t1 = time.time()
         print(f"Conditional sample iteration took {t1 - t0:.2f} seconds")
-    dtec_samples = jnp.concatenate(past_sample, axis=1).transpose((1, 0, 2))  # [D, T, A] -> [T, D, A]
+    interp_cache = None
+    for t, sample in enumerate(samples):
+        t0 = time.time()
+        # interpolate antennas
+        sample_interp = []
+        for dir_idx in range(len(directions)):
+            _sample_interp, interp_cache = jax.block_until_ready(
+                predict_conditional_dtec_in_antenna(
+                    dir_idx=dir_idx,
+                    ionosphere=ionosphere,
+                    reference_antenna_gcrs=reference_antenna_gcrs,
+                    antennas_gcrs=antennas_gcrs,
+                    directions_gcrs=directions_gcrs,
+                    times=times_jax[t:t + 1],
+                    model_antennas_gcrs=model_antennas_gcrs,
+                    dtec_other=sample,
+                    cache=interp_cache
+                )
+            )  # [1, 1, A]
+            sample_interp.append(_sample_interp)
+        sample_interp = jnp.concatenate(sample_interp, axis=0)  # [D, 1, A]
+        samples[t] = sample_interp
+        t1 = time.time()
+        print(f"Interp step took {t1 - t0:.2f}s")
+    dtec_samples = jnp.concatenate(samples, axis=1).transpose((1, 0, 2))  # [D, T, A] -> [T, D, A]
+
+    if save_file is not None:
+        result = SimulationResult(
+            times=times,
+            directions=directions,
+            antennas=antennas,
+            dtec=dtec_samples
+        )
+        with open(save_file, 'w') as f:
+            f.write(result.json(indent=2))
+    # explore_dtec(dtec_samples, antennas, directions, times)
+
     phase_factor = quantity_to_jnp(TEC_CONV / model_freqs, 'rad')  # [F]
     phase = dtec_samples[..., None] * phase_factor  # [T, D, A, F]
     scalar_gain = jax.lax.complex(jnp.cos(phase), jnp.sin(phase))  # [T, D, A, F]
     model_gains = scalar_gain[..., None, None] * jnp.eye(2)  # [T, D, A, F, 2, 2]
     model_gains = model_gains * au.dimensionless_unscaled
-    sc = plt.scatter(directions.ra.rad, directions.dec.rad, c=dtec_samples[0, :, 0])
-    plt.colorbar(sc)
-    plt.show()
-    sc = plt.scatter(directions.ra.rad, directions.dec.rad, c=dtec_samples[0, :, -1])
-    plt.colorbar(sc)
-    plt.show()
-
-    sc = plt.scatter(directions.ra.rad, directions.dec.rad, c=phase[0, :, 0, 0])
-    plt.colorbar(sc)
-    plt.show()
-    sc = plt.scatter(directions.ra.rad, directions.dec.rad, c=phase[0, :, -1, 0])
-    plt.colorbar(sc)
-    plt.show()
 
     # The samples are now in past_sample
     # Get gains into [num_model_times, num_model_dir, num_ant, num_model_freqs, 2, 2]
@@ -1345,7 +1451,7 @@ def build_ionosphere_gain_model(
 
     return build_spherical_interpolator(
         antennas=antennas,
-        model_times=model_times,
+        model_times=times,
         ref_time=ref_time,
         model_phi=model_phi,
         model_theta=model_theta,
@@ -1355,8 +1461,120 @@ def build_ionosphere_gain_model(
     )
 
 
-# simulate ionosphere over a give resolution
+class SimulationResult(SerialisableBaseModel):
+    times: at.Time
+    directions: ac.ICRS
+    antennas: ac.EarthLocation
+    dtec: np.ndarray  # [T, D, A]
 
+    def interactive_explore(self):
+        explore_dtec(self.dtec, self.antennas, self.directions, self.times)
+
+
+def explore_dtec(dtec: np.ndarray, antennas: ac.EarthLocation, directions: ac.ICRS, times: at.Time):
+    """
+    Plot an interactive plot of dtec.
+
+    Args:
+        dtec: [T, D, A] dtec or tec.
+        antennas: [A] antennas.
+        directions: [D] the directions.
+        times: [T] times.
+    """
+    T, D, A = np.shape(dtec)
+    if np.shape(dtec) != (len(times), len(directions), len(antennas)):
+        raise ValueError(f"dtec shape {np.shape(dtec)} doesn't match [T, D, A].")
+
+    # Convert times to matplotlib date format.
+    times_dt = times.to_datetime()  # array of datetime objects
+    times_plot = mdates.date2num(times_dt)  # convert to float numbers
+
+    fig = plt.figure(figsize=(10, 12))
+
+    # === Define axes positions manually ===
+    # Coordinates: [left, bottom, width, height] in figure fraction.
+    #
+    # Axis 1: Time series plot (no colorbar)
+    ax1 = fig.add_axes([0.1, 0.7, 0.65, 0.2])
+    slider_ax_t = fig.add_axes([0.78, 0.7, 0.03, 0.2])  # vertical slider for d_idx
+
+    # Axis 2: Directions scatter (with colorbar)
+    ax2 = fig.add_axes([0.1, 0.4, 0.65, 0.2])
+    slider_ax_d = fig.add_axes([0.78, 0.4, 0.03, 0.2])  # vertical slider for t_idx
+    ax2_colorbar = fig.add_axes([0.82, 0.4, 0.03, 0.2])
+
+    # Axis 3: Antenna scatter (with colorbar)
+    ax3 = fig.add_axes([0.1, 0.1, 0.65, 0.2])
+    slider_ax_a = fig.add_axes([0.78, 0.1, 0.03, 0.2])  # vertical slider for a_idx
+    ax3_colorbar = fig.add_axes([0.82, 0.1, 0.03, 0.2])
+
+    # --- Initialize default indices ---
+    t_idx_init = 0
+    d_idx_init = 0
+    a_idx_init = 0
+
+    # --- Plot for Axis 1: Time Series ---
+    # Plot: dtec[:, d_idx, a_idx] vs. times.
+    line1, = ax1.plot(times_plot, dtec[:, d_idx_init, a_idx_init])
+    ax1.set_ylim(-50, 50)
+    ax1.set_title("Time Slice: dtec[:, d, a]")
+    ax1.set_xlabel("Time")
+    ax1.set_ylabel(r"$\Delta\mathrm{TEC}$ (mTECU)")
+    ax1.xaxis_date()
+    fig.autofmt_xdate()
+
+    # --- Plot for Axis 2: Directions Scatter ---
+    # Plot: dtec[t_idx, :, a_idx] vs. (directions.ra.deg, directions.dec.deg)
+    sc2 = ax2.scatter(directions.ra.deg, directions.dec.deg,
+                      c=dtec[t_idx_init, :, a_idx_init], cmap='jet', vmin=-50, vmax=50)
+    ax2.set_title("Direction Slice: dtec[t, :, a]")
+    ax2.set_xlabel("RA (deg)")
+    ax2.set_ylabel("Dec (deg)")
+    cb2 = plt.colorbar(sc2, cax=ax2_colorbar, label=r"$\Delta\mathrm{TEC}$ (mTECU)")
+
+    # --- Plot for Axis 3: Antenna Scatter ---
+    # Plot: dtec[t_idx, d_idx, :] vs. (antennas.lon.deg, antennas.lat.deg)
+    sc3 = ax3.scatter(antennas.lon.deg, antennas.lat.deg,
+                      c=dtec[t_idx_init, d_idx_init, :], cmap='jet', vmin=-50, vmax=50)
+    ax3.set_title("Antenna Slice: dtec[t, d, :]")
+    ax3.set_xlabel("Longitude (deg)")
+    ax3.set_ylabel("Latitude (deg)")
+    cb3 = plt.colorbar(sc3, cax=ax3_colorbar, label=r"$\Delta\mathrm{TEC}$ (mTECU)")
+
+    # --- Create vertical sliders ---
+    slider_t = Slider(slider_ax_t, 't_idx', 0, T - 1, valinit=t_idx_init,
+                      valstep=1, orientation='vertical')
+    slider_d = Slider(slider_ax_d, 'd_idx', 0, D - 1, valinit=d_idx_init,
+                      valstep=1, orientation='vertical')
+    slider_a = Slider(slider_ax_a, 'a_idx', 0, A - 1, valinit=a_idx_init,
+                      valstep=1, orientation='vertical')
+
+    # --- Update function ---
+    def update(val):
+        # Get current slider values as integers.
+        t_idx = int(slider_t.val)
+        d_idx = int(slider_d.val)
+        a_idx = int(slider_a.val)
+
+        # Axis 1: Time series slice (depends on d_idx and a_idx)
+        line1.set_ydata(dtec[:, d_idx, a_idx])
+
+        # Axis 2: Directions scatter (depends on t_idx and a_idx)
+        sc2.set_array(dtec[t_idx, :, a_idx])
+
+        # Axis 3: Antenna scatter (depends on t_idx and d_idx)
+        sc3.set_array(dtec[t_idx, d_idx, :])
+
+        fig.canvas.draw_idle()
+
+    slider_t.on_changed(update)
+    slider_d.on_changed(update)
+    slider_a.on_changed(update)
+
+    plt.show()
+
+
+# simulate ionosphere over a give resolution
 
 def evolve_gcrs(gcrs, dt):
     """

@@ -1,3 +1,4 @@
+import time
 from collections import deque
 
 import jax
@@ -12,44 +13,49 @@ from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.astropy_utils import create_spherical_grid_old
 from dsa2000_common.common.plot_utils import figs_to_gif
 from dsa2000_fm.systematics.ionosphere import construct_eval_interp_struct, IonosphereLayer, IonosphereMultiLayer, \
-    build_ionosphere_gain_model
+    build_ionosphere_gain_model, construct_canonical_ionosphere, compute_x0_radius
 
 
 def test_ionosphere_dtec_gain_model():
     ref_time = at.Time.now()
-    times = ref_time + 2 * np.arange(10) * au.s
+    times = ref_time + 6 * np.arange(100) * au.s
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
-    antennas = array.get_antennas()[:2]
+    antennas = array.get_antennas()
     ref_location = array.get_array_location()
     phase_center = ENU(0, 0, 1, obstime=ref_time, location=ref_location).transform_to(ac.ICRS())
 
     # directions = phase_center[None]
 
-    angular_resolution = 0.5 * au.deg
+    angular_resolution = 0.66 * au.deg
 
-    model_directions = create_spherical_grid_old(
+    directions = create_spherical_grid_old(
         pointing=phase_center,
-        angular_radius=4 * au.deg,
+        angular_radius=3 * au.deg,
         dr=angular_resolution
     )
-    print(f"Number of model directions: {len(model_directions)}")
+    print(f"Number of directions: {len(directions)}")
+
+    x0_radius = compute_x0_radius(ref_location, ref_time)
+    ionosphere = construct_canonical_ionosphere(
+        x0_radius=x0_radius
+    )
 
     # T = int((times.max() - times.min()) / (1 * au.min)) + 1
     # model_times = times.min() + np.arange(0., T) * au.min
     model_freqs = [700, 1350, 2000] * au.MHz
     gain_model = build_ionosphere_gain_model(
+        ionosphere=ionosphere,
         model_freqs=model_freqs,
         antennas=antennas,
         ref_location=ref_location,
         times=times,
         ref_time=ref_time,
-        directions=model_directions,
+        directions=directions,
         phase_centre=phase_center,
-        dt=1 * au.min
+        save_file='simulated_dtec.json'
     )
     gain_model.plot_regridded_beam(ant_idx=-1)
-    gain_model.to_aperture().plot_regridded_beam(ant_idx=-1, is_aperture=True)
 
 
 def test_ionosphere_tec_multi_layer_conditional_flow():
