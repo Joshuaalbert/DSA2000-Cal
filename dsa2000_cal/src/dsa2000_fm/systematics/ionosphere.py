@@ -16,6 +16,7 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
 from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.astropy_utils import create_spherical_earth_grid, mean_itrs
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.jax_utils import multi_vmap
 from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
@@ -26,40 +27,6 @@ from dsa2000_common.gain_models.base_spherical_interpolator import phi_theta_fro
 tfpd = tfp.distributions
 
 TEC_CONV = -8.4479745 * au.rad * au.MHz  # rad * MHz / mTECU
-
-
-def compute_ionosphere_intersection(
-        x_gcrs, k_gcrs,
-        x0_gcrs,
-        bottom: FloatArray, width: FloatArray
-):
-    """
-    Compute the intersection of a geodesic with the ionosphere layer, which is seen as a spherical shell around Earth.
-
-    Args:
-        x_gcrs: [3] the origin of the geodesic
-        k_gcrs: [3] the direction of the geodesic
-        x0_gcrs: [3] the reference point where ionosphere is measured from.
-        bottom: the bottom of the ionosphere layer
-        width: the width of the ionosphere layer
-
-    Returns:
-        the intersection points along the geodesic
-    """
-    # |x(smin)| = |x + smin * k| = |x0| + bottom = v
-    # ==> |x + smin * k|^2 = (|x0| + bottom)^2 = v^2
-    # ==> x^2 + 2 smin x . k + smin^2 - v^2 = 0
-    # ==> smin = - (x . k) +- sqrt((x . k)^2 +(x^2 - v^2))
-    # choose the positive root
-    xk = x_gcrs @ k_gcrs
-    xx = x_gcrs @ x_gcrs
-    x0_norm = jnp.linalg.norm(x0_gcrs)
-    vmin = x0_norm + bottom
-    vmax = vmin + width
-
-    smin = - xk + jnp.sqrt(xk ** 2 - (xx - vmin ** 2))
-    smax = - xk + jnp.sqrt(xk ** 2 - (xx - vmax ** 2))
-    return smin, smax
 
 
 def calc_intersections(x, s, x0_radius, bottom, width, s_normed: bool = False):
@@ -945,6 +912,49 @@ def construct_eval_interp_struct(antennas: ac.EarthLocation, ref_location: ac.Ea
         check_spacing=True
     )
     return x0_radius, times_jax, antennas_gcrs, directions_gcrs
+
+
+def create_model_antennas(antennas: ac.EarthLocation, spatial_resolution: au.Quantity) -> ac.EarthLocation:
+    """
+    Create model antennas at a given spatial resolution.
+
+    Args:
+        antennas: [n] the input antennas
+        spatial_resolution: a spatial resolution
+
+    Returns:
+        [m] model antennas, ideally m<n
+    """
+    antennas_itrs = antennas.get_itrs()
+    antennas_itrs_xyz = antennas_itrs.cartesian.xyz.T
+    array_center = mean_itrs(antennas_itrs).earth_location
+    radius = np.max(np.linalg.norm(
+        antennas_itrs_xyz - array_center.get_itrs().cartesian.xyz,
+        axis=-1
+    ))
+    print(f"Array radius: {radius}")
+
+    model_antennas = create_spherical_earth_grid(
+        center=array_center,
+        radius=radius,
+        dr=spatial_resolution
+    )
+
+    # filter out model antennas that are too far from any actual antenna
+    def keep(model_antenna: ac.EarthLocation):
+        dist = np.linalg.norm(
+            model_antenna.get_itrs().cartesian.xyz - antennas_itrs_xyz,
+            axis=-1
+        )
+        return np.any(dist < spatial_resolution)
+
+    # List of EarthLocation
+    model_antennas = list(filter(keep, model_antennas))
+    # Via ITRS then back to EarthLocation
+    model_antennas: ac.EarthLocation = ac.concatenate(list(map(lambda x: x.get_itrs(), model_antennas))).earth_location
+    if len(model_antennas) >= len(antennas):
+        print(f"Spatial resolution: {spatial_resolution} ==> more model antennas than actual antennas.")
+    return model_antennas
 
 
 def build_ionosphere_gain_model(

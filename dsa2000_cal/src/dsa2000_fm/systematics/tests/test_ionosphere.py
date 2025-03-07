@@ -222,17 +222,6 @@ def test_ionosphere():
     np.testing.assert_allclose(np.linalg.norm(x_top_ff), x0_radius + ionosphere.bottom + ionosphere.width)
 
 
-def test_compute_ionosphere_intersection():
-    x_gcrs = jnp.array([0.0, 0.0, 0.0])
-    k_gcrs = jnp.array([0.0, 0.0, 1.0])
-    x0_gcrs = jnp.array([0.0, 0.0, 0.0])
-    bottom = 0.5
-    width = 1.0
-    smin, smax = compute_ionosphere_intersection(x_gcrs, k_gcrs, x0_gcrs, bottom, width)
-    assert smin == 0.5
-    assert smax == 1.5
-
-
 def test_calibrate_resolution():
     layer = IonosphereLayer(
         length_scale=5.,
