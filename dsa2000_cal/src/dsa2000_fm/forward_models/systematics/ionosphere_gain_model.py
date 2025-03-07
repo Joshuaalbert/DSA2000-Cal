@@ -19,7 +19,6 @@ from dsa2000_common.common.jax_utils import multi_vmap
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.gain_models.base_spherical_interpolator import phi_theta_from_lmn, \
     BaseSphericalInterpolatorGainModel, build_spherical_interpolator
-from dsa2000_fm.forward_models.systematics.ionosphere_simulation import TEC_CONV, IonosphereSimulation
 
 tfpd = tfp.distributions
 

@@ -20,7 +20,7 @@ def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):
         try:
             for i, fig in enumerate(fig_generator):
                 # Save each figure to a temporary file
-                filename = f'{tmp_dir}/frame_{i}.png'
+                filename = f'{tmp_dir}/frame_{i:03d}.png'
                 fig.savefig(filename, dpi=dpi)  # Specify DPI for image quality
                 filenames.append(filename)
         except KeyboardInterrupt:

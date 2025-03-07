@@ -9,8 +9,47 @@ from tomographic_kernel.frames import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
+from dsa2000_common.common.astropy_utils import create_spherical_grid_old
 from dsa2000_common.common.plot_utils import figs_to_gif
-from dsa2000_fm.systematics.ionosphere import construct_eval_interp_struct, IonosphereLayer, IonosphereMultiLayer
+from dsa2000_fm.systematics.ionosphere import construct_eval_interp_struct, IonosphereLayer, IonosphereMultiLayer, \
+    build_ionosphere_gain_model
+
+
+def test_ionosphere_dtec_gain_model():
+    ref_time = at.Time.now()
+    times = ref_time + 2 * np.arange(10) * au.s
+    fill_registries()
+    array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
+    antennas = array.get_antennas()[:1]
+    ref_location = array.get_array_location()
+    phase_center = ENU(0, 0, 1, obstime=ref_time, location=ref_location).transform_to(ac.ICRS())
+
+    # directions = phase_center[None]
+
+    angular_resolution = 0.5 * au.deg
+
+    model_directions = create_spherical_grid_old(
+        pointing=phase_center,
+        angular_radius=4 * au.deg,
+        dr=angular_resolution
+    )
+    print(f"Number of model directions: {len(model_directions)}")
+
+    # T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    # model_times = times.min() + np.arange(0., T) * au.min
+    model_freqs = [700, 1350, 2000] * au.MHz
+    gain_model = build_ionosphere_gain_model(
+        model_freqs=model_freqs,
+        antennas=antennas,
+        ref_location=ref_location,
+        times=times,
+        ref_time=ref_time,
+        directions=model_directions,
+        phase_centre=phase_center,
+        dt=1 * au.min
+    )
+    gain_model.plot_regridded_beam(ant_idx=-1)
+    gain_model.to_aperture().plot_regridded_beam(ant_idx=-1, is_aperture=True)
 
 
 def test_ionosphere_tec_multi_layer_conditional_flow():
@@ -24,8 +63,11 @@ def test_ionosphere_tec_multi_layer_conditional_flow():
 
     directions = phase_center[None]
 
+    T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    model_times = times.min() + np.arange(0., T) * au.min
+
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
-        antennas, ref_location, times, ref_time, directions
+        antennas, ref_location, times, ref_time, directions, model_times
     )
 
     key = jax.random.PRNGKey(0)
@@ -107,8 +149,10 @@ def test_ionosphere_dtec_multi_layer_conditional_flow():
 
     directions = phase_center[None]
 
+    T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    model_times = times.min() + np.arange(0., T) * au.min
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
-        antennas, ref_location, times, ref_time, directions
+        antennas, ref_location, times, ref_time, directions, model_times
     )
 
     reference_antenna_gcrs = antennas_gcrs[0:1]
@@ -202,8 +246,10 @@ def test_ionosphere_frozen_flow_dtec_multi_layer():
 
     directions = phase_center[None]
 
+    T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    model_times = times.min() + np.arange(0., T) * au.min
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
-        antennas, ref_location, times, ref_time, directions
+        antennas, ref_location, times, ref_time, directions, model_times
     )
 
     reference_antenna_gcrs = antennas_gcrs[0:1]
@@ -282,8 +328,11 @@ def test_ionosphere_frozen_flow_dtec():
 
     directions = phase_center[None]
 
+    T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    model_times = times.min() + np.arange(0., T) * au.min
+
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
-        antennas, ref_location, times, ref_time, directions
+        antennas, ref_location, times, ref_time, directions, model_times
     )
 
     reference_antenna_gcrs = antennas_gcrs[0:1]
@@ -344,8 +393,10 @@ def test_ionosphere_frozen_flow_tec():
 
     directions = phase_center[None]
 
+    T = int((times.max() - times.min()) / (1 * au.min)) + 1
+    model_times = times.min() + np.arange(0., T) * au.min
     x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
-        antennas, ref_location, times, ref_time, directions
+        antennas, ref_location, times, ref_time, directions, model_times
     )
 
     key = jax.random.PRNGKey(0)
