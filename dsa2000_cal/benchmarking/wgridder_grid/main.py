@@ -6,7 +6,7 @@ import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_common.common.wgridder import vis_to_image

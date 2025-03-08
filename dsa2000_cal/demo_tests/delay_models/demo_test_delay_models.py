@@ -9,7 +9,7 @@ from astropy import time as at, units as au, coordinates as ac
 from astropy.coordinates import offset_by
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry

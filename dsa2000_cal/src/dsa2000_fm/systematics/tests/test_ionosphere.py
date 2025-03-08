@@ -3,7 +3,7 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from scipy.integrate import quad
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry

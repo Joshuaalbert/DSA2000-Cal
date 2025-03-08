@@ -5,7 +5,7 @@ import astropy.time as at
 import astropy.units as au
 import numpy as np
 import ujson
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel

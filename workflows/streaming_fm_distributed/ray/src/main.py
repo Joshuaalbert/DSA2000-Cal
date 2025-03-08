@@ -10,7 +10,7 @@ import astropy.units as au
 import jax
 import numpy as np
 import ray
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry

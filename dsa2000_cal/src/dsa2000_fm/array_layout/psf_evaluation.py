@@ -17,7 +17,7 @@ from scipy.optimize import root_scalar
 from scipy.spatial import ConvexHull
 from scipy.spatial import KDTree
 from scipy.special import j0
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 from tqdm import tqdm
 
 from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV3

@@ -10,7 +10,7 @@ import numpy as np
 from astropy import coordinates as ac, time as at, units as au, constants as const
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from jax import config, numpy as jnp
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.interp_utils import InterpolatedArray

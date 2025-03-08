@@ -5,7 +5,7 @@ import astropy.time as at
 import astropy.units as au
 import jax
 import numpy as np
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_common.common.types import VisibilityCoords

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from astropy import time as at, coordinates as ac, units as au
 from jax import numpy as jnp
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.coord_utils import earth_location_to_uvw_approx
 from dsa2000_common.common.mixed_precision_utils import mp_policy

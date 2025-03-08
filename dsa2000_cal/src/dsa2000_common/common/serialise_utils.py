@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import ujson
 from pydantic import BaseModel
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF

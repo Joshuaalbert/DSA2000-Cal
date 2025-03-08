@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.coord_utils import icrs_to_lmn
 from dsa2000_common.common.interp_utils import InterpolatedArray

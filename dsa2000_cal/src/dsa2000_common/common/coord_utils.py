@@ -4,7 +4,7 @@ import astropy.units as au
 import numpy as np
 from astropy.coordinates import EarthLocation
 from astropy.units import Quantity
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.delay_models.uvw_utils import perley_icrs_from_lmn, perley_lmn_from_icrs
