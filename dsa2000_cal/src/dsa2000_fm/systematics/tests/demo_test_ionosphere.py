@@ -45,6 +45,7 @@ def test_ionosphere_dtec_gain_model():
     # model_times = times.min() + np.arange(0., T) * au.min
     model_freqs = [700, 1350, 2000] * au.MHz
     gain_model = build_ionosphere_gain_model(
+        key=jax.random.PRNGKey(0),
         ionosphere=ionosphere,
         model_freqs=model_freqs,
         antennas=antennas,

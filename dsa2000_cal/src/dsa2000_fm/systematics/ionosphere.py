@@ -1257,6 +1257,7 @@ def construct_canonical_ionosphere(x0_radius: FloatArray, turbulent: bool = True
 
 
 def build_ionosphere_gain_model(
+        key,
         ionosphere: AbstractIonosphereLayer,
         model_freqs: au.Quantity,
         antennas: ac.EarthLocation,
@@ -1265,6 +1266,7 @@ def build_ionosphere_gain_model(
         ref_time: at.Time,
         directions: ac.ICRS,
         phase_centre: ac.ICRS,
+        full_stokes: bool = True,
         spatial_resolution: au.Quantity = 2 * au.km,
         save_file: str | None = None
 ) -> BaseSphericalInterpolatorGainModel:
@@ -1356,7 +1358,7 @@ def build_ionosphere_gain_model(
     past_sample = deque(maxlen=1)
     samples = []
     flow_cache = None
-    key = jax.random.PRNGKey(0)
+
     for t in range(len(times_jax)):
         sample_key, key = jax.random.split(key)
         t0 = time.time()
@@ -1421,7 +1423,7 @@ def build_ionosphere_gain_model(
             times=times,
             directions=directions,
             antennas=antennas,
-            dtec=dtec_samples
+            dtec=np.asarray(dtec_samples)
         )
         with open(save_file, 'w') as f:
             f.write(result.json(indent=2))
@@ -1429,8 +1431,9 @@ def build_ionosphere_gain_model(
 
     phase_factor = quantity_to_jnp(TEC_CONV / model_freqs, 'rad')  # [F]
     phase = dtec_samples[..., None] * phase_factor  # [T, D, A, F]
-    scalar_gain = jax.lax.complex(jnp.cos(phase), jnp.sin(phase))  # [T, D, A, F]
-    model_gains = scalar_gain[..., None, None] * jnp.eye(2)  # [T, D, A, F, 2, 2]
+    model_gains = jax.lax.complex(jnp.cos(phase), jnp.sin(phase))  # [T, D, A, F]
+    if full_stokes:
+        model_gains = model_gains[..., None, None] * jnp.eye(2)  # [T, D, A, F, 2, 2]
     model_gains = model_gains * au.dimensionless_unscaled
 
     # The samples are now in past_sample

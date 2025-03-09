@@ -53,10 +53,16 @@ class GainModel(ABC):
             raise ValueError("Can only multiply by another GainModel.")
         return ProductGainModel([self, other])
 
-    def __rmatmul__(self, other):
-        if not isinstance(other, GainModel):
-            raise ValueError("Can only multiply by another GainModel.")
-        return ProductGainModel([other, self])
+
+def test_matmul():
+    class A:
+        def __init__(self, name: str):
+            self.name = name
+
+        def __matmul__(self, other):
+            print('self', self.name, 'other', other.name)
+
+    A('a') @ A('b')
 
 
 @dataclasses.dataclass(eq=False)
