@@ -99,8 +99,8 @@ class ProductGainModel(GainModel):
                      antenna_indices: IntArray | None = None) -> jax.Array:
         gains = [
             gain_model.compute_gain(freqs=freqs, times=times, lmn_geodesic=lmn_geodesic,
-                                    antenna_indices=antenna_indices) for gain_model in
-            self.gain_models
+                                    antenna_indices=antenna_indices)
+            for gain_model in self.gain_models
         ]
 
         for gain in gains:
@@ -188,7 +188,7 @@ class ProductGainModel(GainModel):
         Returns:
             the unflattened model
         """
-        gain_models = children
+        [gain_models] = children
         return ProductGainModel(gain_models, skip_post_init=True)
 
 
