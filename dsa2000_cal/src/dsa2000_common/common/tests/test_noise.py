@@ -119,7 +119,6 @@ def test_calc_noise_fullband_obs():
         flag_frac=flag_frac,
         num_pol=2
     )
-    print(chan_width_hz * num_channels)
     print(f"Image noise (10.3min 33% flagged): {image_noise} Jy / beam")
 
     baseline_noise = calc_baseline_noise(

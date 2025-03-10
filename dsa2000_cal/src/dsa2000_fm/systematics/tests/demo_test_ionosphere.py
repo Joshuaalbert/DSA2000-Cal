@@ -10,7 +10,8 @@ from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
-from dsa2000_common.common.astropy_utils import create_spherical_grid_old
+from dsa2000_common.common.astropy_utils import create_spherical_grid_old, create_spherical_grid, \
+    create_spherical_spiral_grid
 from dsa2000_common.common.plot_utils import figs_to_gif
 from dsa2000_fm.systematics.ionosphere import construct_eval_interp_struct, IonosphereLayer, IonosphereMultiLayer, \
     build_ionosphere_gain_model, construct_canonical_ionosphere, compute_x0_radius
@@ -18,21 +19,17 @@ from dsa2000_fm.systematics.ionosphere import construct_eval_interp_struct, Iono
 
 def test_ionosphere_dtec_gain_model():
     ref_time = at.Time.now()
-    times = ref_time + 6 * np.arange(100) * au.s
+    times = ref_time + 6 * np.arange(1) * au.s
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa2000W'))
     antennas = array.get_antennas()
     ref_location = array.get_array_location()
     phase_center = ENU(0, 0, 1, obstime=ref_time, location=ref_location).transform_to(ac.ICRS())
 
-    # directions = phase_center[None]
-
-    angular_resolution = 0.66 * au.deg
-
-    directions = create_spherical_grid_old(
+    directions = create_spherical_spiral_grid(
         pointing=phase_center,
-        angular_radius=3 * au.deg,
-        dr=angular_resolution
+        num_points=20,
+        angular_radius=90 * au.deg
     )
     print(f"Number of directions: {len(directions)}")
 

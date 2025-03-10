@@ -19,7 +19,7 @@ from jax import numpy as jnp
 from matplotlib.widgets import Slider
 from typing_extensions import NamedTuple
 
-from dsa2000_common.common.array_types import FloatArray, IntArray
+from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.astropy_utils import create_spherical_earth_grid, mean_itrs
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.jax_utils import multi_vmap
@@ -144,11 +144,11 @@ class ConditionalCache(NamedTuple):
     """
     A cache for kernel calculations, which can be reused if system considered not to change much.
     """
-    K_xx: FloatArray  # [N, N]
-    mean_x: FloatArray  # [N]
-    K_ss: FloatArray  # [M, M]
-    mean_s: FloatArray  # [M]
-    K_sx: FloatArray  # [M, N]
+    K_xx: FloatArray | None  # [N, N]
+    mean_x: FloatArray | None  # [N]
+    K_ss: FloatArray | None  # [M, M]
+    mean_s: FloatArray | None  # [M]
+    K_sx: FloatArray | None  # [M, N]
 
 
 class AbstractIonosphereLayer(ABC):
@@ -466,28 +466,28 @@ class AbstractIonosphereLayer(ABC):
         Returns:
             [D, T, A] shaped array of DTEC or TEC
         """
+        K_xx, mean_x = self.compute_tec_process_params(
+            antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+        )
+        K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
+        K_sx = self.compute_conditional_tec_kernel(
+            antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other,
+            resolution
+        )
         if cache is None:
-            K_xx, mean_x = self.compute_tec_process_params(
-                antennas_gcrs_other, times_other, directions_gcrs_other, resolution
-            )
-            K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
-            K_sx = self.compute_conditional_tec_kernel(
-                antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other,
-                resolution
-            )
-            cache = ConditionalCache(
-                K_xx=K_xx,
-                mean_x=mean_x,
-                K_ss=K_ss,
-                mean_s=mean_s,
-                K_sx=K_sx
-            )
-        else:
-            K_xx = cache.K_xx
-            mean_x = cache.mean_x
-            K_ss = cache.K_ss
-            mean_s = cache.mean_s
-            K_sx = cache.K_sx
+            cache = ConditionalCache(K_xx=None, mean_x=None, K_ss=None, mean_s=None, K_sx=None)
+        K_xx = cache.K_xx if cache.K_xx is not None and np.shape(cache.K_xx) == np.shape(K_xx) else K_xx
+        mean_x = cache.mean_x if cache.mean_x is not None and np.shape(cache.mean_x) == np.shape(mean_x) else mean_x
+        K_ss = cache.K_ss if cache.K_ss is not None and np.shape(cache.K_ss) == np.shape(K_ss) else K_ss
+        mean_s = cache.mean_s if cache.mean_s is not None and np.shape(cache.mean_s) == np.shape(mean_s) else mean_s
+        K_sx = cache.K_sx if cache.K_sx is not None and np.shape(cache.K_sx) == np.shape(K_sx) else K_sx
+        cache = ConditionalCache(
+            K_xx=K_xx,
+            mean_x=mean_x,
+            K_ss=K_ss,
+            mean_s=mean_s,
+            K_sx=K_sx
+        )
         return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, tec_other, jitter_mtec), cache
 
     def sample_conditional_dtec(self, key,
@@ -520,30 +520,31 @@ class AbstractIonosphereLayer(ABC):
         Returns:
             [D, T, A] shaped mean and var
         """
+
+        K_xx, mean_x = self.compute_dtec_process_params(
+            reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+        )
+        K_ss, mean_s = self.compute_dtec_process_params(
+            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
+        )
+        K_sx = self.compute_conditional_dtec_kernel(
+            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
+            directions_gcrs_other, resolution
+        )
         if cache is None:
-            K_xx, mean_x = self.compute_dtec_process_params(
-                reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
-            )
-            K_ss, mean_s = self.compute_dtec_process_params(
-                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
-            )
-            K_sx = self.compute_conditional_dtec_kernel(
-                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
-                directions_gcrs_other, resolution
-            )
-            cache = ConditionalCache(
-                K_xx=K_xx,
-                mean_x=mean_x,
-                K_ss=K_ss,
-                mean_s=mean_s,
-                K_sx=K_sx
-            )
-        else:
-            K_xx = cache.K_xx
-            mean_x = cache.mean_x
-            K_ss = cache.K_ss
-            mean_s = cache.mean_s
-            K_sx = cache.K_sx
+            cache = ConditionalCache(K_xx=None, mean_x=None, K_ss=None, mean_s=None, K_sx=None)
+        K_xx = cache.K_xx if cache.K_xx is not None and np.shape(cache.K_xx) == np.shape(K_xx) else K_xx
+        mean_x = cache.mean_x if cache.mean_x is not None and np.shape(cache.mean_x) == np.shape(mean_x) else mean_x
+        K_ss = cache.K_ss if cache.K_ss is not None and np.shape(cache.K_ss) == np.shape(K_ss) else K_ss
+        mean_s = cache.mean_s if cache.mean_s is not None and np.shape(cache.mean_s) == np.shape(mean_s) else mean_s
+        K_sx = cache.K_sx if cache.K_sx is not None and np.shape(cache.K_sx) == np.shape(K_sx) else K_sx
+        cache = ConditionalCache(
+            K_xx=K_xx,
+            mean_x=mean_x,
+            K_ss=K_ss,
+            mean_s=mean_s,
+            K_sx=K_sx
+        )
         return self._conditional_sample(key, K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec), cache
 
     def predict_conditional_tec(
@@ -574,28 +575,28 @@ class AbstractIonosphereLayer(ABC):
         Returns:
             [D, T, A] shaped mean and var
         """
+        K_xx, mean_x = self.compute_tec_process_params(
+            antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+        )
+        K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
+        K_sx = self.compute_conditional_tec_kernel(
+            antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other,
+            resolution
+        )
         if cache is None:
-            K_xx, mean_x = self.compute_tec_process_params(
-                antennas_gcrs_other, times_other, directions_gcrs_other, resolution
-            )
-            K_ss, mean_s = self.compute_tec_process_params(antennas_gcrs, times, directions_gcrs, resolution)
-            K_sx = self.compute_conditional_tec_kernel(
-                antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other,
-                resolution
-            )
-            cache = ConditionalCache(
-                K_xx=K_xx,
-                mean_x=mean_x,
-                K_ss=K_ss,
-                mean_s=mean_s,
-                K_sx=K_sx
-            )
-        else:
-            K_xx = cache.K_xx
-            mean_x = cache.mean_x
-            K_ss = cache.K_ss
-            mean_s = cache.mean_s
-            K_sx = cache.K_sx
+            cache = ConditionalCache(K_xx=None, mean_x=None, K_ss=None, mean_s=None, K_sx=None)
+        K_xx = cache.K_xx if cache.K_xx is not None and np.shape(cache.K_xx) == np.shape(K_xx) else K_xx
+        mean_x = cache.mean_x if cache.mean_x is not None and np.shape(cache.mean_x) == np.shape(mean_x) else mean_x
+        K_ss = cache.K_ss if cache.K_ss is not None and np.shape(cache.K_ss) == np.shape(K_ss) else K_ss
+        mean_s = cache.mean_s if cache.mean_s is not None and np.shape(cache.mean_s) == np.shape(mean_s) else mean_s
+        K_sx = cache.K_sx if cache.K_sx is not None and np.shape(cache.K_sx) == np.shape(K_sx) else K_sx
+        cache = ConditionalCache(
+            K_xx=K_xx,
+            mean_x=mean_x,
+            K_ss=K_ss,
+            mean_s=mean_s,
+            K_sx=K_sx
+        )
         return self._conditional_predict(K_ss, mean_s, K_xx, mean_x, K_sx, tec_other, jitter_mtec), cache
 
     def predict_conditional_dtec(self,
@@ -627,30 +628,30 @@ class AbstractIonosphereLayer(ABC):
         Returns:
             [D, T, A] shaped mean and var
         """
+        K_xx, mean_x = self.compute_dtec_process_params(
+            reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
+        )
+        K_ss, mean_s = self.compute_dtec_process_params(
+            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
+        )
+        K_sx = self.compute_conditional_dtec_kernel(
+            reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
+            directions_gcrs_other, resolution
+        )
         if cache is None:
-            K_xx, mean_x = self.compute_dtec_process_params(
-                reference_antenna_gcrs, antennas_gcrs_other, times_other, directions_gcrs_other, resolution
-            )
-            K_ss, mean_s = self.compute_dtec_process_params(
-                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, resolution
-            )
-            K_sx = self.compute_conditional_dtec_kernel(
-                reference_antenna_gcrs, antennas_gcrs, times, directions_gcrs, antennas_gcrs_other, times_other,
-                directions_gcrs_other, resolution
-            )
-            cache = ConditionalCache(
-                K_xx=K_xx,
-                mean_x=mean_x,
-                K_ss=K_ss,
-                mean_s=mean_s,
-                K_sx=K_sx
-            )
-        else:
-            K_xx = cache.K_xx
-            mean_x = cache.mean_x
-            K_ss = cache.K_ss
-            mean_s = cache.mean_s
-            K_sx = cache.K_sx
+            cache = ConditionalCache(K_xx=None, mean_x=None, K_ss=None, mean_s=None, K_sx=None)
+        K_xx = cache.K_xx if cache.K_xx is not None and np.shape(cache.K_xx) == np.shape(K_xx) else K_xx
+        mean_x = cache.mean_x if cache.mean_x is not None and np.shape(cache.mean_x) == np.shape(mean_x) else mean_x
+        K_ss = cache.K_ss if cache.K_ss is not None and np.shape(cache.K_ss) == np.shape(K_ss) else K_ss
+        mean_s = cache.mean_s if cache.mean_s is not None and np.shape(cache.mean_s) == np.shape(mean_s) else mean_s
+        K_sx = cache.K_sx if cache.K_sx is not None and np.shape(cache.K_sx) == np.shape(K_sx) else K_sx
+        cache = ConditionalCache(
+            K_xx=K_xx,
+            mean_x=mean_x,
+            K_ss=K_ss,
+            mean_s=mean_s,
+            K_sx=K_sx
+        )
         return self._conditional_predict(K_ss, mean_s, K_xx, mean_x, K_sx, dtec_other, jitter_mtec), cache
 
 
@@ -1268,6 +1269,7 @@ def build_ionosphere_gain_model(
         phase_centre: ac.ICRS,
         full_stokes: bool = True,
         spatial_resolution: au.Quantity = 2 * au.km,
+        predict_batch_size: int = 1,
         save_file: str | None = None
 ) -> BaseSphericalInterpolatorGainModel:
     """
@@ -1287,14 +1289,26 @@ def build_ionosphere_gain_model(
         a gain model (note directions far from a `direction` are ill-defined).
     """
 
-    model_dt = 1 * au.min
+    # These model times are just for interpolators, not for actual simulation.
+    # TODO: once use the evolve_gcrs we can remove these.
+    model_dt = au.Quantity(6, 's')
     T = int((times.max() - times.min()) / model_dt) + 1
     model_times = times.min() + np.arange(0., T) * model_dt
 
+    # Get lower resolution grid to sample over.
     model_antennas = create_model_antennas(antennas, spatial_resolution=spatial_resolution)
     model_antennas_gcrs = InterpolatedArray(
         time_to_jnp(model_times, ref_time),
         model_antennas.get_gcrs(model_times[:, None]).cartesian.xyz.to('km').value.transpose((1, 2, 0)),
+        axis=0,
+        regular_grid=True,
+        check_spacing=True
+    )
+    model_directions = directions
+    model_directions_gcrs = InterpolatedArray(
+        time_to_jnp(model_times, ref_time),
+        model_directions.transform_to(ref_location.get_gcrs(model_times[:, None])).cartesian.xyz.value.transpose(
+            (1, 2, 0)),
         axis=0,
         regular_grid=True,
         check_spacing=True
@@ -1336,12 +1350,9 @@ def build_ionosphere_gain_model(
 
     @jax.jit
     def predict_conditional_dtec_in_antenna(
-            dir_idx: IntArray,
             ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-            directions_gcrs, times, model_antennas_gcrs, dtec_other, cache=None
+            directions_gcrs, times, model_antennas_gcrs, model_directions_gcrs, dtec_other, cache=None
     ):
-        dtec_other = dtec_other[dir_idx][None]  # [1, T, A]
-        directions_gcrs = directions_gcrs[dir_idx][None]  # [1]
         (pred_mean, _), cache = ionosphere.predict_conditional_dtec(
             reference_antenna_gcrs=reference_antenna_gcrs,
             antennas_gcrs=antennas_gcrs,
@@ -1349,10 +1360,11 @@ def build_ionosphere_gain_model(
             directions_gcrs=directions_gcrs,
             antennas_gcrs_other=model_antennas_gcrs,
             times_other=times,
-            directions_gcrs_other=directions_gcrs,
+            directions_gcrs_other=model_directions_gcrs,
             dtec_other=dtec_other,
             cache=cache
-        )  # [1, T, A]
+        )  # [D, T, A]
+        cache = cache._replace(K_ss=None, mean_s=None, K_sx=None)
         return pred_mean, cache
 
     past_sample = deque(maxlen=1)
@@ -1369,10 +1381,10 @@ def build_ionosphere_gain_model(
                     ionosphere=ionosphere,
                     reference_antenna_gcrs=reference_antenna_gcrs,
                     antennas_gcrs=model_antennas_gcrs,
-                    directions_gcrs=directions_gcrs,
+                    directions_gcrs=model_directions_gcrs,
                     times=times_jax[t:t + 1]
                 )
-            )
+            )  # [D, 1, A']
         else:
             n_past = len(past_sample)
             sample, flow_cache = jax.block_until_ready(
@@ -1382,7 +1394,7 @@ def build_ionosphere_gain_model(
                     reference_antenna_gcrs=reference_antenna_gcrs,
                     antennas_gcrs=model_antennas_gcrs,
                     times=times_jax[t:t + 1],
-                    directions_gcrs=directions_gcrs,
+                    directions_gcrs=model_directions_gcrs,
                     times_other=times_jax[t - n_past:t],
                     dtec_other=jnp.concatenate(past_sample, axis=1),
                     cache=flow_cache
@@ -1393,30 +1405,33 @@ def build_ionosphere_gain_model(
         t1 = time.time()
         print(f"Conditional sample iteration took {t1 - t0:.2f} seconds")
     interp_cache = None
-    for t, sample in enumerate(samples):
+    for t, _ in enumerate(samples):
         t0 = time.time()
-        # interpolate antennas
-        sample_interp = []
-        for dir_idx in range(len(directions)):
-            _sample_interp, interp_cache = jax.block_until_ready(
+        _interp_samples = []
+        # predict in batches
+        for start_ant_idx in range(0, len(antennas), predict_batch_size):
+            # automatically handles remainders
+            stop_ant_idx = min(start_ant_idx + predict_batch_size, len(antennas))
+            _interp_sample, interp_cache = jax.block_until_ready(
                 predict_conditional_dtec_in_antenna(
-                    dir_idx=dir_idx,
                     ionosphere=ionosphere,
                     reference_antenna_gcrs=reference_antenna_gcrs,
-                    antennas_gcrs=antennas_gcrs,
+                    antennas_gcrs=antennas_gcrs[start_ant_idx:stop_ant_idx],
                     directions_gcrs=directions_gcrs,
                     times=times_jax[t:t + 1],
                     model_antennas_gcrs=model_antennas_gcrs,
-                    dtec_other=sample,
+                    model_directions_gcrs=model_directions_gcrs,
+                    dtec_other=samples[t],
                     cache=interp_cache
                 )
-            )  # [1, 1, A]
-            sample_interp.append(_sample_interp)
-        sample_interp = jnp.concatenate(sample_interp, axis=0)  # [D, 1, A]
-        samples[t] = sample_interp
+            )  # [D, 1, batch_size]
+            _interp_samples.append(_interp_sample)
+        samples[t] = jnp.concatenate(_interp_samples, axis=2)  # [D, T, A]
         t1 = time.time()
         print(f"Interp step took {t1 - t0:.2f}s")
-    dtec_samples = jnp.concatenate(samples, axis=1).transpose((1, 0, 2))  # [D, T, A] -> [T, D, A]
+
+    samples = jnp.concatenate(samples, axis=1)  # [D, T, A]
+    dtec_samples = samples.transpose((1, 0, 2))  # [T, D, A]
 
     if save_file is not None:
         result = SimulationResult(
@@ -1427,6 +1442,7 @@ def build_ionosphere_gain_model(
         )
         with open(save_file, 'w') as f:
             f.write(result.json(indent=2))
+        print(f"Saved to {save_file}.")
     # explore_dtec(dtec_samples, antennas, directions, times)
 
     phase_factor = quantity_to_jnp(TEC_CONV / model_freqs, 'rad')  # [F]
@@ -1460,7 +1476,8 @@ def build_ionosphere_gain_model(
         model_theta=model_theta,
         model_freqs=model_freqs,
         model_gains=model_gains,
-        tile_antennas=False
+        tile_antennas=False,
+        regrid_num_neighbours=1
     )
 
 

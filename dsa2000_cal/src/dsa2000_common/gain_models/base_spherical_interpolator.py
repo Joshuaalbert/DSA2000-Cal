@@ -462,8 +462,8 @@ class BaseSphericalInterpolatorGainModel(GainModel):
 BaseSphericalInterpolatorGainModel.register_pytree()
 
 
-@partial(jax.jit, static_argnames=['resolution'])
-def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolution: int):
+@partial(jax.jit, static_argnames=['resolution', 'k'])
+def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolution: int, k: int = 6):
     """
     Regrid the input to a regular grid.
 
@@ -486,7 +486,7 @@ def regrid_to_regular_grid(model_lmn: jax.Array, model_gains: jax.Array, resolut
     N = jnp.where(LM2 > 1., -N, N)
     lmn_grid = jnp.stack([L.flatten(), M.flatten(), N.flatten()], axis=-1)
 
-    dist, idx = kd_tree_nn(model_lmn, lmn_grid, k=6)
+    dist, idx = kd_tree_nn(model_lmn, lmn_grid, k=k)
 
     _, idx0 = kd_tree_nn(model_lmn, jnp.asarray([[0., 0., 1.]]), k=1)  # [1,1]
     idx0 = idx0[0, 0]
@@ -543,7 +543,8 @@ def build_spherical_interpolator(
         ref_time: at.Time,
         tile_antennas: bool,
         resolution: int = 257,
-        include_backlobe: bool = False, #TODO: add extra dimension to model gains size two 0: n > 0, 1: n <= 0
+        include_backlobe: bool = False,  # TODO: add extra dimension to model gains size two 0: n > 0, 1: n <= 0
+        regrid_num_neighbours: int = 6
 ):
     """
     Uses nearest neighbour interpolation to construct the gain model.
@@ -628,7 +629,8 @@ def build_spherical_interpolator(
     lvec_jax, mvec_jax, model_gains_jax = regrid_to_regular_grid(
         model_lmn=lmn_data,
         model_gains=quantity_to_jnp(model_gains),
-        resolution=resolution
+        resolution=resolution,
+        k=regrid_num_neighbours
     )  # [num_model_times, lres, mres, [num_ant,] num_model_freqs, [2,2]]
 
     if tile_antennas:

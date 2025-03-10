@@ -1,9 +1,11 @@
 import jax
 import jax.numpy as jnp
 
+from dsa2000_common.common.array_types import FloatArray, IntArray
 
-def calc_baseline_noise(system_equivalent_flux_density: float | jax.Array, chan_width_hz: float | jax.Array,
-                        t_int_s: float | jax.Array) -> jax.Array:
+
+def calc_baseline_noise(system_equivalent_flux_density: FloatArray, chan_width_hz: FloatArray,
+                        t_int_s: FloatArray) -> jax.Array:
     """Calculate the per visibility rms for identical antennas.
 
     Args:
@@ -19,8 +21,9 @@ def calc_baseline_noise(system_equivalent_flux_density: float | jax.Array, chan_
     return system_equivalent_flux_density / jnp.sqrt(chan_width_hz * t_int_s)
 
 
-def calc_image_noise(system_equivalent_flux_density: float, bandwidth_hz: float, t_int_s: float, num_antennas: int,
-                     flag_frac: float, num_pol: int = 1) -> jax.Array:
+def calc_image_noise(system_equivalent_flux_density: FloatArray, bandwidth_hz: FloatArray, t_int_s: FloatArray,
+                     num_antennas: IntArray,
+                     flag_frac: FloatArray, num_pol: IntArray = 1) -> jax.Array:
     """
     Calculate the image noise for the central pixel.
     
