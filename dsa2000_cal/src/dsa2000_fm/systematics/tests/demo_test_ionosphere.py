@@ -51,6 +51,7 @@ def test_ionosphere_dtec_gain_model():
         ref_time=ref_time,
         directions=directions,
         phase_centre=phase_center,
+        full_stokes=False,
         save_file='simulated_dtec.json'
     )
     gain_model.plot_regridded_beam(ant_idx=-1)

@@ -26,25 +26,13 @@ from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_common.common.jax_utils import simple_broadcast, create_mesh
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp, jnp_to_time
+from dsa2000_common.common.ray_utils import TimerLog
 from dsa2000_common.common.vec_utils import kron_product
 from dsa2000_fm.forward_models.streaming.average_utils import average_rule
 
 tfpd = tfp.distributions
 
 
-@dataclasses.dataclass
-class TimerLog:
-    msg: str
-
-    def __post_init__(self):
-        self.t0 = time.time()
-
-    def __enter__(self):
-        print(f"{self.msg}")
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        print(f"... took {time.time() - self.t0:.3f} seconds")
-        return False
 
 
 class Data(NamedTuple):

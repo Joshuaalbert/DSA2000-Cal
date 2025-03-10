@@ -6,8 +6,9 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_common.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, auto_multi_vmap, \
-    convert_to_ufunc, _get_permutation, simple_broadcast
+from dsa2000_common.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, \
+    auto_multi_vmap, \
+    convert_to_ufunc, _get_permutation, simple_broadcast, chunked_pmap
 
 
 @pytest.mark.parametrize('use_scan', [True, False])
@@ -299,7 +300,6 @@ def test_simple_broadcast():
     assert np.all(res == 2)
     assert np.shape(res) == (3, 4, 5)
 
-
     def f(x, y):
         assert np.shape(x) == ()
         return x + y
@@ -311,3 +311,13 @@ def test_simple_broadcast():
 
     assert np.all(res == 2)
     assert np.shape(res) == (3, 4, 5)
+
+
+def test_chunked_pmap():
+    @chunked_pmap
+    def f(x):
+        assert x.shape == (2, 3)
+        return x.mean(axis=-1)
+
+    x = jnp.ones((4, 2, 3))
+    assert jax.block_until_ready(f(x)).shape == (4, 2)

@@ -1,5 +1,6 @@
 import os
 
+from dsa2000_common.common.ray_utils import TimerLog
 from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel
 
 os.environ['JAX_PLATFORMS'] = 'cuda'
@@ -12,9 +13,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
 
 # os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
-import dataclasses
 import os
-import time
 from functools import partial
 from typing import Generator, Tuple, List
 
@@ -63,21 +62,6 @@ from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_sourc
 from dsa2000_fm.forward_models.streaming.average_utils import average_rule
 
 tfpd = tfp.distributions
-
-
-@dataclasses.dataclass
-class TimerLog:
-    msg: str
-
-    def __post_init__(self):
-        self.t0 = time.time()
-
-    def __enter__(self):
-        print(f"{self.msg}")
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        print(f"... took {time.time() - self.t0:.3f} seconds")
-        return False
 
 
 def build_mock_obs_setup(array_name: str, num_sol_ints_time: int, frac_aperture: float = 1.):
