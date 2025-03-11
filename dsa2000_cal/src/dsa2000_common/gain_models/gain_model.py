@@ -112,7 +112,10 @@ class ProductGainModel(GainModel):
         # TODO: could use associative scan for parallel computation
         output = gains[0]
         for gain in gains[1:]:
-            output = output @ gain
+            if self.is_full_stokes():
+                output = output @ gain
+            else:
+                output = output * gain
         return output
 
     def save(self, filename: str):
