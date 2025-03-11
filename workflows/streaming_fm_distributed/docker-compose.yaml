@@ -79,7 +79,6 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
-      - SSH_CONFIG_DIR=/root/tmp_ssh
     #    shm_size: '100gb'
     volumes:
       - /dev/shm:/dev/shm
@@ -122,7 +121,6 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
-      - SSH_CONFIG_DIR=/root/tmp_ssh
     #    shm_size: '100gb'
     volumes:
       - /dev/shm:/dev/shm
