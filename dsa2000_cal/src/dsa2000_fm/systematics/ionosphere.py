@@ -1257,6 +1257,55 @@ def construct_canonical_ionosphere(x0_radius: FloatArray, turbulent: bool = True
     return IonosphereMultiLayer(layers)
 
 
+@jax.jit
+def sample_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
+                directions_gcrs, times):
+    return ionosphere.sample_dtec(
+        key=key,
+        reference_antenna_gcrs=reference_antenna_gcrs,
+        antennas_gcrs=antennas_gcrs,
+        directions_gcrs=directions_gcrs,
+        times=times
+    )  # [D, T, A]
+
+
+@jax.jit
+def sample_conditional_dtec_in_time(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
+                                    directions_gcrs, times, times_other, dtec_other, cache=None):
+    return ionosphere.sample_conditional_dtec(
+        key=key,
+        reference_antenna_gcrs=reference_antenna_gcrs,
+        antennas_gcrs=antennas_gcrs,
+        times=times,
+        directions_gcrs=directions_gcrs,
+        antennas_gcrs_other=antennas_gcrs,
+        times_other=times_other,
+        directions_gcrs_other=directions_gcrs,
+        dtec_other=dtec_other,
+        cache=cache
+    )  # [D, T, A]
+
+
+@jax.jit
+def predict_conditional_dtec_in_antenna(
+        ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
+        directions_gcrs, times, model_antennas_gcrs, model_directions_gcrs, dtec_other, cache=None
+):
+    (pred_mean, _), cache = ionosphere.predict_conditional_dtec(
+        reference_antenna_gcrs=reference_antenna_gcrs,
+        antennas_gcrs=antennas_gcrs,
+        times=times,
+        directions_gcrs=directions_gcrs,
+        antennas_gcrs_other=model_antennas_gcrs,
+        times_other=times,
+        directions_gcrs_other=model_directions_gcrs,
+        dtec_other=dtec_other,
+        cache=cache
+    )  # [D, T, A]
+    cache = cache._replace(K_ss=None, mean_s=None, K_sx=None)
+    return pred_mean, cache
+
+
 def build_ionosphere_gain_model(
         key,
         ionosphere: AbstractIonosphereLayer,
@@ -1320,52 +1369,6 @@ def build_ionosphere_gain_model(
     )
 
     reference_antenna_gcrs = antennas_gcrs[0:1]
-
-    @jax.jit
-    def sample_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                    directions_gcrs, times):
-        return ionosphere.sample_dtec(
-            key=key,
-            reference_antenna_gcrs=reference_antenna_gcrs,
-            antennas_gcrs=antennas_gcrs,
-            directions_gcrs=directions_gcrs,
-            times=times
-        )  # [D, T, A]
-
-    @jax.jit
-    def sample_conditional_dtec_in_time(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                                        directions_gcrs, times, times_other, dtec_other, cache=None):
-        return ionosphere.sample_conditional_dtec(
-            key=key,
-            reference_antenna_gcrs=reference_antenna_gcrs,
-            antennas_gcrs=antennas_gcrs,
-            times=times,
-            directions_gcrs=directions_gcrs,
-            antennas_gcrs_other=antennas_gcrs,
-            times_other=times_other,
-            directions_gcrs_other=directions_gcrs,
-            dtec_other=dtec_other,
-            cache=cache
-        )  # [D, T, A]
-
-    @jax.jit
-    def predict_conditional_dtec_in_antenna(
-            ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-            directions_gcrs, times, model_antennas_gcrs, model_directions_gcrs, dtec_other, cache=None
-    ):
-        (pred_mean, _), cache = ionosphere.predict_conditional_dtec(
-            reference_antenna_gcrs=reference_antenna_gcrs,
-            antennas_gcrs=antennas_gcrs,
-            times=times,
-            directions_gcrs=directions_gcrs,
-            antennas_gcrs_other=model_antennas_gcrs,
-            times_other=times,
-            directions_gcrs_other=model_directions_gcrs,
-            dtec_other=dtec_other,
-            cache=cache
-        )  # [D, T, A]
-        cache = cache._replace(K_ss=None, mean_s=None, K_sx=None)
-        return pred_mean, cache
 
     past_sample = deque(maxlen=1)
     samples = []
