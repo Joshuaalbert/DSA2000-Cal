@@ -73,6 +73,7 @@ class ProductGainModel(GainModel):
 
     gain_models: List[GainModel]
     skip_post_init: bool = False
+    _is_full_stokes: bool | None = None
 
     def __post_init__(self):
         if self.skip_post_init:
@@ -176,7 +177,9 @@ class ProductGainModel(GainModel):
         """
         return (
             [this.gain_models],
-            ()
+            (
+                this._is_full_stokes,
+            )
         )
 
     @classmethod
@@ -192,7 +195,9 @@ class ProductGainModel(GainModel):
             the unflattened model
         """
         [gain_models] = children
-        return ProductGainModel(gain_models, skip_post_init=True)
+        (_is_full_stokes,) = aux_data
+        return ProductGainModel(gain_models, _is_full_stokes=_is_full_stokes,
+                                skip_post_init=True)
 
 
 ProductGainModel.register_pytree()
