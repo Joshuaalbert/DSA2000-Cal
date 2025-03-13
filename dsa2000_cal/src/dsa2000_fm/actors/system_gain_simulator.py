@@ -15,7 +15,7 @@ from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_common.gain_models.gain_model import GainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
-from dsa2000_fm.forward_models.streaming.common import ForwardModellingRunParams
+from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.systematics.dish_aperture_effects import DishApertureEffects
 
 logger = logging.getLogger('ray')
