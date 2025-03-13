@@ -13,9 +13,9 @@ from dsa2000_common.common.wgridder import vis_to_image_np
 from dsa2000_common.common.array_types import FloatArray, ComplexArray, BoolArray
 from dsa2000_common.common.pure_callback_utils import construct_threaded_callback
 from dsa2000_common.common.quantity_utils import quantity_to_np
-from dsa2000_fm.forward_models.streaming.calibrator import CalibratorResponse
-from dsa2000_fm.forward_models.streaming.common import ForwardModellingRunParams
-from dsa2000_fm.forward_models.streaming.supervisor import Supervisor
+from dsa2000_fm.actors.calibrator import CalibratorResponse
+from dsa2000_fm.actors.common import ForwardModellingRunParams
+from dsa2000_fm.actors.supervisor import Supervisor
 
 logger = logging.getLogger('ray')
 

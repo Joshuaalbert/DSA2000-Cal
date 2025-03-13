@@ -59,7 +59,7 @@ from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_sourc
     build_gaussian_source_model, \
     BaseGaussianSourceModel
 
-from dsa2000_fm.forward_models.streaming.average_utils import average_rule
+from dsa2000_fm.actors.average_utils import average_rule
 
 tfpd = tfp.distributions
 

@@ -3,7 +3,7 @@ import asyncio
 import pytest
 import ray
 
-from dsa2000_fm.forward_models.streaming.supervisor import create_supervisor, Supervisor
+from dsa2000_fm.actors.supervisor import create_supervisor, Supervisor
 
 
 @pytest.mark.asyncio
