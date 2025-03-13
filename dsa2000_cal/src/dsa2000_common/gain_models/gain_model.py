@@ -53,10 +53,16 @@ class GainModel(ABC):
             raise ValueError("Can only multiply by another GainModel.")
         return ProductGainModel([self, other])
 
-    def __rmatmul__(self, other):
-        if not isinstance(other, GainModel):
-            raise ValueError("Can only multiply by another GainModel.")
-        return ProductGainModel([other, self])
+
+def test_matmul():
+    class A:
+        def __init__(self, name: str):
+            self.name = name
+
+        def __matmul__(self, other):
+            print('self', self.name, 'other', other.name)
+
+    A('a') @ A('b')
 
 
 @dataclasses.dataclass(eq=False)
@@ -67,6 +73,7 @@ class ProductGainModel(GainModel):
 
     gain_models: List[GainModel]
     skip_post_init: bool = False
+    _is_full_stokes: bool | None = None
 
     def __post_init__(self):
         if self.skip_post_init:
@@ -93,8 +100,8 @@ class ProductGainModel(GainModel):
                      antenna_indices: IntArray | None = None) -> jax.Array:
         gains = [
             gain_model.compute_gain(freqs=freqs, times=times, lmn_geodesic=lmn_geodesic,
-                                    antenna_indices=antenna_indices) for gain_model in
-            self.gain_models
+                                    antenna_indices=antenna_indices)
+            for gain_model in self.gain_models
         ]
 
         for gain in gains:
@@ -106,7 +113,10 @@ class ProductGainModel(GainModel):
         # TODO: could use associative scan for parallel computation
         output = gains[0]
         for gain in gains[1:]:
-            output = output @ gain
+            if self.is_full_stokes():
+                output = output @ gain
+            else:
+                output = output * gain
         return output
 
     def save(self, filename: str):
@@ -167,7 +177,9 @@ class ProductGainModel(GainModel):
         """
         return (
             [this.gain_models],
-            ()
+            (
+                this._is_full_stokes,
+            )
         )
 
     @classmethod
@@ -182,8 +194,10 @@ class ProductGainModel(GainModel):
         Returns:
             the unflattened model
         """
-        gain_models = children
-        return ProductGainModel(gain_models, skip_post_init=True)
+        [gain_models] = children
+        (_is_full_stokes,) = aux_data
+        return ProductGainModel(gain_models, _is_full_stokes=_is_full_stokes,
+                                skip_post_init=True)
 
 
 ProductGainModel.register_pytree()

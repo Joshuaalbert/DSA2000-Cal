@@ -1,10 +1,11 @@
 from typing import Tuple, List
 
+import astropy.time as at
+import astropy.units as au
 import jax.random
 import numpy as np
-from astropy import constants as const, coordinates as ac, units as au
+from astropy import constants as const
 from astropy import coordinates as ac
-from astropy import units as au
 from astropy.coordinates import Angle, ITRS, CartesianRepresentation
 from astropy.coordinates.angles import offset_by
 
@@ -44,14 +45,20 @@ def choose_dr(field_of_view: au.Quantity, total_n: int) -> au.Quantity:
     return au.Quantity(np.interp(total_n, num_n, dr))
 
 
-def create_spherical_spiral_grid(pointing: ac.ICRS, num_points: int, angular_radius: au.Quantity) -> ac.ICRS:
+def create_spherical_spiral_grid(pointing: ac.ICRS, num_points: int, angular_radius: au.Quantity,
+                                 inner_radius: au.Quantity | None = None) -> ac.ICRS:
+    if num_points == 1:
+        return pointing[None]
+    if inner_radius is None:
+        inner_radius = 0 * au.deg
     ra0 = pointing.ra
     dec0 = pointing.dec
     dtheta = 2 * np.pi / num_points ** 0.5
     ra_grid = []
     dec_grid = []
     for i in range(num_points):
-        r = angular_radius * (i / (num_points - 1)) ** 0.5
+        # r = angular_radius * (i / (num_points - 1)) ** 0.5
+        r = inner_radius + (angular_radius - inner_radius) * (i / (num_points - 1)) ** 0.5
         theta = i * dtheta
         ra_i, dec_i = offset_by(ra0, dec0, theta, r)
         ra_grid.append(ra_i)
@@ -384,3 +391,26 @@ def extract_itrs_coords(filename: str, delim=' ') -> Tuple[List[str], ac.ITRS]:
     if len(coordinates) == 1:
         return stations, coordinates[0].reshape((1,))
     return stations, ac.concatenate(coordinates).transform_to(ITRS())
+
+
+def get_time_of_local_meridean(coord: ac.ICRS, location: ac.EarthLocation, ref_time: at.Time) -> at.Time:
+    """
+    Get the closest time from ref_time when a coordinate would be in local transit.
+
+    Args:
+        coord:
+        ref_time:
+
+    Returns:
+
+    """
+    lst = ref_time.sidereal_time('apparent', longitude=location.lon)
+
+    # Compute the next transit time when LST = RA
+    delta_lst = (coord.ra - lst).wrap_at(180 * au.deg)  # Ensure proper wraparound
+    delta_t = (delta_lst / (15 * au.deg)) * au.hour  # Convert LST difference to hours
+
+    # Calculate exact transit time
+    t_transit = ref_time + delta_t
+
+    return t_transit

@@ -22,7 +22,7 @@ def test_pytree_serialisation():
 
 # @pytest.mark.parametrize('array_name', ['lwa_mock', 'dsa2000W_small'])
 @pytest.mark.parametrize('array_name', ['dsa2000_optimal_v1'])
-def test_beam_gain_model_factory(array_name: str):
+def test_beam_gain_model(array_name: str):
     t0 = time_mod.time()
     beam_gain_model = build_beam_gain_model(array_name=array_name)
     print(f"Built in {time_mod.time() - t0} seconds.")

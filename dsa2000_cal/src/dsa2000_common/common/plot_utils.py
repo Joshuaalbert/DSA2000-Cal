@@ -17,11 +17,15 @@ def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):
     # Create a temporary directory
     with tempfile.TemporaryDirectory() as tmp_dir:
         filenames = []
-        for i, fig in enumerate(fig_generator):
-            # Save each figure to a temporary file
-            filename = f'{tmp_dir}/frame_{i}.png'
-            fig.savefig(filename, dpi=dpi)  # Specify DPI for image quality
-            filenames.append(filename)
+        try:
+            for i, fig in enumerate(fig_generator):
+                # Save each figure to a temporary file
+                filename = f'{tmp_dir}/frame_{i:03d}.png'
+                fig.savefig(filename, dpi=dpi)  # Specify DPI for image quality
+                filenames.append(filename)
+        except KeyboardInterrupt:
+            print("Saving current frames and creating GIF before exiting.")
+            pass
 
         # Create a GIF using the saved frames
         with imageio.get_writer(gif_path, mode='I', duration=duration, loop=loop) as writer:

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry

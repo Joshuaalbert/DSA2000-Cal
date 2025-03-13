@@ -3,11 +3,11 @@ import os
 import astropy.units as au
 
 from dsa2000_assets.base_content import BaseContent
+from dsa2000_assets.registries import beam_model_registry
+from dsa2000_common.abc import AbstractBeamModel
 from dsa2000_fm.antenna_model.abc import AbstractAntennaModel
 from dsa2000_fm.antenna_model.h5_efield_model import H5AntennaModelV1
 from dsa2000_fm.antenna_model.matlab_amplitude_only_model import MatlabAntennaModelV1
-from dsa2000_common.abc import AbstractBeamModel
-from dsa2000_assets.registries import beam_model_registry
 
 
 @beam_model_registry(template='dsa_original')
@@ -27,4 +27,15 @@ class DSAPrototypeBeamModel(BaseContent, AbstractBeamModel):
             freq_units=au.GHz,
             beam_file=os.path.join(*self.content_path,
                                    'DSA2000-beam-wShieldSolidCylinder600mm.h5')
+        )
+
+
+@beam_model_registry(template='dsa_nominal')
+class DSANominalBeamModel(BaseContent, AbstractBeamModel):
+    def get_antenna_model(self) -> AbstractAntennaModel:
+        return H5AntennaModelV1(
+            angular_units=au.deg,
+            freq_units=au.Hz,
+            beam_file=os.path.join(*self.content_path,
+                                   'dsa2000_nominal_beam.h5')
         )

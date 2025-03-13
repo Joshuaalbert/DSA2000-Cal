@@ -81,20 +81,21 @@ def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callabl
 FV = TypeVar('FV')
 
 
-def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: int = 1) -> Callable[..., FV]:
+def chunked_pmap(f: Callable[..., FV], in_axes: int | Tuple[int | None] = 0, out_axes: int | Tuple[int | None] = 0,
+                 num_parallel: int | None = None, unroll: int = 1) -> Callable[..., FV]:
     """
     A version of pmap which chunks the input into smaller pieces to avoid memory issues.
 
     Args:
         f: callable
-        chunk_size: the size of the chunks. Default is len(devices())
-        unroll: the number of times to unroll the computation
+        num_parallel: the number of parallel tasks. Default is len(devices())
+        unroll: the number of times to unroll the computation on each parallel worker.
 
     Returns:
         a chunked version of f
     """
-    if chunk_size is None:
-        chunk_size = len(jax.devices())
+    if num_parallel is None:
+        num_parallel = len(jax.devices())
 
     def _f(*args, **kwargs):
         def queue(*args, **kwargs):
@@ -108,22 +109,22 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: in
                 (args, kwargs) = X
                 return state, f(*args, **kwargs)
 
-            _, result = lax.scan(body, (), (args, kwargs), unroll=unroll)
+            _, result = jax.lax.scan(body, (), (args, kwargs), unroll=unroll)
             return result
 
-        if chunk_size > 1:
+        if num_parallel > 1:
             # Get from first leaf
             leaves = jax.tree.leaves((args, kwargs))
             batch_size = np.shape(leaves[0])[0]
             for leaf in leaves:
                 if np.shape(leaf)[0] != batch_size:
                     raise ValueError(f"All leaves must have the same first dimension, got {np.shape(leaf)}.")
-            remainder = batch_size % chunk_size
-            extra = (chunk_size - remainder) % chunk_size
+            remainder = batch_size % num_parallel
+            extra = (num_parallel - remainder) % num_parallel
             if extra > 0:
                 (args, kwargs) = jax.tree.map(lambda x: _pad_extra(x, extra), (args, kwargs))
             (args, kwargs) = jax.tree.map(
-                lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
+                lambda x: jnp.reshape(x, (num_parallel, x.shape[0] // num_parallel) + x.shape[1:]),
                 (args, kwargs))
             result = pmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
             result = jax.tree.map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)

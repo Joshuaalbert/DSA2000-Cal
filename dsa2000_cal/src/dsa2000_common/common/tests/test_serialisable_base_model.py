@@ -5,8 +5,8 @@ import astropy.time as at
 import astropy.units as au
 import numpy as np
 import ujson
-from tomographic_kernel.frames import ENU
 
+from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
@@ -244,9 +244,11 @@ def test_enu_serialization():
         enu: ENU
 
     original = ENUModel(
-        enu=ENU(east=0. * au.m, north=0. * au.m, up=0. * au.m,
-                location=ac.EarthLocation.of_site('vla'),
-                obstime=at.Time.now())
+        enu=ENU(
+            east=0. * au.m, north=0. * au.m, up=0. * au.m,
+            location=ac.EarthLocation.of_site('vla'),
+            obstime=at.Time.now()
+        )
     )
 
     # Serialise the object to JSON
@@ -393,10 +395,8 @@ def test_parametric_delay_acf():
         mu=np.asarray([1.0]),
         fwhp=np.asarray([1.0]),
         spectral_power=np.asarray([1.0]),
-        channel_lower=np.asarray([1.0]),
-        channel_upper=np.asarray([1.0]),
+        channel_width=np.asarray([1.0]),
         resolution=1,
-        convention='physical'
     )
 
     class Model(SerialisableBaseModel):
@@ -414,7 +414,6 @@ def test_parametric_delay_acf():
     np.testing.assert_allclose(deserialised.acf.mu, original.acf.mu)
     np.testing.assert_allclose(deserialised.acf.fwhp, original.acf.fwhp)
     np.testing.assert_allclose(deserialised.acf.spectral_power, original.acf.spectral_power)
-    np.testing.assert_allclose(deserialised.acf.channel_lower, original.acf.channel_lower)
-    np.testing.assert_allclose(deserialised.acf.channel_upper, original.acf.channel_upper)
+    np.testing.assert_allclose(deserialised.acf.channel_width, original.acf.channel_width)
     np.testing.assert_allclose(deserialised.acf.resolution, original.acf.resolution)
-    assert deserialised.acf.convention == original.acf.convention
+

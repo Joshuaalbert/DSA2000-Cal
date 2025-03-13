@@ -10,7 +10,7 @@ import astropy.units as au
 import jax
 import numpy as np
 from jax import numpy as jnp
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.array_types import FloatArray, IntArray
 from dsa2000_common.common.coord_utils import icrs_to_lmn

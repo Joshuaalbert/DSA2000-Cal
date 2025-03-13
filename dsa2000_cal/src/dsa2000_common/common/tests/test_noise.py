@@ -109,7 +109,7 @@ def test_calc_noise_fullband_obs():
     chan_width_hz = 130000.0  # Hz
     t_int_s = 1.5  # s
     num_channels = 10000
-    num_integrations = 10.3 * 60 / t_int_s
+    num_integrations = 1# 10.3 * 60 / t_int_s
     flag_frac = 0.33
     image_noise = calc_image_noise(
         system_equivalent_flux_density=system_equivalent_flux_density,
@@ -119,7 +119,6 @@ def test_calc_noise_fullband_obs():
         flag_frac=flag_frac,
         num_pol=2
     )
-    print(chan_width_hz * num_channels)
     print(f"Image noise (10.3min 33% flagged): {image_noise} Jy / beam")
 
     baseline_noise = calc_baseline_noise(

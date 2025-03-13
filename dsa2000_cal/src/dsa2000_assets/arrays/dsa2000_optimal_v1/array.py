@@ -15,7 +15,7 @@ class DSA2000OptimalV1(DSA2000WArray):
         return os.path.join(*self.content_path, 'antenna_config.txt')
 
     def get_antenna_model(self) -> AbstractAntennaModel:
-        beam_model = beam_model_registry.get_instance(beam_model_registry.get_match('dsa_prototype'))
+        beam_model = beam_model_registry.get_instance(beam_model_registry.get_match('dsa_nominal'))
         return beam_model.get_antenna_model()
 
 

@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
-from astropy import coordinates as ac, units as au
+from astropy import coordinates as ac, units as au, time as at
 from matplotlib import pyplot as plt
 
 from dsa2000_common.common.astropy_utils import random_discrete_skymodel, mean_icrs, \
     create_spherical_grid_old, create_spherical_earth_grid, create_random_spherical_layout, create_mosaic_tiling, \
-    fibonacci_celestial_sphere, create_spherical_spiral_grid
+    fibonacci_celestial_sphere, create_spherical_spiral_grid, get_time_of_local_meridean
 
 
 def test_random_discrete_skymodel():
@@ -107,3 +107,12 @@ def test_create_spherical_spiral_grid():
     plt.scatter(grid.ra.deg, grid.dec.deg)
 
     plt.show()
+
+
+def test_get_time_of_local_meridean():
+    ref_time = at.Time("2000-01-01T00:00:00", scale='utc')
+    location = ac.EarthLocation.from_geodetic(lon=0 * au.deg, lat=0 * au.deg, height=0 * au.m)
+    lst = ref_time.sidereal_time('apparent', longitude=location.lon)
+    ra = lst
+    coord = ac.ICRS(ra=ra, dec=0 * au.deg)
+    assert get_time_of_local_meridean(coord, location, ref_time) == ref_time

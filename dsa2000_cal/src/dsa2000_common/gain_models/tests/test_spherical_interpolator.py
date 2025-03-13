@@ -23,6 +23,16 @@ def test_lmn_from_phi_theta():
     lmn = lmn_from_phi_theta(phi, theta)
     np.testing.assert_allclose(lmn, [0, 0, 1], atol=5e-8)
 
+    phi = 0.
+    theta = np.pi
+    lmn = lmn_from_phi_theta(phi, theta)
+    np.testing.assert_allclose(lmn, [0, 0, -1], atol=5e-8)
+
+    phi = np.pi / 2.
+    theta = np.pi
+    lmn = lmn_from_phi_theta(phi, theta)
+    np.testing.assert_allclose(lmn, [0, 0, -1], atol=5e-8)
+
     # Points to right on sky == -L
     phi = np.pi / 2.
     theta = np.pi / 2.

@@ -10,32 +10,27 @@ import astropy.units as au
 import jax
 import numpy as np
 import ray
-from tomographic_kernel.frames import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.alert_utils import post_completed_forward_modelling_run
+from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
-from dsa2000_fm.forward_models.streaming.aggregator import Aggregator, AggregatorParams, \
-    compute_aggregator_options
-from dsa2000_fm.forward_models.streaming.calibration_solution_cache import CalibrationSolutionCacheParams, \
-    CalibrationSolutionCache, compute_calibration_solution_cache_options
-from dsa2000_fm.forward_models.streaming.calibrator import Calibrator, \
-    compute_calibrator_options, CalibratorParams
-from dsa2000_fm.forward_models.streaming.common import ChunkParams, ForwardModellingRunParams, ImageParams
-from dsa2000_fm.forward_models.streaming.data_streamer import DataStreamerParams, DataStreamer, \
-    compute_data_streamer_options
-from dsa2000_fm.forward_models.streaming.degridding_predictor import DegriddingPredictor, \
-    compute_degridding_predictor_options
-from dsa2000_fm.forward_models.streaming.dft_predictor import DFTPredictor, compute_dft_predictor_options
-from dsa2000_fm.forward_models.streaming.gridder import Gridder, compute_gridder_options
-from dsa2000_fm.forward_models.streaming.model_predictor import ModelPredictor, ModelPredictorParams, \
-    compute_model_predictor_options
-from dsa2000_fm.forward_models.streaming.supervisor import create_supervisor
-from dsa2000_fm.forward_models.streaming.system_gain_simulator import SystemGainSimulator, \
-    SystemGainSimulatorParams, compute_system_gain_simulator_options
+from dsa2000_fm.actors.aggregator import Aggregator, AggregatorParams, compute_aggregator_options
+from dsa2000_fm.actors.calibration_solution_cache import CalibrationSolutionCache, CalibrationSolutionCacheParams, \
+    compute_calibration_solution_cache_options
+from dsa2000_fm.actors.calibrator import CalibratorParams, Calibrator, compute_calibrator_options
+from dsa2000_fm.actors.common import ForwardModellingRunParams, ChunkParams, ImageParams
+from dsa2000_fm.actors.data_streamer import DataStreamerParams, DataStreamer, compute_data_streamer_options
+from dsa2000_fm.actors.degridding_predictor import DegriddingPredictor, compute_degridding_predictor_options
+from dsa2000_fm.actors.dft_predictor import DFTPredictor, compute_dft_predictor_options
+from dsa2000_fm.actors.gridder import Gridder, compute_gridder_options
+from dsa2000_fm.actors.model_predictor import ModelPredictorParams, ModelPredictor, compute_model_predictor_options
+from dsa2000_fm.actors.supervisor import create_supervisor
+from dsa2000_fm.actors.system_gain_simulator import SystemGainSimulatorParams, SystemGainSimulator, \
+    compute_system_gain_simulator_options
 from dsa2000_fm.imaging.utils import get_image_parameters
 from dsa2000_fm.measurement_sets.measurement_set import MeasurementSetMeta
 from dsa2000_fm.namespace import NAMESPACE

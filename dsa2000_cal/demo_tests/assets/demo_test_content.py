@@ -3,11 +3,10 @@ import os
 import pylab as plt
 import pytest
 
-from dsa2000_fm.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
-from dsa2000_assets.rfi.lte_rfi.lwa_cell_tower import LWACellTower
 from dsa2000_assets.source_models.cyg_a.source_model import CygASourceModel
+from dsa2000_fm.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 
 
 @pytest.mark.parametrize('array_name', ['dsa2000W_small', 'dsa2000W', 'lwa'])
@@ -29,7 +28,7 @@ def test_array_layouts(array_name: str):
     plt.show()
 
 
-@pytest.mark.parametrize('array_name', ['dsa2000W_small', 'dsa2000W', 'lwa'])
+@pytest.mark.parametrize('array_name', ['dsa2000_optimal_v1', 'dsa2000W_small', 'dsa2000W', 'lwa'])
 def test_dsa2000_antenna_beam(array_name: str):
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match(array_name))
@@ -57,11 +56,6 @@ def test_dsa2000_antenna_beam(array_name: str):
     plt.ylabel('Beam Half Power Width (deg)')
     plt.xlabel('Frequency (Hz)')
     plt.show()
-
-
-def test_lwa_cell_tower():
-    lwa_cell_tower = LWACellTower(seed='abc')
-    lwa_cell_tower.plot_acf()
 
 
 def test_model():

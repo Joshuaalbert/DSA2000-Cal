@@ -4,7 +4,7 @@ import jax
 import numpy as np
 import pytest
 from astropy import units as au, coordinates as ac
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import source_model_registry

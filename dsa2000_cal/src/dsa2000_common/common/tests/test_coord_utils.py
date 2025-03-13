@@ -4,7 +4,7 @@ import pytest
 from astropy import coordinates as ac, time as at, units as au
 from astropy.coordinates import offset_by
 from astropy.wcs import WCS
-from tomographic_kernel.frames import ENU
+from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_common.common.coord_utils import earth_location_to_uvw_approx, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
     icrs_to_enu, enu_to_icrs, lmn_to_icrs_old
