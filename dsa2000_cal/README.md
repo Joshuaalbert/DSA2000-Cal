@@ -61,10 +61,10 @@ cd DSA2000-Cal
 
 ```bash
 conda activate dsa2000_cal_py
-pip install dsa2000_call
+pip install dsa2000_cal
 ```
 
-8. Set up PyCharm for development
+8. Set up PyCharm for development (optional but recommended).
 
     1. Make sure you have created a `dsa2000_cal_py` conda env as above, and installed requirements files.
     2. Create a new project in PyCharm in the repo root directory `/home/username/git/DSA2000-Cal`. Use an empty project
