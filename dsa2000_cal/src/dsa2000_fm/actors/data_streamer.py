@@ -29,11 +29,11 @@ from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_mo
     build_fits_source_model_from_wsclean_components
 from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel, \
     build_point_source_model_from_wsclean_components
-from dsa2000_fm.forward_models.streaming.common import ForwardModellingRunParams
-from dsa2000_fm.forward_models.streaming.degridding_predictor import DegriddingPredictor
-from dsa2000_fm.forward_models.streaming.dft_predictor import DFTPredictorResponse
-from dsa2000_fm.forward_models.streaming.supervisor import Supervisor
-from dsa2000_fm.forward_models.streaming.system_gain_simulator import SystemGainSimulatorResponse
+from dsa2000_fm.actors.common import ForwardModellingRunParams
+from dsa2000_fm.actors.degridding_predictor import DegriddingPredictor
+from dsa2000_fm.actors.dft_predictor import DFTPredictorResponse
+from dsa2000_fm.actors.supervisor import Supervisor
+from dsa2000_fm.actors.system_gain_simulator import SystemGainSimulatorResponse
 
 logger = logging.getLogger('ray')
 
