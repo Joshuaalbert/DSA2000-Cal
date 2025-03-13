@@ -100,8 +100,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
                 gain_mapping = "[T,lres,mres,F]"
         else:
             if antenna_indices is not None:
-                model_gains = model_gains[:, :, :, antenna_indices,
-                              ...]  # [num_times, lres, mres, num_ant, num_freqs, 2, 2]
+                model_gains = model_gains[:, :, :, antenna_indices, ...]  # [num_times, lres, mres, num_ant, num_freqs[, 2, 2]]
             if self.full_stokes:
                 gain_mapping = "[T,lres,mres,a,F,2,2]"
             else:

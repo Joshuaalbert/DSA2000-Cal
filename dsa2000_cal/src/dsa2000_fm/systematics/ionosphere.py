@@ -1259,19 +1259,20 @@ def construct_canonical_ionosphere(x0_radius: FloatArray, turbulent: bool = True
 
 @jax.jit
 def sample_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                directions_gcrs, times):
+                directions_gcrs, times, jitter):
     return ionosphere.sample_dtec(
         key=key,
         reference_antenna_gcrs=reference_antenna_gcrs,
         antennas_gcrs=antennas_gcrs,
         directions_gcrs=directions_gcrs,
-        times=times
+        times=times,
+        jitter_mtec=jitter,
     )  # [D, T, A]
 
 
 @jax.jit
 def sample_conditional_dtec_in_time(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                                    directions_gcrs, times, times_other, dtec_other, cache=None):
+                                    directions_gcrs, times, times_other, dtec_other, jitter, cache=None):
     return ionosphere.sample_conditional_dtec(
         key=key,
         reference_antenna_gcrs=reference_antenna_gcrs,
@@ -1282,6 +1283,7 @@ def sample_conditional_dtec_in_time(key, ionosphere: IonosphereMultiLayer, refer
         times_other=times_other,
         directions_gcrs_other=directions_gcrs,
         dtec_other=dtec_other,
+        jitter_mtec=jitter,
         cache=cache
     )  # [D, T, A]
 
@@ -1388,6 +1390,8 @@ def build_ionosphere_gain_model(
                     times=times_jax[t:t + 1]
                 )
             )  # [D, 1, A']
+            if np.any(np.isnan(sample)):
+                print(f"Got nans in sampling {t}... try again wiith bigger jitter")
         else:
             n_past = len(past_sample)
             sample, flow_cache = jax.block_until_ready(
