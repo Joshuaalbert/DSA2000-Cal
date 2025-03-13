@@ -1387,11 +1387,25 @@ def build_ionosphere_gain_model(
                     reference_antenna_gcrs=reference_antenna_gcrs,
                     antennas_gcrs=model_antennas_gcrs,
                     directions_gcrs=model_directions_gcrs,
-                    times=times_jax[t:t + 1]
+                    times=times_jax[t:t + 1],
+                    jitter=0.5
                 )
             )  # [D, 1, A']
             if np.any(np.isnan(sample)):
                 print(f"Got nans in sampling {t}... try again wiith bigger jitter")
+                sample = jax.block_until_ready(
+                    sample_dtec(
+                        key=sample_key,
+                        ionosphere=ionosphere,
+                        reference_antenna_gcrs=reference_antenna_gcrs,
+                        antennas_gcrs=model_antennas_gcrs,
+                        directions_gcrs=model_directions_gcrs,
+                        times=times_jax[t:t + 1],
+                        jitter=1.
+                    )
+                )
+                if np.any(np.isnan(sample)):
+                    raise ValueError("Getting nans in ionosphere model")
         else:
             n_past = len(past_sample)
             sample, flow_cache = jax.block_until_ready(
@@ -1404,9 +1418,28 @@ def build_ionosphere_gain_model(
                     directions_gcrs=model_directions_gcrs,
                     times_other=times_jax[t - n_past:t],
                     dtec_other=jnp.concatenate(past_sample, axis=1),
+                    jitter=0.5,
                     cache=flow_cache
                 )
             )
+            if np.any(np.isnan(sample)):
+                print(f"Got nans in sampling {t}... try again wiith bigger jitter")
+                sample, flow_cache = jax.block_until_ready(
+                    sample_conditional_dtec_in_time(
+                        key=sample_key,
+                        ionosphere=ionosphere,
+                        reference_antenna_gcrs=reference_antenna_gcrs,
+                        antennas_gcrs=model_antennas_gcrs,
+                        times=times_jax[t:t + 1],
+                        directions_gcrs=model_directions_gcrs,
+                        times_other=times_jax[t - n_past:t],
+                        dtec_other=jnp.concatenate(past_sample, axis=1),
+                        jitter=1.,
+                        cache=flow_cache
+                    )
+                )
+                if np.any(np.isnan(sample)):
+                    raise ValueError("Getting nans in ionosphere model")
         past_sample.append(sample)
         samples.append(sample)
         t1 = time.time()
