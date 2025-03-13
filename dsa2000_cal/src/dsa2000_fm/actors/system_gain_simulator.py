@@ -7,7 +7,7 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import ray
-from dsa2000_fm.forward_models.systematics.ionosphere_gain_model import build_ionosphere_gain_model
+from dsa2000_fm.forward_models.systematics.ionosphere import build_ionosphere_gain_model
 from ray.runtime_env import RuntimeEnv
 
 from dsa2000_assets.registries import array_registry
