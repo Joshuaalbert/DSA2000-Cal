@@ -13,7 +13,7 @@ from dsa2000_common.common.ray_utils import get_head_node_id, resource_logger
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtState
 from dsa2000_common.common.array_types import ComplexArray, FloatArray
-from dsa2000_fm.forward_models.streaming.common import ForwardModellingRunParams
+from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.namespace import NAMESPACE
 
 logger = logging.getLogger('ray')
