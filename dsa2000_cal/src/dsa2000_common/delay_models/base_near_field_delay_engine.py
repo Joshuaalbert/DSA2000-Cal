@@ -197,10 +197,10 @@ class BaseNearFieldDelayEngine:
         Returns:
             the flattened model
         """
-        return (
+        return [
             this.x_antennas_gcrs, this.enu_origin_gcrs,
             this.enu_coords_gcrs
-        ), ()
+        ], ()
 
     @classmethod
     def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "BaseNearFieldDelayEngine":
@@ -294,7 +294,7 @@ def build_near_field_delay_engine(
         ref_time: at.Time,
         resolution: au.Quantity | None = None,
         ref_location: ac.EarthLocation | None = None,
-        verbose: bool = False,
+        verbose: bool = True,
         lm_offset: au.Quantity | None = None
 ) -> BaseNearFieldDelayEngine:
     """
@@ -365,9 +365,11 @@ def build_near_field_delay_engine(
 
     num_grid_times = int(np.ceil(float((end_grid_time - start_grid_time) / resolution))) + 1
     num_ants = len(antennas)
+    print('delay num_grid_times',num_grid_times)
 
     # Define the interpolation grid
     interp_times = start_grid_time + np.arange(num_grid_times) * resolution  # [T]
+    print('delay interp times', interp_times)
 
     if verbose:
         print(f"Computing near field delay")

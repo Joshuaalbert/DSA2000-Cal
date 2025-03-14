@@ -75,7 +75,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     num_times_per_sol_int = int(solution_interval / integration_interval)
     num_integrations = int(observation_duration / integration_interval)
 
-    ref_time = at.Time("2021-01-01T00:00:00", scale="utc")
+    ref_time = at.Time("2024-01-01T00:00:00", scale="utc")
     num_timesteps = int(observation_duration / integration_interval)
     print('number of timesteps=',num_timesteps)
     obstimes = ref_time + np.arange(num_timesteps) * integration_interval
@@ -173,6 +173,7 @@ def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
         pointings=run_params.ms_meta.pointings
     )
 
+    print('run_params.ms_meta.times [0] [-1]',run_params.ms_meta.times[0],run_params.ms_meta.times[-1] )
     far_field_delay_engine = build_far_field_delay_engine(
         antennas=run_params.ms_meta.antennas,
         start_time=run_params.ms_meta.times[0],
