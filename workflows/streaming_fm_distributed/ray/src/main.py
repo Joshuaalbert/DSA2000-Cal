@@ -77,7 +77,9 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     ref_time = at.Time("2021-01-01T00:00:00", scale="utc")
     num_timesteps = int(observation_duration / integration_interval)
+    print('number of timesteps=',num_timesteps)
     obstimes = ref_time + np.arange(num_timesteps) * integration_interval
+    print('number of timesteps=',obstimes)
 
     phase_center = pointing = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
 
