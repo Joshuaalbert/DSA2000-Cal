@@ -58,20 +58,21 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     num_freqs_per_sol_int = 2
 
     central_freq_idx = len(array.get_channels()) // 2
+    print('get_channels', len(array.get_channels()))
 
     freqs = array.get_channels()[central_freq_idx:central_freq_idx + 2]
 
     num_channels = len(freqs)
 
-    channel_width = 500 * array.get_channel_width()
+    channel_width = 500 * array.get_channel_width(). # 500x 130 kHz = 65 MHz
     solution_interval_freq = num_freqs_per_sol_int * channel_width
     sub_band_interval = channel_width * num_channels / num_sub_bands
     num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
 
     integration_interval = 4 * array.get_integration_time()
-    print('integration_interval', integration_interval)
+    print('integration_interval', integration_interval) # 6s
     solution_interval = 6 * au.s
-    observation_duration = 60 * au.s #624 * au.s
+    observation_duration = 6 * au.s #624 * au.s
 
     num_times_per_sol_int = int(solution_interval / integration_interval)
     num_integrations = int(observation_duration / integration_interval)
@@ -85,6 +86,8 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     dish_effects_params = array.get_dish_effect_params()
 
     system_equivalent_flux_density = array.get_system_equivalent_flux_density()
+
+    print('sefd', system_equivalent_flux_density)
 
     chunk_params = ChunkParams(
         num_channels=num_channels,
@@ -296,7 +299,8 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
                 sol_int_freq_idxs=sol_int_freq_idxs.tolist(),
                 fm_run_params=run_params,
                 gridder=gridder,
-                image_suffix=f'SB{sub_band_idx:01d}',
+                image_suffix='SB1',
+#                image_suffix=f'SB{sub_band_idx:01d}',
             ),
             **compute_aggregator_options(run_params)
         )
