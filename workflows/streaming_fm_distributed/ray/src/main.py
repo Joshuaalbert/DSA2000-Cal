@@ -69,6 +69,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
 
     integration_interval = 4 * array.get_integration_time()
+    print('integration_interval', integration_interval)
     solution_interval = 6 * au.s
     observation_duration = 60 * au.s #624 * au.s
 

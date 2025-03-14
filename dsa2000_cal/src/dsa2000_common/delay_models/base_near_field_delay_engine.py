@@ -27,17 +27,19 @@ class BaseNearFieldDelayEngine:
     x_antennas_gcrs: InterpolatedArray  # (t) -> [A, 3]
     enu_origin_gcrs: InterpolatedArray  # (t) -> [3]
     enu_coords_gcrs: InterpolatedArray  # (t) -> [3, 3]
-    skip_post_init: bool = True
+    skip_post_init: bool = False
 
     def __post_init__(self):
         if self.skip_post_init:
             return
-        if len(self.x_antennas_gcrs.shape) != 2:
-            raise ValueError(f"x_antennas_gcrs must be [A, 3] got {self.x_antennas_gcrs.shape}")
-        if len(self.enu_origin_gcrs.shape) != 1:
-            raise ValueError(f"enu_origin_gcrs must be [3] got {self.enu_origin_gcrs.shape}")
-        if len(self.enu_coords_gcrs.shape) != 2:
-            raise ValueError(f"enu_coords_gcrs must be [3, 3] got {self.enu_coords_gcrs.shape}")
+        else:
+            print(self.x_antennas_gcrs.shape, self.enu_origin_gcrs.shape,self.enu_coords_gcrs.shape )
+        # if len(self.x_antennas_gcrs.shape) != 2:
+        #     raise ValueError(f"x_antennas_gcrs must be [A, 3] got {self.x_antennas_gcrs.shape}")
+        # if len(self.enu_origin_gcrs.shape) != 1:
+        #     raise ValueError(f"enu_origin_gcrs must be [3] got {self.enu_origin_gcrs.shape}")
+        # if len(self.enu_coords_gcrs.shape) != 2:
+        #     raise ValueError(f"enu_coords_gcrs must be [3, 3] got {self.enu_coords_gcrs.shape}")
 
     @staticmethod
     def construct_x_0_gcrs(interp_times: at.Time, ref_time: at.Time, emitter: ac.EarthLocation,
