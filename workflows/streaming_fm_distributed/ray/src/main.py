@@ -64,12 +64,12 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     num_channels = len(freqs)
 
-    channel_width = 50 * array.get_channel_width() # 500x 130 kHz = 65 MHz
+    channel_width = 500 * array.get_channel_width() # 500x 130 kHz = 65 MHz
     solution_interval_freq = num_freqs_per_sol_int * channel_width
     sub_band_interval = channel_width * num_channels / num_sub_bands
     num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
 
-    integration_interval = 4 * array.get_integration_time()
+    integration_interval = 4 * array.get_integration_time()  #. 4 x 1.5 seconds
     print('integration_interval', integration_interval) # 6s
     solution_interval = 6 * au.s
     observation_duration = 6 * au.s #624 * au.s
@@ -81,7 +81,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     num_timesteps = int(observation_duration / integration_interval)
     obstimes = ref_time + np.arange(num_timesteps) * integration_interval
 
-    phase_center = pointing = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
+    phase_center = pointing = ENU(1, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
 
     dish_effects_params = array.get_dish_effect_params()
 
