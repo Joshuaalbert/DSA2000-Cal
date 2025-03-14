@@ -55,16 +55,16 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     # 10000/10 = 1000, 1000/40 = 25
     num_sub_bands = 1
-    num_freqs_per_sol_int = 2
+    num_freqs_per_sol_int = 4
 
     central_freq_idx = len(array.get_channels()) // 2
-    print('get_channels', len(array.get_channels()))
+    print('get_channels', len(array.get_channels()))  # 10,000 channels
 
-    freqs = array.get_channels()[central_freq_idx:central_freq_idx + 2]
+    freqs = array.get_channels()[central_freq_idx:central_freq_idx + 4]
 
     num_channels = len(freqs)
 
-    channel_width = 500 * array.get_channel_width() # 500x 130 kHz = 65 MHz
+    channel_width = 50 * array.get_channel_width() # 500x 130 kHz = 65 MHz
     solution_interval_freq = num_freqs_per_sol_int * channel_width
     sub_band_interval = channel_width * num_channels / num_sub_bands
     num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
@@ -85,7 +85,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     dish_effects_params = array.get_dish_effect_params()
 
-    system_equivalent_flux_density = array.get_system_equivalent_flux_density()
+    system_equivalent_flux_density = array.get_system_equivalent_flux_density() * 1e-9
 
     print('sefd', system_equivalent_flux_density)
 
