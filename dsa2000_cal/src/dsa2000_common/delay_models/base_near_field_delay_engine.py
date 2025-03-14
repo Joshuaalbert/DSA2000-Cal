@@ -27,7 +27,7 @@ class BaseNearFieldDelayEngine:
     x_antennas_gcrs: InterpolatedArray  # (t) -> [A, 3]
     enu_origin_gcrs: InterpolatedArray  # (t) -> [3]
     enu_coords_gcrs: InterpolatedArray  # (t) -> [3, 3]
-    skip_post_init: bool = False
+    skip_post_init: bool = True
 
     def __post_init__(self):
         if self.skip_post_init:
