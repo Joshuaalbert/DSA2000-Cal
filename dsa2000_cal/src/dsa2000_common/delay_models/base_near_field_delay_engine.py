@@ -32,14 +32,14 @@ class BaseNearFieldDelayEngine:
     def __post_init__(self):
         if self.skip_post_init:
             return
-        else:
-            print(self.x_antennas_gcrs.shape, self.enu_origin_gcrs.shape,self.enu_coords_gcrs.shape )
-        # if len(self.x_antennas_gcrs.shape) != 2:
-        #     raise ValueError(f"x_antennas_gcrs must be [A, 3] got {self.x_antennas_gcrs.shape}")
-        # if len(self.enu_origin_gcrs.shape) != 1:
-        #     raise ValueError(f"enu_origin_gcrs must be [3] got {self.enu_origin_gcrs.shape}")
-        # if len(self.enu_coords_gcrs.shape) != 2:
-        #     raise ValueError(f"enu_coords_gcrs must be [3, 3] got {self.enu_coords_gcrs.shape}")
+        # else:
+        #     print('near_field_delay', self.x_antennas_gcrs.shape, self.enu_origin_gcrs.shape,self.enu_coords_gcrs.shape )
+        if len(self.x_antennas_gcrs.shape) != 2:
+            raise ValueError(f"x_antennas_gcrs must be [A, 3] got {self.x_antennas_gcrs.shape}")
+        if len(self.enu_origin_gcrs.shape) != 1:
+            raise ValueError(f"enu_origin_gcrs must be [3] got {self.enu_origin_gcrs.shape}")
+        if len(self.enu_coords_gcrs.shape) != 2:
+            raise ValueError(f"enu_coords_gcrs must be [3, 3] got {self.enu_coords_gcrs.shape}")
 
     @staticmethod
     def construct_x_0_gcrs(interp_times: at.Time, ref_time: at.Time, emitter: ac.EarthLocation,
@@ -220,7 +220,8 @@ class BaseNearFieldDelayEngine:
         return BaseNearFieldDelayEngine(
             x_antennas_gcrs=x_antennas_gcrs,
             enu_origin_gcrs=enu_origin_gcrs,
-            enu_coords_gcrs=enu_coords_gcrs
+            enu_coords_gcrs=enu_coords_gcrs,
+            skip_post_init=True
         )
 
 
