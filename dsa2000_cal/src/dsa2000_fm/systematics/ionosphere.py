@@ -1504,6 +1504,10 @@ def build_ionosphere_gain_model(
             dec0=phase_centre.dec.rad
         )
     )  # [num_model_dir, 3]
+    if np.any(~np.isfinite(model_phi)) or np.any(~np.isfinite(model_theta)):
+        select = np.where(np.isnan(model_phi) | np.any(np.isnan(model_theta)))
+        directions_bad = directions[select]
+        raise ValueError(f"Got nans in model phi / theta for phase center {phase_centre} where {directions_bad}")
 
     model_phi = model_phi * au.rad
     model_theta = model_theta * au.rad
