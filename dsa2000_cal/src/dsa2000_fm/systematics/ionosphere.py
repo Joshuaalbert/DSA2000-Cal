@@ -1509,7 +1509,7 @@ def build_ionosphere_gain_model(
         directions_bad = directions[select]
         model_phi_bad = model_phi[select]
         model_theta_bad = model_theta[select]
-        l,m,n = perley_lmn_from_icrs(
+        l, m, n = perley_lmn_from_icrs(
             alpha=directions.ra.rad,
             dec=directions.dec.rad,
             alpha0=phase_centre.ra.rad,
@@ -1518,9 +1518,11 @@ def build_ionosphere_gain_model(
         l_bad = l[select]
         m_bad = m[select]
         n_bad = n[select]
-        joint_bad = list(zip(directions_bad.ra.rad, directions_bad.dec.rad, model_phi_bad, model_theta_bad, l_bad, m_bad, n_bad))
+        joint_bad = list(
+            zip(directions_bad.ra.rad, directions_bad.dec.rad, model_phi_bad, model_theta_bad, l_bad, m_bad, n_bad))
 
-        raise ValueError(f"Got nans in model phi / theta for phase center {phase_centre} where (ra,dec,phi,theta,l,m,n)=\n{joint_bad}")
+        raise ValueError(
+            f"Got nans in model phi / theta for phase center {phase_centre} where (ra,dec,phi,theta,l,m,n)=\n{joint_bad}")
 
     model_phi = model_phi * au.rad
     model_theta = model_theta * au.rad

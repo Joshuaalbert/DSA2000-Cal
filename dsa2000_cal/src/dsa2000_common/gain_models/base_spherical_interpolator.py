@@ -761,7 +761,7 @@ def phi_theta_from_lmn(l, m, n):
         theta: polar angle in [0, pi]
     """
     phi = jnp.arctan2(-l, m)
-    theta = jnp.arccos(n)
+    theta = jnp.arccos(jnp.clip(n, -1, 1))
 
     def wrap(angle):
         return (angle + 2 * np.pi) % (2 * np.pi)
