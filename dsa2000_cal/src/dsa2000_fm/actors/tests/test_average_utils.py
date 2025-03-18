@@ -1,6 +1,6 @@
 import numpy as np
 
-from dsa2000_fm.forward_models.streaming.average_utils import average_rule
+from dsa2000_fm.actors.average_utils import average_rule
 
 
 def test_average_rule():

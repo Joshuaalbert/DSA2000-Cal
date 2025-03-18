@@ -13,9 +13,8 @@ def norm(x, axis=-1, keepdims: bool = False):
 def norm2(x, axis=-1, keepdims: bool = False):
     return jnp.sum(jnp.square(x), axis=axis, keepdims=keepdims)
 
-
 def perley_icrs_from_lmn(l, m, n, ra0, dec0):
-    dec = jnp.arcsin(m * jnp.cos(dec0) + n * jnp.sin(dec0))
+    dec = jnp.arcsin(jnp.clip(m * jnp.cos(dec0) + n * jnp.sin(dec0), -1, 1))
     ra = ra0 + jnp.arctan2(l, n * jnp.cos(dec0) - m * jnp.sin(dec0))
     return ra, dec
 
@@ -43,5 +42,5 @@ def celestial_to_cartesian(ra, dec, distance=None):
 def cartesian_to_celestial(x, y, z):
     norm = jnp.sqrt(x * x + y * y + z * z)
     ra = jnp.arctan2(y, x)
-    dec = jnp.arcsin(jax.lax.select(norm == 0, norm, z / norm))
+    dec = jnp.arcsin(jnp.clip(jax.lax.select(norm == 0, norm, z / norm), -1, 1))
     return ra, dec, norm

@@ -3,13 +3,13 @@ import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 from scipy.integrate import quad
-from dsa2000_common.common.enu_frame import ENU
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_common.common.enu_frame import ENU
 from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral, construct_eval_interp_struct, \
-    IonosphereLayer, compute_ionosphere_intersection, calibrate_resolution
+    IonosphereLayer, calibrate_resolution
 from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_gcrs, calc_intersections
 
 

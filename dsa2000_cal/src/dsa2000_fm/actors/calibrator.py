@@ -28,13 +28,13 @@ from dsa2000_common.common.jax_utils import block_until_ready, simple_broadcast
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import jnp_to_time
 from dsa2000_common.common.vec_utils import kron_product
-from dsa2000_fm.forward_models.streaming.average_utils import average_rule
-from dsa2000_fm.forward_models.streaming.calibration_solution_cache import CalibrationSolution, \
+from dsa2000_fm.actors.average_utils import average_rule
+from dsa2000_fm.actors.calibration_solution_cache import CalibrationSolution, \
     CalibrationSolutionCache
-from dsa2000_fm.forward_models.streaming.common import ForwardModellingRunParams
-from dsa2000_fm.forward_models.streaming.data_streamer import DataStreamerResponse
-from dsa2000_fm.forward_models.streaming.model_predictor import ModelPredictorResponse
-from dsa2000_fm.forward_models.streaming.supervisor import Supervisor
+from dsa2000_fm.actors.common import ForwardModellingRunParams
+from dsa2000_fm.actors.data_streamer import DataStreamerResponse
+from dsa2000_fm.actors.model_predictor import ModelPredictorResponse
+from dsa2000_fm.actors.supervisor import Supervisor
 
 logger = logging.getLogger('ray')
 

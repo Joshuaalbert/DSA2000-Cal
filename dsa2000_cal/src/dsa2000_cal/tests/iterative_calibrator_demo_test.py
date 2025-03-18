@@ -52,7 +52,7 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
         sol_int_time_idx = input_data.sol_int_time_idx
         # Note: in MS vis are shaped [rows, channels, coh]
         # Rows are time-major stacked, so to get the `sol_int_time_idx` block do:
-        B = ...  # N*(N+1)/2 with auto-correlations, or N*(N-1)/2 without auto-correlations
+        B = (num_ant * (num_ant - 1)) // 2  # N*(N+1)/2 with auto-correlations, or N*(N-1)/2 without auto-correlations
         block_size = B * len(time_idxs)
         # visibilities = ms.get_data('DATA', startrow=sol_int_time_idx * block_size, nrow=block_size)
 
