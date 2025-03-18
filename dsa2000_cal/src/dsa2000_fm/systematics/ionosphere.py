@@ -1132,6 +1132,16 @@ def calibrate_resolution(layer: IonosphereLayer, max_sep, max_angle, target_rtol
 
 
 def compute_x0_radius(ref_location: ac.EarthLocation, ref_time: at.Time):
+    """
+    Computes the radius of a reference location in GCRS. This is the location which the ionosphere height is relative to.
+
+    Args:
+        ref_location: the location
+        ref_time: a specific time
+
+    Returns:
+        a radius in km
+    """
     return np.linalg.norm(ref_location.get_gcrs(ref_time).cartesian.xyz.to('km')).value
 
 
@@ -1203,6 +1213,18 @@ def create_model_antennas(antennas: ac.EarthLocation, spatial_resolution: au.Qua
 
 def construct_canonical_ionosphere(x0_radius: FloatArray, turbulent: bool = True, dawn: bool = True,
                                    high_sun_spot: bool = True):
+    """
+    Construct a canonical ionosphere model.
+
+    Args:
+        x0_radius: see `compute_x0_radius`
+        turbulent: If True then uses larger relative spatial variations
+        dawn: If True then uses smaller length scales
+        high_sun_spot: If True then uses higher mean electron densities
+
+    Returns:
+        An ionosphere model
+    """
     _bottom_E = 90
     _width_E = 10
     _bottom_F = 250
@@ -1347,7 +1369,12 @@ def build_ionosphere_gain_model(
     model_times = times.min() + np.arange(0., T) * model_dt
 
     # Get lower resolution grid to sample over.
-    model_antennas = create_model_antennas(antennas, spatial_resolution=spatial_resolution)
+    if spatial_resolution == 0 * au.km:
+        model_antennas = antennas
+        do_interp = False
+    else:
+        model_antennas = create_model_antennas(antennas, spatial_resolution=spatial_resolution)
+        do_interp = True
     model_antennas_gcrs = InterpolatedArray(
         time_to_jnp(model_times, ref_time),
         model_antennas.get_gcrs(model_times[:, None]).cartesian.xyz.to('km').value.transpose((1, 2, 0)),
@@ -1444,31 +1471,32 @@ def build_ionosphere_gain_model(
         samples.append(sample)
         t1 = time.time()
         print(f"Conditional sample iteration took {t1 - t0:.2f} seconds")
-    interp_cache = None
-    for t, _ in enumerate(samples):
-        t0 = time.time()
-        _interp_samples = []
-        # predict in batches
-        for start_ant_idx in range(0, len(antennas), predict_batch_size):
-            # automatically handles remainders
-            stop_ant_idx = min(start_ant_idx + predict_batch_size, len(antennas))
-            _interp_sample, interp_cache = jax.block_until_ready(
-                predict_conditional_dtec_in_antenna(
-                    ionosphere=ionosphere,
-                    reference_antenna_gcrs=reference_antenna_gcrs,
-                    antennas_gcrs=antennas_gcrs[start_ant_idx:stop_ant_idx],
-                    directions_gcrs=directions_gcrs,
-                    times=times_jax[t:t + 1],
-                    model_antennas_gcrs=model_antennas_gcrs,
-                    model_directions_gcrs=model_directions_gcrs,
-                    dtec_other=samples[t],
-                    cache=interp_cache
-                )
-            )  # [D, 1, batch_size]
-            _interp_samples.append(_interp_sample)
-        samples[t] = jnp.concatenate(_interp_samples, axis=2)  # [D, T, A]
-        t1 = time.time()
-        print(f"Interp step took {t1 - t0:.2f}s")
+    if do_interp:
+        interp_cache = None
+        for t, _ in enumerate(samples):
+            t0 = time.time()
+            _interp_samples = []
+            # predict in batches
+            for start_ant_idx in range(0, len(antennas), predict_batch_size):
+                # automatically handles remainders
+                stop_ant_idx = min(start_ant_idx + predict_batch_size, len(antennas))
+                _interp_sample, interp_cache = jax.block_until_ready(
+                    predict_conditional_dtec_in_antenna(
+                        ionosphere=ionosphere,
+                        reference_antenna_gcrs=reference_antenna_gcrs,
+                        antennas_gcrs=antennas_gcrs[start_ant_idx:stop_ant_idx],
+                        directions_gcrs=directions_gcrs,
+                        times=times_jax[t:t + 1],
+                        model_antennas_gcrs=model_antennas_gcrs,
+                        model_directions_gcrs=model_directions_gcrs,
+                        dtec_other=samples[t],
+                        cache=interp_cache
+                    )
+                )  # [D, 1, batch_size]
+                _interp_samples.append(_interp_sample)
+            samples[t] = jnp.concatenate(_interp_samples, axis=2)  # [D, T, A]
+            t1 = time.time()
+            print(f"Interp step took {t1 - t0:.2f}s")
 
     samples = jnp.concatenate(samples, axis=1)  # [D, T, A]
     dtec_samples = samples.transpose((1, 0, 2))  # [T, D, A]
