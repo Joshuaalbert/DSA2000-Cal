@@ -22,7 +22,7 @@ from dsa2000_fm.actors.aggregator import Aggregator, AggregatorParams, compute_a
 from dsa2000_fm.actors.calibration_solution_cache import CalibrationSolutionCache, CalibrationSolutionCacheParams, \
     compute_calibration_solution_cache_options
 from dsa2000_fm.actors.calibrator import CalibratorParams, Calibrator, compute_calibrator_options
-from dsa2000_fm.actors.common import ForwardModellingRunParams, ChunkParams, ImageParams
+from dsa2000_fm.actors.common import ForwardModellingRunParams, ChunkParams, ImageParams, IonosphereParams
 from dsa2000_fm.actors.data_streamer import DataStreamerParams, DataStreamer, compute_data_streamer_options
 from dsa2000_fm.actors.degridding_predictor import DegriddingPredictor, compute_degridding_predictor_options
 from dsa2000_fm.actors.dft_predictor import DFTPredictor, compute_dft_predictor_options
@@ -83,6 +83,12 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     dish_effects_params = array.get_dish_effect_params()
 
+    ionosphere_params = IonosphereParams(
+        turbulent=True,
+        dawn=True,
+        high_sun_spot=True
+    )
+
     system_equivalent_flux_density = array.get_system_equivalent_flux_density()
 
     chunk_params = ChunkParams(
@@ -139,6 +145,8 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     return ForwardModellingRunParams(
         ms_meta=meta,
         dish_effects_params=dish_effects_params,
+        ionosphere_params=ionosphere_params,
+        field_of_view=field_of_view,
         chunk_params=chunk_params,
         image_params=image_params,
         full_stokes=full_stokes,
@@ -147,6 +155,14 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         run_name=run_name
     )
 
+def test_build_run_params():
+    run_params = build_run_params(
+        array_name='dsa2000W_small', with_autocorr=False, field_of_view=1 * au.deg,
+        oversample_factor=5., full_stokes=True, num_cal_facets=1,
+        root_folder='root', run_name='run'
+    )
+    with open("run_params.json", "w") as f:
+        f.write(run_params.json(indent=2))
 
 def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
          oversample_factor: float, full_stokes: bool, num_cal_facets: int,
