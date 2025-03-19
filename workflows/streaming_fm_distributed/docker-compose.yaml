@@ -69,6 +69,7 @@ services:
     pid: host # Use host PID namespace so GPU metrics are available
     environment:
       - IS_RAY_HEAD=true
+      - NODE_NAME=${NODE_NAME}
       - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
       - NODE_NAME=${NODE_NAME}
       - RAY_GRAFANA_HOST=http://grafana:3000
@@ -114,8 +115,10 @@ services:
       - SYS_PTRACE
     environment:
       - IS_RAY_HEAD=false
-      - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
+      - RAY_HEAD_NODE_NAME=${RAY_HEAD_NODE_NAME}
+      - RAY_HEAD_IP_ADDRESS=${RAY_HEAD_IP_ADDRESS}
       - NODE_NAME=${NODE_NAME}
+      - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
       - XLA_FLAGS=${XLA_FLAGS}
       - PYTHONMALLOC=${PYTHONMALLOC}
       - NVIDIA_VISIBLE_DEVICES=all
