@@ -58,8 +58,8 @@ fi
     if [[ -n "$RAY_HEAD_NODE_NAME" ]]; then
       RAY_HEAD_IP=$(lookup_ip "$RAY_HEAD_NODE_NAME")
     else
+      RAY_HEAD_IP=
       echo "Error: Neither RAY_HEAD_IP nor RAY_HEAD_NODE_NAME is set."
-      exit 1
     fi
   fi
   export RAY_HEAD_IP
