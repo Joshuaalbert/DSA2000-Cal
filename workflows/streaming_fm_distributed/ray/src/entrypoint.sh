@@ -126,6 +126,8 @@ else
 
 fi
 
+python /dsa/code/src/resource_logger.py &
+
 python /dsa/code/src/scrape_metric_targets.py
 
 tail -f /dev/null

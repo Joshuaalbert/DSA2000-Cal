@@ -20,23 +20,64 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
-NODE_NAME=$(hostname)
-DSA_CONTENT_SSH_USERNAME=$(whoami)
+if [[ -z "$NODE_NAME" ]]; then
+  echo "NODE_NAME is not set. Using the hostname as the node name."
+  NODE_NAME=$(hostname)
+fi
+
+if [[ -z "$DSA_CONTENT_SSH_USERNAME" ]]; then
+  echo "DSA_CONTENT_SSH_USERNAME is not set. Using the current user as the SSH username."
+  DSA_CONTENT_SSH_USERNAME=$(whoami)
+fi
 
 # Use a subshell so that the exported variables are not available after the script finishes
 (
 
-  # Only when on VPN trust this
-  if [ -z "$NODE_IP_ADDRESS" ]; then
-    echo "NODE_IP_ADDRESS is not set. Trying to automatically find it."
-    # Try getting the IP address from ifconfig.me, otherwise use the hostname's first listed IP address (which might be the internal IP)
-    NODE_IP_ADDRESS=$(curl -4 ifconfig.me || hostname -I | awk '{print $1}' || exit 1)
-    echo "NODE_IP_ADDRESS is $NODE_IP_ADDRESS"
-    export NODE_IP_ADDRESS
-  fi
-  # export so they are used in the Docker Compose file
   export NODE_NAME
   export DSA_CONTENT_SSH_USERNAME
+
+  # Function to look up an IP from node_map based on a node name.
+  lookup_ip() {
+    local node_name="$1"
+    if [[ ! -f node_map ]]; then
+      echo "Error: node_map file does not exist." >&2
+      exit 1
+    fi
+
+    local ip
+    ip=$(awk -v name="$node_name" '$1 == name {print $2}' node_map)
+    if [[ -z "$ip" ]]; then
+      echo "Error: Node name '$node_name' not found in node_map." >&2
+      exit 1
+    fi
+    echo "$ip"
+  }
+
+  # Set the Ray head IP, preferring the provided RAY_HEAD_IP over lookup.
+  if [[ -z "$RAY_HEAD_IP" ]]; then
+    if [[ -n "$RAY_HEAD_NODE_NAME" ]]; then
+      RAY_HEAD_IP=$(lookup_ip "$RAY_HEAD_NODE_NAME")
+    else
+      echo "Error: Neither RAY_HEAD_IP nor RAY_HEAD_NODE_NAME is set."
+      exit 1
+    fi
+  fi
+  export RAY_HEAD_IP
+
+  # Set the node IP address, preferring the provided NODE_IP_ADDRESS over lookup.
+  if [[ -z "$NODE_IP_ADDRESS" ]]; then
+    if [[ -n "$NODE_NAME" ]]; then
+      NODE_IP_ADDRESS=$(lookup_ip "$NODE_NAME")
+    else
+      echo "NODE_IP_ADDRESS is not set. Trying to automatically find it."
+      # Try getting the IP address from ifconfig.me, otherwise use the hostname's first listed IP address (which might be the internal IP)
+      NODE_IP_ADDRESS=$(curl -4 ifconfig.me || hostname -I | awk '{print $1}' || exit 1)
+    fi
+  fi
+  export NODE_IP_ADDRESS
+
+  echo "Ray head IP: $RAY_HEAD_IP"
+  echo "Node IP: $NODE_IP_ADDRESS"
 
   # Use the temporary .env file in Docker Compose commands
   echo "Tearing down old services..."

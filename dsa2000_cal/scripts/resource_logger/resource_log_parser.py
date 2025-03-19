@@ -83,7 +83,8 @@ def plot_resource_usage(records):
         ax.legend()
         ax.grid(True)
     axs[-1].set_xlabel("Time")
-    plt.show()
+    fig.savefig('resource_usage.png')
+    plt.close(fig)
 
 
 def main():
