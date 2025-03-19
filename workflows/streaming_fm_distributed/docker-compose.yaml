@@ -67,6 +67,7 @@ services:
     cap_add:
       - SYS_PTRACE
     pid: host # Use host PID namespace so GPU metrics are available
+    user: "${UID}:${GID}"
     environment:
       - IS_RAY_HEAD=true
       - RAY_HEAD_NODE_NAME=${RAY_HEAD_NODE_NAME}
@@ -87,7 +88,9 @@ services:
       - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
       - ../../dsa2000_cal:/dsa/code/package
-      - ~/.ssh:/root/.ssh:ro
+      - ~/.ssh:/home/${DSA_CONTENT_SSH_USERNAME}/.ssh:ro
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro
       - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
     deploy:
       resources:
@@ -115,6 +118,7 @@ services:
     pid: host # Use host PID namespace so GPU metrics are available
     cap_add:
       - SYS_PTRACE
+    user: "${UID}:${GID}"
     environment:
       - IS_RAY_HEAD=false
       - RAY_HEAD_NODE_NAME=${RAY_HEAD_NODE_NAME}
@@ -131,7 +135,9 @@ services:
       - /dev/shm:/dev/shm
       - ${HOST_RUN_DIR}:/dsa/run
       - ../../dsa2000_cal:/dsa/code/package
-      - ~/.ssh:/root/.ssh:ro
+      - ~/.ssh:/home/${DSA_CONTENT_SSH_USERNAME}/.ssh:ro
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro
       - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
     deploy:
       resources:
