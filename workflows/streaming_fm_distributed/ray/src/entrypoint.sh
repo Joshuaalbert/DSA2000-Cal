@@ -16,14 +16,14 @@ if [ ! -f "$PACKAGE_DIR/pyproject.toml" ]; then
   exit 1
 fi
 
-## Set up tmp .ssh directory
-#mkdir -p /tmp/.ssh
-#cp /root/.ssh/* /tmp/.ssh/
-#chmod 700 /tmp/.ssh
-#chmod 600 /tmp/.ssh/*
-#git config --global core.sshCommand "ssh -F /tmp/.ssh/config"
-# Use it, then delete
-#rm -rf /tmp/.ssh
+if [ -d /root/.ssh_tmp ]; then
+  # Create the destination if it doesn't exist
+  mkdir -p /root/.ssh
+  # Copy all contents from the temporary location
+  cp -a /root/.ssh_tmp/. /root/.ssh/
+  # Change ownership to root:root
+  chown -R root:root /root/.ssh
+fi
 
 # Install the code
 echo "Installing the $PACKAGE_DIR package..."

@@ -33,9 +33,6 @@ fi
 # Use a subshell so that the exported variables are not available after the script finishes
 (
 
-  GID=$(id -g)
-  export GID
-
   export NODE_NAME
   export DSA_CONTENT_SSH_USERNAME
 
