@@ -17,6 +17,7 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import source_model_registry, array_registry
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid, get_time_of_local_meridean
+from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.noise import calc_image_noise, calc_baseline_noise
 from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_common.common.ray_utils import TimerLog
@@ -531,18 +532,20 @@ def simulate_rms(
 
             # A * beam^2 * psf > sigma => A > 1muJy / beam^2 / psf
             global_flux_cut = thermal_noise / (global_crest_peak ** 2 * prior_psf_sidelobe_peak)
-            print(f"Thermal floor: {thermal_noise}")
-            print(f"Global crest peak outside {angular_radius}: {global_crest_peak}")
-            print(f"PSF sidelobe peak: {prior_psf_sidelobe_peak}")
-            print(f"==> Flux cut: {global_flux_cut}")
+            dsa_logger.info(f"Thermal floor: {thermal_noise}")
+            dsa_logger.info(f"Global crest peak outside {angular_radius}: {global_crest_peak}")
+            dsa_logger.info(f"PSF sidelobe peak: {prior_psf_sidelobe_peak}")
+            dsa_logger.info(f"==> Flux cut: {global_flux_cut}")
             select_mask = jnp.any(bright_sky_model.A > quantity_to_jnp(global_flux_cut, 'Jy'), axis=1)  # [N]
-            print(f"Global: {np.sum(select_mask)} selected brightest sources out of {len(bright_sky_model.A)}")
+            dsa_logger.info(
+                f"Global: {np.sum(select_mask)} selected brightest sources out of {len(bright_sky_model.A)}")
 
             flux_cut = thermal_noise / (beam_amp ** 2 * prior_psf_sidelobe_peak)  # [N, F]
             select_mask = jnp.any(bright_sky_model.A > flux_cut, axis=1)  # [N]
-            print(f"Mean beam amp: {jnp.mean(beam_amp)}")
-            print(f"Mean flux cut: {jnp.mean(flux_cut[select_mask])}")
-            print(f"Per-source: {np.sum(select_mask)} selected brightest sources out of {len(bright_sky_model.A)}")
+            dsa_logger.info(f"Mean beam amp: {jnp.mean(beam_amp)}")
+            dsa_logger.info(f"Mean flux cut: {jnp.mean(flux_cut[select_mask])}")
+            dsa_logger.info(
+                f"Per-source: {np.sum(select_mask)} selected brightest sources out of {len(bright_sky_model.A)}")
 
             bright_sky_model = BasePointSourceModel(
                 model_freqs=bright_sky_model.model_freqs,
@@ -611,7 +614,7 @@ def simulate_rms(
                     num_points=20,
                     angular_radius=90 * au.deg
                 )
-                print(f"Number of ionosphere sample directions: {len(ionosphere_model_directions)}")
+                dsa_logger.info(f"Number of ionosphere sample directions: {len(ionosphere_model_directions)}")
 
                 key, sim_key = jax.random.split(key)
                 ionosphere_gain_model = build_ionosphere_gain_model(
