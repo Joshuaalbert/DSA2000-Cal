@@ -4,7 +4,7 @@ import logging
 import jax.numpy as jnp
 import ray
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 async def main():

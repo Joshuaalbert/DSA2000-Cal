@@ -18,7 +18,7 @@ from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.util.metrics import Gauge
 
-logger = logging.getLogger("ray")
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 def get_gpu_with_most_memory() -> Tuple[int, int]:

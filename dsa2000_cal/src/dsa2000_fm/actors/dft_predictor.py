@@ -22,7 +22,7 @@ from dsa2000_common.visibility_model.source_models.celestial.base_gaussian_sourc
 from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import BasePointSourceModel
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class DFTPredictorResponse(NamedTuple):

@@ -19,7 +19,7 @@ from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_model import BaseFITSSourceModel
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class DegriddingPredictorResponse(NamedTuple):

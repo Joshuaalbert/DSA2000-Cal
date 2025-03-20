@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import os
 import time
 from datetime import timedelta
@@ -15,18 +14,17 @@ from pydantic import Field
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_common.common.fits_utils import ImageModel, save_image_to_fits
+from dsa2000_common.common.logging import dsa_logger as logger
+from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.common.ray_utils import resource_logger
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
-from dsa2000_common.common.corr_utils import broadcast_translate_corrs
-from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.actors.gridder import GridderResponse
 from dsa2000_fm.actors.supervisor import Supervisor
 from dsa2000_fm.imaging.base_imagor import fit_beam
 from dsa2000_fm.namespace import NAMESPACE
-
-logger = logging.getLogger('ray')
 
 
 class AggregatorParams(SerialisableBaseModel):

@@ -34,7 +34,7 @@ from dsa2000_fm.actors.degridding_predictor import DegriddingPredictor, \
 from dsa2000_fm.actors.dft_predictor import DFTPredictorResponse
 from dsa2000_fm.actors.supervisor import Supervisor
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class ModelPredictorParams(SerialisableBaseModel):

@@ -13,7 +13,7 @@ from dsa2000_common.common.ray_utils import get_head_node_id
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.namespace import NAMESPACE
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class NodeResourceMonitorParams(SerialisableBaseModel):

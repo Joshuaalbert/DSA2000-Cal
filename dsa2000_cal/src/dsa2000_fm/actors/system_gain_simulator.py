@@ -22,7 +22,7 @@ from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.systematics.dish_aperture_effects import build_dish_aperture_effects
 from dsa2000_fm.systematics.ionosphere import compute_x0_radius, construct_canonical_ionosphere
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class SimulationParams(NamedTuple):

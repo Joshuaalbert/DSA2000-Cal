@@ -36,7 +36,7 @@ from dsa2000_fm.actors.data_streamer import DataStreamerResponse
 from dsa2000_fm.actors.model_predictor import ModelPredictorResponse
 from dsa2000_fm.actors.supervisor import Supervisor
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class CalibratorResponse(NamedTuple):

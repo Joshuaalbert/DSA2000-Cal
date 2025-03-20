@@ -34,11 +34,6 @@ LOGGING_CONFIG = {
             "handlers": ["console"],
             "propagate": True,
         },
-        "transitions.extensions.asyncio": {
-            "level": "WARNING",  # Only show WARNING or higher for transitions
-            "handlers": ["console"],
-            "propagate": False,
-        },
         # You can add more module-specific configurations here
         "dsa2000_cal": {
             "level": "DEBUG",

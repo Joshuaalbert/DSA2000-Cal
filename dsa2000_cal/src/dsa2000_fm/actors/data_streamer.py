@@ -35,7 +35,7 @@ from dsa2000_fm.actors.dft_predictor import DFTPredictorResponse
 from dsa2000_fm.actors.supervisor import Supervisor
 from dsa2000_fm.actors.system_gain_simulator import SystemGainSimulatorResponse
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class DataStreamerParams(SerialisableBaseModel):

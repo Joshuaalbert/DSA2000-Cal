@@ -16,7 +16,7 @@ from dsa2000_common.common.array_types import ComplexArray, FloatArray
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.namespace import NAMESPACE
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class CalibrationSolution(NamedTuple):

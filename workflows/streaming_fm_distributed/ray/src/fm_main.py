@@ -36,7 +36,7 @@ from dsa2000_fm.imaging.utils import get_image_parameters
 from dsa2000_fm.measurement_sets.measurement_set import MeasurementSetMeta
 from dsa2000_fm.namespace import NAMESPACE
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Quantity | None,
