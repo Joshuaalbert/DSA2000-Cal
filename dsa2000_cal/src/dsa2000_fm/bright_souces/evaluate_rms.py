@@ -210,7 +210,6 @@ def pre_compute_image_and_smear_values(
     return phase, R, A, phase_eval, g12
 
 
-@partial(jax.jit, static_argnames=['smearing'])
 def compute_image_and_smear_values(
         key,
         l: FloatArray, m: FloatArray, n: FloatArray,
@@ -243,48 +242,53 @@ def compute_image_and_smear_values(
     Returns:
         [M], [M], scalar, scalar, scalar, scalar, scalar, scalar
     """
+
     def accumulate_over_freq(accumulate, x):
         # scalar -> [B] -> [B, M] -> scalar
         (freq, key) = x  # scalar
 
-        phase, R, A, phase_eval, g12 = pre_compute_image_and_smear_values(
-            freq,
-            l,m,n,
-            bright_sky_model,
-            total_gain_model,
-            times,
-            far_field_delay_engine,
-            geodesic_model,
-            freqs,
-            integration_time,
-            ra0, dec0
+        phase, R, A, phase_eval, g12 = jax.tree.map(
+            np.array, jax.block_until_ready(
+                pre_compute_image_and_smear_values(
+                    freq,
+                    l, m, n,
+                    bright_sky_model,
+                    total_gain_model,
+                    times,
+                    far_field_delay_engine,
+                    geodesic_model,
+                    freqs,
+                    integration_time,
+                    ra0, dec0
+                )
+            )
         )
-        delta = compute_image_and_smear_values_single_freq(
-            key,
-            freq,
-            phase, R, A,
-            phase_eval,
-            n,
-            g12,
-            integration_time, channel_width, baseline_noise,
-            smearing
+        delta = jax.tree.map(
+            np.array, jax.block_until_ready(
+                compute_image_and_smear_values_single_freq(
+                    key,
+                    freq,
+                    phase, R, A,
+                    phase_eval,
+                    n,
+                    g12,
+                    integration_time, channel_width, baseline_noise,
+                    smearing
+                )
+            )
         )
-        accumulate = jax.tree.map(lambda x, y: jax.lax.add(x.astype(jnp.float32), y.astype(jnp.float32)),
-                                  accumulate,
-                                  delta)
-        return accumulate, None
+        accumulate = jax.tree.map(lambda x, y: x + y, accumulate, delta)
+        return accumulate
 
-    init_accumulate = (
-        jnp.zeros(l.shape, jnp.float32),
-        jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
-        jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
-        jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32)
+    accumulate = (
+        np.zeros(l.shape, np.float32),
+        np.zeros((), np.float32), np.zeros((), np.float32),
+        np.zeros((), np.float32), np.zeros((), np.float32),
+        np.zeros((), np.float32), np.zeros((), np.float32)
     )
-    accumulate, _ = jax.lax.scan(
-        accumulate_over_freq,
-        init_accumulate,
-        (freqs, jax.random.split(key, len(freqs)))
-    )
+
+    for freq, key in zip(freqs, jax.random.split(key, len(freqs))):
+        accumulate = accumulate_over_freq(accumulate, (freq, key))
 
     # Normalize by number of freqs
     accumulate = jax.tree.map(lambda x: x / len(freqs), accumulate)
