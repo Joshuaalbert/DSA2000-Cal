@@ -38,9 +38,7 @@ from dsa2000_fm.systematics.ionosphere import compute_x0_radius, construct_canon
 
 
 def print_debug_info(tree):
-    shapes = jax.tree.map(np.shape, tree)
-    nbytes = jax.tree.map(lambda x: jnp.asarray(x).nbytes, tree)
-    merged_info = jax.tree.map(lambda x, y: f"shape: {x}, size: {y / 2 ** 30}GB", shapes, nbytes)
+    merged_info = jax.tree.map(lambda x: f"shape: {np.shape(x)}, size: {jnp.asarray(x).nbytes / 2 ** 30}GB", tree)
     dsa_logger.info(merged_info)
 
 
