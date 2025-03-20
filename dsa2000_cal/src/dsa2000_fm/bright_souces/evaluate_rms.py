@@ -296,24 +296,33 @@ def compute_rms_and_values(
                 A=bright_sky_model.A[source_start_idx: source_stop_idx]
             )
             _key, sample_key = jax.random.split(_key)
-            args = (
-                sample_key,
-                l_batch, m_batch, n_batch,
-                bright_sky_model_batch,
-                total_gain_model, times, far_field_delay_engine,
-                geodesic_model, freqs, integration_time,
-                channel_width, ra0, dec0, baseline_noise,
-                smearing
+            # args = (
+            #     sample_key,
+            #     l_batch, m_batch, n_batch,
+            #     bright_sky_model_batch,
+            #     total_gain_model, times, far_field_delay_engine,
+            #     geodesic_model, freqs, integration_time,
+            #     channel_width, ra0, dec0, baseline_noise,
+            #     smearing
+            # )
+            kwargs = dict(
+                key=sample_key,
+                l=l_batch, m=m_batch, n=n_batch,
+                bright_sky_model=bright_sky_model_batch,
+                total_gain_model=total_gain_model, times=times, far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model, freqs=freqs, integration_time=integration_time,
+                channel_width=channel_width, ra0=ra0, dec0=dec0, baseline_noise=baseline_noise,
+                smearing=smearing
             )
-            arg_size = get_pytree_size(args)
-            dsa_logger.info(f"Size of args for compute_image_and_smear_values: {arg_size / 2 ** 30} GB")
+            for k, v in kwargs.items():
+                dsa_logger.info(f"Size of {k} is {get_pytree_size(v) / 2 ** 30} GB")
             (
                 __image, __image_noise, __mean_time_smear, __var_time_smear,
                 __mean_freq_smear, __var_freq_smear,
                 __mean_smear, __var_smear
             ) = jax.block_until_ready(
                 compute_image_and_smear_values(
-                    *args
+                    **kwargs
                 )
             )
             _image.append(__image)
