@@ -95,8 +95,6 @@ def main():
     args = parser.parse_args()
 
     records = parse_log_file(args.logfile)
-    for record in records:
-        print(record)
     plot_resource_usage(records)
 
 
