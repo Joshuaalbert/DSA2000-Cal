@@ -1,6 +1,6 @@
 import os
 
-from dsa2000_cal.iterative_calibrator import compute_residual
+from dsa2000_cal.ops.residuals import compute_residual_TBC
 
 from dsa2000_common.common.ray_utils import TimerLog
 from dsa2000_fm.actors.average_utils import average_rule
@@ -417,7 +417,7 @@ def calibrate(vis_model, vis_data_avg, weights_avg, flags_avg, cal_visibility_co
 
 @jax.jit
 def calc_residual(vis_model, vis_data, gains, antenna1, antenna2):
-    return compute_residual(vis_model, vis_data, gains, antenna1, antenna2)
+    return compute_residual_TBC(vis_model, vis_data, gains, antenna1, antenna2)
 
 
 def main(plot_folder: str, image_name: str, array_name: str, num_sources: int, num_sol_ints_time: int,

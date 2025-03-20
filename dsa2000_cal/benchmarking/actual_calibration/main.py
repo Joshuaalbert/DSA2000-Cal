@@ -20,7 +20,8 @@ from typing import Generator, Tuple, List
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 
-from dsa2000_cal.iterative_calibrator import CalibrationStep, compute_residual
+from dsa2000_cal.iterative_calibrator import CalibrationStep
+from dsa2000_cal.ops.residuals import compute_residual_TBC
 from dsa2000_common.common.jax_utils import create_mesh
 
 import astropy.time as at
@@ -481,7 +482,7 @@ def build_calibration(gain_probabilistic_model: GainPriorModel, num_antennas: in
 
 @jax.jit
 def calc_residual(vis_model, vis_data, gains, antenna1, antenna2):
-    return compute_residual(vis_model, vis_data, gains, antenna1, antenna2)
+    return compute_residual_TBC(vis_model, vis_data, gains, antenna1, antenna2)
 
 
 def main(plot_folder: str, image_name: str, array_name: str, num_sources: int, num_sol_ints_time: int,

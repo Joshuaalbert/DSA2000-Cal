@@ -1,6 +1,5 @@
 import dataclasses
 import os
-import time
 from functools import partial
 from typing import Generator, Tuple, List, Any
 from typing import NamedTuple
@@ -18,21 +17,18 @@ from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 from jaxns.framework.ops import simulate_prior_model
 
+from dsa2000_cal.ops.residuals import compute_residual_TBC
 from dsa2000_cal.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
 from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, \
     MultiStepLevenbergMarquardtDiagnostic, MultiStepLevenbergMarquardt
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs
-from dsa2000_common.common.jax_utils import simple_broadcast, create_mesh
-from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.jax_utils import create_mesh
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp, jnp_to_time
 from dsa2000_common.common.ray_utils import TimerLog
-from dsa2000_common.common.vec_utils import kron_product
 from dsa2000_fm.actors.average_utils import average_rule
 
 tfpd = tfp.distributions
-
-
 
 
 class Data(NamedTuple):
@@ -191,7 +187,7 @@ class CalibrationStep:
                 raise ValueError(
                     f"Visibilities and weights must have the same shape, got {np.shape(vis_data)} and {np.shape(weights)}")
 
-            residuals = compute_residual(
+            residuals = compute_residual_TBC(
                 vis_model=vis_model,
                 vis_data=vis_data,
                 gains=gains,
@@ -275,7 +271,7 @@ class IterativeCalibrator:
             """
             # Performs application of gains to model, then tiles and subtracts from full resolution data.
             # Tm divides T, Cm divides C
-            return compute_residual(vis_model, vis_data, gains, antenna1, antenna2)
+            return compute_residual_TBC(vis_model, vis_data, gains, antenna1, antenna2)
 
         return calc_residual
 
@@ -592,120 +588,6 @@ class IterativeCalibrator:
             except StopIteration:
                 break
             gen_response = main_step(data, solver_state)
-
-
-def apply_gains_to_model_vis(vis_model, gains, antenna1, antenna2):
-    """
-    Compute the residual between the model visibilities and the observed visibilities.
-
-    Args:
-        vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
-        gains: [D, Tm, A, Cm[,2,2]] the gains
-        antenna1: [B] the antenna1
-        antenna2: [B] the antenna2
-
-    Returns:
-        [Tm, B, Cm[, 2, 2]] the residuals
-    """
-
-    def body_fn(accumulate, x):
-        vis_model, gains = x
-
-        g1 = gains[:, antenna1, :, ...]  # [Tm, B, Cm[, 2, 2]]
-        g2 = gains[:, antenna2, :, ...]  # [Tm, B, Cm[, 2, 2]]
-
-        @partial(
-            simple_broadcast,  # [Tm,B,Cm,...]
-            leading_dims=3
-        )
-        def apply_gains(g1, g2, vis):
-            if np.shape(g1) != np.shape(g1):
-                raise ValueError("Gains must have the same shape.")
-            if np.shape(vis) != np.shape(g1):
-                raise ValueError("Gains and visibilities must have the same shape.")
-            if np.shape(g1) == (2, 2):
-                return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
-            elif np.shape(g1) == ():
-                return mp_policy.cast_to_vis(g1 * vis * g2.conj())
-            else:
-                raise ValueError(f"Invalid shape: {np.shape(g1)}")
-
-        delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
-        return accumulate + delta_vis, ()
-
-    if np.shape(vis_model)[0] != np.shape(gains)[0]:
-        raise ValueError(
-            f"Model visibilities and gains must have the same number of directions, got {np.shape(vis_model)[0]} and {np.shape(gains)[0]}")
-
-    accumulate = jnp.zeros(np.shape(vis_model)[1:], dtype=vis_model.dtype)
-    accumulate, _ = jax.lax.scan(body_fn, accumulate, (vis_model, gains))
-    return accumulate
-
-
-def compute_residual(vis_model, vis_data, gains, antenna1, antenna2):
-    """
-    Compute the residual between the model visibilities and the observed visibilities.
-
-    Args:
-        vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
-        vis_data: [Ts, B, Cs[,2,2]] the data visibilities, Ts = 0 mod Tm, Cs = 0 mod Cm i.e. Ts % Tm = 0, Cs % Cm = 0
-        gains: [D, Tm, A, Cm[,2,2]] the gains
-        antenna1: [B] the antenna1
-        antenna2: [B] the antenna2
-
-    Returns:
-        [Ts, B, Cs[, 2, 2]] the residuals
-    """
-
-    accumulate = apply_gains_to_model_vis(vis_model, gains, antenna1, antenna2)
-
-    # def body_fn(accumulate, x):
-    #     vis_model, gains = x
-    #
-    #     g1 = gains[:, antenna1, :, ...]  # [Tm, B, Cm[, 2, 2]]
-    #     g2 = gains[:, antenna2, :, ...]  # [Tm, B, Cm[, 2, 2]]
-    #
-    #     @partial(
-    #         simple_broadcast,  # [Tm,B,Cm,...]
-    #         leading_dims=3
-    #     )
-    #     def apply_gains(g1, g2, vis):
-    #         if np.shape(g1) != np.shape(g1):
-    #             raise ValueError(f"Gains must have the same shape, "
-    #                              f"got {np.shape(g1)} and {np.shape(vis)}.")
-    #         if np.shape(vis) != np.shape(g1):
-    #             raise ValueError(f"Gains and visibilities must have the same shape, "
-    #                              f"got {np.shape(g1)} and {np.shape(vis)}.")
-    #         if np.shape(g1) == (2, 2):
-    #             return mp_policy.cast_to_vis(kron_product(g1, vis, g2.conj().T))
-    #         elif np.shape(g1) == ():
-    #             return mp_policy.cast_to_vis(g1 * vis * g2.conj())
-    #         else:
-    #             raise ValueError(f"Invalid shape: {np.shape(g1)}")
-    #
-    #     delta_vis = apply_gains(g1, g2, vis_model)  # [Tm, B, Cm[, 2, 2]]
-    #     return accumulate + delta_vis, ()
-    #
-    # if np.shape(vis_model)[0] != np.shape(gains)[0]:
-    #     raise ValueError(
-    #         f"Model visibilities and gains must have the same number of directions, "
-    #         f"got {np.shape(vis_model)[0]} and {np.shape(gains)[0]}")
-    #
-    # # num_directions = np.shape(vis_model)[0]
-    #
-    # accumulate = jnp.zeros(np.shape(vis_model)[1:], dtype=vis_model.dtype)
-    # accumulate, _ = jax.lax.scan(body_fn, accumulate, (vis_model, gains))
-
-    # Invert average rule with tile
-    time_rep = np.shape(vis_data)[0] // np.shape(accumulate)[0]  # Ts / Tm
-    freq_rep = np.shape(vis_data)[2] // np.shape(accumulate)[2]  # Cs / Cm
-    tile_reps = [1] * len(np.shape(accumulate))
-    tile_reps[0] = time_rep
-    tile_reps[2] = freq_rep
-    if np.prod(tile_reps) > 1:
-        # print(f"Replicating accumulated model vis {tile_reps}")
-        accumulate = jnp.tile(accumulate, tile_reps)
-    return vis_data - accumulate
 
 
 class DataGenInput(NamedTuple):
