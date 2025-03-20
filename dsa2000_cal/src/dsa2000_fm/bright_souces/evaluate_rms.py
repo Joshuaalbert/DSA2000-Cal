@@ -17,6 +17,7 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import source_model_registry, array_registry
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid, get_time_of_local_meridean
+from dsa2000_common.common.jax_utils import get_pytree_size
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.noise import calc_image_noise, calc_baseline_noise
 from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
@@ -71,8 +72,8 @@ class ValuesAndRMS(NamedTuple):
     mean_noise: FloatArray
     std_noise: FloatArray
 
-    mean_abs_R: FloatArray
-    std_abs_R: FloatArray
+    # mean_abs_R: FloatArray
+    # std_abs_R: FloatArray
     mean_time_smear: FloatArray
     std_time_smear: FloatArray
     mean_freq_smear: FloatArray
@@ -295,19 +296,24 @@ def compute_rms_and_values(
                 A=bright_sky_model.A[source_start_idx: source_stop_idx]
             )
             _key, sample_key = jax.random.split(_key)
+            args = (
+                sample_key,
+                l_batch, m_batch, n_batch,
+                bright_sky_model_batch,
+                total_gain_model, times, far_field_delay_engine,
+                geodesic_model, freqs, integration_time,
+                channel_width, ra0, dec0, baseline_noise,
+                smearing
+            )
+            arg_size = get_pytree_size(args)
+            dsa_logger.info(f"Size of args for compute_image_and_smear_values: {arg_size / 2 ** 30} GB")
             (
                 __image, __image_noise, __mean_time_smear, __var_time_smear,
                 __mean_freq_smear, __var_freq_smear,
                 __mean_smear, __var_smear
             ) = jax.block_until_ready(
                 compute_image_and_smear_values(
-                    sample_key,
-                    l_batch, m_batch, n_batch,
-                    bright_sky_model_batch,
-                    total_gain_model, times, far_field_delay_engine,
-                    geodesic_model, freqs, integration_time,
-                    channel_width, ra0, dec0, baseline_noise,
-                    smearing
+                    *args
                 )
             )
             _image.append(__image)
@@ -362,8 +368,8 @@ def compute_rms_and_values(
         min_noise=min_noise,
         mean_noise=mean_noise,
         std_noise=std_noise,
-        mean_abs_R=mean_abs_R,
-        std_abs_R=np.sqrt(var_abs_R),
+        # mean_abs_R=mean_abs_R,
+        # std_abs_R=np.sqrt(var_abs_R),
         mean_time_smear=mean_time_smear,
         std_time_smear=np.sqrt(var_time_smear),
         mean_freq_smear=mean_freq_smear,

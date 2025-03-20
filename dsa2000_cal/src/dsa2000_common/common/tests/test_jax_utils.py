@@ -8,7 +8,7 @@ from jax import numpy as jnp
 
 from dsa2000_common.common.jax_utils import vmap_or_scan, extract_shape, extract_shape_tuples, multi_vmap, \
     auto_multi_vmap, \
-    convert_to_ufunc, _get_permutation, simple_broadcast, chunked_pmap
+    convert_to_ufunc, _get_permutation, simple_broadcast, chunked_pmap, get_pytree_size
 
 
 @pytest.mark.parametrize('use_scan', [True, False])
@@ -321,3 +321,9 @@ def test_chunked_pmap():
 
     x = jnp.ones((4, 2, 3))
     assert jax.block_until_ready(f(x)).shape == (4, 2)
+
+
+def test_get_pytree_size():
+    x = jnp.ones((10, 10), jnp.float32)
+    y = jnp.ones((10, 10), jnp.float32)
+    assert get_pytree_size((x, y)) == 2 * 10 * 10 * 4
