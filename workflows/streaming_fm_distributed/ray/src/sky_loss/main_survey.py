@@ -16,7 +16,7 @@ def run(result_idx, cpu_idx, gpu_idx, pointing):
     cpus = jax.devices("cpu")
     gpus = jax.devices("cuda")
     cpu = cpus[cpu_idx]
-    gpu = gpus[gpu_idx]
+    gpu = gpus[0]
     simulate_rms(
         cpu=cpu,
         gpu=gpu,

@@ -6,7 +6,7 @@ node_idx=0
 
 for gpu_idx in $(seq 0 9); do
 
-  cd /dsa/run && python /dsa/code/src/sky_loss/main_survey.py \
+  cd /dsa/run && CUDA_VISIBLE_DEVICES=$gpu_idx python /dsa/code/src/sky_loss/main_survey.py \
     --gpu_idx=$gpu_idx \
     --node_idx=$node_idx \
     --num_nodes=2 &
@@ -18,7 +18,7 @@ wait
 
 for gpu_idx in $(seq 0 9); do
 
-  cd /dsa/run && python /dsa/code/src/sky_loss/main_vary_systematics.py \
+  cd /dsa/run && CUDA_VISIBLE_DEVICES=$gpu_idx python /dsa/code/src/sky_loss/main_vary_systematics.py \
     --gpu_idx=$gpu_idx \
     --node_idx=$node_idx \
     --num_nodes=2 &

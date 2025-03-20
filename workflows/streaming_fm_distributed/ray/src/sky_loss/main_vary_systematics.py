@@ -16,7 +16,7 @@ def run(result_idx, cpu_idx, gpu_idx, pointing_offset_stddev, axial_focus_error_
     cpus = jax.devices("cpu")
     gpus = jax.devices("cuda")
     cpu = cpus[cpu_idx]
-    gpu = gpus[gpu_idx]
+    gpu = gpus[0]
     simulate_rms(
         cpu=cpu,
         gpu=gpu,
@@ -46,7 +46,6 @@ def run(result_idx, cpu_idx, gpu_idx, pointing_offset_stddev, axial_focus_error_
 def main(gpu_idx: int, node_idx: int, num_nodes: int):
     cpus = jax.devices("cpu")
     gpus = jax.devices("cuda")
-    queues = [queue.Queue() for _ in gpus]
 
     # fill queues with input args
     args = []
