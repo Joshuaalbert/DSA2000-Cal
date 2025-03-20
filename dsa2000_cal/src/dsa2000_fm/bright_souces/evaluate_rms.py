@@ -151,7 +151,6 @@ def pre_compute_image_and_smear_values(
         times: FloatArray,
         far_field_delay_engine: BaseFarFieldDelayEngine,
         geodesic_model: BaseGeodesicModel,
-        freqs: FloatArray,
         integration_time: FloatArray,
         ra0: FloatArray, dec0: FloatArray
 ):
@@ -174,12 +173,12 @@ def pre_compute_image_and_smear_values(
     """
     # For each frequency
     visibilty_coords = far_field_delay_engine.compute_visibility_coords(
-        freqs=freqs,
+        freqs=freq[None],
         times=times,
         with_autocorr=False
     )  # [B]
     visibilty_coords_dt = far_field_delay_engine.compute_visibility_coords(
-        freqs=freqs,
+        freqs=freq[None],
         times=times + 0.5 * integration_time,
         with_autocorr=False
     )  # [B]
@@ -257,7 +256,6 @@ def compute_image_and_smear_values(
                     times,
                     far_field_delay_engine,
                     geodesic_model,
-                    freqs,
                     integration_time,
                     ra0, dec0
                 )
