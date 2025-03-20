@@ -17,7 +17,6 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import source_model_registry, array_registry
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid, get_time_of_local_meridean
-from dsa2000_common.common.jax_utils import get_pytree_size
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.noise import calc_image_noise, calc_baseline_noise
 from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
@@ -177,7 +176,7 @@ def pre_compute_image_and_smear_values(
         [M], [M], scalar, scalar, scalar, scalar, scalar, scalar
     """
     print_debug_info(dict(
-        freq=freq,  l=l,m=m,n=n,
+        freq=freq, l=l, m=m, n=n,
         bright_sky_model=bright_sky_model,
         total_gain_model=total_gain_model,
         times=times,
@@ -199,7 +198,7 @@ def pre_compute_image_and_smear_values(
         times=times + 0.5 * integration_time,
         with_autocorr=False
     )  # [B]
-    print(visibilty_coords_dt)
+    print_debug_info(visibilty_coords_dt)
     uvw = jax.lax.reshape(visibilty_coords.uvw, (visibilty_coords.antenna1.shape[0], 3))  # [B, 3]
     uvw_dt = jax.lax.reshape(visibilty_coords_dt.uvw, (visibilty_coords_dt.antenna1.shape[0], 3))  # [B, 3]
     # DFT
@@ -460,24 +459,21 @@ def single_compute_image_and_values(key, baseline_noise, bright_sky_model, chann
             A=bright_sky_model.A[source_start_idx: source_stop_idx]
         )
         _key, sample_key = jax.random.split(_key)
-        kwargs = dict(
-            key=sample_key,
-            l=l_batch, m=m_batch, n=n_batch,
-            bright_sky_model=bright_sky_model_batch,
-            total_gain_model=total_gain_model, times=times, far_field_delay_engine=far_field_delay_engine,
-            geodesic_model=geodesic_model, freqs=freqs, integration_time=integration_time,
-            channel_width=channel_width, ra0=ra0, dec0=dec0, baseline_noise=baseline_noise,
-            smearing=smearing
-        )
-        for k, v in kwargs.items():
-            dsa_logger.info(f"Size of {k} is {get_pytree_size(v) / 2 ** 30} GB")
+
         (
             __image_noise, __mean_time_smear, __var_time_smear,
             __mean_freq_smear, __var_freq_smear,
             __mean_smear, __var_smear
         ) = jax.block_until_ready(
             compute_image_and_smear_values(
-                **kwargs
+                key=sample_key,
+                l=l_batch, m=m_batch, n=n_batch,
+                bright_sky_model=bright_sky_model_batch,
+                total_gain_model=total_gain_model, times=times,
+                far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model, freqs=freqs, integration_time=integration_time,
+                channel_width=channel_width, ra0=ra0, dec0=dec0, baseline_noise=baseline_noise,
+                smearing=smearing
             )
         )
         _image_noise.append(__image_noise)
