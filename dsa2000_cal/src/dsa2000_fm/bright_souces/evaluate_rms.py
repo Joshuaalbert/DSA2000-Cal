@@ -91,8 +91,60 @@ def sinc(x):
 
 
 @partial(jax.jit, static_argnames=['smearing'])
-def compute_image_and_smear_values(
+def compute_image_and_smear_values_single_freq(
         key,
+        freq,
+        phase, R, A,
+        phase_eval,
+        n: FloatArray,
+        g12,
+        integration_time: FloatArray,
+        channel_width: FloatArray,
+        baseline_noise: FloatArray,
+        smearing: bool
+):
+    c = quantity_to_jnp(const.c)
+    # scalar -> [B] -> [B, M] -> scalar
+    wavelength = c / freq
+    coeff = 2 * jnp.pi / wavelength
+    # compute vis with optional smearing
+    fringe = jax.lax.complex(jnp.cos(coeff * phase), jnp.sin(coeff * phase)).astype(jnp.complex64)  # [B, N]
+    if smearing:
+        time_smear_modulation = sinc(R * (jnp.pi * integration_time / wavelength))  # [B, N]
+        freq_smear_moduluation = sinc(phase * (jnp.pi * channel_width / c))  # [B, N]
+        smear_modulation = time_smear_modulation * freq_smear_moduluation  # [B, N]
+        mean_time_smear = jnp.mean(time_smear_modulation)
+        var_time_smear = jnp.var(time_smear_modulation)
+        mean_freq_smear = jnp.mean(freq_smear_moduluation)
+        var_freq_smear = jnp.var(freq_smear_moduluation)
+        mean_smear = jnp.mean(smear_modulation)
+        var_smear = jnp.var(smear_modulation)
+        vis = jnp.sum((g12) * (A * (fringe * smear_modulation)), axis=1).astype(jnp.complex64)  # [B]
+    else:
+        mean_time_smear = var_time_smear = mean_freq_smear = var_freq_smear = mean_smear = var_smear = jnp.asarray(
+            1., jnp.float32)
+        vis = jnp.sum((g12) * (A * fringe), axis=1).astype(jnp.complex64)  # [B]
+    key1, key2 = jax.random.split(key)
+    # divide by sqrt(2) for real and imag part
+    noise = (baseline_noise / np.sqrt(2)) * jax.lax.complex(
+        jax.random.normal(key1, shape=vis.shape, dtype=vis.real.dtype),
+        jax.random.normal(key2, shape=vis.shape, dtype=vis.imag.dtype)).astype(
+        vis.dtype)
+    vis_noise = vis + noise
+    # compute image, normalising
+    fringe = jax.lax.complex(jnp.cos(coeff * phase_eval), jnp.sin(coeff * phase_eval)).astype(jnp.complex64)
+    image_noise = n.astype(jnp.float32) * jnp.sum((vis_noise * fringe).real, axis=1)  # [M]
+    image_noise /= vis.size
+    delta = (
+        image_noise,
+        mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
+    )
+    return delta
+
+
+@partial(jax.jit)
+def pre_compute_image_and_smear_values(
+        freq,
         l: FloatArray, m: FloatArray, n: FloatArray,
         bright_sky_model: BasePointSourceModel,
         total_gain_model: GainModel,
@@ -101,10 +153,7 @@ def compute_image_and_smear_values(
         geodesic_model: BaseGeodesicModel,
         freqs: FloatArray,
         integration_time: FloatArray,
-        channel_width: FloatArray,
-        ra0: FloatArray, dec0: FloatArray,
-        baseline_noise: FloatArray,
-        smearing: bool
+        ra0: FloatArray, dec0: FloatArray
 ):
     """
     Compute the RMS in the field due to uncalibrated extra-field sources.
@@ -146,7 +195,6 @@ def compute_image_and_smear_values(
                                                                         return_elevation=True)  # [T, A, N, 3], [T, A, N]
 
     A = jnp.where(elevation[0, 0, :] > 0, jnp.mean(bright_sky_model.A, axis=1), 0.)  # [N]
-    c = quantity_to_jnp(const.c)
 
     phase = -(jnp.sum(lmn_sources[None, ...] * uvw[:, None, :], axis=-1) - w[:, None])  # [B, N]
     phase_dt = -(jnp.sum(lmn_sources[None, ...] * uvw_dt[:, None, :], axis=-1) - w_dt[:, None])  # [B, N]
@@ -155,48 +203,71 @@ def compute_image_and_smear_values(
     lmn_eval = jnp.stack([l, m, n], axis=-1)  # [M, 3]
     phase_eval = (jnp.sum(lmn_eval[:, None, ...] * uvw[None, ...], axis=-1) - w[None, :])  # [M, B]
 
+    gains = total_gain_model.compute_gain(freq[None], times, lmn_geodesic)  # [T, A, 1, N]
+    g1 = gains[0, visibilty_coords.antenna1, 0, :]  # [B, N]
+    g2 = gains[0, visibilty_coords.antenna2, 0, :]  # [B, N]
+    g12 = g1 * g2.conj()
+    return phase, R, A, phase_eval, g12
+
+
+@partial(jax.jit, static_argnames=['smearing'])
+def compute_image_and_smear_values(
+        key,
+        l: FloatArray, m: FloatArray, n: FloatArray,
+        bright_sky_model: BasePointSourceModel,
+        total_gain_model: GainModel,
+        times: FloatArray,
+        far_field_delay_engine: BaseFarFieldDelayEngine,
+        geodesic_model: BaseGeodesicModel,
+        freqs: FloatArray,
+        integration_time: FloatArray,
+        channel_width: FloatArray,
+        ra0: FloatArray, dec0: FloatArray,
+        baseline_noise: FloatArray,
+        smearing: bool
+):
+    """
+    Compute the RMS in the field due to uncalibrated extra-field sources.
+
+    Args:
+        l: [M]
+        m: [M]
+        n: [M]
+        bright_sky_model: sky model of [N] sources
+        total_gain_model: gain model
+        times: [T] the times
+        far_field_delay_engine: far field delay engine
+        geodesic_model: geodesic model
+        freqs: [F] the frequencies to compute over
+
+    Returns:
+        [M], [M], scalar, scalar, scalar, scalar, scalar, scalar
+    """
     def accumulate_over_freq(accumulate, x):
         # scalar -> [B] -> [B, M] -> scalar
         (freq, key) = x  # scalar
 
-        gains = total_gain_model.compute_gain(freq[None], times, lmn_geodesic)  # [T, A, 1, N]
-        g1 = gains[0, visibilty_coords.antenna1, 0, :]  # [B, N]
-        g2 = gains[0, visibilty_coords.antenna2, 0, :]  # [B, N]
-        wavelength = c / freq
-        coeff = 2 * jnp.pi / wavelength
-        # compute vis with optional smearing
-        fringe = jax.lax.complex(jnp.cos(coeff * phase), jnp.sin(coeff * phase)).astype(jnp.complex64)  # [B, N]
-        if smearing:
-            time_smear_modulation = sinc(R * (jnp.pi * integration_time / wavelength))  # [B, N]
-            freq_smear_moduluation = sinc(phase * (jnp.pi * channel_width / c))  # [B, N]
-            smear_modulation = time_smear_modulation * freq_smear_moduluation  # [B, N]
-            mean_time_smear = jnp.mean(time_smear_modulation)
-            var_time_smear = jnp.var(time_smear_modulation)
-            mean_freq_smear = jnp.mean(freq_smear_moduluation)
-            var_freq_smear = jnp.var(freq_smear_moduluation)
-            mean_smear = jnp.mean(smear_modulation)
-            var_smear = jnp.var(smear_modulation)
-            vis = jnp.sum((g1 * g2.conj()) * (A * (fringe * smear_modulation)), axis=1).astype(jnp.complex64)  # [B]
-        else:
-            mean_time_smear = var_time_smear = mean_freq_smear = var_freq_smear = mean_smear = var_smear = jnp.asarray(
-                1., jnp.float32)
-            vis = jnp.sum((g1 * g2.conj()) * (A * fringe), axis=1).astype(jnp.complex64)  # [B]
-        key1, key2 = jax.random.split(key)
-        # divide by sqrt(2) for real and imag part
-        noise = (baseline_noise / np.sqrt(2)) * jax.lax.complex(
-            jax.random.normal(key1, shape=vis.shape, dtype=vis.real.dtype),
-            jax.random.normal(key2, shape=vis.shape, dtype=vis.imag.dtype)).astype(
-            vis.dtype)
-        vis_noise = vis + noise
-        # compute image, normalising
-        fringe = jax.lax.complex(jnp.cos(coeff * phase_eval), jnp.sin(coeff * phase_eval)).astype(jnp.complex64)
-        # image = n.astype(jnp.float32) * jnp.sum((vis * fringe).real, axis=1)  # [M]
-        image_noise = n.astype(jnp.float32) * jnp.sum((vis_noise * fringe).real, axis=1)  # [M]
-        # image /= vis.size
-        image_noise /= vis.size
-        delta = (
-            image_noise,
-            mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
+        phase, R, A, phase_eval, g12 = pre_compute_image_and_smear_values(
+            freq,
+            l,m,n,
+            bright_sky_model,
+            total_gain_model,
+            times,
+            far_field_delay_engine,
+            geodesic_model,
+            freqs,
+            integration_time,
+            ra0, dec0
+        )
+        delta = compute_image_and_smear_values_single_freq(
+            key,
+            freq,
+            phase, R, A,
+            phase_eval,
+            n,
+            g12,
+            integration_time, channel_width, baseline_noise,
+            smearing
         )
         accumulate = jax.tree.map(lambda x, y: jax.lax.add(x.astype(jnp.float32), y.astype(jnp.float32)),
                                   accumulate,
@@ -727,7 +798,6 @@ def simulate_rms(
                     ant_idx=-1,
                     show=False
                 )
-
                 total_gain_model = beam_model @ ionosphere_gain_model
     else:
         with jax.default_device(cpu):
