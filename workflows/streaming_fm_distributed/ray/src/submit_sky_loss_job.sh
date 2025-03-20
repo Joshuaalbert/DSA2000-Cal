@@ -13,6 +13,9 @@ for gpu_idx in $(seq 0 9); do
 
 done
 
+# wait for these to finish before starting the next set of jobs
+wait
+
 for gpu_idx in $(seq 0 9); do
 
   cd /dsa/run && python /dsa/code/src/sky_loss/main_vary_systematics.py \
