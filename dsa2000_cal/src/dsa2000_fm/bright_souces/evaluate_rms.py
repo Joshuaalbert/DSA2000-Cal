@@ -711,7 +711,7 @@ def simulate_rms(
                 ionosphere_gain_model = build_ionosphere_gain_model(
                     key=sim_key,
                     ionosphere=ionosphere,
-                    model_freqs=freqs[[0, len(freqs) // 2, -1]],
+                    model_freqs=freqs[[0, -1]],
                     antennas=antennas,
                     ref_location=array_location,
                     times=times,
