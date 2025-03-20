@@ -37,6 +37,13 @@ from dsa2000_fm.systematics.ionosphere import compute_x0_radius, construct_canon
     build_ionosphere_gain_model
 
 
+def print_debug_info(tree):
+    shapes = jax.tree.map(np.shape, tree)
+    nbytes = jax.tree.map(lambda x: jnp.asarray(x).nbytes, tree)
+    merged_info = jax.tree.map(lambda x, y: f"shape: {x}, size: {y / 2 ** 30}GB", shapes, nbytes)
+    dsa_logger.info(merged_info)
+
+
 class Result(SerialisableBaseModel):
     phase_center: ac.ICRS
     ref_time: at.Time
@@ -171,17 +178,30 @@ def pre_compute_image_and_smear_values(
     Returns:
         [M], [M], scalar, scalar, scalar, scalar, scalar, scalar
     """
+    print_debug_info(dict(
+        freq=freq,  l=l,m=m,n=n,
+        bright_sky_model=bright_sky_model,
+        total_gain_model=total_gain_model,
+        times=times,
+        far_field_delay_engine=far_field_delay_engine,
+        geodesic_model=geodesic_model,
+        integration_time=integration_time,
+        ra0=ra0, dec0=dec0
+    ))
     # For each frequency
     visibilty_coords = far_field_delay_engine.compute_visibility_coords(
         freqs=freq[None],
         times=times,
         with_autocorr=False
     )  # [B]
+    print_debug_info(visibilty_coords)
+
     visibilty_coords_dt = far_field_delay_engine.compute_visibility_coords(
         freqs=freq[None],
         times=times + 0.5 * integration_time,
         with_autocorr=False
     )  # [B]
+    print(visibilty_coords_dt)
     uvw = jax.lax.reshape(visibilty_coords.uvw, (visibilty_coords.antenna1.shape[0], 3))  # [B, 3]
     uvw_dt = jax.lax.reshape(visibilty_coords_dt.uvw, (visibilty_coords_dt.antenna1.shape[0], 3))  # [B, 3]
     # DFT
@@ -192,7 +212,7 @@ def pre_compute_image_and_smear_values(
                             axis=-1)  # [N, 3]
     lmn_geodesic, elevation = geodesic_model.compute_far_field_geodesic(times, lmn_sources,
                                                                         return_elevation=True)  # [T, A, N, 3], [T, A, N]
-
+    print_debug_info((lmn_geodesic, elevation))
     A = jnp.where(elevation[0, 0, :] > 0, jnp.mean(bright_sky_model.A, axis=1), 0.)  # [N]
 
     phase = -(jnp.sum(lmn_sources[None, ...] * uvw[:, None, :], axis=-1) - w[:, None])  # [B, N]
@@ -206,6 +226,8 @@ def pre_compute_image_and_smear_values(
     g1 = gains[0, visibilty_coords.antenna1, 0, :]  # [B, N]
     g2 = gains[0, visibilty_coords.antenna2, 0, :]  # [B, N]
     g12 = g1 * g2.conj()
+
+    print_debug_info((phase, R, A, phase_eval, g12))
     return phase, R, A, phase_eval, g12
 
 
