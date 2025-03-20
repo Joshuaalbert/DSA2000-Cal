@@ -89,8 +89,8 @@ def sinc(x):
     return jax.lax.div(jnp.sin(x), x)
 
 
-@partial(jax.jit, static_argnames=['smearing', 'batch_size'])
-def compute_rms_and_values(
+@partial(jax.jit, static_argnames=['smearing'])
+def compute_image_and_smear_values(
         key,
         l: FloatArray, m: FloatArray, n: FloatArray,
         bright_sky_model: BasePointSourceModel,
@@ -99,13 +99,11 @@ def compute_rms_and_values(
         far_field_delay_engine: BaseFarFieldDelayEngine,
         geodesic_model: BaseGeodesicModel,
         freqs: FloatArray,
-        zero_point: FloatArray,
         integration_time: FloatArray,
         channel_width: FloatArray,
         ra0: FloatArray, dec0: FloatArray,
         baseline_noise: FloatArray,
-        smearing: bool,
-        batch_size: int | None = None
+        smearing: bool
 ):
     """
     Compute the RMS in the field due to uncalibrated extra-field sources.
@@ -120,22 +118,21 @@ def compute_rms_and_values(
         far_field_delay_engine: far field delay engine
         geodesic_model: geodesic model
         freqs: [F] the frequencies to compute over
-        zero_point: the zero-point adjustment due to excluding auto-correlations
 
     Returns:
-        scalar
+        [M], [M], scalar, scalar, scalar, scalar, scalar, scalar
     """
     # For each frequency
     visibilty_coords = far_field_delay_engine.compute_visibility_coords(
         freqs=freqs,
         times=times,
         with_autocorr=False
-    )
+    )  # [B]
     visibilty_coords_dt = far_field_delay_engine.compute_visibility_coords(
         freqs=freqs,
         times=times + 0.5 * integration_time,
         with_autocorr=False
-    )
+    )  # [B]
     uvw = jax.lax.reshape(visibilty_coords.uvw, (visibilty_coords.antenna1.shape[0], 3))  # [B, 3]
     uvw_dt = jax.lax.reshape(visibilty_coords_dt.uvw, (visibilty_coords_dt.antenna1.shape[0], 3))  # [B, 3]
     # DFT
@@ -154,133 +151,205 @@ def compute_rms_and_values(
     phase_dt = -(jnp.sum(lmn_sources[None, ...] * uvw_dt[:, None, :], axis=-1) - w_dt[:, None])  # [B, N]
     R = (phase_dt - phase) / (0.5 * integration_time)  # [B, N]
 
-    mean_abs_R = jnp.mean(jnp.abs(R))
-    var_abs_R = jnp.var(jnp.abs(R))
+    lmn_eval = jnp.stack([l, m, n], axis=-1)  # [M, 3]
+    phase_eval = (jnp.sum(lmn_eval[:, None, ...] * uvw[None, ...], axis=-1) - w[None, :])  # [M, B]
 
-    def single_lmn_batch(l, m, n):
+    def accumulate_over_freq(accumulate, x):
+        # scalar -> [B] -> [B, M] -> scalar
+        (freq, key) = x  # scalar
 
-        lmn_eval = jnp.stack([l, m, n], axis=-1)  # [M, 3]
-        phase_eval = (jnp.sum(lmn_eval[:, None, ...] * uvw[None, ...], axis=-1) - w[None, :])  # [M, B]
-
-        def accumulate_over_freq(accumulate, x):
-            # scalar -> [B] -> [B, M] -> scalar
-            (freq, key) = x  # scalar
-
-            gains = total_gain_model.compute_gain(freq[None], times, lmn_geodesic)  # [T, A, 1, N]
-            g1 = gains[0, visibilty_coords.antenna1, 0, :]  # [B, N]
-            g2 = gains[0, visibilty_coords.antenna2, 0, :]  # [B, N]
-            wavelength = c / freq
-            coeff = 2 * jnp.pi / wavelength
-            # compute vis with optional smearing
-            fringe = jax.lax.complex(jnp.cos(coeff * phase), jnp.sin(coeff * phase)).astype(jnp.complex64)  # [B, N]
-            if smearing:
-                time_smear_modulation = sinc(R * (jnp.pi * integration_time / wavelength))  # [B, N]
-                freq_smear_moduluation = sinc(phase * (jnp.pi * channel_width / c))  # [B, N]
-                smear_modulation = time_smear_modulation * freq_smear_moduluation  # [B, N]
-                mean_time_smear = jnp.mean(time_smear_modulation)
-                var_time_smear = jnp.var(time_smear_modulation)
-                mean_freq_smear = jnp.mean(freq_smear_moduluation)
-                var_freq_smear = jnp.var(freq_smear_moduluation)
-                mean_smear = jnp.mean(smear_modulation)
-                var_smear = jnp.var(smear_modulation)
-                vis = jnp.sum((g1 * g2.conj()) * (A * (fringe * smear_modulation)), axis=1).astype(jnp.complex64)  # [B]
-            else:
-                mean_time_smear = var_time_smear = mean_freq_smear = var_freq_smear = mean_smear = var_smear = jnp.asarray(
-                    1., jnp.float32)
-                vis = jnp.sum((g1 * g2.conj()) * (A * fringe), axis=1).astype(jnp.complex64)  # [B]
-            key1, key2 = jax.random.split(key)
-            # divide by sqrt(2) for real and imag part
-            noise = (baseline_noise / np.sqrt(2)) * jax.lax.complex(
-                jax.random.normal(key1, shape=vis.shape, dtype=vis.real.dtype),
-                jax.random.normal(key2, shape=vis.shape, dtype=vis.imag.dtype)).astype(
-                vis.dtype)
-            vis_noise = vis + noise
-            # compute image, normalising
-            fringe = jax.lax.complex(jnp.cos(coeff * phase_eval), jnp.sin(coeff * phase_eval)).astype(jnp.complex64)
-            image = n.astype(jnp.float32) * jnp.sum((vis * fringe).real, axis=1)  # [M]
-            image_noise = n.astype(jnp.float32) * jnp.sum((vis_noise * fringe).real, axis=1)  # [M]
-            image /= vis.size
-            image_noise /= vis.size
-            delta = (
-                image, image_noise,
-                mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
-            )
-            accumulate = jax.tree.map(lambda x, y: jax.lax.add(x.astype(jnp.float32), y.astype(jnp.float32)),
-                                      accumulate,
-                                      delta)
-            return accumulate, None
-
-        init_accumulate = (
-            jnp.zeros(l.shape, jnp.float32), jnp.zeros(l.shape, jnp.float32),
-            jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
-            jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
-            jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32)
-        )
-        accumulate, _ = jax.lax.scan(
-            accumulate_over_freq,
-            init_accumulate,
-            (freqs, jax.random.split(key, len(freqs)))
-        )
-
-        # Normalize by number of freqs
-        accumulate = jax.tree.map(lambda x: x / len(freqs), accumulate)
-        (
+        gains = total_gain_model.compute_gain(freq[None], times, lmn_geodesic)  # [T, A, 1, N]
+        g1 = gains[0, visibilty_coords.antenna1, 0, :]  # [B, N]
+        g2 = gains[0, visibilty_coords.antenna2, 0, :]  # [B, N]
+        wavelength = c / freq
+        coeff = 2 * jnp.pi / wavelength
+        # compute vis with optional smearing
+        fringe = jax.lax.complex(jnp.cos(coeff * phase), jnp.sin(coeff * phase)).astype(jnp.complex64)  # [B, N]
+        if smearing:
+            time_smear_modulation = sinc(R * (jnp.pi * integration_time / wavelength))  # [B, N]
+            freq_smear_moduluation = sinc(phase * (jnp.pi * channel_width / c))  # [B, N]
+            smear_modulation = time_smear_modulation * freq_smear_moduluation  # [B, N]
+            mean_time_smear = jnp.mean(time_smear_modulation)
+            var_time_smear = jnp.var(time_smear_modulation)
+            mean_freq_smear = jnp.mean(freq_smear_moduluation)
+            var_freq_smear = jnp.var(freq_smear_moduluation)
+            mean_smear = jnp.mean(smear_modulation)
+            var_smear = jnp.var(smear_modulation)
+            vis = jnp.sum((g1 * g2.conj()) * (A * (fringe * smear_modulation)), axis=1).astype(jnp.complex64)  # [B]
+        else:
+            mean_time_smear = var_time_smear = mean_freq_smear = var_freq_smear = mean_smear = var_smear = jnp.asarray(
+                1., jnp.float32)
+            vis = jnp.sum((g1 * g2.conj()) * (A * fringe), axis=1).astype(jnp.complex64)  # [B]
+        key1, key2 = jax.random.split(key)
+        # divide by sqrt(2) for real and imag part
+        noise = (baseline_noise / np.sqrt(2)) * jax.lax.complex(
+            jax.random.normal(key1, shape=vis.shape, dtype=vis.real.dtype),
+            jax.random.normal(key2, shape=vis.shape, dtype=vis.imag.dtype)).astype(
+            vis.dtype)
+        vis_noise = vis + noise
+        # compute image, normalising
+        fringe = jax.lax.complex(jnp.cos(coeff * phase_eval), jnp.sin(coeff * phase_eval)).astype(jnp.complex64)
+        image = n.astype(jnp.float32) * jnp.sum((vis * fringe).real, axis=1)  # [M]
+        image_noise = n.astype(jnp.float32) * jnp.sum((vis_noise * fringe).real, axis=1)  # [M]
+        image /= vis.size
+        image_noise /= vis.size
+        delta = (
             image, image_noise,
             mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
-        ) = accumulate
-        return accumulate
+        )
+        accumulate = jax.tree.map(lambda x, y: jax.lax.add(x.astype(jnp.float32), y.astype(jnp.float32)),
+                                  accumulate,
+                                  delta)
+        return accumulate, None
 
-    if batch_size is None:
-        batch_size = np.shape(l)[0]
-    if np.shape(l)[0] % batch_size != 0:
-        raise ValueError(f"Batch size must divide number of eval directions {np.shape(l)[0]}")
+    init_accumulate = (
+        jnp.zeros(l.shape, jnp.float32), jnp.zeros(l.shape, jnp.float32),
+        jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
+        jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
+        jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32)
+    )
+    accumulate, _ = jax.lax.scan(
+        accumulate_over_freq,
+        init_accumulate,
+        (freqs, jax.random.split(key, len(freqs)))
+    )
+
+    # Normalize by number of freqs
+    accumulate = jax.tree.map(lambda x: x / len(freqs), accumulate)
+    (
+        image, image_noise,
+        mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
+    ) = accumulate
+
+    return (
+        image, image_noise,
+        mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
+    )
+
+
+def compute_rms_and_values(
+        key,
+        l: FloatArray, m: FloatArray, n: FloatArray,
+        bright_sky_model: BasePointSourceModel,
+        total_gain_model: GainModel,
+        times: FloatArray,
+        far_field_delay_engine: BaseFarFieldDelayEngine,
+        geodesic_model: BaseGeodesicModel,
+        freqs: FloatArray,
+        zero_point: FloatArray,
+        integration_time: FloatArray,
+        channel_width: FloatArray,
+        ra0: FloatArray, dec0: FloatArray,
+        baseline_noise: FloatArray,
+        smearing: bool,
+        image_batch_size: int | None = None,
+        source_batch_size: int | None = None
+):
+    """
+    Compute the RMS in the field due to uncalibrated extra-field sources.
+
+    Args:
+        key: random key for noise sampling
+        l: [M]
+        m: [M]
+        n: [M]
+        bright_sky_model: sky model of [N] sources
+        total_gain_model: gain model
+        times: [T] the times
+        far_field_delay_engine: far field delay engine
+        geodesic_model: geodesic model
+        freqs: [F] the frequencies to compute over
+        zero_point: the zero-point adjustment due to excluding auto-correlations
+
+    Returns:
+        scalar
+    """
+
+    if image_batch_size is None:
+        image_batch_size = np.shape(l)[0]
+
+    if source_batch_size is None:
+        source_batch_size = np.shape(bright_sky_model.ra)[0]
 
     (
         image, image_noise,
         mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
     ) = [], [], [], [], [], [], [], []
-    for start_idx in range(0, np.shape(l)[0], batch_size):
-        stop_idx = min(start_idx + batch_size, np.shape(l)[0])
-        l_batch = l[start_idx: stop_idx]
-        m_batch = m[start_idx: stop_idx]
-        n_batch = n[start_idx: stop_idx]
+    for image_start_idx in range(0, np.shape(l)[0], image_batch_size):
+        image_stop_idx = min(image_start_idx + image_batch_size, np.shape(l)[0])
+        l_batch = l[image_start_idx: image_stop_idx]
+        m_batch = m[image_start_idx: image_stop_idx]
+        n_batch = n[image_start_idx: image_stop_idx]
         (
             _image, _image_noise, _mean_time_smear, _var_time_smear,
             _mean_freq_smear, _var_freq_smear,
             _mean_smear, _var_smear
-        ) = single_lmn_batch(l_batch, m_batch, n_batch)
-        image.append(_image)
-        image_noise.append(_image_noise)
-        mean_time_smear.append(_mean_time_smear)
-        var_time_smear.append(_var_time_smear)
-        mean_freq_smear.append(_mean_freq_smear)
-        var_freq_smear.append(_var_freq_smear)
-        mean_smear.append(_mean_smear)
-        var_smear.append(_var_smear)
+        ) = [], [], [], [], [], [], [], []
+        _key = key  # Use the same sequence of keys for accumulation over directions (important)
+        for source_start_idx in range(0, np.shape(bright_sky_model.ra)[0], source_batch_size):
+            source_stop_idx = min(source_start_idx + source_batch_size, np.shape(bright_sky_model.ra)[0])
+            bright_sky_model_batch = BasePointSourceModel(
+                model_freqs=bright_sky_model.model_freqs,
+                ra=bright_sky_model.ra[source_start_idx: source_stop_idx],
+                dec=bright_sky_model.dec[source_start_idx: source_stop_idx],
+                A=bright_sky_model.A[source_start_idx: source_stop_idx]
+            )
+            _key, sample_key = jax.random.split(_key)
+            (
+                __image, __image_noise, __mean_time_smear, __var_time_smear,
+                __mean_freq_smear, __var_freq_smear,
+                __mean_smear, __var_smear
+            ) = jax.block_until_ready(
+                compute_image_and_smear_values(
+                    sample_key,
+                    l_batch, m_batch, n_batch,
+                    bright_sky_model_batch,
+                    total_gain_model, times, far_field_delay_engine,
+                    geodesic_model, freqs, integration_time,
+                    channel_width, ra0, dec0, baseline_noise,
+                    smearing
+                )
+            )
+            _image.append(__image)
+            _image_noise.append(__image_noise)
+            _mean_time_smear.append(__mean_time_smear)
+            _var_time_smear.append(__var_time_smear)
+            _mean_freq_smear.append(__mean_freq_smear)
+            _var_freq_smear.append(__var_freq_smear)
+            _mean_smear.append(__mean_smear)
+            _var_smear.append(__var_smear)
+        image.append(np.array(sum(_image[1:], _image[0])))
+        image_noise.append(np.array(sum(_image_noise[1:], _image_noise[0])))
+        mean_time_smear.append(np.mean(_mean_time_smear))
+        var_time_smear.append(np.mean(_var_time_smear))
+        mean_freq_smear.append(np.mean(_mean_freq_smear))
+        var_freq_smear.append(np.mean(_var_freq_smear))
+        mean_smear.append(np.mean(_mean_smear))
+        var_smear.append(np.mean(_var_smear))
 
-    image = jnp.concatenate(image, axis=0)
-    image_noise = jnp.concatenate(image_noise, axis=0)
-    mean_time_smear = jnp.mean(jnp.stack(mean_time_smear), axis=0)
-    var_time_smear = jnp.mean(jnp.stack(var_time_smear), axis=0)
-    mean_freq_smear = jnp.mean(jnp.stack(mean_freq_smear), axis=0)
-    var_freq_smear = jnp.mean(jnp.stack(var_freq_smear), axis=0)
-    mean_smear = jnp.mean(jnp.stack(mean_smear), axis=0)
-    var_smear = jnp.mean(jnp.stack(var_smear), axis=0)
+    image = np.concatenate(image, axis=0)
+    image_noise = np.concatenate(image_noise, axis=0)
+    mean_time_smear = np.mean(np.stack(mean_time_smear), axis=0)
+    var_time_smear = np.mean(np.stack(var_time_smear), axis=0)
+    mean_freq_smear = np.mean(np.stack(mean_freq_smear), axis=0)
+    var_freq_smear = np.mean(np.stack(var_freq_smear), axis=0)
+    mean_smear = np.mean(np.stack(mean_smear), axis=0)
+    var_smear = np.mean(np.stack(var_smear), axis=0)
 
     # Compute RMS and image normal stats
-    rms_no_noise = jnp.sqrt(jnp.mean((image - zero_point) ** 2))
-    max_no_noise = jnp.max(image)
-    min_no_noise = jnp.min(image)
-    mean_no_noise = jnp.mean(image)
-    std_no_noise = jnp.std(image)
+    rms_no_noise = np.sqrt(np.mean((image - zero_point) ** 2))
+    max_no_noise = np.max(image)
+    min_no_noise = np.min(image)
+    mean_no_noise = np.mean(image)
+    std_no_noise = np.std(image)
 
-    rms_noise = jnp.sqrt(jnp.mean((image_noise - zero_point) ** 2))
-    max_noise = jnp.max(image_noise)
-    min_noise = jnp.min(image_noise)
-    mean_noise = jnp.mean(image_noise)
-    std_noise = jnp.std(image_noise)
+    rms_noise = np.sqrt(np.mean((image_noise - zero_point) ** 2))
+    max_noise = np.max(image_noise)
+    min_noise = np.min(image_noise)
+    mean_noise = np.mean(image_noise)
+    std_noise = np.std(image_noise)
 
-    lmn_eval = jnp.stack([l, m, n], axis=-1)  # [M, 3]
+    lmn_eval = np.stack([l, m, n], axis=-1)  # [M, 3]
 
     return ValuesAndRMS(
         rms_no_noise=rms_no_noise,
@@ -294,13 +363,13 @@ def compute_rms_and_values(
         mean_noise=mean_noise,
         std_noise=std_noise,
         mean_abs_R=mean_abs_R,
-        std_abs_R=jnp.sqrt(var_abs_R),
+        std_abs_R=np.sqrt(var_abs_R),
         mean_time_smear=mean_time_smear,
-        std_time_smear=jnp.sqrt(var_time_smear),
+        std_time_smear=np.sqrt(var_time_smear),
         mean_freq_smear=mean_freq_smear,
-        std_freq_smear=jnp.sqrt(var_freq_smear),
+        std_freq_smear=np.sqrt(var_freq_smear),
         mean_smear=mean_smear,
-        std_smear=jnp.sqrt(var_smear),
+        std_smear=np.sqrt(var_smear),
         lmn=lmn_eval,
         image=image,
         image_noise=image_noise
@@ -351,7 +420,8 @@ def simulate_rms(
         array_name: str,
         pointing: ac.ICRS,
         num_measure_points: int,
-        sim_batch_size: int,
+        image_batch_size: int,
+        source_batch_size: int,
         angular_radius: au.Quantity,
         prior_psf_sidelobe_peak: float,
         bright_source_id: str,
@@ -659,26 +729,26 @@ def simulate_rms(
             #   Compute RMS, with zero-point adjustment +1/(N-1) or not
             zero_point = 0.  # - 1 / (len(antennas) - 1)
             key, sample_key = jax.random.split(key)
-            values = jax.block_until_ready(
-                compute_rms_and_values(
-                    key=sample_key,
-                    l=l, m=m, n=n,
-                    bright_sky_model=bright_sky_model,
-                    total_gain_model=total_gain_model,
-                    times=times_jax,
-                    far_field_delay_engine=far_field_delay_engine,
-                    geodesic_model=geodesic_model,
-                    freqs=freqs_jax,
-                    zero_point=zero_point,
-                    integration_time=quantity_to_jnp(array.get_integration_time(), 's'),
-                    channel_width=quantity_to_jnp(array.get_channel_width(), 'Hz'),
-                    ra0=phase_center.ra.rad,
-                    dec0=phase_center.dec.rad,
-                    baseline_noise=quantity_to_jnp(baseline_noise, 'Jy'),
-                    smearing=with_smearing,
-                    batch_size=sim_batch_size
-                )
+            values = compute_rms_and_values(
+                key=sample_key,
+                l=l, m=m, n=n,
+                bright_sky_model=bright_sky_model,
+                total_gain_model=total_gain_model,
+                times=times_jax,
+                far_field_delay_engine=far_field_delay_engine,
+                geodesic_model=geodesic_model,
+                freqs=freqs_jax,
+                zero_point=zero_point,
+                integration_time=quantity_to_jnp(array.get_integration_time(), 's'),
+                channel_width=quantity_to_jnp(array.get_channel_width(), 'Hz'),
+                ra0=phase_center.ra.rad,
+                dec0=phase_center.dec.rad,
+                baseline_noise=quantity_to_jnp(baseline_noise, 'Jy'),
+                smearing=with_smearing,
+                image_batch_size=image_batch_size,
+                source_batch_size=source_batch_size
             )
+
             result_values = jax.tree.map(np.array, values)
             t1 = time.time()
             result = Result(
