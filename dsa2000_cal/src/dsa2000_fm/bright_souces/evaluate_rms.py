@@ -435,62 +435,63 @@ def simulate_rms(
         with_dish_effects: bool = False,
         with_smearing: bool = True
 ):
-    plt.close('all')
-    t0 = time.time()
+    with jax.default_device(cpu):
+        plt.close('all')
+        t0 = time.time()
 
-    key = jax.random.PRNGKey(seed)
-    fill_registries()
-    os.makedirs(save_folder, exist_ok=True)
-    array = array_registry.get_instance(array_registry.get_match(array_name))
-    array_location = array.get_array_location()
-    ref_time = get_time_of_local_meridean(pointing, array_location, at.Time('2022-01-01T00:00:00', scale='utc'))
-    times = ref_time[None]
-    antennas = array.get_antennas()
+        key = jax.random.PRNGKey(seed)
+        fill_registries()
+        os.makedirs(save_folder, exist_ok=True)
+        array = array_registry.get_instance(array_registry.get_match(array_name))
+        array_location = array.get_array_location()
+        ref_time = get_time_of_local_meridean(pointing, array_location, at.Time('2022-01-01T00:00:00', scale='utc'))
+        times = ref_time[None]
+        antennas = array.get_antennas()
 
-    phase_center = pointing
+        phase_center = pointing
 
-    freqs = array.get_channels()
-    freqs_jax = quantity_to_jnp(freqs)
-    times_jax = time_to_jnp(times, ref_time)
+        freqs = array.get_channels()
+        freqs_jax = quantity_to_jnp(freqs)
+        times_jax = time_to_jnp(times, ref_time)
 
-    thermal_noise = float(calc_image_noise(
-        system_equivalent_flux_density=quantity_to_jnp(array.get_system_equivalent_flux_density(), 'Jy'),
-        bandwidth_hz=quantity_to_jnp(array.get_channel_width()) * len(freqs),
-        t_int_s=quantity_to_jnp(array.get_integration_time(), 's'),
-        num_antennas=len(antennas),
-        flag_frac=0.33,
-        num_pol=2
-    )) * au.Jy
+        thermal_noise = float(calc_image_noise(
+            system_equivalent_flux_density=quantity_to_jnp(array.get_system_equivalent_flux_density(), 'Jy'),
+            bandwidth_hz=quantity_to_jnp(array.get_channel_width()) * len(freqs),
+            t_int_s=quantity_to_jnp(array.get_integration_time(), 's'),
+            num_antennas=len(antennas),
+            flag_frac=0.33,
+            num_pol=2
+        )) * au.Jy
 
-    baseline_noise = float(calc_baseline_noise(
-        system_equivalent_flux_density=quantity_to_jnp(array.get_system_equivalent_flux_density(), 'Jy'),
-        chan_width_hz=quantity_to_jnp(array.get_channel_width(), 'Hz'),
-        t_int_s=quantity_to_jnp(array.get_integration_time(), 's')
-    ) / np.sqrt(2)) * au.Jy  # assume stokes I so 2 cross pols combined reduces noise by sqrt(2)
+        baseline_noise = float(calc_baseline_noise(
+            system_equivalent_flux_density=quantity_to_jnp(array.get_system_equivalent_flux_density(), 'Jy'),
+            chan_width_hz=quantity_to_jnp(array.get_channel_width(), 'Hz'),
+            t_int_s=quantity_to_jnp(array.get_integration_time(), 's')
+        ) / np.sqrt(2)) * au.Jy  # assume stokes I so 2 cross pols combined reduces noise by sqrt(2)
 
-    far_field_delay_engine = build_far_field_delay_engine(
-        antennas=antennas,
-        phase_center=phase_center,
-        start_time=times.min(),
-        end_time=times.max(),
-        ref_time=ref_time
-    )
+        far_field_delay_engine = build_far_field_delay_engine(
+            antennas=antennas,
+            phase_center=phase_center,
+            start_time=times.min(),
+            end_time=times.max(),
+            ref_time=ref_time
+        )
 
-    # near_field_delay_engine = build_near_field_delay_engine(
-    #     antennas=antennas,
-    #     start_time=times.min(),
-    #     end_time=times.max(),
-    #     ref_time=ref_time
-    # )
+        # near_field_delay_engine = build_near_field_delay_engine(
+        #     antennas=antennas,
+        #     start_time=times.min(),
+        #     end_time=times.max(),
+        #     ref_time=ref_time
+        # )
 
-    geodesic_model = build_geodesic_model(
-        antennas=antennas,
-        array_location=array_location,
-        phase_center=phase_center,
-        obstimes=times,
-        ref_time=ref_time,
-        pointings=phase_center
-    )
+        geodesic_model = build_geodesic_model(
+            antennas=antennas,
+            array_location=array_location,
+            phase_center=phase_center,
+            obstimes=times,
+            ref_time=ref_time,
+            pointings=phase_center
+        )
 
     with TimerLog("Constructing the beam model"):
         with jax.default_device(cpu):
@@ -669,7 +670,6 @@ def simulate_rms(
 
     if with_ionosphere:
         with TimerLog("Simulating ionosphere..."):
-
             with jax.default_device(cpu):
                 x0_radius = compute_x0_radius(array_location, ref_time)
                 ionosphere = construct_canonical_ionosphere(
@@ -707,9 +707,10 @@ def simulate_rms(
                     show=False
                 )
 
-        total_gain_model = beam_model @ ionosphere_gain_model
+                total_gain_model = beam_model @ ionosphere_gain_model
     else:
-        total_gain_model = beam_model
+        with jax.default_device(cpu):
+            total_gain_model = beam_model
 
     with TimerLog("Computing RMS for pointing..."):
         with jax.default_device(gpu):
