@@ -719,4 +719,4 @@ def simple_broadcast(f: Callable[..., U], leading_dims: int) -> U:
 
 def get_pytree_size(pytree):
     leaves = jax.tree.leaves(pytree)
-    return sum([leaf.nbytes for leaf in leaves])
+    return sum([np.asarray(leaf).nbytes for leaf in leaves])

@@ -190,12 +190,12 @@ def compute_image_and_smear_values(
         vis_noise = vis + noise
         # compute image, normalising
         fringe = jax.lax.complex(jnp.cos(coeff * phase_eval), jnp.sin(coeff * phase_eval)).astype(jnp.complex64)
-        image = n.astype(jnp.float32) * jnp.sum((vis * fringe).real, axis=1)  # [M]
+        # image = n.astype(jnp.float32) * jnp.sum((vis * fringe).real, axis=1)  # [M]
         image_noise = n.astype(jnp.float32) * jnp.sum((vis_noise * fringe).real, axis=1)  # [M]
-        image /= vis.size
+        # image /= vis.size
         image_noise /= vis.size
         delta = (
-            image, image_noise,
+            image_noise,
             mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
         )
         accumulate = jax.tree.map(lambda x, y: jax.lax.add(x.astype(jnp.float32), y.astype(jnp.float32)),
@@ -204,7 +204,7 @@ def compute_image_and_smear_values(
         return accumulate, None
 
     init_accumulate = (
-        jnp.zeros(l.shape, jnp.float32), jnp.zeros(l.shape, jnp.float32),
+        jnp.zeros(l.shape, jnp.float32),
         jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
         jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32),
         jnp.zeros((), jnp.float32), jnp.zeros((), jnp.float32)
@@ -218,12 +218,12 @@ def compute_image_and_smear_values(
     # Normalize by number of freqs
     accumulate = jax.tree.map(lambda x: x / len(freqs), accumulate)
     (
-        image, image_noise,
+        image_noise,
         mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
     ) = accumulate
 
     return (
-        image, image_noise,
+        image_noise,
         mean_time_smear, var_time_smear, mean_freq_smear, var_freq_smear, mean_smear, var_smear
     )
 
@@ -281,58 +281,14 @@ def compute_rms_and_values(
         l_batch = l[image_start_idx: image_stop_idx]
         m_batch = m[image_start_idx: image_stop_idx]
         n_batch = n[image_start_idx: image_stop_idx]
-        (
-            _image, _image_noise, _mean_time_smear, _var_time_smear,
-            _mean_freq_smear, _var_freq_smear,
-            _mean_smear, _var_smear
-        ) = [], [], [], [], [], [], [], []
-        _key = key  # Use the same sequence of keys for accumulation over directions (important)
-        for source_start_idx in range(0, np.shape(bright_sky_model.ra)[0], source_batch_size):
-            source_stop_idx = min(source_start_idx + source_batch_size, np.shape(bright_sky_model.ra)[0])
-            bright_sky_model_batch = BasePointSourceModel(
-                model_freqs=bright_sky_model.model_freqs,
-                ra=bright_sky_model.ra[source_start_idx: source_stop_idx],
-                dec=bright_sky_model.dec[source_start_idx: source_stop_idx],
-                A=bright_sky_model.A[source_start_idx: source_stop_idx]
-            )
-            _key, sample_key = jax.random.split(_key)
-            # args = (
-            #     sample_key,
-            #     l_batch, m_batch, n_batch,
-            #     bright_sky_model_batch,
-            #     total_gain_model, times, far_field_delay_engine,
-            #     geodesic_model, freqs, integration_time,
-            #     channel_width, ra0, dec0, baseline_noise,
-            #     smearing
-            # )
-            kwargs = dict(
-                key=sample_key,
-                l=l_batch, m=m_batch, n=n_batch,
-                bright_sky_model=bright_sky_model_batch,
-                total_gain_model=total_gain_model, times=times, far_field_delay_engine=far_field_delay_engine,
-                geodesic_model=geodesic_model, freqs=freqs, integration_time=integration_time,
-                channel_width=channel_width, ra0=ra0, dec0=dec0, baseline_noise=baseline_noise,
-                smearing=smearing
-            )
-            for k, v in kwargs.items():
-                dsa_logger.info(f"Size of {k} is {get_pytree_size(v) / 2 ** 30} GB")
-            (
-                __image, __image_noise, __mean_time_smear, __var_time_smear,
-                __mean_freq_smear, __var_freq_smear,
-                __mean_smear, __var_smear
-            ) = jax.block_until_ready(
-                compute_image_and_smear_values(
-                    **kwargs
-                )
-            )
-            _image.append(__image)
-            _image_noise.append(__image_noise)
-            _mean_time_smear.append(__mean_time_smear)
-            _var_time_smear.append(__var_time_smear)
-            _mean_freq_smear.append(__mean_freq_smear)
-            _var_freq_smear.append(__var_freq_smear)
-            _mean_smear.append(__mean_smear)
-            _var_smear.append(__var_smear)
+        _image, _mean_freq_smear, _mean_smear, _mean_time_smear, _var_freq_smear, _var_smear, _var_time_smear = single_compute_image_and_values(
+            key, 0., bright_sky_model, channel_width, integration_time, ra0, dec0, freqs, times,
+            far_field_delay_engine, geodesic_model, l_batch, m_batch, n_batch, source_batch_size, total_gain_model,
+            smearing)
+        _image_noise, _, _, _, _, _, _ = single_compute_image_and_values(
+            key, baseline_noise, bright_sky_model, channel_width, integration_time, ra0, dec0, freqs, times,
+            far_field_delay_engine, geodesic_model, l_batch, m_batch, n_batch, source_batch_size, total_gain_model,
+            smearing)
         image.append(np.array(sum(_image[1:], _image[0])))
         image_noise.append(np.array(sum(_image_noise[1:], _image_noise[0])))
         mean_time_smear.append(np.mean(_mean_time_smear))
@@ -389,6 +345,56 @@ def compute_rms_and_values(
         image=image,
         image_noise=image_noise
     )
+
+
+def single_compute_image_and_values(key, baseline_noise, bright_sky_model, channel_width, integration_time, ra0, dec0,
+                                    freqs, times,
+                                    far_field_delay_engine, geodesic_model, l_batch, m_batch, n_batch,
+                                    source_batch_size, total_gain_model,
+                                    smearing):
+    (
+        _image_noise, _mean_time_smear, _var_time_smear,
+        _mean_freq_smear, _var_freq_smear,
+        _mean_smear, _var_smear
+    ) = [], [], [], [], [], [], []
+    _key = key  # Use the same sequence of keys for accumulation over directions (important)
+    for source_start_idx in range(0, np.shape(bright_sky_model.ra)[0], source_batch_size):
+        source_stop_idx = min(source_start_idx + source_batch_size, np.shape(bright_sky_model.ra)[0])
+        bright_sky_model_batch = BasePointSourceModel(
+            model_freqs=bright_sky_model.model_freqs,
+            ra=bright_sky_model.ra[source_start_idx: source_stop_idx],
+            dec=bright_sky_model.dec[source_start_idx: source_stop_idx],
+            A=bright_sky_model.A[source_start_idx: source_stop_idx]
+        )
+        _key, sample_key = jax.random.split(_key)
+        kwargs = dict(
+            key=sample_key,
+            l=l_batch, m=m_batch, n=n_batch,
+            bright_sky_model=bright_sky_model_batch,
+            total_gain_model=total_gain_model, times=times, far_field_delay_engine=far_field_delay_engine,
+            geodesic_model=geodesic_model, freqs=freqs, integration_time=integration_time,
+            channel_width=channel_width, ra0=ra0, dec0=dec0, baseline_noise=baseline_noise,
+            smearing=smearing
+        )
+        for k, v in kwargs.items():
+            dsa_logger.info(f"Size of {k} is {get_pytree_size(v) / 2 ** 30} GB")
+        (
+            __image_noise, __mean_time_smear, __var_time_smear,
+            __mean_freq_smear, __var_freq_smear,
+            __mean_smear, __var_smear
+        ) = jax.block_until_ready(
+            compute_image_and_smear_values(
+                **kwargs
+            )
+        )
+        _image_noise.append(__image_noise)
+        _mean_time_smear.append(__mean_time_smear)
+        _var_time_smear.append(__var_time_smear)
+        _mean_freq_smear.append(__mean_freq_smear)
+        _var_freq_smear.append(__var_freq_smear)
+        _mean_smear.append(__mean_smear)
+        _var_smear.append(__var_smear)
+    return _image_noise, _mean_freq_smear, _mean_smear, _mean_time_smear, _var_freq_smear, _var_smear, _var_time_smear
 
 
 @jax.jit
