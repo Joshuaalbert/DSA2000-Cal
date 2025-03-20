@@ -80,6 +80,7 @@ def main():
     sharded_entry_point_jit = jax.jit(sharded_entry_point)
     # Run benchmarking over number of calibration directions
     time_array = []
+    shard_time_array = []
     d_array = []
     for D in range(1, 9):
         data = prepare_data(D, Ts=1, Tm=1, Cs=1, Cm=1)
@@ -102,40 +103,41 @@ def main():
         t1 = time.time()
         dt = (t1 - t0) / 10
         dsa_logger.info(f"TBC: Residual (sharded): CPU D={D}: {dt}")
-
-        data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
-        with jax.default_device(cpu):
-            data = jax.device_put(data)
-            entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-            t0 = time.time()
-            jax.block_until_ready(entry_point_jit_compiled(data))
-            t1 = time.time()
-            dsa_logger.info(f"TBC: Subtract (per-GPU): CPU D={D}: {t1 - t0}")
-
-        sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
-        t0 = time.time()
-        for _ in range(1):
-            jax.block_until_ready(sharded_entry_point_jit_compiled(data))
-        t1 = time.time()
-        dt = (t1 - t0) / 1
-        dsa_logger.info(f"TBC: Subtract (per-GPU sharded): CPU D={D}: {dt}")
-
-        data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
-        with jax.default_device(cpu):
-            data = jax.device_put(data)
-            entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-            t0 = time.time()
-            jax.block_until_ready(entry_point_jit_compiled(data))
-            t1 = time.time()
-            dsa_logger.info(f"TBC: Subtract (all-GPU): CPU D={D}: {t1 - t0}")
-
-        sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
-        t0 = time.time()
-        for _ in range(1):
-            jax.block_until_ready(sharded_entry_point_jit_compiled(data))
-        t1 = time.time()
-        dt = (t1 - t0) / 1
-        dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
+        shard_time_array.append(dt)
+        #
+        # data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
+        # with jax.default_device(cpu):
+        #     data = jax.device_put(data)
+        #     entry_point_jit_compiled = entry_point_jit.lower(data).compile()
+        #     t0 = time.time()
+        #     jax.block_until_ready(entry_point_jit_compiled(data))
+        #     t1 = time.time()
+        #     dsa_logger.info(f"TBC: Subtract (per-GPU): CPU D={D}: {t1 - t0}")
+        #
+        # sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
+        # t0 = time.time()
+        # for _ in range(1):
+        #     jax.block_until_ready(sharded_entry_point_jit_compiled(data))
+        # t1 = time.time()
+        # dt = (t1 - t0) / 1
+        # dsa_logger.info(f"TBC: Subtract (per-GPU sharded): CPU D={D}: {dt}")
+        #
+        # data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
+        # with jax.default_device(cpu):
+        #     data = jax.device_put(data)
+        #     entry_point_jit_compiled = entry_point_jit.lower(data).compile()
+        #     t0 = time.time()
+        #     jax.block_until_ready(entry_point_jit_compiled(data))
+        #     t1 = time.time()
+        #     dsa_logger.info(f"TBC: Subtract (all-GPU): CPU D={D}: {t1 - t0}")
+        #
+        # sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
+        # t0 = time.time()
+        # for _ in range(1):
+        #     jax.block_until_ready(sharded_entry_point_jit_compiled(data))
+        # t1 = time.time()
+        # dt = (t1 - t0) / 1
+        # dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
 
     # Fit line to data using scipy
     time_array = np.array(time_array)
@@ -144,6 +146,11 @@ def main():
 
     popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array)
     dsa_logger.info(f"TBC: Fit: {popt}")
+
+    shard_time_array = np.array(shard_time_array)
+
+    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, shard_time_array)
+    dsa_logger.info(f"TBC: Fit (sharded): {popt}")
 
 
 if __name__ == '__main__':

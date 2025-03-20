@@ -596,7 +596,8 @@ def simulate_rms(
                 full_stokes=False,
                 times=times,
                 ref_time=ref_time,
-                freqs=freqs
+                freqs=freqs,
+                resolution=127
             )
 
             beam_model.plot_regridded_beam(
@@ -795,6 +796,7 @@ def simulate_rms(
                     phase_centre=phase_center,
                     full_stokes=False,
                     predict_batch_size=512,
+                    resolution=127,
                     save_file=os.path.join(save_folder, f'simulated_dtec_{result_num:03d}.json')
                 )
                 ionosphere_gain_model.plot_regridded_beam(

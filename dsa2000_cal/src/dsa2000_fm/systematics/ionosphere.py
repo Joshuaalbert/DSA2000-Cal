@@ -1343,6 +1343,7 @@ def build_ionosphere_gain_model(
         full_stokes: bool = True,
         spatial_resolution: au.Quantity = 2 * au.km,
         predict_batch_size: int = 1,
+        resolution: int = 257,
         save_file: str | None = None
 ) -> BaseSphericalInterpolatorGainModel:
     """
@@ -1564,7 +1565,8 @@ def build_ionosphere_gain_model(
         model_freqs=model_freqs,
         model_gains=model_gains,
         tile_antennas=False,
-        regrid_num_neighbours=1
+        regrid_num_neighbours=1,
+        resolution=resolution
     )
 
 
