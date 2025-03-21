@@ -1279,54 +1279,97 @@ def construct_canonical_ionosphere(x0_radius: FloatArray, turbulent: bool = True
     return IonosphereMultiLayer(layers)
 
 
-@jax.jit
+@partial(jax.jit, static_argnames=['do_tec'])
 def sample_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                directions_gcrs, times, jitter):
-    return ionosphere.sample_dtec(
-        key=key,
-        reference_antenna_gcrs=reference_antenna_gcrs,
-        antennas_gcrs=antennas_gcrs,
-        directions_gcrs=directions_gcrs,
-        times=times,
-        jitter_mtec=jitter,
-    )  # [D, T, A]
+                directions_gcrs, times, jitter, do_tec: bool = False):
+    if do_tec:
+        return ionosphere.sample_tec(
+            key=key,
+            antennas_gcrs=antennas_gcrs,
+            directions_gcrs=directions_gcrs,
+            times=times,
+            jitter_mtec=jitter,
+        )  # [D, T, A]
+    else:
+        return ionosphere.sample_dtec(
+            key=key,
+            reference_antenna_gcrs=reference_antenna_gcrs,
+            antennas_gcrs=antennas_gcrs,
+            directions_gcrs=directions_gcrs,
+            times=times,
+            jitter_mtec=jitter,
+        )  # [D, T, A]
 
 
-@jax.jit
-def sample_conditional_dtec_in_time(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-                                    directions_gcrs, times, times_other, dtec_other, jitter, cache=None):
-    return ionosphere.sample_conditional_dtec(
-        key=key,
-        reference_antenna_gcrs=reference_antenna_gcrs,
-        antennas_gcrs=antennas_gcrs,
-        times=times,
-        directions_gcrs=directions_gcrs,
-        antennas_gcrs_other=antennas_gcrs,
-        times_other=times_other,
-        directions_gcrs_other=directions_gcrs,
-        dtec_other=dtec_other,
-        jitter_mtec=jitter,
-        cache=cache
-    )  # [D, T, A]
+@partial(jax.jit, static_argnames=['do_tec', 'clear_s'])
+def sample_conditional_dtec(key, ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
+                            directions_gcrs, times, antennas_gcrs_other,
+                            directions_gcrs_other, times_other, dtec_other, jitter, cache=None,
+                            do_tec: bool = False, clear_s: bool = False):
+    if do_tec:
+        samples, cache = ionosphere.sample_conditional_tec(
+            key=key,
+            antennas_gcrs=antennas_gcrs,
+            times=times,
+            directions_gcrs=directions_gcrs,
+            antennas_gcrs_other=antennas_gcrs_other,
+            times_other=times_other,
+            directions_gcrs_other=directions_gcrs_other,
+            tec_other=dtec_other,
+            jitter_mtec=jitter,
+            cache=cache
+        )  # [D, T, A]
+    else:
+        samples, cache = ionosphere.sample_conditional_dtec(
+            key=key,
+            reference_antenna_gcrs=reference_antenna_gcrs,
+            antennas_gcrs=antennas_gcrs,
+            times=times,
+            directions_gcrs=directions_gcrs,
+            antennas_gcrs_other=antennas_gcrs_other,
+            times_other=times_other,
+            directions_gcrs_other=directions_gcrs_other,
+            dtec_other=dtec_other,
+            jitter_mtec=jitter,
+            cache=cache
+        )  # [D, T, A]
+    if clear_s:
+        cache = cache._replace(K_ss=None, mean_s=None, K_sx=None)
+    return samples, cache
 
 
-@jax.jit
-def predict_conditional_dtec_in_antenna(
+@partial(jax.jit, static_argnames=['do_tec', 'clear_s'])
+def predict_conditional_dtec(
         ionosphere: IonosphereMultiLayer, reference_antenna_gcrs, antennas_gcrs,
-        directions_gcrs, times, model_antennas_gcrs, model_directions_gcrs, dtec_other, cache=None
+        directions_gcrs, times, model_antennas_gcrs, model_directions_gcrs, model_times, dtec_other, cache=None,
+        do_tec: bool = False, clear_s: bool = False
 ):
-    (pred_mean, _), cache = ionosphere.predict_conditional_dtec(
-        reference_antenna_gcrs=reference_antenna_gcrs,
-        antennas_gcrs=antennas_gcrs,
-        times=times,
-        directions_gcrs=directions_gcrs,
-        antennas_gcrs_other=model_antennas_gcrs,
-        times_other=times,
-        directions_gcrs_other=model_directions_gcrs,
-        dtec_other=dtec_other,
-        cache=cache
-    )  # [D, T, A]
-    cache = cache._replace(K_ss=None, mean_s=None, K_sx=None)
+    if do_tec:
+        (pred_mean, _), cache = ionosphere.predict_conditional_tec(
+            antennas_gcrs=antennas_gcrs,
+            times=times,
+            directions_gcrs=directions_gcrs,
+            antennas_gcrs_other=model_antennas_gcrs,
+            times_other=model_times,
+            directions_gcrs_other=model_directions_gcrs,
+            tec_other=dtec_other,
+            cache=cache
+        )  # [D, T, A]
+    else:
+
+        (pred_mean, _), cache = ionosphere.predict_conditional_dtec(
+            reference_antenna_gcrs=reference_antenna_gcrs,
+            antennas_gcrs=antennas_gcrs,
+            times=times,
+            directions_gcrs=directions_gcrs,
+            antennas_gcrs_other=model_antennas_gcrs,
+            times_other=model_times,
+            directions_gcrs_other=model_directions_gcrs,
+            dtec_other=dtec_other,
+            cache=cache
+        )  # [D, T, A]
+    if clear_s:
+        cache = cache._replace(K_ss=None, mean_s=None, K_sx=None)
     return pred_mean, cache
 
 
@@ -1363,155 +1406,8 @@ def build_ionosphere_gain_model(
         a gain model (note directions far from a `direction` are ill-defined).
     """
 
-    # These model times are just for interpolators, not for actual simulation.
-    # TODO: once use the evolve_gcrs we can remove these.
-    model_dt = au.Quantity(6, 's')
-    T = int((times.max() - times.min()) / model_dt) + 1
-    model_times = times.min() + np.arange(0., T) * model_dt
-
-    # Get lower resolution grid to sample over.
-    if spatial_resolution == 0 * au.km:
-        model_antennas = antennas
-        do_interp = False
-    else:
-        model_antennas = create_model_antennas(antennas, spatial_resolution=spatial_resolution)
-        do_interp = True
-    model_antennas_gcrs = InterpolatedArray(
-        time_to_jnp(model_times, ref_time),
-        model_antennas.get_gcrs(model_times[:, None]).cartesian.xyz.to('km').value.transpose((1, 2, 0)),
-        axis=0,
-        regular_grid=True,
-        check_spacing=True
-    )
-    model_directions = directions
-    model_directions_gcrs = InterpolatedArray(
-        time_to_jnp(model_times, ref_time),
-        model_directions.transform_to(ref_location.get_gcrs(model_times[:, None])).cartesian.xyz.value.transpose(
-            (1, 2, 0)),
-        axis=0,
-        regular_grid=True,
-        check_spacing=True
-    )
-
-    # construct the evaluation and interpolation structure
-    x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
-        antennas, ref_location, times, ref_time, directions, model_times
-    )
-
-    reference_antenna_gcrs = antennas_gcrs[0:1]
-
-    past_sample = deque(maxlen=1)
-    samples = []
-    flow_cache = None
-
-    for t in range(len(times_jax)):
-        sample_key, key = jax.random.split(key)
-        t0 = time.time()
-        if len(past_sample) == 0:
-            sample = jax.block_until_ready(
-                sample_dtec(
-                    key=sample_key,
-                    ionosphere=ionosphere,
-                    reference_antenna_gcrs=reference_antenna_gcrs,
-                    antennas_gcrs=model_antennas_gcrs,
-                    directions_gcrs=model_directions_gcrs,
-                    times=times_jax[t:t + 1],
-                    jitter=0.5
-                )
-            )  # [D, 1, A']
-            if np.any(np.isnan(sample)):
-                print(f"Got nans in sampling {t}... try again wiith bigger jitter")
-                sample = jax.block_until_ready(
-                    sample_dtec(
-                        key=sample_key,
-                        ionosphere=ionosphere,
-                        reference_antenna_gcrs=reference_antenna_gcrs,
-                        antennas_gcrs=model_antennas_gcrs,
-                        directions_gcrs=model_directions_gcrs,
-                        times=times_jax[t:t + 1],
-                        jitter=1.
-                    )
-                )
-                if np.any(np.isnan(sample)):
-                    raise ValueError("Getting nans in ionosphere model")
-        else:
-            n_past = len(past_sample)
-            sample, flow_cache = jax.block_until_ready(
-                sample_conditional_dtec_in_time(
-                    key=sample_key,
-                    ionosphere=ionosphere,
-                    reference_antenna_gcrs=reference_antenna_gcrs,
-                    antennas_gcrs=model_antennas_gcrs,
-                    times=times_jax[t:t + 1],
-                    directions_gcrs=model_directions_gcrs,
-                    times_other=times_jax[t - n_past:t],
-                    dtec_other=jnp.concatenate(past_sample, axis=1),
-                    jitter=0.5,
-                    cache=flow_cache
-                )
-            )
-            if np.any(np.isnan(sample)):
-                print(f"Got nans in sampling {t}... try again wiith bigger jitter")
-                sample, flow_cache = jax.block_until_ready(
-                    sample_conditional_dtec_in_time(
-                        key=sample_key,
-                        ionosphere=ionosphere,
-                        reference_antenna_gcrs=reference_antenna_gcrs,
-                        antennas_gcrs=model_antennas_gcrs,
-                        times=times_jax[t:t + 1],
-                        directions_gcrs=model_directions_gcrs,
-                        times_other=times_jax[t - n_past:t],
-                        dtec_other=jnp.concatenate(past_sample, axis=1),
-                        jitter=1.,
-                        cache=flow_cache
-                    )
-                )
-                if np.any(np.isnan(sample)):
-                    raise ValueError("Getting nans in ionosphere model")
-        past_sample.append(sample)
-        samples.append(sample)
-        t1 = time.time()
-        print(f"Conditional sample iteration took {t1 - t0:.2f} seconds")
-    if do_interp:
-        interp_cache = None
-        for t, _ in enumerate(samples):
-            t0 = time.time()
-            _interp_samples = []
-            # predict in batches
-            for start_ant_idx in range(0, len(antennas), predict_batch_size):
-                # automatically handles remainders
-                stop_ant_idx = min(start_ant_idx + predict_batch_size, len(antennas))
-                _interp_sample, interp_cache = jax.block_until_ready(
-                    predict_conditional_dtec_in_antenna(
-                        ionosphere=ionosphere,
-                        reference_antenna_gcrs=reference_antenna_gcrs,
-                        antennas_gcrs=antennas_gcrs[start_ant_idx:stop_ant_idx],
-                        directions_gcrs=directions_gcrs,
-                        times=times_jax[t:t + 1],
-                        model_antennas_gcrs=model_antennas_gcrs,
-                        model_directions_gcrs=model_directions_gcrs,
-                        dtec_other=samples[t],
-                        cache=interp_cache
-                    )
-                )  # [D, 1, batch_size]
-                _interp_samples.append(_interp_sample)
-            samples[t] = jnp.concatenate(_interp_samples, axis=2)  # [D, T, A]
-            t1 = time.time()
-            print(f"Interp step took {t1 - t0:.2f}s")
-
-    samples = jnp.concatenate(samples, axis=1)  # [D, T, A]
-    dtec_samples = samples.transpose((1, 0, 2))  # [T, D, A]
-
-    if save_file is not None:
-        result = SimulationResult(
-            times=times,
-            directions=directions,
-            antennas=antennas,
-            dtec=np.asarray(dtec_samples)
-        )
-        with open(save_file, 'w') as f:
-            f.write(result.json(indent=2))
-        print(f"Saved to {save_file}.")
+    dtec_samples = simulate_ionosphere(key, ionosphere, ref_location, antennas, directions, times, ref_time,
+                                       spatial_resolution, predict_batch_size, save_file)
     # explore_dtec(dtec_samples, antennas, directions, times)
 
     phase_factor = quantity_to_jnp(TEC_CONV / model_freqs, 'rad')  # [F]
@@ -1570,17 +1466,195 @@ def build_ionosphere_gain_model(
     )
 
 
+def simulate_ionosphere(key, ionosphere, ref_location, antennas, directions, times, ref_time, spatial_resolution,
+                        predict_batch_size, save_file, do_tec: bool = False):
+    """
+    Simulate (D)TEC and save to file.
+
+    Args:
+        key:
+        ionosphere:
+        ref_location:
+        antennas:
+        directions:
+        times:
+        ref_time:
+        spatial_resolution:
+        predict_batch_size:
+        save_file:
+
+    Returns:
+
+    """
+    # These model times are just for interpolators, not for actual simulation.
+    # TODO: once use the evolve_gcrs we can remove these.
+    model_dt = au.Quantity(6, 's')
+    T = int((times.max() - times.min()) / model_dt) + 1
+    model_times = times.min() + np.arange(0., T) * model_dt
+    # Get lower resolution grid to sample over.
+    if spatial_resolution == 0 * au.km:
+        model_antennas = antennas
+        do_interp = False
+    else:
+        model_antennas = create_model_antennas(antennas, spatial_resolution=spatial_resolution)
+        do_interp = True
+    model_antennas_gcrs = InterpolatedArray(
+        time_to_jnp(model_times, ref_time),
+        model_antennas.get_gcrs(model_times[:, None]).cartesian.xyz.to('km').value.transpose((1, 2, 0)),
+        axis=0,
+        regular_grid=True,
+        check_spacing=True
+    )
+    model_directions = directions
+    model_directions_gcrs = InterpolatedArray(
+        time_to_jnp(model_times, ref_time),
+        model_directions.transform_to(ref_location.get_gcrs(model_times[:, None])).cartesian.xyz.value.transpose(
+            (1, 2, 0)),
+        axis=0,
+        regular_grid=True,
+        check_spacing=True
+    )
+    # construct the evaluation and interpolation structure
+    x0_radius, times_jax, antennas_gcrs, directions_gcrs = construct_eval_interp_struct(
+        antennas, ref_location, times, ref_time, directions, model_times
+    )
+    reference_antenna_gcrs = antennas_gcrs[0:1]
+    past_sample = deque(maxlen=1)
+    samples = []
+    flow_cache = None
+    for t in range(len(times_jax)):
+        sample_key, key = jax.random.split(key)
+        t0 = time.time()
+        if len(past_sample) == 0:
+            sample = jax.block_until_ready(
+                sample_dtec(
+                    key=sample_key,
+                    ionosphere=ionosphere,
+                    reference_antenna_gcrs=reference_antenna_gcrs,
+                    antennas_gcrs=model_antennas_gcrs,
+                    directions_gcrs=model_directions_gcrs,
+                    times=times_jax[t:t + 1],
+                    jitter=0.5,
+                    do_tec=do_tec,
+                )
+            )  # [D, 1, A']
+            if np.any(np.isnan(sample)):
+                print(f"Got nans in sampling {t}... try again wiith bigger jitter")
+                sample = jax.block_until_ready(
+                    sample_dtec(
+                        key=sample_key,
+                        ionosphere=ionosphere,
+                        reference_antenna_gcrs=reference_antenna_gcrs,
+                        antennas_gcrs=model_antennas_gcrs,
+                        directions_gcrs=model_directions_gcrs,
+                        times=times_jax[t:t + 1],
+                        jitter=1.,
+                        do_tec=do_tec,
+                    )
+                )
+                if np.any(np.isnan(sample)):
+                    raise ValueError("Getting nans in ionosphere model")
+        else:
+            n_past = len(past_sample)
+            sample, flow_cache = jax.block_until_ready(
+                sample_conditional_dtec(
+                    key=sample_key,
+                    ionosphere=ionosphere,
+                    reference_antenna_gcrs=reference_antenna_gcrs,
+                    antennas_gcrs=model_antennas_gcrs,
+                    times=times_jax[t:t + 1],
+                    directions_gcrs=model_directions_gcrs,
+                    antennas_gcrs_other=model_antennas_gcrs,
+                    directions_gcrs_other=model_directions_gcrs,
+                    times_other=times_jax[t - n_past:t],
+                    dtec_other=jnp.concatenate(past_sample, axis=1),
+                    jitter=0.5,
+                    cache=flow_cache,
+                    do_tec=do_tec,
+                )
+            )
+            if np.any(np.isnan(sample)):
+                print(f"Got nans in sampling {t}... try again wiith bigger jitter")
+                sample, flow_cache = jax.block_until_ready(
+                    sample_conditional_dtec(
+                        key=sample_key,
+                        ionosphere=ionosphere,
+                        reference_antenna_gcrs=reference_antenna_gcrs,
+                        antennas_gcrs=model_antennas_gcrs,
+                        times=times_jax[t:t + 1],
+                        directions_gcrs=model_directions_gcrs,
+                        antennas_gcrs_other=model_antennas_gcrs,
+                        directions_gcrs_other=model_directions_gcrs,
+                        times_other=times_jax[t - n_past:t],
+                        dtec_other=jnp.concatenate(past_sample, axis=1),
+                        jitter=1.,
+                        cache=flow_cache,
+                        do_tec=do_tec,
+                    )
+                )
+                if np.any(np.isnan(sample)):
+                    raise ValueError("Getting nans in ionosphere model")
+        past_sample.append(sample)
+        samples.append(sample)
+        t1 = time.time()
+        print(f"Conditional sample iteration took {t1 - t0:.2f} seconds")
+    if do_interp:
+        interp_cache = None
+        for t, _ in enumerate(samples):
+            t0 = time.time()
+            _interp_samples = []
+            # predict in batches
+            for start_ant_idx in range(0, len(antennas), predict_batch_size):
+                # automatically handles remainders
+                stop_ant_idx = min(start_ant_idx + predict_batch_size, len(antennas))
+                _interp_sample, interp_cache = jax.block_until_ready(
+                    predict_conditional_dtec(
+                        ionosphere=ionosphere,
+                        reference_antenna_gcrs=reference_antenna_gcrs,
+                        antennas_gcrs=antennas_gcrs[start_ant_idx:stop_ant_idx],
+                        directions_gcrs=directions_gcrs,
+                        times=times_jax[t:t + 1],
+                        model_antennas_gcrs=model_antennas_gcrs,
+                        model_directions_gcrs=model_directions_gcrs,
+                        model_times=times_jax[t:t + 1],
+                        dtec_other=samples[t],
+                        cache=interp_cache,
+                        do_tec=do_tec,
+                        clear_s=True
+                    )
+                )  # [D, 1, batch_size]
+                _interp_samples.append(_interp_sample)
+            samples[t] = jnp.concatenate(_interp_samples, axis=2)  # [D, T, A]
+            t1 = time.time()
+            print(f"Interp step took {t1 - t0:.2f}s")
+    samples = jnp.concatenate(samples, axis=1)  # [D, T, A]
+    dtec_samples = samples.transpose((1, 0, 2))  # [T, D, A]
+    if save_file is not None:
+        result = SimulationResult(
+            is_tec=do_tec,
+            times=times,
+            directions=directions,
+            antennas=antennas,
+            dtec=np.asarray(dtec_samples)
+        )
+        with open(save_file, 'w') as f:
+            f.write(result.json(indent=2))
+        print(f"Saved to {save_file}.")
+    return dtec_samples
+
+
 class SimulationResult(SerialisableBaseModel):
+    is_tec: bool
     times: at.Time
     directions: ac.ICRS
     antennas: ac.EarthLocation
     dtec: np.ndarray  # [T, D, A]
 
     def interactive_explore(self):
-        explore_dtec(self.dtec, self.antennas, self.directions, self.times)
+        explore_dtec(self.dtec, self.antennas, self.directions, self.times, self.is_tec)
 
 
-def explore_dtec(dtec: np.ndarray, antennas: ac.EarthLocation, directions: ac.ICRS, times: at.Time):
+def explore_dtec(dtec: np.ndarray, antennas: ac.EarthLocation, directions: ac.ICRS, times: at.Time, is_tec: bool):
     """
     Plot an interactive plot of dtec.
 
@@ -1594,6 +1668,12 @@ def explore_dtec(dtec: np.ndarray, antennas: ac.EarthLocation, directions: ac.IC
     if np.shape(dtec) != (len(times), len(directions), len(antennas)):
         raise ValueError(f"dtec shape {np.shape(dtec)} doesn't match [T, D, A].")
 
+    if is_tec:
+        vmin = np.min(dtec)
+        vmax = np.max(dtec)
+    else:
+        vmin = -50
+        vmax = 50
     # Convert times to matplotlib date format.
     times_dt = times.to_datetime()  # array of datetime objects
     times_plot = mdates.date2num(times_dt)  # convert to float numbers
@@ -1625,30 +1705,39 @@ def explore_dtec(dtec: np.ndarray, antennas: ac.EarthLocation, directions: ac.IC
     # --- Plot for Axis 1: Time Series ---
     # Plot: dtec[:, d_idx, a_idx] vs. times.
     line1, = ax1.plot(times_plot, dtec[:, d_idx_init, a_idx_init])
-    ax1.set_ylim(-50, 50)
-    ax1.set_title("Time Slice: dtec[:, d, a]")
+    ax1.set_ylim(vmin, vmax)
+    ax1.set_title("Time Slice[:, d, a]")
     ax1.set_xlabel("Time")
-    ax1.set_ylabel(r"$\Delta\mathrm{TEC}$ (mTECU)")
+    if is_tec:
+        ax1.set_ylabel(r"$\mathrm{TEC}$ (mTECU)")
+    else:
+        ax1.set_ylabel(r"$\Delta\mathrm{TEC}$ (mTECU)")
     ax1.xaxis_date()
     fig.autofmt_xdate()
 
     # --- Plot for Axis 2: Directions Scatter ---
     # Plot: dtec[t_idx, :, a_idx] vs. (directions.ra.deg, directions.dec.deg)
     sc2 = ax2.scatter(directions.ra.deg, directions.dec.deg,
-                      c=dtec[t_idx_init, :, a_idx_init], cmap='jet', vmin=-50, vmax=50)
-    ax2.set_title("Direction Slice: dtec[t, :, a]")
+                      c=dtec[t_idx_init, :, a_idx_init], cmap='jet', vmin=vmin, vmax=vmax)
+    ax2.set_title("Direction Slice[t, :, a]")
     ax2.set_xlabel("RA (deg)")
     ax2.set_ylabel("Dec (deg)")
-    cb2 = plt.colorbar(sc2, cax=ax2_colorbar, label=r"$\Delta\mathrm{TEC}$ (mTECU)")
+    if is_tec:
+        cb2 = plt.colorbar(sc2, cax=ax2_colorbar, label=r"$\mathrm{TEC}$ (mTECU)")
+    else:
+        cb2 = plt.colorbar(sc2, cax=ax2_colorbar, label=r"$\Delta\mathrm{TEC}$ (mTECU)")
 
     # --- Plot for Axis 3: Antenna Scatter ---
     # Plot: dtec[t_idx, d_idx, :] vs. (antennas.lon.deg, antennas.lat.deg)
     sc3 = ax3.scatter(antennas.lon.deg, antennas.lat.deg,
-                      c=dtec[t_idx_init, d_idx_init, :], cmap='jet', vmin=-50, vmax=50)
-    ax3.set_title("Antenna Slice: dtec[t, d, :]")
+                      c=dtec[t_idx_init, d_idx_init, :], cmap='jet', vmin=vmin, vmax=vmax)
+    ax3.set_title("Antenna Slice[t, d, :]")
     ax3.set_xlabel("Longitude (deg)")
     ax3.set_ylabel("Latitude (deg)")
-    cb3 = plt.colorbar(sc3, cax=ax3_colorbar, label=r"$\Delta\mathrm{TEC}$ (mTECU)")
+    if is_tec:
+        cb3 = plt.colorbar(sc3, cax=ax3_colorbar, label=r"$\mathrm{TEC}$ (mTECU)")
+    else:
+        cb3 = plt.colorbar(sc3, cax=ax3_colorbar, label=r"$\Delta\mathrm{TEC}$ (mTECU)")
 
     # --- Create vertical sliders ---
     slider_t = Slider(slider_ax_t, 't_idx', 0, T - 1, valinit=t_idx_init,
