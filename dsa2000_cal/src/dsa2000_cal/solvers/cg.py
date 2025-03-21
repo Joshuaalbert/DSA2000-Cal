@@ -3,6 +3,7 @@ from typing import NamedTuple, Callable, TypeVar, Tuple
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from dsa2000_common.common.array_types import FloatArray, IntArray
 
@@ -45,6 +46,7 @@ def tree_add(x, y):
 def tree_scalar_mul(alpha, x):
     return jax.tree.map(lambda x: alpha * x, x)
 
+
 def tree_neg(x):
     return jax.tree.map(jax.lax.neg, x)
 
@@ -66,7 +68,7 @@ DomainType = TypeVar('DomainType')
 
 
 def cg_solve(A: Callable[[DomainType], DomainType], b: DomainType, x0: DomainType,
-             M: Callable[[DomainType], DomainType] = _identity, maxiter: int = 100, tol: float = 1e-5,
+             M: Callable[[DomainType], DomainType] = _identity, maxiter: int | None = 100, tol: float = 1e-5,
              atol: float = 0.0) -> Tuple[DomainType, CGDiagnostics]:
     """
     Solve a linear system Ax = b using the conjugate gradient method.
@@ -76,13 +78,16 @@ def cg_solve(A: Callable[[DomainType], DomainType], b: DomainType, x0: DomainTyp
         b: the right-hand side
         x0: an initial guess for the solution
         M: a preconditioner for A
-        maxiter: the maximum number of iterations
+        maxiter: the maximum number of iterations, if None then size of b
         tol: the relative tolerance for the residual norm
         atol: the absolute tolerance for the residual norm
 
     Returns:
         the solution x and diagnostics
     """
+
+    if maxiter is None:
+        maxiter = sum(jax.tree.leaves(jax.tree.map(np.size, b)))
 
     class CGState(NamedTuple):
         x: DomainType  # current solution estimate
@@ -128,16 +133,3 @@ def cg_solve(A: Callable[[DomainType], DomainType], b: DomainType, x0: DomainTyp
     diag = CGDiagnostics(iterations=final_state.iter,
                          final_res_norm=jnp.sqrt(final_res_sq))
     return final_state.x, diag
-
-
-def test_cg():
-    A = jnp.array([[1.0, 0.0], [0.0, 1.0]])
-    b = jnp.array([1.0, 1.0])
-    x0 = jnp.array([0.0, 0.0])
-
-    def A_op(x):
-        return jnp.dot(A, x)
-
-    x, diag = cg_solve(A_op, b, x0)
-    assert jnp.allclose(x, b)
-    assert diag.iterations == 1

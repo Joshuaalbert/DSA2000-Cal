@@ -1,19 +1,31 @@
 import dataclasses
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import Literal, Any, Tuple, List
+
+from jaxns.framework import context as ctx
 
 import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 from jaxns import PriorModelType, Prior
+from jaxns.framework.ops import simulate_prior_model
 
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.pytree import Pytree
 
 tfpd = tfp.distributions
 
 
-class AbstractGainPriorModel(ABC):
+class AbstractGainPriorModel(Pytree, ABC):
+    @abstractmethod
+    def compute_gains(self, params: Any):
+        ...
+
+    @abstractmethod
+    def get_init_params(self, key) -> Any:
+        ...
+
     @abstractmethod
     def build_prior_model(self, num_source: int, num_ant: int, freqs: jax.Array, times: jax.Array) -> PriorModelType:
         """
@@ -36,6 +48,11 @@ class GainPriorModel(AbstractGainPriorModel):
     """
     A gain model with unconstrained complex Gaussian priors with zero mean.
     """
+    num_source: int
+    num_ant: int
+    freqs: FloatArray
+    times: FloatArray
+
     gain_stddev: float = 2.
     full_stokes: bool = True
 
@@ -45,6 +62,71 @@ class GainPriorModel(AbstractGainPriorModel):
     double_differential: bool = True
     di_dof: int = 4
     di_type: Literal['unconstrained', 'rice', 'phase_only', 'amplitude_only'] = 'unconstrained'
+
+    skip_post_init: bool = False
+
+    def __post_init__(self):
+        if self.skip_post_init:
+            return
+
+    @classmethod
+    def flatten(cls, this: 'GainPriorModel') -> Tuple[List[Any], Tuple[Any, ...]]:
+        return (
+            [
+            this.freqs, this.times
+            ],
+            (
+                this.num_source, this.num_ant, this.gain_stddev, this.full_stokes,
+                this.dd_type, this.dd_dof, this.di_dof, this.di_type
+            )
+        )
+
+    @classmethod
+    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> 'GainPriorModel':
+        [freqs, times] = children
+        (num_source, num_ant, gain_stddev, full_stokes,
+        dd_type, dd_dof, di_dof, di_type) = aux_data
+        return GainPriorModel(
+            num_source=num_source,
+            num_ant=num_ant,
+            freqs=freqs,
+            times=times,
+            gain_stddev=gain_stddev,
+            full_stokes=full_stokes,
+            dd_type=dd_type,
+            dd_dof=dd_dof,
+            di_dof=di_dof,
+            di_type=di_type,
+            skip_post_init=True
+        )
+
+
+    def compute_gains(self, params: Any):
+        def transform():
+            prior_model = self.build_prior_model(
+                num_source=self.num_source,
+                num_ant=self.num_ant,
+                freqs=self.freqs,
+                times=self.times
+            )
+            (gains,), _ = simulate_prior_model(jax.random.PRNGKey(0), prior_model)  # [D, Tm, A, Cm[,2,2]]
+            return gains
+        get_gains_transformed = ctx.transform(transform)
+        gains = get_gains_transformed.apply(params, jax.random.PRNGKey(0)).fn_val
+        return gains
+
+    def get_init_params(self, key) -> Any:
+        def transform():
+            prior_model = self.build_prior_model(
+                num_source=self.num_source,
+                num_ant=self.num_ant,
+                freqs=self.freqs,
+                times=self.times
+            )
+            (gains,), _ = simulate_prior_model(jax.random.PRNGKey(0), prior_model)  # [D, Tm, A, Cm[,2,2]]
+            return gains
+        get_gains_transformed = ctx.transform(transform)
+        return get_gains_transformed.init(key).params
 
     def _make_gains_model_unconstrained(self, shape, name: str):
         ones = jnp.ones(shape)
@@ -171,3 +253,5 @@ class GainPriorModel(AbstractGainPriorModel):
             return mp_policy.cast_to_gain(gains)
 
         return prior_model
+
+GainPriorModel.register_pytree()

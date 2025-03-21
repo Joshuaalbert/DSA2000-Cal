@@ -1,7 +1,6 @@
 import asyncio
 import dataclasses
 import datetime
-import logging
 import os
 import socket
 import threading
@@ -366,10 +365,8 @@ class TimerLog:
         self.t0 = time.time()
 
     def __enter__(self):
-        print(f"{self.msg}...")
-        logger.info(f"{self.msg}")
+        logger.info(f"{self.msg} ...")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        print(f"... took {time.time() - self.t0:.3f} seconds")
-        logger.info(f"... took {time.time() - self.t0:.3f} seconds")
+        logger.info(f"{self.msg} ... took {time.time() - self.t0:.3f} seconds")
         return False
