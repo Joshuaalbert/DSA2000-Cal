@@ -1,11 +1,8 @@
 from functools import partial
 
 import jax
-import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_fm.actors.average_utils import average_rule
-
-tfpd = tfp.distributions
 
 
 @partial(jax.jit, static_argnames=['Tm', 'Cm'])
@@ -21,7 +18,7 @@ def average_model(vis_model, Tm: int, Cm: int):
     Returns:
         [D, Tm, B, Cm, ...]
     """
-    # average data to match model: [Ts, B, Cs[, 2, 2]] -> [Tm, B, Cm[, 2, 2]]
+    # average data to match model: [T, B, T[, 2, 2]] -> [Tm, B, Cm[, 2, 2]]
     if Tm is not None:
         time_average_rule = partial(
             average_rule,
