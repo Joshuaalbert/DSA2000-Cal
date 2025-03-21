@@ -196,7 +196,7 @@ class LogErrors:
                 f"{formatted_traceback}"
             )
             print(msg)
-            logger.error(
+            logger.g_norm(
                 msg,
                 exc_info=(exc_type, exc_val, exc_tb)
             )

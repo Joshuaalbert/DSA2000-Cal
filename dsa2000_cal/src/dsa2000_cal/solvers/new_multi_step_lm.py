@@ -1,21 +1,36 @@
-import dataclasses
-import pickle
-import warnings
-from typing import NamedTuple, Any, Callable, TypeVar, Generic, Union, Tuple, List
+from typing import NamedTuple, TypeVar, Tuple, Callable, Union
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from dsa2000_common.common.ad_utils import tree_norm, tree_dot
-from dsa2000_common.common.array_types import FloatArray, IntArray
+from dsa2000_cal.solvers.cg import tree_vdot_real_part, tree_scalar_mul, tree_add, cg_solve, tree_sub, tree_neg
+from dsa2000_common.common.array_types import FloatArray, IntArray, BoolArray
 from dsa2000_common.common.jvp_linear_op import JVPLinearOp
 
-X = TypeVar('X', bound=Union[jax.Array, Any])
-Y = TypeVar('Y', bound=Union[jax.Array, Any])
+DomainType = TypeVar("DomainType")
+CoDomainType = TypeVar("CoDomainType")
 
-CT = TypeVar('CT', bound=Union[jax.Array, Any])
-_CT = TypeVar('_CT', bound=Union[jax.Array, Any])
+
+class LMDiagnostic(NamedTuple):
+    iteration: IntArray  # iteration number
+    g_norm: FloatArray  # |J^T R(x_k)|
+    mu: FloatArray  # step size
+    damping: FloatArray  # g_norm / mu
+    cg_iters: IntArray  # number of CG iterations used
+    Q: FloatArray  # |R(x_k)|^2
+    Q_prop: FloatArray  # |R(x_k + dx_k)|^2
+    Q_push: FloatArray  # |R(x_k) + J_k dx_k|^2
+    delta_Q_convex: FloatArray  # |R(x_k)|^2 - |R(x_k) + J_k dx_k|^2
+    delta_Q_actual: FloatArray  # |R(x_k)|^2 - |R(x_k + dx_k)|^2
+    gain_ratio: FloatArray  # delta_Q_actual / delta_Q_convex
+    accepted: BoolArray  # delta_Q_convex > 0 and gain_ratio > p_accept
+    in_trust_region: BoolArray  # delta_Q_convex > 0 and p_lower < gain_ratio < p_upper
+    delta_x_norm: FloatArray  # |dx_k|
+
+
+CT = TypeVar('CT', bound=Union[jax.Array, DomainType])
+_CT = TypeVar('_CT', bound=Union[jax.Array, DomainType])
 
 
 def convert_to_real(x: CT) -> Tuple[_CT, Callable[[_CT], CT]]:
@@ -44,565 +59,197 @@ def convert_to_real(x: CT) -> Tuple[_CT, Callable[[_CT], CT]]:
     return x_real_imag_leaves, merge
 
 
-class MultiStepLevenbergMarquardtState(NamedTuple):
-    iteration: IntArray  # iteration number
-    x: X  # current solution, may be a pytree
-    delta_x: X  # step, may be a pytree
-    F: Y  # residual, may be a pytree
-    F_norm: FloatArray  # norm of the residual
-    mu: FloatArray  # damping factor
-    cg_maxiter: IntArray  # maximum number of CG iterations
-    error: FloatArray  # |J^T F(x_k)|
-    delta_norm: FloatArray  # |dx_k|
+def lm_solver(
+        residual_fn: Callable[..., CoDomainType],
+        x0: DomainType,
+        args: tuple = (),
+        maxiter: int = 50,
+        maxiter_cg: int = 50,
+        gtol: float = 1e-5,
+        p_accept: float = 0.01,
+        p_lower: float = 0.25,
+        p_upper: float = 1.1,
+        mu_init: float = 1.,
+        mu_min: float = 1e-6,
+        approx_grad: bool = False,
+        verbose: bool = False
+):
+    x0, merge_fn = convert_to_real(x0)
 
+    def _residual_fn(x):
+        res = residual_fn(merge_fn(x), *args)
 
-class MultiStepLevenbergMarquardtDiagnostic(NamedTuple):
-    iteration: IntArray  # iteration number
-    exact_step: IntArray  # A single iteration is an exact step followed by inexact steps
-    approx_step: IntArray  # An inexact step
-    F_norm: FloatArray  # |F(x_k)|^2
-    r: FloatArray  # r = (|F(x_k)|^2 - |F(x_{k+1})|^2) / (|F(x_k)|^2 - |F(x_{k}) + J_k dx_k|^2)
-    delta_norm: FloatArray  # |dx_k|
-    error: FloatArray  # |J^T F(x_k)|
-    damping: FloatArray  # damping factor
-    mu: FloatArray  # damping factor
-    pred: FloatArray  # predicted reduction
-    act: FloatArray  # actual reduction
-    cg_maxiter: IntArray  # maximum number of CG iterations
+        def _make_real(x):
+            if not isinstance(x, jax.Array):
+                raise RuntimeError(f"Only jax.Array is supported, got {type(x)}")
+            if jnp.iscomplexobj(x):
+                return [(x.real, x.imag)]  # List to make it arity preserving
+            return x
 
+        real_res = jax.tree.map(_make_real, res)
+        scale = np.sqrt(sum(jax.tree.leaves(jax.tree.map(np.size, real_res))))
+        # scale**2 = num data points
+        return jax.tree.map(lambda x: x / scale, real_res)
 
-@dataclasses.dataclass(eq=False)
-class MultiStepLevenbergMarquardt(Generic[X, Y]):
-    """
-    Multi-step Levenberg-Marquardt algorithm.
+    # normalise the residual fn
+    J_bare = JVPLinearOp(fn=_residual_fn)
 
-    Finds a local minimum to the least squares problem defined by a residual function, F(x)=0.
+    class LMState(NamedTuple):
+        x: DomainType  # current parameter estimate
+        R: CoDomainType  # current residual R(x)
+        Q: FloatArray  # squared residual norm: Q = ||R(x)||²
+        g: DomainType  # gradient g = -J^T R(x)
+        g_norm: FloatArray  # norm of the gradient
+        mu: FloatArray  # current damping parameter
+        delta_x_prev: DomainType  # previous step δx⁻¹
+        delta_x_prev2: DomainType  # second previous step δx⁻²
+        iter: IntArray  # iteration counter
 
-    Implements the algorithm described in [1]. In addition, it applies CG method to solve the normal equations,
-    efficient use of JVP and VJP to avoid computing the Jacobian matrix, adaptive step size, and mixed precision.
+    def create_initial_state(x0: DomainType) -> LMState:
+        R = _residual_fn(x0)
+        Q = tree_vdot_real_part(R, R)
 
-    References:
-        [1] Fan, J., Huang, J. & Pan, J. An Adaptive Multi-step Levenberg–Marquardt Method.
-            J Sci Comput 78, 531–548 (2019). https://doi.org/10.1007/s10915-018-0777-8
-    """
-    residual_fn: Callable[[X], Y]
-    num_approx_steps: int = 2
-    num_iterations: int = 2
+        # Compute gradient via vector-Jacobian product:
+        J = J_bare(x0)
+        g = tree_neg(J.matvec(R, adjoint=True))
+        g_norm = jnp.sqrt(tree_vdot_real_part(g, g))
+        g_unit = tree_scalar_mul(jnp.reciprocal(g_norm + 1e-12), g)
 
-    # Improvement threshold
-    p_any_improvement: FloatArray = 0.01  # p0 > 0
-    p_less_newton: FloatArray = 0.25  # p2 -- less than sufficient improvement
-    p_more_newton: FloatArray = 0.9  # p3 -- more than sufficient improvement
-    p_leave_newton: FloatArray = 1.05  # p4 -- leave Newton step
+        # Simple line search to adjust μ: reduce μ until the step improves Q.
+        def line_search_cond(mu):
+            step = tree_scalar_mul(mu, g_unit)
+            R_new = _residual_fn(tree_add(x0, step))
+            Q_new = tree_vdot_real_part(R_new, R_new)
+            return (Q_new >= Q) & (mu > mu_min)
 
-    # Damping alteration factors 0 < c_more_newton < 1 < c_less_newton
-    c_more_newton: FloatArray = 0.16
-    c_less_newton: FloatArray = 2.78
-    mu_min: FloatArray = 1e-5
-    approx_cg: bool = True
-    min_cg_maxiter: IntArray = 10
-    init_cg_maxiter: IntArray | None = 10
+        def line_search_body(mu):
+            mu = 0.5 * mu
+            return mu
 
-    gtol: FloatArray = 1e-8
-    xtol: FloatArray = 1e-6
-
-    verbose: bool = False
-
-    skip_post_init: bool = False
-
-    def __post_init__(self):
-        if self.skip_post_init:
-            return
-
-        if self.num_approx_steps < 0:
-            raise ValueError("num_approx_steps must be non-negative")
-        if isinstance(self.mu_min, float) and self.mu_min <= 0:
-            raise ValueError("mu_min must be positive")
-        if all(map(lambda p: isinstance(p, float), (self.p_any_improvement,
-                                                    self.p_more_newton,
-                                                    self.p_less_newton))) and not (
-                (0. <= self.p_any_improvement)
-                and (self.p_any_improvement < self.p_less_newton)
-                and (self.p_less_newton < self.p_more_newton)
-                and (self.p_more_newton <= 1.)
-        ):
-            raise ValueError(
-                "Improvement thresholds must satisfy 0 < p(any) < p(less) < p(more) < 1, "
-                f"got {self.p_any_improvement}, {self.p_less_newton}, "
-                f"{self.p_more_newton}"
-            )
-
-        if isinstance(self.c_more_newton, float) and isinstance(self.c_less_newton, float) and not (
-                (0. < self.c_more_newton)
-                and (self.c_more_newton < 1.)
-                and (1. < self.c_less_newton)
-        ):
-            raise ValueError(
-                "Damping alteration factors must satisfy 0 < c_more_newton < 1 < c_less_newton, "
-                f"got {self.c_more_newton}, {self.c_less_newton}"
-            )
-        self.mu_min = jnp.asarray(self.mu_min, dtype=jnp.float32)
-        self.p_any_improvement = jnp.asarray(self.p_any_improvement, dtype=jnp.float32)
-        self.p_less_newton = jnp.asarray(self.p_less_newton, dtype=jnp.float32)
-        self.p_more_newton = jnp.asarray(self.p_more_newton, dtype=jnp.float32)
-        self.c_more_newton = jnp.asarray(self.c_more_newton, dtype=jnp.float32)
-        self.c_less_newton = jnp.asarray(self.c_less_newton, dtype=jnp.float32)
-        self.gtol = jnp.asarray(self.gtol, dtype=jnp.float32)
-        self.xtol = jnp.asarray(self.xtol, dtype=jnp.float32)
-        self.min_cg_maxiter = jnp.asarray(self.min_cg_maxiter, dtype=jnp.int32)
-        self.init_cg_maxiter = jnp.asarray(self.init_cg_maxiter,
-                                           dtype=jnp.int32) if self.init_cg_maxiter is not None else None
-
-        self._residual_fn = self.wrap_residual_fn(self.residual_fn)
-
-    def save(self, filename: str):
-        """
-        Serialise the model to file.
-
-        Args:
-            filename: the filename
-        """
-        if not filename.endswith('.pkl'):
-            warnings.warn(f"Filename {filename} does not end with .pkl")
-        with open(filename, 'wb') as f:
-            pickle.dump(self, f)
-
-    @staticmethod
-    def load(filename: str):
-        """
-        Load the model from file.
-
-        Args:
-            filename: the filename
-
-        Returns:
-            the model
-        """
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
-
-    def __reduce__(self):
-        # Return the class method for deserialization and the actor as an argument
-        children, aux_data = self.flatten(self)
-        children_np = jax.tree.map(np.asarray, children)
-        serialised = (aux_data, children_np)
-        return (self._deserialise, (serialised,))
-
-    @classmethod
-    def _deserialise(cls, serialised):
-        # Create a new instance, bypassing __init__ and setting the actor directly
-        (aux_data, children_np) = serialised
-        children_jax = jax.tree.map(jnp.asarray, children_np)
-        return cls.unflatten(aux_data, children_jax)
-
-    @classmethod
-    def register_pytree(cls):
-        jax.tree_util.register_pytree_node(cls, cls.flatten, cls.unflatten)
-
-    # an abstract classmethod
-    @classmethod
-    def flatten(cls, this: "MultiStepLevenbergMarquardt") -> Tuple[List[Any], Tuple[Any, ...]]:
-        """
-        Flatten the model.
-
-        Args:
-            this: the model
-
-        Returns:
-            the flattened model
-        """
-        # Leaves are the arrays (x, values), and auxiliary data is the rest
-
-        return (
-            [ # things that are arrays
-                this.p_any_improvement,
-                this.p_less_newton,
-                this.p_more_newton,
-                this.c_more_newton,
-                this.c_less_newton,
-                this.gtol,
-                this.xtol,
-                this.min_cg_maxiter,
-                this.init_cg_maxiter,
-                this.gtol,
-                this.xtol,
-            ],
-            ( # Things that are not traceable
-                this.residual_fn,
-                this.num_iterations,
-                this.num_approx_steps,
-                this.verbose
-             )
+        mu = jax.lax.while_loop(
+            line_search_cond, line_search_body, mu_init
+        )
+        delta_x_prev = delta_x_prev2 = jax.tree.map(jnp.zeros_like, x0)
+        return LMState(
+            x=x0, R=R, Q=Q, g=g, g_norm=g_norm, mu=mu,
+            delta_x_prev=delta_x_prev,
+            delta_x_prev2=delta_x_prev2, iter=0
         )
 
-    @classmethod
-    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> "MultiStepLevenbergMarquardt":
-        """
-        Unflatten the model.
+    def cond_fn(carry: Tuple[LMState, LMDiagnostic]):
+        state, _ = carry
+        return (state.g_norm > gtol) & (state.iter < maxiter)
 
-        Args:
-            children: the flattened model
-            aux_data: the auxiliary
+    def step_fn(state: LMState):
+        # Forecast initial CG guess: δx⁰ = 2δx⁻¹ - δx⁻²
+        delta_x0 = tree_sub(tree_add(state.delta_x_prev, state.delta_x_prev), state.delta_x_prev2)
+        # Define the linear operator A_op for the inner CG:
+        # A_op(p) = J^T (J p) + (g_norm/mu) * p.
+        J = J_bare(state.x)
+        damping = state.g_norm / state.mu
 
-        Returns:
-            the unflattened model
-        """
-        p_any_improvement, p_less_newton, p_more_newton, c_more_newton, c_less_newton, gtol, xtol, min_cg_maxiter, init_cg_maxiter, gtol, xtol = aux_data
-        residual_fn, num_iterations, num_approx_steps, verbose = children
-        output = MultiStepLevenbergMarquardt(
-            residual_fn=residual_fn,
-            num_iterations=num_iterations,
-            num_approx_steps=num_approx_steps,
-            p_any_improvement=p_any_improvement,
-            p_less_newton=p_less_newton,
-            p_more_newton=p_more_newton,
-            c_more_newton=c_more_newton,
-            c_less_newton=c_less_newton,
-            gtol=gtol,
-            xtol=xtol,
-            min_cg_maxiter=min_cg_maxiter,
-            init_cg_maxiter=init_cg_maxiter,
-            verbose=verbose,
-            skip_post_init=True
+        def A_op(p):
+            JTJv = J.matvec(J.matvec(p), adjoint=True)
+            return tree_add(JTJv, tree_scalar_mul(damping, p))
+
+        # Solve the linear system A_op(δx) = g using our CG solver.
+        delta_x, cg_diag = cg_solve(
+            A=A_op,
+            b=state.g,
+            x0=delta_x0,
+            maxiter=maxiter_cg,
+            tol=1e-5,
+            atol=0.0
         )
-        return output
 
+        delta_x_norm = jnp.sqrt(tree_vdot_real_part(delta_x, delta_x))
 
-    @staticmethod
-    def wrap_residual_fn(residual_fn: Callable[[X], Y]) -> Callable[[X], Y]:
-        """
-        Wrap the residual function to handle complex outputs by treating real and imag separately.
-        """
+        # Update parameter estimate
+        x_prop = tree_add(state.x, delta_x)
+        R_prop = _residual_fn(x_prop)
+        Q_prop = tree_vdot_real_part(R_prop, R_prop)
 
-        def wrapped_residual_fn(x: X) -> Y:
-            output = residual_fn(x)
+        # Convex decrease using the linear model
+        R_push = tree_add(state.R, J.matvec(delta_x))
+        Q_push = tree_vdot_real_part(R_push, R_push)
+        delta_Q_convex = state.Q - Q_push
+        delta_Q_actual = state.Q - Q_prop
+        gain_ratio = delta_Q_actual / delta_Q_convex
 
-            def _make_real(x):
-                if not isinstance(x, jax.Array):
-                    raise RuntimeError("Only jax.Array is supported")
-                if jnp.issubdtype(x.dtype, jnp.complexfloating):
-                    return (x.real, x.imag)
-                return x
+        # Adjust the damping parameter μ if in the trust region
+        in_trust_region = (delta_Q_convex > 0) & (delta_Q_actual > p_lower * delta_Q_convex) & (
+                delta_Q_actual < p_upper * delta_Q_convex)
+        new_mu = jax.lax.select(in_trust_region, 2 * state.mu, 0.5 * state.mu)
+        # Accept step if the model predicts a convex decrease and ratio is high.
+        accepted = (delta_Q_convex > 0) & (delta_Q_actual > p_accept * delta_Q_convex)
 
-            real_output = [jax.tree.map(_make_real, output)]
-            scale = np.sqrt(sum(jax.tree.leaves(jax.tree.map(np.size, real_output))))
-            # scale**2 = n
-            normalised_real_output = jax.tree.map(lambda x: x / scale, real_output)
-            return normalised_real_output
-
-        return wrapped_residual_fn
-
-    def update_initial_state(self, state: MultiStepLevenbergMarquardtState) -> MultiStepLevenbergMarquardtState:
-        """
-        Update another state into a valid initial state, using the current state as a starting point.
-
-        Args:
-            state: state to update
-
-        Returns:
-            updated state
-        """
-        # Note: If the obj_fn has significantly changed from the one used to produce `state`, using a new initial state
-        # is advisable.
-        init_state = self.create_initial_state(state.x)
-        # We update state attributes that help the algorithm converge faster, i.e.
-        # 1. help CG converge faster
-        # 2. help choose the right damping factor
-        return init_state._replace(
-            iteration=state.iteration,
+        diag = LMDiagnostic(
+            iteration=state.iter,
+            g_norm=state.g_norm,
             mu=state.mu,
-            delta_x=state.delta_x,
-            cg_maxiter=state.cg_maxiter
+            damping=damping,
+            cg_iters=cg_diag.iterations,
+            Q=state.Q,
+            Q_prop=Q_prop,
+            Q_push=Q_push,
+            delta_Q_convex=delta_Q_convex,
+            delta_Q_actual=delta_Q_actual,
+            delta_x_norm=delta_x_norm,
+            gain_ratio=gain_ratio,
+            accepted=accepted,
+            in_trust_region=in_trust_region
+        )
+        if verbose:
+            diag_dict = diag._asdict()
+            s = [f"{k}: {{{k}}}" for k, v in diag_dict.items()]
+            # Join in lines of 3 kwargs
+            s = [" ".join(s[i:i + 4]) for i in range(0, len(s), 4)]
+            s = "\n".join(s)
+            s += "\n----"
+            jax.debug.print(s, **diag_dict)
+
+        (
+            x_new, Q_new, R_new, delta_x_prev_new, delta_x_prev2
+        ) = jax.tree.map(
+            lambda x, y: jax.lax.select(accepted, x, y),
+            (x_prop, Q_prop, R_prop, delta_x, state.delta_x_prev),
+            (state.x, state.Q, state.R, state.delta_x_prev, state.delta_x_prev2)
+        )
+        # Recompute gradient at the (possibly updated) x.
+        if not approx_grad:
+            J = J_bare(x_new)
+
+        g_new = tree_neg(J.matvec(R_new, adjoint=True))
+        g_norm_new = jnp.sqrt(tree_vdot_real_part(g_new, g_new))
+
+        state = LMState(
+            x=x_new, R=R_new, Q=Q_new, g=g_new, g_norm=g_norm_new, mu=new_mu,
+            delta_x_prev=delta_x, delta_x_prev2=state.delta_x_prev, iter=state.iter + 1
         )
 
-    def _select_initial_mu(self, residual_fn, obj0: FloatArray, x0: X, grad0: X):
-        grad_norm = tree_norm(grad0)
-        grad_unit = jax.tree.map(lambda x: x / grad_norm, grad0)
+        return state, diag
 
-        def obj_fn(x: X):
-            residuals = residual_fn(x)
-            return tree_dot(residuals, residuals)
+    def body_fn(carry: Tuple[LMState, LMDiagnostic]) -> Tuple[LMState, LMDiagnostic]:
+        state, diagnostic = carry
+        iteration = state.iter
+        new_state, new_diag_element = step_fn(state)
+        new_diagnostic = jax.tree.map(lambda x, y: x.at[iteration].set(y), diagnostic, new_diag_element)
+        return new_state, new_diagnostic
 
-        def steepest_descent_point(alpha: FloatArray):
-            return jax.tree.map(lambda x, y: x - alpha * y, x0, grad_unit)
+    init_state = create_initial_state(x0)
 
-        def search_cond(carry):
-            alpha, obj = carry
-            done = obj < obj0
-            return jnp.logical_not(done)
+    # Create diagnostic output structure
+    diagnostic_aval = jax.eval_shape(lambda state: step_fn(state)[1], init_state)
+    init_diagnostics = jax.tree.map(lambda x: jnp.zeros((maxiter,) + x.shape, dtype=x.dtype), diagnostic_aval)
 
-        def search_iter(carry):
-            alpha, obj = carry
-            alpha = alpha * 0.5
-            obj = obj_fn(steepest_descent_point(alpha))
-            return alpha, obj
+    final_state, final_diagnostics = jax.lax.while_loop(cond_fn, body_fn, (init_state, init_diagnostics))
 
-        # Use 1 = alpha_init / |grad|
-        alpha_init = grad_norm
-        alpha, obj = jax.lax.while_loop(
-            search_cond, search_iter,
-            (alpha_init, obj_fn(steepest_descent_point(alpha_init)))
-        )
-        # 1/(mu |grad|) = alpha / |grad|
-        mu = jnp.reciprocal(alpha)
-        return mu
+    return final_state.x, final_diagnostics
 
-    def create_initial_state(self, x0: X) -> MultiStepLevenbergMarquardtState:
-        """
-        Create the initial state for the algorithm.
 
-        Returns:
-            initial state
-        """
-        x = x0
-        delta_x = jax.tree.map(jnp.zeros_like, x)  # zeros_like copies over sharding
-        F = self._residual_fn(x)
-        F_norm = tree_dot(F, F)
+def test_lm_solver():
+    def residual_fn(x):
+        return jnp.exp(x) ** 2
 
-        # Extract the real and imaginary parts of the complex numbers of input to do Wirtinger calculus
-        x_real_imag, merge_fn = convert_to_real(x)
-        residual_fn = lambda x: self._residual_fn(merge_fn(x))
-
-        J_bare = JVPLinearOp(fn=residual_fn)
-        J = J_bare(x_real_imag)
-        JTF = J.matvec(F, adjoint=True)
-        error = tree_norm(JTF)
-
-        mu = self._select_initial_mu(residual_fn, F_norm, x_real_imag, JTF)
-        if self.init_cg_maxiter is None:
-            cg_maxiter = jnp.asarray(sum(jax.tree.leaves(jax.tree.map(np.size, x))), dtype=jnp.int32)
-        else:
-            cg_maxiter = self.init_cg_maxiter
-
-        state = MultiStepLevenbergMarquardtState(
-            iteration=jnp.asarray(0),
-            x=x,
-            delta_x=delta_x,
-            F=F,
-            F_norm=F_norm,
-            mu=mu,
-            cg_maxiter=cg_maxiter,
-            error=error,
-            delta_norm=error
-        )
-        return state
-
-    def solve(self, state: MultiStepLevenbergMarquardtState) -> Tuple[
-        MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
-
-        # Convert complex to real
-        x_real_imag, merge_fn = convert_to_real(state.x)
-        delta_x_real_imag, _ = convert_to_real(state.delta_x)
-
-        state = state._replace(
-            x=x_real_imag,
-            delta_x=delta_x_real_imag
-        )
-
-        # For solving make the inputs purely real.
-        residual_fn = lambda x: self._residual_fn(merge_fn(x))
-        J_bare = JVPLinearOp(fn=residual_fn)
-
-        def build_matvec(J: JVPLinearOp, damping: jax.Array):
-            def matvec(v: X) -> X:
-                JTJv = J.matvec(J.matvec(v), adjoint=True)
-                return jax.tree.map(lambda x, y: x + damping * y, JTJv, v)
-
-            return matvec
-
-        output_dtypes = jax.tree.map(lambda x: x.dtype, state)
-
-        def body(exact_step: IntArray, approx_step: IntArray, state: MultiStepLevenbergMarquardtState,
-                 J: JVPLinearOp) -> Tuple[
-            MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardtDiagnostic]:
-            # d_k = -(J_k^T J_k + λ_k I)^(-1) J_k^T F(x_k)
-            JTF = J.matvec(state.F, adjoint=True)  # [obj]^2/[x]
-            # Units of [obj]/[x]^2
-            damping = state.mu * state.error  # [obj]^2/[x]^2 -> mu is 1/[x]
-
-            matvec = build_matvec(J, damping)
-            delta_x, _ = jax.scipy.sparse.linalg.cg(
-                A=matvec,
-                b=jax.tree.map(jax.lax.neg, JTF),
-                x0=state.delta_x,
-                maxiter=state.cg_maxiter,
-            )  # Info returned is not used
-
-            # Determine predicted vs actual reduction gain ratio
-            x_prop = jax.tree.map(lambda x, dx: x + dx, state.x, delta_x)
-            F_prop = residual_fn(x_prop)
-            F_pushfwd = jax.tree.map(lambda x, y: x + y, state.F, J.matvec(delta_x))
-            # jax.debug.print("F_prop: {F_prop}, F_pushfwd: {F_pushfwd}", F_prop=F_prop, F_pushfwd=F_pushfwd)
-            F_prop_norm = tree_dot(F_prop, F_prop)
-            F_pushfwd_norm = tree_dot(F_pushfwd, F_pushfwd)
-            predicted_reduction = state.F_norm - F_pushfwd_norm
-            actual_reduction = state.F_norm - F_prop_norm
-
-            r = jnp.where(
-                jnp.logical_or(predicted_reduction == 0., actual_reduction <= 1e-15),
-                jnp.zeros_like(state.F_norm),
-                actual_reduction / predicted_reduction
-            )
-
-            # Apply our improvement thresholds
-
-            any_improvement = r >= self.p_any_improvement
-            more_newton = r > self.p_more_newton
-            less_newton = r < self.p_less_newton
-
-            # Determine if we accept the step
-            # In principle, could use lax.cond.
-
-            (F_norm, x, F) = jax.tree.map(
-                lambda x1, x2: jnp.where(any_improvement, x1, x2),
-                (F_prop_norm, x_prop, F_prop),
-                (state.F_norm, state.x, state.F)
-            )
-
-            if self.approx_cg:
-                # adjust the number of CG iterations if there is sufficient improvement
-                x_size = sum(jax.tree.leaves(jax.tree.map(np.size, x)))
-                cg_maxiter = jnp.where(
-                    any_improvement,
-                    jnp.where(
-                        more_newton,
-                        jnp.maximum(state.cg_maxiter * 0.5, self.min_cg_maxiter).astype(state.cg_maxiter),
-                        state.cg_maxiter
-                    ),
-                    jnp.where(
-                        state.cg_maxiter == self.min_cg_maxiter,
-                        jnp.asarray(x_size, state.cg_maxiter.dtype),
-                        jnp.minimum(state.cg_maxiter * 2, x_size).astype(state.cg_maxiter)
-                    )
-                )
-            else:
-                cg_maxiter = state.cg_maxiter
-
-            # Update mu
-            mu = jnp.where(
-                less_newton,
-                jnp.where(  # If at bottom apply a few extra "less newton jumps"
-                    state.mu == self.mu_min,
-                    self.mu_min * self.c_less_newton ** 5,
-                    self.c_less_newton * state.mu,
-                ),
-                jnp.where(
-                    more_newton,
-                    jnp.maximum(self.c_more_newton * state.mu, self.mu_min),
-                    state.mu
-                )
-            )
-            mu = jnp.where(r > self.p_leave_newton, state.mu, mu)
-
-            delta_norm = tree_norm(delta_x)
-            error = tree_norm(JTF)
-
-            if self.verbose:
-                jax.debug.print(
-                    "Iter: {iteration}, Exact Step: {exact_step} Approx Step: {approx_step}, "
-                    "cg_maxiter: {cg_maxiter}, "
-                    "mu: {mu}, damping: {damping}, r: {r}, pred: {predicted_reduction}, act: {actual_reduction}, "
-                    "any_improvement: {any_improvement}, "
-                    "more_newton: {more_newton}, less_newton: {less_newton}:\n"
-                    "\tF_norm -> {F_norm}, delta_norm -> {delta_norm}, error -> {error}",
-                    iteration=state.iteration,
-                    exact_step=exact_step, approx_step=approx_step,
-                    cg_maxiter=state.cg_maxiter,
-                    r=r,
-                    predicted_reduction=predicted_reduction, actual_reduction=actual_reduction,
-                    any_improvement=any_improvement,
-                    more_newton=more_newton, less_newton=less_newton, F_norm=F_norm, damping=damping,
-                    mu=state.mu, delta_norm=delta_norm, error=error
-                )
-            diagnostic = MultiStepLevenbergMarquardtDiagnostic(
-                iteration=state.iteration,
-                exact_step=exact_step,
-                approx_step=approx_step,
-                F_norm=F_norm,
-                r=r,
-                delta_norm=delta_norm,
-                error=error,
-                damping=damping,
-                mu=state.mu,
-                pred=predicted_reduction,
-                act=actual_reduction,
-                cg_maxiter=state.cg_maxiter
-            )
-
-            state = MultiStepLevenbergMarquardtState(
-                iteration=state.iteration + jnp.ones_like(state.iteration),
-                x=x,
-                delta_x=delta_x,
-                F=F,
-                F_norm=F_norm,
-                mu=mu,
-                cg_maxiter=cg_maxiter,
-                error=error,
-                delta_norm=delta_norm
-            )
-            # Cast to the original dtype for sanity
-            state = jax.tree.map(lambda x, dtype: x.astype(dtype), state, output_dtypes)
-
-            return state, diagnostic
-
-        class CarryType(NamedTuple):
-            exact_iteration: IntArray
-            state: MultiStepLevenbergMarquardtState
-            diagnostics: MultiStepLevenbergMarquardtDiagnostic
-
-        def single_iteration(carry: CarryType):
-
-            state = carry.state
-            diagnostics = carry.diagnostics
-
-            # Does one initial exact step using the current jacobian estimate, followed by inexact steps using the same
-            # jacobian estimate (which is slightly cheaper).
-            J = J_bare(state.x)
-            for approx_step in range(self.num_approx_steps + 1):
-                state, diagnostic = body(
-                    carry.exact_iteration,
-                    approx_step,
-                    state,
-                    J
-                )
-                update_index = carry.exact_iteration * (self.num_approx_steps + 1) + approx_step
-                diagnostics = jax.tree.map(lambda x, y: x.at[update_index].set(y), diagnostics, diagnostic)
-            exact_iteration = carry.exact_iteration + jnp.ones_like(carry.exact_iteration)
-            return CarryType(exact_iteration, state, diagnostics)
-
-        def term_cond(carry: CarryType):
-            done = jnp.logical_or(
-                carry.exact_iteration >= self.num_iterations,
-                jnp.logical_or(
-                    carry.state.error < self.gtol,
-                    carry.state.delta_norm < self.xtol)
-            )
-            return jnp.logical_not(done)
-
-        # Create diagnostic output structure
-        def _fake_step(state):
-            J = J_bare(state.x)
-            _, diagnostic = body(jnp.zeros_like(state.iteration), jnp.zeros_like(state.iteration), state, J)
-            return diagnostic
-
-        diagnostic_aval = jax.eval_shape(_fake_step, state)
-        max_iters = self.num_iterations * (self.num_approx_steps + 1)
-        diagnostics = jax.tree.map(lambda x: jnp.zeros((max_iters,) + x.shape, dtype=x.dtype), diagnostic_aval)
-
-        carry = jax.lax.while_loop(
-            term_cond,
-            single_iteration,
-            CarryType(exact_iteration=jnp.zeros_like(state.iteration), state=state, diagnostics=diagnostics)
-        )
-        state = carry.state
-        diagnostics = carry.diagnostics
-
-        # Convert back to complex
-        state = state._replace(
-            x=merge_fn(state.x),
-            delta_x=merge_fn(state.delta_x)
-        )
-
-        return state, diagnostics
-
-MultiStepLevenbergMarquardt.register_pytree()
+    x0 = jnp.array([1.0 + 1j, 1.0 + 1j])
+    x, diag = lm_solver(residual_fn, x0, verbose=True, approx_grad=False)
