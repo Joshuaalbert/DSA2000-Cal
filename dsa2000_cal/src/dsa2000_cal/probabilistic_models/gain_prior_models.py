@@ -54,18 +54,17 @@ class GainPriorModel(AbstractGainPriorModel):
     freqs: FloatArray
     times: FloatArray
 
-    gain_stddev: float = 2.
     full_stokes: bool = True
 
+    gain_stddev: float = 2.
     max_clock_ns: float = 2
     max_dtec_mtecu: float = 200
 
-    dd_type: str = 'unconstrained'
+    dd_type: str = 'unconstrained'  # Combine components with +
     dd_dof: int = 4
-
     double_differential: bool = True
     di_dof: int = 4
-    di_type: str = 'unconstrained'
+    di_type: str = 'unconstrained'  # Combine components with +
 
     skip_post_init: bool = False
 
@@ -90,25 +89,31 @@ class GainPriorModel(AbstractGainPriorModel):
                 this.freqs, this.times
             ],
             (
-                this.num_source, this.num_ant, this.gain_stddev, this.full_stokes,
-                this.dd_type, this.dd_dof, this.di_dof, this.di_type
+                this.num_source, this.num_ant, this.full_stokes,
+                this.gain_stddev, this.max_dtec_mtecu, this.max_clock_ns,
+                this.dd_type, this.dd_dof, this.double_differential, this.di_dof, this.di_type,
+
             )
         )
 
     @classmethod
     def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> 'GainPriorModel':
         [freqs, times] = children
-        (num_source, num_ant, gain_stddev, full_stokes,
-         dd_type, dd_dof, di_dof, di_type) = aux_data
+        (num_source, num_ant, full_stokes,
+         gain_stddev, max_dtec_mtecu, max_clock_ns,
+         dd_type, dd_dof, double_differential, di_dof, di_type) = aux_data
         return GainPriorModel(
             num_source=num_source,
             num_ant=num_ant,
             freqs=freqs,
             times=times,
-            gain_stddev=gain_stddev,
             full_stokes=full_stokes,
+            gain_stddev=gain_stddev,
+            max_clock_ns=max_clock_ns,
+            max_dtec_mtecu=max_dtec_mtecu,
             dd_type=dd_type,
             dd_dof=dd_dof,
+            double_differential=double_differential,
             di_dof=di_dof,
             di_type=di_type,
             skip_post_init=True
