@@ -1,6 +1,9 @@
 import os
 from functools import partial
 
+os.environ['JAX_PLATFORMS'] = 'cpu'
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={8}"
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 
@@ -8,11 +11,6 @@ from dsa2000_common.common.jax_utils import create_mesh
 from dsa2000_common.common.jvp_linear_op import JVPLinearOp
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.mixed_precision_utils import mp_policy
-
-os.environ['JAX_PLATFORMS'] = 'cpu'
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
-
 import itertools
 import time
 from typing import Dict, Any
