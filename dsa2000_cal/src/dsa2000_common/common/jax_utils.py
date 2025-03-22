@@ -683,7 +683,7 @@ def print_nans(args):
 U = TypeVar('U')
 
 
-def simple_broadcast(f: Callable[..., U], leading_dims: int) -> U:
+def simple_broadcast(f: Callable[..., U], leading_dims: int) -> Callable[..., U]:
     """
     Simple broadcast function which reshapes the inputs to have the same leading dimensions, and then reshapes the output
     to have the original leading dimensions.
