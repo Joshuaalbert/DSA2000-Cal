@@ -18,7 +18,7 @@ import jax.numpy as jnp
 
 if not jax.config.read('jax_enable_x64'):
     warnings.warn("JAX x64 is not enabled. Setting it now, but check for errors.")
-    jax.config.update('jax_enable_x64', False)
+    jax.config.update('jax_enable_x64', True)
 
 # Create a float scalar to lock in dtype choices.
 if jnp.array(1., jnp.float64).dtype != jnp.float32:
