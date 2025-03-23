@@ -15,6 +15,7 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.alert_utils import post_completed_forward_modelling_run
 from dsa2000_common.common.enu_frame import ENU
+from dsa2000_common.common.types import DishEffectsParams
 from dsa2000_common.delay_models.base_far_field_delay_engine import build_far_field_delay_engine
 from dsa2000_common.delay_models.base_near_field_delay_engine import build_near_field_delay_engine
 from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model
@@ -22,7 +23,7 @@ from dsa2000_fm.actors.aggregator import Aggregator, AggregatorParams, compute_a
 from dsa2000_fm.actors.calibration_solution_cache import CalibrationSolutionCache, CalibrationSolutionCacheParams, \
     compute_calibration_solution_cache_options
 from dsa2000_fm.actors.calibrator import CalibratorParams, Calibrator, compute_calibrator_options
-from dsa2000_fm.actors.common import ForwardModellingRunParams, ChunkParams, ImageParams
+from dsa2000_fm.actors.common import ForwardModellingRunParams, ChunkParams, ImageParams, IonosphereParams
 from dsa2000_fm.actors.data_streamer import DataStreamerParams, DataStreamer, compute_data_streamer_options
 from dsa2000_fm.actors.degridding_predictor import DegriddingPredictor, compute_degridding_predictor_options
 from dsa2000_fm.actors.dft_predictor import DFTPredictor, compute_dft_predictor_options
@@ -35,7 +36,7 @@ from dsa2000_fm.imaging.utils import get_image_parameters
 from dsa2000_fm.measurement_sets.measurement_set import MeasurementSetMeta
 from dsa2000_fm.namespace import NAMESPACE
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Quantity | None,
@@ -53,41 +54,67 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     else:
         num_baselines = (num_antennas * (num_antennas - 1)) // 2
 
-    # 10000/10 = 1000, 1000/40 = 25
-    num_sub_bands = 1
-    num_freqs_per_sol_int = 4
-
-    central_freq_idx = len(array.get_channels()) // 2
-    print('get_channels', len(array.get_channels()))  # 10,000 channels
-
-    freqs = array.get_channels()[central_freq_idx:central_freq_idx + 4]
-
+    # constraint: num_freqs_per_sol_int * num_sol_ints_per_sub_band * num_sub_bands = num_channels
+    freqs = array.get_channels()[0:80:2]  # [40]
+    channel_width = 2 * array.get_channel_width()  # skipping by 2
     num_channels = len(freqs)
 
-    channel_width = 500 * array.get_channel_width() # 500x 130 kHz = 65 MHz
-    solution_interval_freq = num_freqs_per_sol_int * channel_width
-    sub_band_interval = channel_width * num_channels / num_sub_bands
-    num_sol_ints_per_sub_band = int(sub_band_interval / solution_interval_freq)
+    # 10000/10 = 1000, 1000/40 = 25
+    num_sub_bands = 1
+    num_freqs_per_sol_int = 4  # or 40
+    num_sol_ints_per_sub_band = num_channels // (num_sub_bands * num_freqs_per_sol_int)
 
-    integration_interval = 4 * array.get_integration_time()  #. 4 x 1.5 seconds
-    print('integration_interval', integration_interval) # 6s
-    solution_interval = 6 * au.s
-    observation_duration = 6 * au.s #624 * au.s
+    # Check divisibility
+    if num_freqs_per_sol_int * num_sol_ints_per_sub_band * num_sub_bands != num_channels:
+        raise ValueError(
+            f"Number of channels {num_channels} not divisible by num_freqs_per_sol_int "
+            f"{num_freqs_per_sol_int} * num_sol_ints_per_sub_band {num_sol_ints_per_sub_band} * num_sub_bands {num_sub_bands}"
+        )
+
+    # constraint: num_integrations = num_times_per_sol_int * num_sol_ints_time
+    observation_duration = 624 * au.s
+    integration_interval = array.get_integration_time()
+    solution_interval = 4 * integration_interval
 
     num_times_per_sol_int = int(solution_interval / integration_interval)
     num_integrations = int(observation_duration / integration_interval)
+    num_sol_ints_time = int(observation_duration / solution_interval)
 
-    ref_time = at.Time("2024-01-01T00:00:00", scale="utc")
+    # check divisibility
+    if num_integrations != num_times_per_sol_int * num_sol_ints_time:
+        raise ValueError(
+            f"Number of integrations {num_integrations} not divisible by "
+            f"{num_times_per_sol_int} * {num_sol_ints_time}"
+        )
+
+    # ref_time = get_time_of_local_meridean(pointing, array_location, at.Time('2022-01-01T00:00:00', scale='utc'))
+    ref_time = at.Time("2021-01-01T00:00:00", scale="utc")
+    phase_center = pointing = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
+
     num_timesteps = int(observation_duration / integration_interval)
     obstimes = ref_time + np.arange(num_timesteps) * integration_interval
 
-    phase_center = pointing = ENU(1, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
+    dish_effects_params = DishEffectsParams(
+        # dish parameters
+        dish_diameter=array.get_antenna_diameter(),
+        focal_length=array.get_focal_length(),
+        elevation_pointing_error_stddev=1. * au.arcmin,
+        cross_elevation_pointing_error_stddev=1. * au.arcmin,
+        axial_focus_error_stddev=3. * au.mm,
+        elevation_feed_offset_stddev=1. * au.mm,
+        cross_elevation_feed_offset_stddev=1. * au.mm,
+        horizon_peak_astigmatism_stddev=1. * au.mm,
+        surface_error_mean=0 * au.mm,
+        surface_error_stddev=0. * au.mm,
+    )
 
-    dish_effects_params = array.get_dish_effect_params()
+    ionosphere_params = IonosphereParams(
+        turbulent=True,
+        dawn=True,
+        high_sun_spot=True
+    )
 
-    system_equivalent_flux_density = array.get_system_equivalent_flux_density() * 1e-9
-
-    print('sefd', system_equivalent_flux_density)
+    system_equivalent_flux_density = array.get_system_equivalent_flux_density()
 
     chunk_params = ChunkParams(
         num_channels=num_channels,
@@ -143,6 +170,8 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
     return ForwardModellingRunParams(
         ms_meta=meta,
         dish_effects_params=dish_effects_params,
+        ionosphere_params=ionosphere_params,
+        field_of_view=field_of_view,
         chunk_params=chunk_params,
         image_params=image_params,
         full_stokes=full_stokes,
@@ -150,6 +179,16 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         plot_folder=plot_folder,
         run_name=run_name
     )
+
+
+def test_build_run_params():
+    run_params = build_run_params(
+        array_name='dsa2000W_small', with_autocorr=False, field_of_view=1 * au.deg,
+        oversample_factor=5., full_stokes=True, num_cal_facets=1,
+        root_folder='root', run_name='run'
+    )
+    with open("run_params.json", "w") as f:
+        f.write(run_params.json(indent=2))
 
 
 def main(array_name: str, with_autocorr: bool, field_of_view: float | None,
@@ -299,8 +338,7 @@ async def run_forward_model(run_params, data_streamer_params, predict_params, sy
                 sol_int_freq_idxs=sol_int_freq_idxs.tolist(),
                 fm_run_params=run_params,
                 gridder=gridder,
-                image_suffix='SB1',
-#                image_suffix=f'SB{sub_band_idx:01d}',
+                image_suffix=f'SB{sub_band_idx:01d}',
             ),
             **compute_aggregator_options(run_params)
         )

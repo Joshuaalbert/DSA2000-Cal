@@ -187,7 +187,7 @@ RUN python -c 'import astropy.time as at; at.Time.now().ut1'
 COPY ./workflows/streaming_fm_distributed/ray/src /dsa/code/src
 
 # Make a ssh dir, to mount user's ssh keys at runtime
-RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
+RUN mkdir -p /root/.ssh_tmp
 
 # Make a persistent source code direction to mount to
 RUN mkdir -p /dsa/code/package

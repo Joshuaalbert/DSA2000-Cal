@@ -1,31 +1,6 @@
 import os
 
-import jax
-
-from dsa2000_cal.probabilistic_models.gain_prior_models import GainPriorModel
-
-use_cpu = True
-if use_cpu:
-    # Use all CPU's on a single machine
-    os.environ['JAX_PLATFORMS'] = 'cpu'  # Use CPUs by default
-    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"  # Use all CPUs
-
-    devices = None
-    # devices = jax.devices(backend='cpu') # uncomment to use all CPUs, untested
-else:
-
-    # TODO: Set environment variables for JAX at top of script before imports
-    # To use a GPU on a single machine, set the following environment variable
-    os.environ['JAX_PLATFORMS'] = 'cuda'  # Use GPU devices by default
-    # use either XLA_PYTHON_CLIENT_MEM_FRACTION or XLA_PYTHON_CLIENT_PREALLOCATE
-    os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'  # uncomment to specify how much memory to preallocate
-    # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'  # On-demand GPU memory allocation
-
-    from dsa2000_common.common.ray_utils import get_gpu_with_most_memory
-
-    gpu_idx, free_mem = get_gpu_with_most_memory()
-    print(f"Using GPU {gpu_idx} with {free_mem} free memory.")
-    devices = jax.devices(backend='gpu')[gpu_idx:gpu_idx + 1]
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from typing import Generator
 import itertools
@@ -52,7 +27,7 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
         sol_int_time_idx = input_data.sol_int_time_idx
         # Note: in MS vis are shaped [rows, channels, coh]
         # Rows are time-major stacked, so to get the `sol_int_time_idx` block do:
-        B = ...  # N*(N+1)/2 with auto-correlations, or N*(N-1)/2 without auto-correlations
+        B = (num_ant * (num_ant - 1)) // 2  # N*(N+1)/2 with auto-correlations, or N*(N-1)/2 without auto-correlations
         block_size = B * len(time_idxs)
         # visibilities = ms.get_data('DATA', startrow=sol_int_time_idx * block_size, nrow=block_size)
 
@@ -153,6 +128,7 @@ def data_generator(input_gen: Generator[DataGenInput, None, None], num_ant: int)
         # Store return_data if desired
         print(f"Storing residuals for solution interval {input_data.sol_int_time_idx}")
         # print(return_data.vis_residuals)
+        # print(return_data.gains)
 
         # ---- End of data storage ----
 
@@ -170,11 +146,11 @@ def main():
     ref_time = at.Time.now()  # Use the right scale, likely TAI, UTC, or TT.
     integration_time = 1.5 * au.s
     obstimes = ref_time + np.arange(8) * integration_time
-    obsfreqs = np.linspace(700, 2000, 10000) * au.MHz
+    obsfreqs = np.linspace(700, 2000, 40) * au.MHz
     antennas = ac.EarthLocation.from_geocentric(
-        10e3 * np.random.uniform(size=10) * au.m,
-        10e3 * np.random.uniform(size=10) * au.m,
-        10e3 * np.random.uniform(size=10) * au.m
+        10e3 * np.random.uniform(size=352) * au.m,
+        10e3 * np.random.uniform(size=352) * au.m,
+        10e3 * np.random.uniform(size=352) * au.m
     )
 
     # Use this utility function to feed your data generator. Read it's docstring for more information.
@@ -197,34 +173,21 @@ def main():
 
     full_stokes = True
 
-    gain_prior_model = GainPriorModel(
+    calibrator = IterativeCalibrator(
+        plot_folder='demo_plots',
+        run_name='demo',
         gain_stddev=1.,
         dd_dof=1,
         di_dof=1,
         double_differential=True,
         dd_type='unconstrained',
         di_type='unconstrained',
-        full_stokes=full_stokes
-    )
-    calibrator = IterativeCalibrator(
-        plot_folder='demo_plots',
-        run_name='demo',
-        gain_probabilistic_model=gain_prior_model,
         full_stokes=full_stokes,
         antennas=antennas,
         verbose=True,  # if using GPU's set to False
-        devices=devices
+        num_devices=8,
+        backend='cpu'
     )
-
-    # Alternatively, the above could have been done using the following:
-    # calibrator = IterativeCalibrator.create_simple_calibrator(
-    #     plot_folder='demo_plots',
-    #     run_name='demo',
-    #     full_stokes=True,
-    #     antennas=antennas,
-    #     verbose=True,
-    #     devices=devices
-    # )
 
     # Run the calibration
     # Ts and Cs are optional. You can fight decoherence by using larger Ts and Cs.

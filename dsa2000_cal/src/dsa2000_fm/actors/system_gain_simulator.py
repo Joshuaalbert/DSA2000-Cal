@@ -7,18 +7,22 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import ray
+from dsa2000_fm.forward_models.systematics.ionosphere_gain_model import build_ionosphere_gain_model
 from ray.runtime_env import RuntimeEnv
 
+from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.array_types import FloatArray, IntArray
-from dsa2000_common.common.ray_utils import resource_logger
+from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid
+from dsa2000_common.common.ray_utils import resource_logger, TimerLog
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_common.gain_models.gain_model import GainModel
-from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
+from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel, build_geodesic_model
 from dsa2000_fm.actors.common import ForwardModellingRunParams
-from dsa2000_fm.systematics.dish_aperture_effects import DishApertureEffects
+from dsa2000_fm.systematics.dish_aperture_effects import build_dish_aperture_effects
+from dsa2000_fm.systematics.ionosphere import compute_x0_radius, construct_canonical_ionosphere
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class SimulationParams(NamedTuple):
@@ -99,6 +103,15 @@ def compute_system_gain_simulator_options(run_params: ForwardModellingRunParams)
     }
 
 
+@jax.jit
+def apply_dish_effects(sample_key, dish_aperture_effects, beam_model, geodesic_model):
+    return dish_aperture_effects.apply_dish_aperture_effects(
+        sample_key,
+        beam_model,
+        geodesic_model=geodesic_model
+    )
+
+
 @ray.remote
 class SystemGainSimulator:
 
@@ -110,49 +123,112 @@ class SystemGainSimulator:
         self._initialised = False
         self._memory_logger_task: asyncio.Task | None = None
 
-    async def init(self):
+    async def init(self, key):
         if self._initialised:
             return
         self._initialised = True
         self._memory_logger_task = asyncio.create_task(
             resource_logger(task='system_gain_simulator', cadence=timedelta(seconds=5)))
 
-        self.beam_model = build_beam_gain_model(
+        self.uncorrupted_beam_model = build_beam_gain_model(
             array_name=self.params.ms_meta.array_name,
             times=self.params.ms_meta.times,
             ref_time=self.params.ms_meta.ref_time,
             freqs=self.params.ms_meta.freqs,
             full_stokes=self.params.full_stokes
         )
-
+        cpu = jax.devices("cpu")[0]
+        array = array_registry.get_instance(array_registry.get_match(self.params.ms_meta.array_name))
         if self.system_gain_simulator_params.apply_effects:
-            dish_aperture_effects = DishApertureEffects(
-                dish_diameter=self.params.dish_effects_params.dish_diameter,
-                focal_length=self.params.dish_effects_params.focal_length,
-                elevation_pointing_error_stddev=self.params.dish_effects_params.elevation_pointing_error_stddev,
-                cross_elevation_pointing_error_stddev=self.params.dish_effects_params.cross_elevation_pointing_error_stddev
+            geodesic_model = build_geodesic_model(
+                antennas=array.get_antennas(),
+                array_location=array.get_array_location(),
+                phase_center=self.params.ms_meta.phase_center,
+                obstimes=self.params.ms_meta.times,
+                ref_time=self.params.ms_meta.ref_time,
+                pointings=self.params.ms_meta.phase_center
             )
-            self.beam_model = dish_aperture_effects.apply_dish_aperture_effects(
-                key=jax.random.PRNGKey(0),
-                beam_model=self.beam_model,
-                geodesic_model=self.system_gain_simulator_params.geodesic_model
-            )
+            with TimerLog('Simulating dish aperture effects'):
+                with jax.default_device(cpu):
+                    dish_aperture_effects = build_dish_aperture_effects(
+                        dish_diameter=array.get_antenna_diameter(),
+                        focal_length=array.get_focal_length(),
+                        elevation_pointing_error_stddev=self.params.dish_effects_params.elevation_pointing_error_stddev,
+                        cross_elevation_pointing_error_stddev=self.params.dish_effects_params.cross_elevation_pointing_error_stddev,
+                        axial_focus_error_stddev=self.params.dish_effects_params.axial_focus_error_stddev,
+                        elevation_feed_offset_stddev=self.params.dish_effects_params.elevation_feed_offset_stddev,
+                        cross_elevation_feed_offset_stddev=self.params.dish_effects_params,
+                        horizon_peak_astigmatism_stddev=self.params.dish_effects_params.horizon_peak_astigmatism_stddev,
+                        # surface_error_mean=0 * au.mm, # TODO: update to use a GP model for RMS surface error
+                        # surface_error_stddev=1 * au.mm
+                    )
+                    key, sample_key = jax.random.split(key)
+                    self.beam_model = apply_dish_effects(
+                        sample_key,
+                        dish_aperture_effects,
+                        self.uncorrupted_beam_model,
+                        geodesic_model
+                    )
+                    self.beam_model.plot_regridded_beam(
+                        save_fig=os.path.join(self.params.plot_folder, f'beam_model_with_aperture_effects.png'),
+                        ant_idx=-1,
+                        show=False
+                    )
+        else:
+            self.beam_model = self.uncorrupted_beam_model
 
         if self.system_gain_simulator_params.simulate_ionosphere:
-            pass
+            with TimerLog("Simulating ionosphere..."):
+
+                with jax.default_device(cpu):
+                    x0_radius = compute_x0_radius(array.get_array_location(), self.params.ms_meta.ref_time)
+                    ionosphere = construct_canonical_ionosphere(
+                        x0_radius=x0_radius,
+                        turbulent=self.params.ionosphere_params.turbulent,
+                        dawn=self.params.ionosphere_params.dawn,
+                        high_sun_spot=self.params.ionosphere_params.high_sun_spot
+                    )
+
+                    ionosphere_model_directions = create_spherical_spiral_grid(
+                        pointing=self.params.ms_meta.phase_center,
+                        num_points=20,
+                        angular_radius=0.5 * self.params.field_of_view
+                    )
+                    print(f"Number of ionosphere sample directions: {len(ionosphere_model_directions)}")
+
+                    key, sim_key = jax.random.split(key)
+                    ionosphere_gain_model = build_ionosphere_gain_model(
+                        key=sim_key,
+                        ionosphere=ionosphere,
+                        model_freqs=self.params.ms_meta.freqs[[0, len(self.params.ms_meta.freqs) // 2, -1]],
+                        antennas=array.get_antennas(),
+                        ref_location=array.get_array_location(),
+                        times=self.params.ms_meta.times,
+                        ref_time=self.params.ms_meta.ref_time,
+                        directions=ionosphere_model_directions,
+                        phase_centre=self.params.ms_meta.phase_center,
+                        full_stokes=False,
+                        predict_batch_size=512,
+                        save_file=os.path.join(self.params.plot_folder, f'simulated_dtec.json')
+                    )
+                    ionosphere_gain_model.plot_regridded_beam(
+                        save_fig=os.path.join(self.params.plot_folder, f'ionosphere_model.png'),
+                        ant_idx=-1,
+                        show=False
+                    )
+
+            self.beam_model = self.beam_model @ ionosphere_gain_model
+        else:
+            self.beam_model = self.beam_model
+
+        # check for nans
+        if np.any(np.isnan(self.beam_model.model_gains)):
+            raise ValueError("NaNs in the gain model.")
 
     async def __call__(self, key, time_idx: int, freq_idx: int) -> SystemGainSimulatorResponse:
         logger.info(f"Simulating dish gains for time {time_idx} and freq {freq_idx}")
-        await self.init()
-
+        key, init_key = jax.random.split(key)
+        await self.init(key)
         # Jones = Beam x Ionosphere (order matters)
-
-        if self.system_gain_simulator_params.simulate_ionosphere:
-            raise NotImplementedError("Ionosphere simulation not implemented yet.")
-
-        gain_model = self.beam_model
-
-        # check for nans
-        if np.any(np.isnan(gain_model.model_gains)):
-            raise ValueError("NaNs in the gain model.")
-        return SystemGainSimulatorResponse(gain_model=gain_model)
+        # TODO: interpolation onto a certain time/freq
+        return SystemGainSimulatorResponse(gain_model=self.beam_model)

@@ -71,6 +71,26 @@ def kron(a, b):
     return lax.reshape(lax.mul(a_reshaped, b_reshaped), out_shape)
 
 
+def kron_product_2x2(M0: jax.Array, M1: jax.Array, M2: jax.Array) -> jax.Array:
+    # Matrix([[a0*(a1*a2 + b1*c2) + b0*(a2*c1 + c2*d1), a0*(a1*b2 + b1*d2) + b0*(b2*c1 + d1*d2)], [c0*(a1*a2 + b1*c2) + d0*(a2*c1 + c2*d1), c0*(a1*b2 + b1*d2) + d0*(b2*c1 + d1*d2)]])
+    # 36
+    # ([(x0, a1*a2 + b1*c2), (x1, a2*c1 + c2*d1), (x2, a1*b2 + b1*d2), (x3, b2*c1 + d1*d2)], [Matrix([
+    # [a0*x0 + b0*x1, a0*x2 + b0*x3],
+    # [c0*x0 + d0*x1, c0*x2 + d0*x3]])])
+    a0, b0, c0, d0 = M0[..., 0, 0], M0[..., 0, 1], M0[..., 1, 0], M0[..., 1, 1]
+    a1, b1, c1, d1 = M1[..., 0, 0], M1[..., 0, 1], M1[..., 1, 0], M1[..., 1, 1]
+    a2, b2, c2, d2 = M2[..., 0, 0], M2[..., 0, 1], M2[..., 1, 0], M2[..., 1, 1]
+    x0 = a1 * a2 + b1 * c2
+    x1 = a2 * c1 + c2 * d1
+    x2 = a1 * b2 + b1 * d2
+    x3 = b2 * c1 + d1 * d2
+
+    # flat = jnp.stack([a0 * x0 + b0 * x1, c0 * x0 + d0 * x1, a0 * x2 + b0 * x3, c0 * x2 + d0 * x3], axis=-1)
+    # return unvec(flat, (2, 2))
+    flat = jnp.stack([a0 * x0 + b0 * x1, a0 * x2 + b0 * x3, c0 * x0 + d0 * x1, c0 * x2 + d0 * x3], axis=-1)
+    return lax.reshape(flat, np.shape(flat)[:-1] + (2, 2))
+
+
 def kron_product(a: jax.Array, b: jax.Array, c: jax.Array) -> jax.Array:
     """
     Compute the matrix product of three matrices using Kronecker product.
@@ -95,28 +115,9 @@ def kron_product(a: jax.Array, b: jax.Array, c: jax.Array) -> jax.Array:
     def kron_product_3(a: jax.Array, b: jax.Array, c: jax.Array) -> jax.Array:
         return unvec(jnp.sum(kron(c.T, a) * vec(b), axis=-1), (a.shape[0], c.shape[1]))
 
-    def kron_product_2x2(M0: jax.Array, M1: jax.Array, M2: jax.Array) -> jax.Array:
-        # Matrix([[a0*(a1*a2 + b1*c2) + b0*(a2*c1 + c2*d1), a0*(a1*b2 + b1*d2) + b0*(b2*c1 + d1*d2)], [c0*(a1*a2 + b1*c2) + d0*(a2*c1 + c2*d1), c0*(a1*b2 + b1*d2) + d0*(b2*c1 + d1*d2)]])
-        # 36
-        # ([(x0, a1*a2 + b1*c2), (x1, a2*c1 + c2*d1), (x2, a1*b2 + b1*d2), (x3, b2*c1 + d1*d2)], [Matrix([
-        # [a0*x0 + b0*x1, a0*x2 + b0*x3],
-        # [c0*x0 + d0*x1, c0*x2 + d0*x3]])])
-        a0, b0, c0, d0 = M0[0, 0], M0[0, 1], M0[1, 0], M0[1, 1]
-        a1, b1, c1, d1 = M1[0, 0], M1[0, 1], M1[1, 0], M1[1, 1]
-        a2, b2, c2, d2 = M2[0, 0], M2[0, 1], M2[1, 0], M2[1, 1]
-        x0 = a1 * a2 + b1 * c2
-        x1 = a2 * c1 + c2 * d1
-        x2 = a1 * b2 + b1 * d2
-        x3 = b2 * c1 + d1 * d2
-
-        # flat = jnp.stack([a0 * x0 + b0 * x1, c0 * x0 + d0 * x1, a0 * x2 + b0 * x3, c0 * x2 + d0 * x3], axis=-1)
-        # return unvec(flat, (2, 2))
-        flat = jnp.stack([a0 * x0 + b0 * x1, a0 * x2 + b0 * x3, c0 * x0 + d0 * x1, c0 * x2 + d0 * x3], axis=-1)
-        return lax.reshape(flat, (2, 2))
-
-    n, m = np.shape(a)
-    m, p = np.shape(b)
-    p, q = np.shape(c)
+    n, m = np.shape(a)[-2:]
+    m, p = np.shape(b)[-2:]
+    p, q = np.shape(c)[-2:]
     s = n
     if (n == m and m == p and p == q) and (s == 2):
         # s=2:
@@ -159,6 +160,28 @@ def kron_product(a: jax.Array, b: jax.Array, c: jax.Array) -> jax.Array:
         return kron_product_1(a, b, c)
 
 
+def kron_inv_2x2(a: jax.Array, K: jax.Array, c: jax.Array) -> jax.Array:
+    # Matrix([[(-c10*(K01*a11 - K11*a01) + c11*(K00*a11 - K10*a01))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10)), (c00*(K01*a11 - K11*a01) - c01*(K00*a11 - K10*a01))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10))], [(c10*(K01*a10 - K11*a00) - c11*(K00*a10 - K10*a00))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10)), (-c00*(K01*a10 - K11*a00) + c01*(K00*a10 - K10*a00))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10))]])
+    # CSE:
+    # ([(x0, K01*a11 - K11*a01), (x1, K00*a11 - K10*a01), (x2, 1/((a00*a11 - a01*a10)*(c00*c11 - c01*c10))), (x3, K01*a10 - K11*a00), (x4, K00*a10 - K10*a00)], [Matrix([
+    # [x2*(-c10*x0 + c11*x1),  x2*(c00*x0 - c01*x1)],
+    # [ x2*(c10*x3 - c11*x4), x2*(-c00*x3 + c01*x4)]])])
+    a00, a01, a10, a11 = a[..., 0, 0], a[..., 0, 1], a[..., 1, 0], a[..., 1, 1]
+    K00, K01, K10, K11 = K[..., 0, 0], K[..., 0, 1], K[..., 1, 0], K[..., 1, 1]
+    c00, c01, c10, c11 = c[..., 0, 0], c[..., 0, 1], c[..., 1, 0], c[..., 1, 1]
+    x0 = K01 * a11 - K11 * a01
+    x1 = K00 * a11 - K10 * a01
+    x2 = jnp.reciprocal((a00 * a11 - a01 * a10) * (c00 * c11 - c01 * c10))
+    x3 = K01 * a10 - K11 * a00
+    x4 = K00 * a10 - K10 * a00
+
+    # flat = jnp.stack([x2 * (-c10 * x0 + c11 * x1), x2 * (c10 * x3 - c11 * x4), x2 * (c00 * x0 - c01 * x1),  x2 * (-c00 * x3 + c01 * x4)], axis=-1)
+    # return unvec(flat, (2, 2))
+    flat = jnp.stack([x2 * (-c10 * x0 + c11 * x1), x2 * (c00 * x0 - c01 * x1), x2 * (c10 * x3 - c11 * x4),
+                      x2 * (-c00 * x3 + c01 * x4)], axis=-1)
+    return lax.reshape(flat, np.shape(flat)[:-1] + (2, 2))
+
+
 def kron_inv(a: jax.Array, K: jax.Array, c: jax.Array) -> jax.Array:
     """
     Compute the matrix product of three matrices using Kronecker product.
@@ -187,27 +210,6 @@ def kron_inv(a: jax.Array, K: jax.Array, c: jax.Array) -> jax.Array:
 
     def kron_inv_4(a: jax.Array, K: jax.Array, c: jax.Array) -> jax.Array:
         return unvec(jnp.linalg.solve(kron(c.T, a), vec(K)), (a.shape[0], c.shape[1]))
-
-    def kron_inv_2x2(a: jax.Array, K: jax.Array, c: jax.Array) -> jax.Array:
-        # Matrix([[(-c10*(K01*a11 - K11*a01) + c11*(K00*a11 - K10*a01))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10)), (c00*(K01*a11 - K11*a01) - c01*(K00*a11 - K10*a01))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10))], [(c10*(K01*a10 - K11*a00) - c11*(K00*a10 - K10*a00))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10)), (-c00*(K01*a10 - K11*a00) + c01*(K00*a10 - K10*a00))/((a00*a11 - a01*a10)*(c00*c11 - c01*c10))]])
-        # CSE:
-        # ([(x0, K01*a11 - K11*a01), (x1, K00*a11 - K10*a01), (x2, 1/((a00*a11 - a01*a10)*(c00*c11 - c01*c10))), (x3, K01*a10 - K11*a00), (x4, K00*a10 - K10*a00)], [Matrix([
-        # [x2*(-c10*x0 + c11*x1),  x2*(c00*x0 - c01*x1)],
-        # [ x2*(c10*x3 - c11*x4), x2*(-c00*x3 + c01*x4)]])])
-        a00, a01, a10, a11 = a[0, 0], a[0, 1], a[1, 0], a[1, 1]
-        K00, K01, K10, K11 = K[0, 0], K[0, 1], K[1, 0], K[1, 1]
-        c00, c01, c10, c11 = c[0, 0], c[0, 1], c[1, 0], c[1, 1]
-        x0 = K01 * a11 - K11 * a01
-        x1 = K00 * a11 - K10 * a01
-        x2 = jnp.reciprocal((a00 * a11 - a01 * a10) * (c00 * c11 - c01 * c10))
-        x3 = K01 * a10 - K11 * a00
-        x4 = K00 * a10 - K10 * a00
-
-        # flat = jnp.stack([x2 * (-c10 * x0 + c11 * x1), x2 * (c10 * x3 - c11 * x4), x2 * (c00 * x0 - c01 * x1),  x2 * (-c00 * x3 + c01 * x4)], axis=-1)
-        # return unvec(flat, (2, 2))
-        flat = jnp.stack([x2 * (-c10 * x0 + c11 * x1), x2 * (c00 * x0 - c01 * x1), x2 * (c10 * x3 - c11 * x4),
-                          x2 * (-c00 * x3 + c01 * x4)], axis=-1)
-        return lax.reshape(flat, (2, 2))
 
     n, m = np.shape(a)
     m, p = np.shape(K)

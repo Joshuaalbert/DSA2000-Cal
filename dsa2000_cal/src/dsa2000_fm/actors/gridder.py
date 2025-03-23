@@ -17,7 +17,7 @@ from dsa2000_fm.actors.calibrator import CalibratorResponse
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.actors.supervisor import Supervisor
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class GridderResponse(NamedTuple):

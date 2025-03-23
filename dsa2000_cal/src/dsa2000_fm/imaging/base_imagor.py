@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import lax
 
-from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.solvers.multi_step_lm import lm_solver
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_common.common.ellipse_utils import Gaussian
@@ -320,12 +320,7 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
                      total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=major, minor_fwhm=minor))
         return jax.vmap(g.compute_flux_density)(lm) - psf
 
-    solver = MultiStepLevenbergMarquardt(
-        residual_fn=residual_fn,
-        num_iterations=100,
-        verbose=False
-    )
-    state, diagnostics = solver.solve(solver.create_initial_state(jnp.array([dl * 5, dm * 5, 0.])))
+    state, diagnostics = lm_solver(residual_fn, jnp.array([dl * 5, dm * 5, 0.]))
     major, minor, posang = state.x
     swap = minor > major
     major, minor, posang = (

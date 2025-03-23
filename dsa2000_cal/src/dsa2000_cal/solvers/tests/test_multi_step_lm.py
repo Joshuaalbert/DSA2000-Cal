@@ -5,7 +5,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt, convert_to_real
+from dsa2000_cal.solvers.multi_step_lm import lm_solver, convert_to_real
 from dsa2000_common.common.jax_utils import block_until_ready
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 
@@ -51,15 +51,7 @@ def test_multi_step_lm():
         x = jnp.ones((source, ant, chan), mp_policy.gain_dtype)
         x = (x.real, x.imag)
 
-        lm = MultiStepLevenbergMarquardt(residual_fn=residuals,
-                                         num_iterations=3,
-                                         num_approx_steps=2,
-                                         verbose=True)
-        state = lm.create_initial_state(x)
-        state, diagnostics = lm.solve(state)
-
-        state = lm.update_initial_state(state)
-        state, diagnostics = lm.solve(state)
+        state, diagnostics = lm_solver(residuals, x, verbose=True)
         return state, diagnostics
 
     t0 = time.time()
@@ -84,3 +76,13 @@ def test_convert_to_real():
     np.testing.assert_allclose(x_rec['b'], x['b'])
     assert x_rec['a'].dtype == x['a'].dtype
     assert x_rec['b'].dtype == x['b'].dtype
+
+
+def test_lm_solver():
+    def residual_fn(x):
+        return jnp.exp(x) ** x
+
+    x0 = jnp.repeat(jnp.array([1.0 + 1j, 1.0 - 1j]), 3)
+    x, diag = jax.block_until_ready(lm_solver(residual_fn, x0, verbose=True, approx_grad=False))
+    print(x)
+    assert np.iscomplexobj(x)

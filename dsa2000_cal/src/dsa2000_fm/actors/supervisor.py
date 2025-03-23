@@ -13,7 +13,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.namespace import NAMESPACE
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class SupervisorParams(SerialisableBaseModel):

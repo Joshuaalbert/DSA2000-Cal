@@ -69,10 +69,16 @@ class ImageParams(SerialisableBaseModel):
     num_m: int
     epsilon: float = 1e-6
 
+class IonosphereParams(SerialisableBaseModel):
+    turbulent: bool
+    dawn: bool
+    high_sun_spot: bool
 
 class ForwardModellingRunParams(SerialisableBaseModel):
     ms_meta: MeasurementSetMeta
     dish_effects_params: DishEffectsParams
+    ionosphere_params: IonosphereParams
+    field_of_view: au.Quantity
     chunk_params: ChunkParams
     image_params: ImageParams
     full_stokes: bool

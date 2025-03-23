@@ -16,12 +16,12 @@ from jax import numpy as jnp
 from jaxns.framework.ops import simulate_prior_model
 from ray.runtime_env import RuntimeEnv
 
+from dsa2000_cal.solvers.multi_step_lm import LMDiagnostic
 from dsa2000_common.common.ray_utils import TimerLog, resource_logger
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_cal.iterative_calibrator import IterativeCalibrator, Data
 from dsa2000_cal.probabilistic_models.gain_prior_models import AbstractGainPriorModel, GainPriorModel
-from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt, \
-    MultiStepLevenbergMarquardtDiagnostic
+
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_common.common.jax_utils import block_until_ready, simple_broadcast
@@ -29,13 +29,14 @@ from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import jnp_to_time
 from dsa2000_common.common.vec_utils import kron_product
 from dsa2000_fm.actors.average_utils import average_rule
-from dsa2000_fm.actors.calibration_solution_cache import CalibrationSolutionCache, CalibrationSolution
+from dsa2000_fm.actors.calibration_solution_cache import CalibrationSolution, \
+    CalibrationSolutionCache
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.actors.data_streamer import DataStreamerResponse
 from dsa2000_fm.actors.model_predictor import ModelPredictorResponse
 from dsa2000_fm.actors.supervisor import Supervisor
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class CalibratorResponse(NamedTuple):
@@ -354,18 +355,18 @@ class Calibrator:
                 antenna2=antenna2,
                 state=previous_state.solver_state
             ))
-            diagnostics: MultiStepLevenbergMarquardtDiagnostic
+            diagnostics: LMDiagnostic
             # row 1: Plot error
             # row 2: Plot r
             # row 3: plot chi-2 (F_norm)
             # row 4: plot damping
 
             fig, axs = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
-            axs[0].plot(diagnostics.iteration, diagnostics.error)
+            axs[0].plot(diagnostics.iteration, diagnostics.g_norm)
             axs[0].set_title('Error')
-            axs[1].plot(diagnostics.iteration, diagnostics.r)
+            axs[1].plot(diagnostics.iteration, diagnostics.gain_ratio)
             axs[1].set_title('r')
-            axs[2].plot(diagnostics.iteration, diagnostics.F_norm)
+            axs[2].plot(diagnostics.iteration, diagnostics.Q)
             axs[2].set_title('|F|')
             axs[3].plot(diagnostics.iteration, diagnostics.damping)
             axs[3].set_title('Damping')

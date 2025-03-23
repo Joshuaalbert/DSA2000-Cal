@@ -9,8 +9,8 @@ import jax.numpy as jnp
 import numpy as np
 import ujson
 from pydantic import BaseModel
-from dsa2000_common.common.enu_frame import ENU
 
+from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter import ParametricDelayACF
 
@@ -78,10 +78,12 @@ def deserialise_altaz(obj):
 
 
 def deserialise_enu(obj):
-    return ENU(east=deserialise_quantity(obj["east"]),
-               north=deserialise_quantity(obj["north"]),
-               up=deserialise_quantity(obj["up"]),
-               location=deserialise_earth_location(obj["location"]), obstime=deserialise_time(obj["obstime"]))
+    return ENU(
+        east=deserialise_quantity(obj["east"]),
+        north=deserialise_quantity(obj["north"]),
+        up=deserialise_quantity(obj["up"]),
+        location=deserialise_earth_location(obj["location"]), obstime=deserialise_time(obj["obstime"])
+    )
 
 
 def deserialise_interpolated_array(obj):
@@ -98,10 +100,8 @@ def deserialise_parametric_delay_acf(obj):
         mu=np.asarray(deserialise_ndarray(obj["mu"])),
         fwhp=np.asarray(deserialise_ndarray(obj["fwhp"])),
         spectral_power=np.asarray(deserialise_ndarray(obj["spectral_power"])),
-        channel_lower=np.asarray(deserialise_ndarray(obj["channel_lower"])),
-        channel_upper=np.asarray(deserialise_ndarray(obj["channel_upper"])),
-        resolution=obj["resolution"],
-        convention=obj["convention"]
+        channel_width=np.asarray(deserialise_ndarray(obj["channel_width"])),
+        resolution=obj["resolution"]
     )
 
 
@@ -123,7 +123,7 @@ class SerialisableBaseModel(BaseModel):
                 "dec": x.dec
             },
             ENU: lambda x: {
-                "type": 'tomographic_kernel.frames.ENU',
+                "type": 'dsa2000_common.common.enu_frame.ENU',
                 "east": x.east,
                 "north": x.north,
                 "up": x.up,
@@ -162,21 +162,19 @@ class SerialisableBaseModel(BaseModel):
                 "unit": str(x.unit)
             },
             InterpolatedArray: lambda x: {
-                "type": 'dsa2000_cal.common.interp_utils.InterpolatedArray',
+                "type": 'dsa2000_common.common.interp_utils.InterpolatedArray',
                 "x": np.asarray(x.x),
                 "values": np.asarray(x.values),
                 "axis": x.axis,
                 "regular_grid": x.regular_grid
             },
             ParametricDelayACF: lambda x: {
-                "type": 'dsa2000_cal.visibility_model.source_models.rfi_parametric_rfi_emitter.ParametricDelayACF',
+                "type": 'dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter.ParametricDelayACF',
                 "mu": np.asarray(x.mu),
                 "fwhp": np.asarray(x.fwhp),
                 "spectral_power": np.asarray(x.spectral_power),
-                "channel_lower": np.asarray(x.channel_lower),
-                "channel_upper": np.asarray(x.channel_upper),
+                "channel_width": np.asarray(x.channel_width),
                 "resolution": x.resolution,
-                "convention": x.convention
             }
         }
 
@@ -206,7 +204,7 @@ class SerialisableBaseModel(BaseModel):
 
             # Deserialise ENU
             elif field.type_ is ENU and isinstance(obj.get(name), dict) and obj[name].get(
-                    "type") == 'tomographic_kernel.frames.ENU':
+                    "type") == 'dsa2000_common.common.enu_frame.ENU':
                 obj[name] = deserialise_enu(obj[name])
                 continue
 
@@ -242,13 +240,13 @@ class SerialisableBaseModel(BaseModel):
 
             # Deserialise InterpolatedArray
             elif field.type_ is InterpolatedArray and isinstance(obj.get(name), dict) and obj[name].get(
-                    "type") == 'dsa2000_cal.common.interp_utils.InterpolatedArray':
+                    "type") == 'dsa2000_common.common.interp_utils.InterpolatedArray':
                 obj[name] = deserialise_interpolated_array(obj[name])
                 continue
 
             # Deserialise ParametricDelayACF
             elif field.type_ is ParametricDelayACF and isinstance(obj.get(name), dict) and obj[name].get(
-                    "type") == 'dsa2000_cal.visibility_model.source_models.rfi_parametric_rfi_emitter.ParametricDelayACF':
+                    "type") == 'dsa2000_common.visibility_model.source_models.rfi.parametric_rfi_emitter.ParametricDelayACF':
                 obj[name] = deserialise_parametric_delay_acf(obj[name])
                 continue
 

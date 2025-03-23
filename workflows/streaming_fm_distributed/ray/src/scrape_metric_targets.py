@@ -10,7 +10,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from dsa2000_common.common.ray_utils import get_head_node_id, get_node_ip
 
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 # Directory to store Prometheus target files
 TARGETS_DIR = "/etc/prometheus/dynamic_targets"  # Replace with actual path

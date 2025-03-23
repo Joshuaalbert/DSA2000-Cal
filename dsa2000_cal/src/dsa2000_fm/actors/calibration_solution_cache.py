@@ -1,7 +1,6 @@
 import asyncio
-import logging
 from datetime import timedelta
-from typing import NamedTuple, Type, Dict, Tuple
+from typing import NamedTuple, Type, Dict, Tuple, Any
 
 import jax
 import numpy as np
@@ -9,18 +8,16 @@ import ray
 from jax import numpy as jnp
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from dsa2000_common.common.array_types import ComplexArray, FloatArray
+from dsa2000_common.common.logging import dsa_logger as logger
 from dsa2000_common.common.ray_utils import get_head_node_id, resource_logger
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
-from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtState
-from dsa2000_common.common.array_types import ComplexArray, FloatArray
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.namespace import NAMESPACE
 
-logger = logging.getLogger('ray')
-
 
 class CalibrationSolution(NamedTuple):
-    solver_state: MultiStepLevenbergMarquardtState | None
+    solver_state: Any | None
     gains: ComplexArray | None  # [D, Tm, A, Cm[, 2, 2]]
     model_times: FloatArray | None  # [Tm]
     model_freqs: FloatArray | None  # [Cm]

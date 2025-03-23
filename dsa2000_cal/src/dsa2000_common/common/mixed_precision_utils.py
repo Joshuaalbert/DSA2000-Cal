@@ -90,7 +90,7 @@ X = TypeVar("X")
 class Policy:
     """Encapsulates casting for inputs, outputs and parameters."""
     vis_dtype: jnp.dtype = np.complex64
-    weight_dtype: jnp.dtype = np.float32
+    weight_dtype: jnp.dtype = np.float16
     flag_dtype: jnp.dtype = np.bool_
     image_dtype: jnp.dtype = np.float32
     gain_dtype: jnp.dtype = np.complex64

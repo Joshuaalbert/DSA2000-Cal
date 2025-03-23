@@ -100,8 +100,7 @@ class BaseSphericalInterpolatorGainModel(GainModel):
                 gain_mapping = "[T,lres,mres,F]"
         else:
             if antenna_indices is not None:
-                model_gains = model_gains[:, :, :, antenna_indices,
-                              ...]  # [num_times, lres, mres, num_ant, num_freqs, 2, 2]
+                model_gains = model_gains[:, :, :, antenna_indices, ...]  # [num_times, lres, mres, num_ant, num_freqs[, 2, 2]]
             if self.full_stokes:
                 gain_mapping = "[T,lres,mres,a,F,2,2]"
             else:
@@ -626,6 +625,9 @@ def build_spherical_interpolator(
         )
     )  # [num_model_dir, 3]
 
+    if np.any(np.isnan(lmn_data)):
+        raise ValueError("NaNs in lmn_data.")
+
     lvec_jax, mvec_jax, model_gains_jax = regrid_to_regular_grid(
         model_lmn=lmn_data,
         model_gains=quantity_to_jnp(model_gains),
@@ -759,7 +761,7 @@ def phi_theta_from_lmn(l, m, n):
         theta: polar angle in [0, pi]
     """
     phi = jnp.arctan2(-l, m)
-    theta = jnp.arccos(n)
+    theta = jnp.arccos(jnp.clip(n, -1, 1))
 
     def wrap(angle):
         return (angle + 2 * np.pi) % (2 * np.pi)

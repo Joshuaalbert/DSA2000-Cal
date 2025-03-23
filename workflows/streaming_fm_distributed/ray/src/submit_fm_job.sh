@@ -2,7 +2,7 @@
 
 echo "Submitting job on $(hostname) at $(date)"
 
-cd /dsa/run && python /dsa/code/src/main.py \
+cd /dsa/run && python /dsa/code/src/fm_main.py \
   --array_name='dsa2000_optimal_v1' \
   --field_of_view=3.2 \
   --oversample_factor=3.1 \

@@ -1,6 +1,7 @@
 import os
 
-from dsa2000_cal.iterative_calibrator import compute_residual
+from dsa2000_cal.calibration_step import CalibrationStep
+from dsa2000_cal.ops.residuals import compute_residual_TBC
 
 from dsa2000_common.common.ray_utils import TimerLog
 from dsa2000_fm.actors.average_utils import average_rule
@@ -27,7 +28,6 @@ from dsa2000_common.common.enu_frame import ENU
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_cal.probabilistic_models.gain_prior_models import GainPriorModel
-from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardtDiagnostic
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray
 from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs
@@ -388,7 +388,7 @@ def predict_model(model_freqs, model_times, cal_sky_models: List[BasePointSource
 @partial(jax.jit, static_argnames=['full_stokes', 'num_antennas'])
 def calibrate(vis_model, vis_data_avg, weights_avg, flags_avg, cal_visibility_coords, solve_state, full_stokes: bool,
               num_antennas: int):
-    cal = Calibration(
+    cal = CalibrationStep(
         gain_probabilistic_model=GainPriorModel(
             gain_stddev=1.,
             dd_dof=1,
@@ -417,7 +417,7 @@ def calibrate(vis_model, vis_data_avg, weights_avg, flags_avg, cal_visibility_co
 
 @jax.jit
 def calc_residual(vis_model, vis_data, gains, antenna1, antenna2):
-    return compute_residual(vis_model, vis_data, gains, antenna1, antenna2)
+    return compute_residual_TBC(vis_model, vis_data, gains, antenna1, antenna2)
 
 
 def main(plot_folder: str, image_name: str, array_name: str, num_sources: int, num_sol_ints_time: int,
@@ -592,7 +592,7 @@ def main(plot_folder: str, image_name: str, array_name: str, num_sources: int, n
                 # row 4: plot damping
 
                 fig, axs = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
-                diagnostics: MultiStepLevenbergMarquardtDiagnostic
+
                 axs[0].plot(diagnostics.iteration, diagnostics.error)
                 axs[0].set_title('Error')
                 axs[1].plot(diagnostics.iteration, diagnostics.r)

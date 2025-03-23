@@ -26,16 +26,15 @@ from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_mo
     build_calibration_fits_source_models_from_wsclean
 from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import \
     build_calibration_point_source_models_from_wsclean, BasePointSourceModel
+from dsa2000_fm.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 from dsa2000_fm.actors.average_utils import average_rule
 from dsa2000_fm.actors.common import ForwardModellingRunParams
-from dsa2000_fm.actors.degridding_predictor import DegriddingPredictor, DegriddingPredictorResponse
+from dsa2000_fm.actors.degridding_predictor import DegriddingPredictor, \
+    DegriddingPredictorResponse
 from dsa2000_fm.actors.dft_predictor import DFTPredictorResponse
 from dsa2000_fm.actors.supervisor import Supervisor
-from dsa2000_fm.antenna_model.antenna_model_utils import get_dish_model_beam_widths
 
-
-
-logger = logging.getLogger('ray')
+from dsa2000_common.common.logging import dsa_logger as logger
 
 
 class ModelPredictorParams(SerialisableBaseModel):
