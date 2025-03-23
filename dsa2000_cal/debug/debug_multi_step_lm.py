@@ -3,6 +3,9 @@ import os
 import time
 from typing import Tuple
 
+from dsa2000_cal.benchmarking.calibration.standalone_lm_multi_step import MultiStepLevenbergMarquardtDiagnostic, \
+    MultiStepLevenbergMarquardtState, MultiStepLevenbergMarquardt
+
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 from dsa2000_cal.solvers.multi_step_lm import lm_solver
