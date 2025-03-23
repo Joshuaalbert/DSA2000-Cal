@@ -61,8 +61,9 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
 
     # 10000/10 = 1000, 1000/40 = 25
     num_sub_bands = 1
-    num_freqs_per_sol_int = 4  # or 40
+    num_freqs_per_sol_int = 2  # or 40
     num_sol_ints_per_sub_band = num_channels // (num_sub_bands * num_freqs_per_sol_int)
+
 
     # Check divisibility
     if num_freqs_per_sol_int * num_sol_ints_per_sub_band * num_sub_bands != num_channels:
