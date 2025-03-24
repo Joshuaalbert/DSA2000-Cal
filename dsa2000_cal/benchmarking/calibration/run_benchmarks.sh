@@ -10,6 +10,7 @@ pip install ../..
 python benchmark_R_calculation_TBC_gpu.py
 python benchmark_JtR_calculation_TBC_gpu.py
 python benchmark_JtJg_calculation_TBC_gpu.py
+
 python benchmark_calibration_gpu.py
 
 conda deactivate
