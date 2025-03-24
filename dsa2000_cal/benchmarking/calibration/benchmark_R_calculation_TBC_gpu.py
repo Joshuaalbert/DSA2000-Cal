@@ -84,16 +84,16 @@ def main():
         t1 = time.time()
         dt = (t1 - t0) / 10
         dsa_logger.info(f"TBC: Residual (Full Avg.): CPU D={D}: {dt}")
-        d_array.append(dt)
         shard_time_array.append(dt)
+        d_array.append(D)
 
         data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
         sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
         t0 = time.time()
-        for _ in range(1):
+        for _ in range(10):
             jax.block_until_ready(sharded_entry_point_jit_compiled(data))
         t1 = time.time()
-        dt = (t1 - t0) / 1
+        dt = (t1 - t0) / 10
         dsa_logger.info(f"TBC: Subtract (per-GPU): CPU D={D}: {dt}")
 
         # data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
@@ -106,12 +106,12 @@ def main():
         # dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
 
     # Fit line to data using scipy
-    d_array = np.array(d_array)
     from scipy.optimize import curve_fit
 
     shard_time_array = np.array(shard_time_array)
+    d_array = np.array(d_array)
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, shard_time_array)
+    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, shard_time_array, bounds=([0., np.inf], [0.5, 1.5]))
     dsa_logger.info(f"TBC: Fit (sharded): {popt}")
 
 

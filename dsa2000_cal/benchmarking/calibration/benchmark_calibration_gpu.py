@@ -84,10 +84,10 @@ def main():
         data = jax.device_put(data, device=gpu)
         entry_point_jit_compiled = entry_point_jit.lower(data).compile()
         t0 = time.time()
-        for _ in range(3):
+        for _ in range(10):
             jax.block_until_ready(entry_point_jit_compiled(data))
         t1 = time.time()
-        dt = (t1 - t0) / 3
+        dt = (t1 - t0) / 10
         dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (full avg.): CPU D={D}: {dt}")
         time_array.append(dt)
         d_array.append(D)
@@ -96,10 +96,10 @@ def main():
         data = jax.device_put(data, device=gpu)
         entry_point_jit_compiled = entry_point_jit.lower(data).compile()
         t0 = time.time()
-        for _ in range(3):
+        for _ in range(10):
             jax.block_until_ready(entry_point_jit_compiled(data))
         t1 = time.time()
-        dt = (t1 - t0) / 3
+        dt = (t1 - t0) / 10
         dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (C=4 w/ reps): CPU D={D}: {dt}")
 
         # data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
@@ -117,7 +117,7 @@ def main():
     d_array = np.array(d_array)
     from scipy.optimize import curve_fit
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array)
+    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array, bounds=([0., np.inf], [0.5, 1.5]))
     dsa_logger.info(f"Fit: {popt}")
 
 
