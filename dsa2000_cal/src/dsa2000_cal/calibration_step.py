@@ -15,12 +15,14 @@ from dsa2000_common.common.jax_utils import create_mesh
 
 
 @partial(
-    jax.jit, static_argnames=['verbose', 'num_devices', 'backend', 'num_B_shards', 'num_C_shards']
+    jax.jit,
+    static_argnames=['verbose', 'num_devices', 'backend', 'num_B_shards', 'num_C_shards', 'maxiter', 'maxiter_cg']
 )
 def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: ComplexArray, weights: FloatArray,
                      antenna1: IntArray, antenna2: FloatArray,
                      gain_probabilistic_model: AbstractGainPriorModel, verbose: bool = False,
-                     num_devices: int = 1, backend: str = 'cpu', num_B_shards: int = 1, num_C_shards: int = 1):
+                     num_devices: int = 1, backend: str = 'cpu', num_B_shards: int = 1, num_C_shards: int = 1,
+                     maxiter: int = 100, maxiter_cg: int = 100):
     """
     Perform a single calibration step.
 
@@ -37,6 +39,8 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
         backend: the backend to use
         num_B_shards: size of B shard
         num_C_shards: size of C shard
+        maxiter: maximum number of iterations
+        maxiter_cg: maximum number of iterations of CG
 
     Requirement 1: B * C % num_devices == 0
     Requirement 2: B_shard_size * C_shard_size == num_devices
@@ -61,7 +65,8 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
     D, Tm, B, Cm = np.shape(vis_model)[:4]
     if (gain_probabilistic_model.gain_shape()[0] != D or gain_probabilistic_model.gain_shape()[1] != Tm or
             gain_probabilistic_model.gain_shape()[3] != Cm):
-        raise ValueError(f"gain shape doesn't match vis model")
+        raise ValueError(
+            f"gain shape {gain_probabilistic_model.gain_shape()} isn't compatible vis model {np.shape(vis_model)}.")
 
     if T % Tm != 0:
         raise ValueError(f"Tm must be divide T.")
@@ -132,8 +137,10 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
         residual_fn=residual_fn,
         x0=params,
         args=(gain_probabilistic_model, vis_model, vis_data, weights, antenna1, antenna2),
+        verbose=verbose,
         gtol=1e-4,
-        verbose=verbose
+        maxiter=maxiter,
+        maxiter_cg=maxiter_cg
     )
     gains = gain_probabilistic_model.compute_gains(params)
 

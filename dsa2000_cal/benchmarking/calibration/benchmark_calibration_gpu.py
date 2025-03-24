@@ -1,8 +1,7 @@
 import os
 
-os.environ['JAX_PLATFORMS'] = 'cpu'
+os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={8}"
 
 from dsa2000_cal.calibration_step import calibration_step
 from dsa2000_cal.probabilistic_models.gain_prior_models import GainPriorModel
@@ -66,16 +65,15 @@ def entry_point(data):
         params=None, vis_model=vis_model, vis_data=vis_data, weights=weights,
         antenna1=antenna1, antenna2=antenna2,
         gain_probabilistic_model=gain_probabilistic_model, verbose=False,
-        backend='cpu', num_B_shards=8, num_C_shards=1, num_devices=8,
+        backend='cuda', num_B_shards=1, num_C_shards=1, num_devices=1,
         maxiter=1, maxiter_cg=1
     )
 
 
 def main():
-    cpus = jax.devices("cpu")
-    # gpus = jax.devices("cuda")
-    cpu = cpus[0]
-    # gpu = gpus[0]
+    gpus = jax.devices("cuda")
+    print(f"Found {len(gpus)} GPUs, using the first one.")
+    gpu = gpus[0]
 
     entry_point_jit = jax.jit(entry_point)
     # Run benchmarking over number of calibration directions
@@ -84,17 +82,16 @@ def main():
     for D in range(1, 9):
         data = prepare_data(D, Ts=1, Tm=1, Cs=1, Cm=1)
 
-        with jax.default_device(cpu):
-            data = jax.device_put(data)
-            entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-            t0 = time.time()
-            for _ in range(3):
-                jax.block_until_ready(entry_point_jit_compiled(data))
-            t1 = time.time()
-            dt = (t1 - t0) / 3
-            dsa_logger.info(f"Calibration Single Iteration Single CG: CPU D={D}: {dt}")
-            time_array.append(dt)
-            d_array.append(D)
+        data = jax.device_put(data, device=gpu)
+        entry_point_jit_compiled = entry_point_jit.lower(data).compile()
+        t0 = time.time()
+        for _ in range(3):
+            jax.block_until_ready(entry_point_jit_compiled(data))
+        t1 = time.time()
+        dt = (t1 - t0) / 3
+        dsa_logger.info(f"Calibration Single Iteration Single CG: CPU D={D}: {dt}")
+        time_array.append(dt)
+        d_array.append(D)
 
     # Fit line to data using scipy
     time_array = np.array(time_array)
