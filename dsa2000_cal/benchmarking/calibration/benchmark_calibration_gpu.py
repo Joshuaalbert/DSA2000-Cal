@@ -117,7 +117,7 @@ def main():
     d_array = np.array(d_array)
     from scipy.optimize import curve_fit
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array, bounds=([0., np.inf], [0.5, 1.5]))
+    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array, bounds=([0., 0.5], [np.inf, 1.5]))
     dsa_logger.info(f"Fit: {popt}")
 
 
