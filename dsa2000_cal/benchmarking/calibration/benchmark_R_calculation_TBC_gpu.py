@@ -68,9 +68,7 @@ def build_sharded_entry_point(devices):
 
 def main():
     gpus = jax.devices("cuda")
-    gpu = gpus[0]
 
-    entry_point_jit = jax.jit(entry_point)
     sharded_entry_point, mesh = build_sharded_entry_point(gpus)
     sharded_entry_point_jit = jax.jit(sharded_entry_point)
     # Run benchmarking over number of calibration directions
@@ -85,7 +83,7 @@ def main():
             jax.block_until_ready(sharded_entry_point_jit_compiled(data))
         t1 = time.time()
         dt = (t1 - t0) / 10
-        dsa_logger.info(f"TBC: Residual (sharded): CPU D={D}: {dt}")
+        dsa_logger.info(f"TBC: Residual (Full Avg.): CPU D={D}: {dt}")
         d_array.append(dt)
         shard_time_array.append(dt)
 
@@ -96,16 +94,16 @@ def main():
             jax.block_until_ready(sharded_entry_point_jit_compiled(data))
         t1 = time.time()
         dt = (t1 - t0) / 1
-        dsa_logger.info(f"TBC: Subtract (per-GPU sharded): CPU D={D}: {dt}")
+        dsa_logger.info(f"TBC: Subtract (per-GPU): CPU D={D}: {dt}")
 
-        data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
-        sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
-        t0 = time.time()
-        for _ in range(1):
-            jax.block_until_ready(sharded_entry_point_jit_compiled(data))
-        t1 = time.time()
-        dt = (t1 - t0) / 1
-        dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
+        # data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
+        # sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
+        # t0 = time.time()
+        # for _ in range(1):
+        #     jax.block_until_ready(sharded_entry_point_jit_compiled(data))
+        # t1 = time.time()
+        # dt = (t1 - t0) / 1
+        # dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
 
     # Fit line to data using scipy
     d_array = np.array(d_array)

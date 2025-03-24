@@ -100,7 +100,7 @@ def main():
             jax.block_until_ready(sharded_entry_point_jit_compiled(data))
         t1 = time.time()
         dt = (t1 - t0) / 3
-        dsa_logger.info(f"TBC: Residual (sharded): CPU D={D}: {dt}")
+        dsa_logger.info(f"TBC: J^T.J.g (Full avg.): CPU D={D}: {dt}")
         d_array.append(dt)
         shard_time_array.append(dt)
 
@@ -112,17 +112,16 @@ def main():
             jax.block_until_ready(sharded_entry_point_jit_compiled(data))
         t1 = time.time()
         dt = (t1 - t0) / 1
-        dsa_logger.info(f"TBC: Subtract (per-GPU sharded): CPU D={D}: {dt}")
+        dsa_logger.info(f"TBC: J^T.J.g (per-GPU w/ reps): CPU D={D}: {dt}")
 
-        data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
-
-        sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
-        t0 = time.time()
-        for _ in range(1):
-            jax.block_until_ready(sharded_entry_point_jit_compiled(data))
-        t1 = time.time()
-        dt = (t1 - t0) / 1
-        dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
+        # data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
+        # sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
+        # t0 = time.time()
+        # for _ in range(1):
+        #     jax.block_until_ready(sharded_entry_point_jit_compiled(data))
+        # t1 = time.time()
+        # dt = (t1 - t0) / 1
+        # dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
 
     # Fit line to data using scipy
     d_array = np.array(d_array)
