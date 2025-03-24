@@ -81,7 +81,6 @@ def main():
     d_array = []
     for D in range(1, 9):
         data = prepare_data(D, Ts=1, Tm=1, Cs=1, Cm=1)
-
         data = jax.device_put(data, device=gpu)
         entry_point_jit_compiled = entry_point_jit.lower(data).compile()
         t0 = time.time()
@@ -89,9 +88,29 @@ def main():
             jax.block_until_ready(entry_point_jit_compiled(data))
         t1 = time.time()
         dt = (t1 - t0) / 3
-        dsa_logger.info(f"Calibration Single Iteration Single CG: CPU D={D}: {dt}")
+        dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (full avg.): CPU D={D}: {dt}")
         time_array.append(dt)
         d_array.append(D)
+
+        data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
+        data = jax.device_put(data, device=gpu)
+        entry_point_jit_compiled = entry_point_jit.lower(data).compile()
+        t0 = time.time()
+        for _ in range(3):
+            jax.block_until_ready(entry_point_jit_compiled(data))
+        t1 = time.time()
+        dt = (t1 - t0) / 3
+        dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (C=4 w/ reps): CPU D={D}: {dt}")
+
+        data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
+        data = jax.device_put(data, device=gpu)
+        entry_point_jit_compiled = entry_point_jit.lower(data).compile()
+        t0 = time.time()
+        for _ in range(3):
+            jax.block_until_ready(entry_point_jit_compiled(data))
+        t1 = time.time()
+        dt = (t1 - t0) / 3
+        dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (C=40 w/ reps): CPU D={D}: {dt}")
 
     # Fit line to data using scipy
     time_array = np.array(time_array)

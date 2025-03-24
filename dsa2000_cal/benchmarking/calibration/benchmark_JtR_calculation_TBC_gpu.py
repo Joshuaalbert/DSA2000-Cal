@@ -100,6 +100,7 @@ def main():
         t1 = time.time()
         dt = (t1 - t0) / 3
         dsa_logger.info(f"TBC: Residual (sharded): CPU D={D}: {dt}")
+        d_array.append(dt)
         shard_time_array.append(dt)
 
         data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
