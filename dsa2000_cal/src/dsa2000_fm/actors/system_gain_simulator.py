@@ -7,7 +7,6 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import ray
-from dsa2000_fm.forward_models.systematics.ionosphere_gain_model import build_ionosphere_gain_model
 from ray.runtime_env import RuntimeEnv
 
 from dsa2000_assets.registries import array_registry
@@ -20,7 +19,8 @@ from dsa2000_common.gain_models.gain_model import GainModel
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel, build_geodesic_model
 from dsa2000_fm.actors.common import ForwardModellingRunParams
 from dsa2000_fm.systematics.dish_aperture_effects import build_dish_aperture_effects
-from dsa2000_fm.systematics.ionosphere import compute_x0_radius, construct_canonical_ionosphere
+from dsa2000_fm.systematics.ionosphere import compute_x0_radius, construct_canonical_ionosphere, \
+    build_ionosphere_gain_model
 
 from dsa2000_common.common.logging import dsa_logger as logger
 
