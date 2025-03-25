@@ -218,7 +218,8 @@ class BaseNearFieldDelayEngine:
         return BaseNearFieldDelayEngine(
             x_antennas_gcrs=x_antennas_gcrs,
             enu_origin_gcrs=enu_origin_gcrs,
-            enu_coords_gcrs=enu_coords_gcrs
+            enu_coords_gcrs=enu_coords_gcrs,
+            skip_post_init=True
         )
 
 
