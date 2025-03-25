@@ -61,6 +61,7 @@ class Data(NamedTuple):
 class ReturnData(NamedTuple):
     vis_residuals: ComplexArray  # [T, B, C, num_coh]
     gains: Any  # [D, T, A, C[, 2, 2]]
+    params: Any
 
 
 @dataclasses.dataclass(eq=False)
@@ -342,7 +343,8 @@ class IterativeCalibrator:
             # Send back to generator
             return ReturnData(
                 vis_residuals=vis_residuals,
-                gains=gains
+                gains=gains,
+                params=params
             )
 
         return _step

@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from dsa2000_common.common.array_types import ComplexArray
 from dsa2000_common.common.corr_translation import linear_to_circular, \
     circular_to_linear, linear_to_stokes, circular_to_stokes, stokes_to_linear, stokes_to_circular
 
@@ -49,7 +50,7 @@ INV_CASA_CORR_TYPES = {v: k for k, v in CASA_CORR_TYPES.items()}
 
 
 @partial(jax.jit, static_argnames=("from_corrs", "to_corrs"))
-def broadcast_translate_corrs(coherencies: jax.Array,
+def broadcast_translate_corrs(coherencies: ComplexArray,
                               from_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]],
                               to_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]]):
     """
@@ -70,6 +71,22 @@ def broadcast_translate_corrs(coherencies: jax.Array,
     coherencies = jax.vmap(partial(translate_corrs, from_corrs=from_corrs, to_corrs=to_corrs))(coherencies)
     coherencies = jax.lax.reshape(coherencies, output_coherencies_shape)
     return coherencies
+
+
+def broadcast_translate_weights(weights: ComplexArray,
+                                from_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]],
+                                to_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]]):
+    # Since weights are inverse variance and variances sum we do this
+    weights_inv = jnp.reciprocal(weights)
+    weights_inv = broadcast_translate_corrs(weights_inv, from_corrs, to_corrs)
+    return jnp.reciprocal(weights_inv)
+
+
+def broadcast_translate_flags(flags,
+                              from_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]],
+                              to_corrs: Tuple[int | str, ...] | Tuple[Tuple[int | str, ...], Tuple[int | str, ...]]):
+    # since flags are weights we can use the same
+    return broadcast_translate_weights(flags.astype(jnp.float16), from_corrs, to_corrs).astype(jnp.bool_)
 
 
 def translate_corrs(coherencies: jax.Array,

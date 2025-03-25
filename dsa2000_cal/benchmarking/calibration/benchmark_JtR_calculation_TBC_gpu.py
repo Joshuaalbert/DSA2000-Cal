@@ -1,17 +1,16 @@
 import os
 from functools import partial
 
+os.environ['JAX_PLATFORMS'] = 'cuda'
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
+
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 
 from dsa2000_common.common.jax_utils import create_mesh
+from dsa2000_common.common.jvp_linear_op import JVPLinearOp
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.mixed_precision_utils import mp_policy
-
-os.environ['JAX_PLATFORMS'] = 'cpu'
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
-
 import itertools
 import time
 from typing import Dict, Any
@@ -47,7 +46,21 @@ def prepare_data(D: int, Ts, Tm, Cs, Cm) -> Dict[str, Any]:
 
 
 def entry_point(data):
-    return compute_residual_TBC(**data)
+    vis_model = data['vis_model']
+    vis_data = data['vis_data']
+    gains = data['gains']
+    antenna1 = data['antenna1']
+    antenna2 = data['antenna2']
+
+    def fn(gains):
+        res = compute_residual_TBC(vis_model=vis_model, vis_data=vis_data, gains=gains,
+                                   antenna1=antenna1, antenna2=antenna2)
+        return res
+
+    J_bare = JVPLinearOp(fn, linearize=False)
+    J = J_bare(gains)
+    R = fn(gains)
+    return J.matvec(R, adjoint=True)
 
 
 def build_sharded_entry_point(devices):
@@ -70,31 +83,15 @@ def build_sharded_entry_point(devices):
 
 
 def main():
-    cpus = jax.devices("cpu")
-    # gpus = jax.devices("cuda")
-    cpu = cpus[0]
-    # gpu = gpus[0]
+    gpus = jax.devices("cuda")
 
-    entry_point_jit = jax.jit(entry_point)
-    sharded_entry_point, mesh = build_sharded_entry_point(cpus)
+    sharded_entry_point, mesh = build_sharded_entry_point(gpus)
     sharded_entry_point_jit = jax.jit(sharded_entry_point)
     # Run benchmarking over number of calibration directions
-    time_array = []
     shard_time_array = []
     d_array = []
     for D in range(1, 9):
         data = prepare_data(D, Ts=1, Tm=1, Cs=1, Cm=1)
-        with jax.default_device(cpu):
-            data = jax.device_put(data)
-            entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-            t0 = time.time()
-            for _ in range(10):
-                jax.block_until_ready(entry_point_jit_compiled(data))
-            t1 = time.time()
-            dt = (t1 - t0) / 10
-            dsa_logger.info(f"TBC: Residual: CPU D={D}: {dt}")
-            time_array.append(dt)
-            d_array.append(D)
 
         sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
         t0 = time.time()
@@ -102,35 +99,20 @@ def main():
             jax.block_until_ready(sharded_entry_point_jit_compiled(data))
         t1 = time.time()
         dt = (t1 - t0) / 10
-        dsa_logger.info(f"TBC: Residual (sharded): CPU D={D}: {dt}")
+        dsa_logger.info(f"TBC: J^T.R (Full Avg.): CPU D={D}: {dt}")
+        d_array.append(dt)
         shard_time_array.append(dt)
-        #
-        # data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
-        # with jax.default_device(cpu):
-        #     data = jax.device_put(data)
-        #     entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-        #     t0 = time.time()
-        #     jax.block_until_ready(entry_point_jit_compiled(data))
-        #     t1 = time.time()
-        #     dsa_logger.info(f"TBC: Subtract (per-GPU): CPU D={D}: {t1 - t0}")
-        #
-        # sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
-        # t0 = time.time()
-        # for _ in range(1):
-        #     jax.block_until_ready(sharded_entry_point_jit_compiled(data))
-        # t1 = time.time()
-        # dt = (t1 - t0) / 1
-        # dsa_logger.info(f"TBC: Subtract (per-GPU sharded): CPU D={D}: {dt}")
-        #
+
+        data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
+        sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
+        t0 = time.time()
+        for _ in range(10):
+            jax.block_until_ready(sharded_entry_point_jit_compiled(data))
+        t1 = time.time()
+        dt = (t1 - t0) / 10
+        dsa_logger.info(f"TBC: J^T.R (per-GPU w/ reps): CPU D={D}: {dt}")
+
         # data = prepare_data(D, Ts=4, Tm=1, Cs=40, Cm=1)
-        # with jax.default_device(cpu):
-        #     data = jax.device_put(data)
-        #     entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-        #     t0 = time.time()
-        #     jax.block_until_ready(entry_point_jit_compiled(data))
-        #     t1 = time.time()
-        #     dsa_logger.info(f"TBC: Subtract (all-GPU): CPU D={D}: {t1 - t0}")
-        #
         # sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
         # t0 = time.time()
         # for _ in range(1):
@@ -140,16 +122,12 @@ def main():
         # dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
 
     # Fit line to data using scipy
-    time_array = np.array(time_array)
     d_array = np.array(d_array)
     from scipy.optimize import curve_fit
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array)
-    dsa_logger.info(f"TBC: Fit: {popt}")
-
     shard_time_array = np.array(shard_time_array)
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, shard_time_array)
+    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, shard_time_array, bounds=([0., 0.5], [np.inf, 1.5]))
     dsa_logger.info(f"TBC: Fit (sharded): {popt}")
 
 

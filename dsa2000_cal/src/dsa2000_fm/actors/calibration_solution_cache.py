@@ -17,7 +17,7 @@ from dsa2000_fm.namespace import NAMESPACE
 
 
 class CalibrationSolution(NamedTuple):
-    solver_state: Any | None
+    params: Any | None
     gains: ComplexArray | None  # [D, Tm, A, Cm[, 2, 2]]
     model_times: FloatArray | None  # [Tm]
     model_freqs: FloatArray | None  # [Cm]
@@ -169,7 +169,7 @@ class _CalibrationSolutionCache:
         await self.init()
         if sol_int_time_idx == 0:
             return CalibrationSolution(
-                solver_state=None,
+                params=None,
                 gains=None,
                 model_freqs=None,
                 model_times=None
