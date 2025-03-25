@@ -60,6 +60,12 @@ class BaseFarFieldDelayEngine:
     V_J_bcrs: InterpolatedArray  # (t) -> [num_J, 3] the velocity of J-th body in BCRS
     GM_J: FloatArray  # [num_J] the GM of J-th body
 
+    skip_post_init: bool = False
+
+    def __post_init__(self):
+        if self.skip_post_init:
+            return
+
     def compute_delay_from_lm_jax(self,
                                   l: jax.Array, m: jax.Array,
                                   t1: jax.Array, i1: jax.Array,
@@ -290,7 +296,8 @@ class BaseFarFieldDelayEngine:
             R_earth_bcrs=R_earth_bcrs,
             X_J_bcrs=X_J_bcrs,
             V_J_bcrs=V_J_bcrs,
-            GM_J=GM_J
+            GM_J=GM_J,
+            skip_post_init=True
         )
 
 

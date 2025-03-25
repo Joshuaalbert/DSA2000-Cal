@@ -320,8 +320,8 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
                      total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=major, minor_fwhm=minor))
         return jax.vmap(g.compute_flux_density)(lm) - psf
 
-    state, diagnostics = lm_solver(residual_fn, jnp.array([dl * 5, dm * 5, 0.]))
-    major, minor, posang = state.x
+    solution, diagnostics = lm_solver(residual_fn, jnp.array([dl * 5, dm * 5, 0.]))
+    major, minor, posang = solution
     swap = minor > major
     major, minor, posang = (
         jnp.where(swap, minor, major),
