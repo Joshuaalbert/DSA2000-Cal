@@ -103,7 +103,7 @@ def main():
         t1 = time.time()
         dt = (t1 - t0) / 10
         dsa_logger.info(f"TBC: J^T.J.g (Full avg.): CPU D={D}: {dt}")
-        d_array.append(dt)
+        d_array.append(D)
         shard_time_array.append(dt)
 
         data = prepare_data(D, Ts=4, Tm=1, Cs=4, Cm=1)
