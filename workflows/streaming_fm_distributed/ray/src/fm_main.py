@@ -55,14 +55,15 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         num_baselines = (num_antennas * (num_antennas - 1)) // 2
 
     # constraint: num_freqs_per_sol_int * num_sol_ints_per_sub_band * num_sub_bands = num_channels
-    freqs = array.get_channels()[0:80:2]  # [40]
+    freqs = array.get_channels()[0:4:2]  # [40]
     channel_width = 2 * array.get_channel_width()  # skipping by 2
     num_channels = len(freqs)
 
     # 10000/10 = 1000, 1000/40 = 25
     num_sub_bands = 1
-    num_freqs_per_sol_int = 4  # or 40
+    num_freqs_per_sol_int = 2  # or 40
     num_sol_ints_per_sub_band = num_channels // (num_sub_bands * num_freqs_per_sol_int)
+
 
     # Check divisibility
     if num_freqs_per_sol_int * num_sol_ints_per_sub_band * num_sub_bands != num_channels:
@@ -72,7 +73,7 @@ def build_run_params(array_name: str, with_autocorr: bool, field_of_view: au.Qua
         )
 
     # constraint: num_integrations = num_times_per_sol_int * num_sol_ints_time
-    observation_duration = 624 * au.s
+    observation_duration = 12 * au.s
     integration_interval = array.get_integration_time()
     solution_interval = 4 * integration_interval
 

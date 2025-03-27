@@ -1,6 +1,8 @@
 import os
 from functools import partial
 
+from dsa2000_common.common.fit_benchmark import fit_timings
+
 os.environ['JAX_PLATFORMS'] = 'cpu'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={8}"
@@ -152,13 +154,11 @@ def main():
         # dt = (t1 - t0) / 1
         # dsa_logger.info(f"BTC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
 
-    # Fit line to data using scipy
     time_array = np.array(time_array)
     d_array = np.array(d_array)
-    from scipy.optimize import curve_fit
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array)
-    dsa_logger.info(f"BTC: Fit: {popt}")
+    a, b, c = fit_timings(d_array, time_array)
+    dsa_logger.info(f"Fit: t(n) = {a:.4f} * n ** {b:.2f} + {c:.4f}")
 
 
 if __name__ == '__main__':

@@ -73,7 +73,6 @@ services:
       - RAY_HEAD_IP_ADDRESS=${RAY_HEAD_IP_ADDRESS}
       - NODE_NAME=${NODE_NAME}
       - NODE_IP_ADDRESS=${NODE_IP_ADDRESS}
-      - NODE_NAME=${NODE_NAME}
       - RAY_GRAFANA_HOST=http://grafana:3000
       - RAY_PROMETHEUS_HOST=http://prometheus:9090
       - RAY_GRAFANA_IFRAME_HOST=http://grafana:3000

@@ -4,10 +4,11 @@ import pytest
 from astropy import coordinates as ac, time as at, units as au
 from astropy.coordinates import offset_by
 from astropy.wcs import WCS
-from dsa2000_common.common.enu_frame import ENU
 
-from dsa2000_common.common.coord_utils import earth_location_to_uvw_approx, icrs_to_lmn, lmn_to_icrs, earth_location_to_enu, \
+from dsa2000_common.common.coord_utils import earth_location_to_uvw_approx, icrs_to_lmn, lmn_to_icrs, \
+    earth_location_to_enu, \
     icrs_to_enu, enu_to_icrs, lmn_to_icrs_old
+from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 
 
@@ -34,7 +35,7 @@ def test_lmn_to_icrs():
     time = at.Time("2021-01-01T00:00:00", scale='utc')
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     lmn = icrs_to_lmn(pointing, pointing)
-    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-6)
+    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.rad), atol=1e-6)
 
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
     lmn = icrs_to_lmn(sources, pointing)
@@ -58,7 +59,7 @@ def test_icrs_to_lmn():
 
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     lmn = icrs_to_lmn(pointing, pointing)
-    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.dimensionless_unscaled), atol=1e-10)
+    np.testing.assert_allclose(lmn, au.Quantity([0, 0, 1] * au.rad), atol=1e-10)
 
     pointing = ac.ICRS(0 * au.deg, 0 * au.deg)
     sources = ac.ICRS(4 * au.deg, 2 * au.deg)
@@ -75,7 +76,7 @@ def test_icrs_to_lmn():
     frame = ac.AltAz(location=array_location, obstime=obstime)
     zenith = ac.SkyCoord(alt=90 * au.deg, az=0 * au.deg, frame=frame).transform_to(ac.ICRS())
     lmn = icrs_to_lmn(zenith, zenith)
-    np.testing.assert_allclose(lmn, np.array([0, 0, 1]), atol=1e-10)
+    np.testing.assert_allclose(lmn, np.array([0, 0, 1]) * au.rad, atol=1e-10)
 
     lmn = icrs_to_lmn(sources, zenith)
     print(lmn)
@@ -113,6 +114,7 @@ def test_icrs_to_lmn():
     lmn_sources = quantity_to_jnp(icrs_to_lmn(sources, phase_center=zenith))
     np.testing.assert_allclose(lmn_sources, [0, 1, 0], atol=1e-3)
 
+
 @pytest.mark.parametrize('broadcast_phase_center', [False, True])
 @pytest.mark.parametrize('broadcast_lmn', [False, True])
 def test_lmn_to_icrs_vectorised(broadcast_phase_center, broadcast_lmn):
@@ -124,9 +126,9 @@ def test_lmn_to_icrs_vectorised(broadcast_phase_center, broadcast_lmn):
     else:
         phase_center = ac.ICRS(0 * au.deg, 0 * au.deg)
     if broadcast_lmn:
-        lmn = np.random.normal(size=(5, 1, 1, 3)) * au.dimensionless_unscaled
+        lmn = np.random.normal(size=(5, 1, 1, 3)) * au.rad
     else:
-        lmn = np.random.normal(size=(3,)) * au.dimensionless_unscaled
+        lmn = np.random.normal(size=(3,)) * au.rad
     lmn /= np.linalg.norm(lmn, axis=-1, keepdims=True)
 
     expected_shape = np.broadcast_shapes(lmn.shape[:-1], phase_center.shape)
@@ -163,7 +165,8 @@ def test_lmn_to_icrs_near_poles():
             [0.05, 0.0, np.sqrt(1 - 0.05 ** 2)],
             [0.0, 0.05, np.sqrt(1 - 0.05 ** 2)],
             [0.0, 0.0, 1],
-        ]
+        ],
+        'rad'
     )
 
     pointing_north_pole = ac.ICRS(0 * au.deg, 90 * au.deg)
@@ -239,7 +242,7 @@ def test_enu_to_icrs():
 #                                        2 * au.day,
 #                                        1 * au.year])
 def test_lmn_to_icrs_over_year():
-    mvec = lvec = np.linspace(-0.99, 0.99, 100) * au.dimensionless_unscaled
+    mvec = lvec = np.linspace(-0.99, 0.99, 100) * au.rad
 
     M, L = np.meshgrid(mvec, lvec, indexing='ij')
     R = np.sqrt(L ** 2 + M ** 2)
@@ -285,7 +288,7 @@ def test_lmn_to_icrs_over_year():
 
 
 def test_lmn_to_icrs_over_time():
-    mvec = lvec = np.linspace(-0.99, 0.99, 100) * au.dimensionless_unscaled
+    mvec = lvec = np.linspace(-0.99, 0.99, 100) * au.rad
 
     M, L = np.meshgrid(mvec, lvec, indexing='ij')
 
@@ -354,12 +357,12 @@ def test_lmn_coords():
 
 def test_lmn_ellipse_to_sky():
     # Create an ellipse in LM-coords
-    major = 0.1 * au.dimensionless_unscaled
-    minor = 0.05 * au.dimensionless_unscaled
+    major = 0.1 * au.rad
+    minor = 0.05 * au.rad
     theta = 45 * au.deg
 
-    l0 = 0. * au.dimensionless_unscaled
-    m0 = 0. * au.dimensionless_unscaled
+    l0 = 0. * au.rad
+    m0 = 0. * au.rad
 
     phi = np.linspace(0, 2 * np.pi, 100) * au.rad
     m_circle = np.cos(phi)
