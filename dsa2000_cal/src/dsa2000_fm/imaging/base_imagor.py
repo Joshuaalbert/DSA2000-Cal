@@ -17,8 +17,6 @@ from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.common.vec_utils import kron_inv, kron_product
 from dsa2000_common.common.wgridder import vis_to_image
 from dsa2000_common.gain_models.base_spherical_interpolator import BaseSphericalInterpolatorGainModel
-
-
 from dsa2000_common.geodesics.base_geodesic_model import BaseGeodesicModel
 from dsa2000_fm.imaging.utils import get_image_parameters
 from dsa2000_fm.measurement_sets.measurement_set import MeasurementSet
@@ -219,7 +217,7 @@ def divide_out_beam(image: jax.Array, beam: jax.Array
 
     @partial(
         simple_broadcast,
-        leading_dims = 2
+        leading_dims=2
     )
     def _remove_beam(image, beam):
         if (np.shape(image) == ()) or (np.shape(image) == (1,)):
@@ -277,6 +275,7 @@ def apply_beam(image: jax.Array, beam: jax.Array) -> jax.Array:
     return jnp.where(jnp.isnan(pb_cor_image), 0., pb_cor_image)
 
 
+@partial(jax.jit, static_argnames=['max_central_size'])
 def fit_beam(psf, dl, dm, max_central_size: int = 128):
     """
     Fit a Gaussian to the PSF.
@@ -315,13 +314,14 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
     psf = jnp.reshape(psf, (-1,))
 
     def residual_fn(params):
-        major, minor, pos_angle = params
-        g = Gaussian(x0=jnp.zeros(2), minor_fwhm=minor, major_fwhm=major, pos_angle=pos_angle,
+        x0_1, x0_2, major, minor, pos_angle = params
+        x0 = jnp.stack([x0_1, x0_2], axis=-1)
+        g = Gaussian(x0=x0, minor_fwhm=minor, major_fwhm=major, pos_angle=pos_angle,
                      total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=major, minor_fwhm=minor))
         return jax.vmap(g.compute_flux_density)(lm) - psf
 
-    solution, diagnostics = lm_solver(residual_fn, jnp.array([dl * 5, dm * 5, 0.]))
-    major, minor, posang = solution
+    solution, diagnostics = lm_solver(residual_fn, jnp.array([dl * 0., dl * 0., dl * 5, dm * 5, 0.]), gtol=1e-6)
+    _, _, major, minor, posang = solution
     swap = minor > major
     major, minor, posang = (
         jnp.where(swap, minor, major),

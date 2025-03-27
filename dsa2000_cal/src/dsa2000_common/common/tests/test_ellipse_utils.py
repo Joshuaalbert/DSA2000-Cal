@@ -5,13 +5,27 @@ from jax import numpy as jnp
 from dsa2000_common.common.ellipse_utils import Gaussian, ellipse_rotation
 
 
+def test_ellipse_definitions():
+    ellipse = Gaussian(
+        x0=jnp.asarray([0., 0.]),
+        major_fwhm=1,
+        minor_fwhm=0.5,
+        pos_angle=0.,
+        total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=1, minor_fwhm=0.5, )
+    )
+    # [minor, major]
+    assert ellipse.compute_flux_density(np.array([0., 0.])) == 1
+    assert ellipse.compute_flux_density(np.array([0.0, 0.5])) == 1 / 2
+    assert ellipse.compute_flux_density(np.array([0.25, 0.])) == 1 / 2
+
+
 def test_ellipse():
     n = 2096
     ellipse = Gaussian(
         x0=jnp.asarray([1., 0.]),
         major_fwhm=2.5,
         minor_fwhm=1.5,
-        pos_angle=np.pi/4.,
+        pos_angle=np.pi / 4.,
         total_flux=1.
     )
 

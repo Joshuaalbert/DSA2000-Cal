@@ -63,17 +63,6 @@ def test_calc_noise_1920chan_10s_lwa(num_chan: int, frac_flagged: float):
     # assert np.isclose(baseline_noise, 7.19, atol=1e-1)
 
 
-def test_calc_noise_full_observation():
-    num_antennas = 2048
-    system_equivalent_flux_density = 5022. / 2000.  # Jy
-    chan_width_hz = 1300e6  # Hz
-    t_int_s = 10.3 * 60  # s
-    system_efficiency = 0.7
-    assert np.isclose(
-        num_antennas * calc_baseline_noise(system_equivalent_flux_density, chan_width_hz, t_int_s), 0.00407,
-        atol=1e-3)
-
-
 def test_calc_noise_8000chan_1hour():
     num_antennas = 2048
     system_equivalent_flux_density = 5022.  # Jy

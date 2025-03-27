@@ -1,5 +1,7 @@
 import os
 
+from dsa2000_common.common.fit_benchmark import fit_timings
+
 os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 
@@ -112,13 +114,11 @@ def main():
         # dt = (t1 - t0) / 3
         # dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (C=40 w/ reps): CPU D={D}: {dt}")
 
-    # Fit line to data using scipy
     time_array = np.array(time_array)
     d_array = np.array(d_array)
-    from scipy.optimize import curve_fit
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, time_array, bounds=([0., 0.5], [np.inf, 1.5]))
-    dsa_logger.info(f"Fit: {popt}")
+    a, b, c = fit_timings(d_array, time_array)
+    dsa_logger.info(f"Fit: t(n) = {a:.4f} * n ** {b:.2f} + {c:.4f}")
 
 
 if __name__ == '__main__':

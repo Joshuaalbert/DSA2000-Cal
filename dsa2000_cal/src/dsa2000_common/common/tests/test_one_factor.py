@@ -1,6 +1,6 @@
 import pytest
 
-from dsa2000_common.common.one_factor import one_factorization_round
+from dsa2000_common.common.one_factor import one_factorization_round, get_one_factors
 
 
 @pytest.mark.parametrize('N', [4, 6, 2048])
@@ -12,8 +12,9 @@ def test_one_factorization_round_correctness(N):
     rounds = []
 
     # There should be N-1 = 3 rounds.
+    factors = get_one_factors(N)
     for r in range(N - 1):
-        factor = one_factorization_round(N, r)
+        factor = factors[r]
         # Check that each factor forms a perfect matching (each vertex appears once)
         vertices = set()
         for i, j in factor:

@@ -12,9 +12,9 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.ellipse_utils import Gaussian
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
+from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 from dsa2000_fm.imaging.base_imagor import fit_beam, evaluate_beam, divide_out_beam
 from dsa2000_fm.measurement_sets.measurement_set import MeasurementSetMeta, MeasurementSet
-from dsa2000_common.gain_models.beam_gain_model import build_beam_gain_model
 
 
 def build_mock_calibrator_source_models(tmp_path, coherencies):
@@ -153,3 +153,43 @@ def test_fit_beam():
     assert jnp.allclose(major, true_major_fwhm, atol=0.01)
     assert jnp.allclose(minor, true_minor_fwhm, atol=0.01)
     assert jnp.allclose(pos_angle, true_posang, atol=0.01)
+
+
+def test_fit_beam_explore():
+    """
+    Test the fit_ellipsoid function by verifying it retrieves the correct FWHM
+    for both the major and minor axes of a synthetic ellipsoid image.
+    """
+    x = []
+    y = []
+    for pixsize in np.linspace(0.25, 5, 100):
+        dl = dm = quantity_to_jnp(pixsize * au.arcsec, 'rad')
+        n = 256
+        lvec = (-0.5 * n + jnp.arange(n)) * dl
+        mvec = (-0.5 * n + jnp.arange(n)) * dm
+        L, M = jnp.meshgrid(lvec, mvec, indexing='ij')
+        lm = jnp.stack([L, M], axis=-1).reshape((-1, 2))
+
+        true_minor_fwhm = quantity_to_jnp(3.3 * au.arcsec, 'rad')/2
+        true_major_fwhm = quantity_to_jnp(3.3 * au.arcsec, 'rad')/2
+        true_posang = 0.
+
+        g = Gaussian(x0=jnp.zeros(2), minor_fwhm=true_minor_fwhm, major_fwhm=true_major_fwhm, pos_angle=true_posang,
+                     total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=true_major_fwhm,
+                                                              minor_fwhm=true_minor_fwhm))
+
+        psf = jax.vmap(g.compute_flux_density)(lm)
+        psf = jnp.reshape(psf, (n, n))
+        major, minor, pos_angle = fit_beam(psf, dl, dm)
+        error = np.minimum(np.sqrt(((major - true_major_fwhm) ** 2 + (minor - true_minor_fwhm) ** 2) / dl ** 2),
+                           np.sqrt(((major - true_minor_fwhm) ** 2 + (minor - true_major_fwhm) ** 2) / dl ** 2))
+        print(f"dl={dl}, dm={dm}, major={major}, minor={minor}, pos_angle={pos_angle}, error={error}")
+
+        x.append(dl * 180/np.pi*3600)
+        y.append(error)
+    import pylab as plt
+    plt.plot(x, y)
+    plt.xlabel('pixel size (arcsec)')
+    plt.ylabel('RMS (pixels)')
+    plt.title("Fit error in pixels vs pixel size")
+    plt.show()

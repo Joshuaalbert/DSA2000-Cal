@@ -1,6 +1,8 @@
 import os
 from functools import partial
 
+from dsa2000_common.common.fit_benchmark import fit_timings
+
 os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 
@@ -123,14 +125,11 @@ def main():
         # dt = (t1 - t0) / 1
         # dsa_logger.info(f"TBC: Subtract (all-GPU sharded): CPU D={D}: {dt}")
 
-    # Fit line to data using scipy
-    d_array = np.array(d_array)
-    from scipy.optimize import curve_fit
-
     shard_time_array = np.array(shard_time_array)
+    d_array = np.array(d_array)
 
-    popt, pcov = curve_fit(lambda x, a, b: a * x ** b, d_array, shard_time_array,bounds=([0., 0.5], [np.inf, 1.5]))
-    dsa_logger.info(f"TBC: Fit (sharded): {popt}")
+    a, b, c = fit_timings(d_array, shard_time_array)
+    dsa_logger.info(f"Fit: t(n) = {a:.4f} * n ** {b:.2f} + {c:.4f}")
 
 
 if __name__ == '__main__':
