@@ -39,7 +39,7 @@ def prepare_data(D: int, T, C, Ts, Tm, Cs, Cm) -> Dict[str, Any]:
     antenna2 = antenna2[sort_idxs]
 
     B = antenna1.shape[0]
-    vis_model = np.zeros((D, T // Tm, B, C // Tm, 2, 2), dtype=mp_policy.vis_dtype)
+    vis_model = np.zeros((D, T // Tm, B, C // Cm, 2, 2), dtype=mp_policy.vis_dtype)
     vis_data = np.zeros((T // Tm, B, C // Cm, 2, 2), dtype=mp_policy.vis_dtype)
     gains = np.zeros((D, T // Ts, num_antennas, C // Cs, 2, 2), dtype=mp_policy.gain_dtype)
 

@@ -63,6 +63,7 @@ def compute_residual_TBC(vis_model, vis_data, gains, antenna1, antenna2):
     Returns:
         [Ts, B, Cs[, 2, 2]] the residuals
     """
+    print(vis_model, vis_data, gains, antenna1, antenna2)
 
     accumulate = apply_gains_to_model_vis_TBC(vis_model, gains, antenna1, antenna2)
 
@@ -77,6 +78,7 @@ def compute_residual_TBC(vis_model, vis_data, gains, antenna1, antenna2):
     if Cm > 1 and Cs != Cm:
         freq_reps = Cs // Cm
         accumulate = jnp.repeat(accumulate, freq_reps, axis=2)
+    print(accumulate)
     return vis_data - accumulate
 
 
