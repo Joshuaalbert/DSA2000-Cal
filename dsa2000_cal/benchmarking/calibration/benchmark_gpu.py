@@ -271,32 +271,32 @@ def run(build_sharded_entry_point_fn, T, C, BTs, BTm, BCs, BCm, backend, m, task
 
 
 def main():
-    for task, build_sharded_entry_point_fn in zip(
-            ['R(x)', 'J^T.R(x)', 'J^T.J.p'],
-            [build_sharded_entry_point_R, build_sharded_entry_point_JtR, build_sharded_entry_point_JtJp]):
-        for scheme, (T, C, BTs, BTm, BCs, BCm) in zip(
-                ['Full-Avg. per-GPU', 'Non-Avg. per-GPU', 'Non-Avg. all-GPU'],
-                [
-                    (4, 4, 4, 4, 4, 4),
-                    (4, 4, 4, 1, 4, 1),
-                    (4, 40, 4, 1, 40, 1)
-                ]
-        ):
-            for backend in ['cpu', 'cuda']:
+    for scheme, (T, C, BTs, BTm, BCs, BCm) in zip(
+            ['Full-Avg. per-GPU', 'Non-Avg. per-GPU', 'Non-Avg. all-GPU'],
+            [
+                (4, 4, 4, 4, 4, 4),
+                (4, 4, 4, 1, 4, 1),
+                (4, 40, 4, 1, 40, 1)
+            ]
+    ):
+        for backend in ['cpu', 'cuda']:
+            for task, build_sharded_entry_point_fn in zip(
+                    ['R(x)', 'J^T.R(x)', 'J^T.J.p'],
+                    [build_sharded_entry_point_R, build_sharded_entry_point_JtR, build_sharded_entry_point_JtJp]):
                 run(build_sharded_entry_point_fn, T=T, C=C, BTs=BTs, BTm=BTm, BCs=BCs, BCm=BCm, backend=backend, m=10,
                     task=task, scheme=scheme)
-                run_cal(
-                    T=T,
-                    C=C,
-                    BTs=BTs,
-                    BCs=BCs,
-                    BTm=BTm,
-                    BCm=BCm,
-                    backend=backend,
-                    m=10,
-                    task=task,
-                    scheme=scheme
-                )
+            run_cal(
+                T=T,
+                C=C,
+                BTs=BTs,
+                BCs=BCs,
+                BTm=BTm,
+                BCm=BCm,
+                backend=backend,
+                m=10,
+                task='LM-Solver 1-iter 1-CG-iter',
+                scheme=scheme
+            )
 
 
 if __name__ == '__main__':
