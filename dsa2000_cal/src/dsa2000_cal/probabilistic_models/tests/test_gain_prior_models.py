@@ -1,3 +1,5 @@
+import time
+
 import jax
 import numpy as np
 import pytest
@@ -61,3 +63,13 @@ def test_gain_prior_model(full_stokes, dd_type, dd_dof, double_differential, di_
         assert gains.shape == (D, T, num_ant, C)
 
     assert np.all(np.isfinite(gains))
+
+    # Performance test compute_gains
+    compute_gains = jax.jit(gain_probabilistic_model.compute_gains).lower(init_params).compile()
+
+    t0 = time.time()
+    for _ in range(10):
+        jax.block_until_ready(compute_gains(init_params))
+    t1 = time.time()
+    print(f"Took {(t1-t0)/10} seconds.")
+
