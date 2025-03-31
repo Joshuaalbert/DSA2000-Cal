@@ -124,7 +124,7 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
         )
         out_specs = P()
 
-        @partial(shard_map, mesh=mesh, in_specs=in_specs, out_specs=out_specs)
+        @partial(shard_map, mesh=mesh, in_specs=in_specs, out_specs=out_specs, check_rep=False)
         def get_init_params(key, gain_probabilistic_model):
             params = gain_probabilistic_model.get_init_params(key)
             return params
