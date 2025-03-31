@@ -68,13 +68,9 @@ def build_sharded_entry_point(backend):
         antenna2 = data['antenna2']
         gain_probabilistic_model = data['gain_probabilistic_model']
 
-        return calibration_step(
-            params=None, vis_model=vis_model, vis_data=vis_data, weights=weights,
-            antenna1=antenna1, antenna2=antenna2,
-            gain_probabilistic_model=gain_probabilistic_model, verbose=False,
-            backend=backend, num_B_shards=num_devices, num_C_shards=1, num_devices=num_devices,
-            maxiter=1, maxiter_cg=1
-        )
+        return calibration_step(params=None, vis_model=vis_model, vis_data=vis_data, weights=weights, antenna1=antenna1,
+                                antenna2=antenna2, gain_probabilistic_model=gain_probabilistic_model, verbose=False,
+                                num_devices=num_devices, backend=backend, maxiter=1, maxiter_cg=1)
 
     return entry_point
 

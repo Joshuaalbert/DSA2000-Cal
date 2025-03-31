@@ -16,13 +16,12 @@ from dsa2000_common.common.jax_utils import create_mesh
 
 @partial(
     jax.jit,
-    static_argnames=['verbose', 'num_devices', 'backend', 'num_B_shards', 'num_C_shards', 'maxiter', 'maxiter_cg']
+    static_argnames=['verbose', 'num_devices', 'backend', 'maxiter', 'maxiter_cg']
 )
 def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: ComplexArray, weights: FloatArray,
-                     antenna1: IntArray, antenna2: FloatArray,
-                     gain_probabilistic_model: AbstractGainPriorModel, verbose: bool = False,
-                     num_devices: int = 1, backend: str = 'cpu', num_B_shards: int = 1, num_C_shards: int = 1,
-                     maxiter: int = 100, maxiter_cg: int = 100):
+                     antenna1: IntArray, antenna2: FloatArray, gain_probabilistic_model: AbstractGainPriorModel,
+                     verbose: bool = False, num_devices: int = 1, backend: str = 'cpu', maxiter: int = 100,
+                     maxiter_cg: int = 100):
     """
     Perform a single calibration step.
 
@@ -37,8 +36,6 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
         verbose: whether to print
         num_devices: number of devices to use
         backend: the backend to use
-        num_B_shards: size of B shard
-        num_C_shards: size of C shard
         maxiter: maximum number of iterations
         maxiter_cg: maximum number of iterations of CG
 
@@ -53,8 +50,7 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
         raise ValueError(
             f"Visibilities and weights must have the same shape, got {np.shape(vis_data)} and {np.shape(weights)}")
 
-    if num_B_shards * num_C_shards != num_devices:
-        raise ValueError(f"Sharding requirement not met: B_shard_size * C_shard_size == num_devices")
+    num_B_shards = num_devices
 
     if np.shape(vis_data)[:3] != np.shape(vis_model)[1:4]:
         raise ValueError(f"Data {np.shape(vis_data)} not compatible with model {np.shape(vis_model)}.")
@@ -62,8 +58,6 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
     D, Tm, B, Cm = np.shape(vis_model)[:4]
     if B < num_B_shards:
         raise ValueError(f"Sharding requirement not met: B ({B}) < num_B_shards ({num_B_shards})")
-    if Cm < num_C_shards:
-        raise ValueError(f"Sharding requirement not met: Cm ({Cm}) < num_C_shards ({num_C_shards})")
 
     D_, Ts, A, Cs = gain_probabilistic_model.gain_shape()[:4]
     if D != D_:
@@ -72,25 +66,23 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
     if Ts > Tm or Cs > Cm:
         raise ValueError(f"Model dimension ({Tm}, {Cm}) smaller than solution interval ({Ts}, {Cs}).")
 
-    # shard_T = Ts == Tm # solution interval matches model interval
-    shard_C = Cs == Cm  # solution interval matches model interval
-
     devices = jax.local_devices(backend=backend)[:num_devices]
-    mesh = create_mesh((num_B_shards, num_C_shards), ('B', 'C'), devices)
+    mesh = create_mesh((num_B_shards,), ('B',), devices)
     P = PartitionSpec
     gain_probabilistic_model_spec = gain_probabilistic_model.get_spec(
-        freq_spec=P('C') if shard_C else P(), time_spec=P())
+        freq_spec=P(), time_spec=P()
+    )
 
     in_specs = (
         P(),
         gain_probabilistic_model_spec,
-        P(None, None, 'B', 'C') if shard_C else P(None, None, 'B'),
-        P(None, 'B', 'C'),
-        P(None, 'B', 'C'),
+        P(None, None, 'B'),
+        P(None, 'B'),
+        P(None, 'B'),
         P('B'),
         P('B')
     )
-    out_specs = P(None, 'B', 'C')
+    out_specs = P(None, 'B')
 
     @partial(shard_map, mesh=mesh, in_specs=in_specs, out_specs=out_specs, check_rep=False)
     # Create residual_fn

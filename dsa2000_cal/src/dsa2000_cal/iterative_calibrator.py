@@ -239,18 +239,9 @@ class IterativeCalibrator:
                     full_stokes=self.full_stokes
                 )
                 params, gains, diagnostics = jax.block_until_ready(
-                    calibration_step(
-                        params,
-                        vis_model,
-                        vis_data_avg,
-                        weights_avg,
-                        data.antenna1,
-                        data.antenna2,
-                        gain_probabilistic_model=gain_prior_model,
-                        verbose=self.verbose,
-                        num_devices=self.num_devices,
-                        backend=self.backend,
-                    )
+                    calibration_step(params, vis_model, vis_data_avg, weights_avg, data.antenna1, data.antenna2,
+                                     gain_probabilistic_model=gain_prior_model, verbose=self.verbose,
+                                     num_devices=self.num_devices, backend=self.backend)
                 )
 
             with TimerLog("Plotting calibration diagnostics"):

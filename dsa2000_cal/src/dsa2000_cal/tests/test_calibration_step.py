@@ -1,6 +1,6 @@
 import os
 
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={4}"
 
 import jax
 from jax import numpy as jnp
@@ -24,7 +24,7 @@ def test_calibration_step():
                     continue
                 if T // BTm == 0 or C // BCm == 0:
                     continue
-                if T //BTs == 0 or C //BCs == 0:
+                if T // BTs == 0 or C // BCs == 0:
                     continue
                 print(f"T={T}, C={C}, BTm={BTm}, BCm={BCm}, BTs={BTs}, BCs={BCs}")
                 gain_model = GainPriorModel(
@@ -49,37 +49,13 @@ def test_calibration_step():
                 antenna1 = jnp.ones((B,), dtype=mp_policy.index_dtype)
                 antenna2 = jnp.ones((B,), dtype=mp_policy.index_dtype)
                 params, gains, diagnostics = jax.block_until_ready(
-                    calibration_step(
-                        params=None,
-                        vis_model=vis_model,
-                        vis_data=vis_data,
-                        weights=weights,
-                        antenna1=antenna1,
-                        antenna2=antenna2,
-                        gain_probabilistic_model=gain_model,
-                        verbose=True,
-                        num_devices=2 * (C // BCm),
-                        num_B_shards=2,
-                        num_C_shards=C // BCm,
-                        maxiter=1,
-                        maxiter_cg=1
-                    )
+                    calibration_step(params=None, vis_model=vis_model, vis_data=vis_data, weights=weights,
+                                     antenna1=antenna1, antenna2=antenna2, gain_probabilistic_model=gain_model,
+                                     verbose=True, num_devices=4, maxiter=1, maxiter_cg=1)
                 )
 
                 params, gains, diagnostics = jax.block_until_ready(
-                    calibration_step(
-                        params=params,
-                        vis_model=vis_model,
-                        vis_data=vis_data,
-                        weights=weights,
-                        antenna1=antenna1,
-                        antenna2=antenna2,
-                        gain_probabilistic_model=gain_model,
-                        verbose=True,
-                        num_devices=2 * (C // BCm),
-                        num_B_shards=2,
-                        num_C_shards=C // BCm,
-                        maxiter=1,
-                        maxiter_cg=1
-                    )
+                    calibration_step(params=params, vis_model=vis_model, vis_data=vis_data, weights=weights,
+                                     antenna1=antenna1, antenna2=antenna2, gain_probabilistic_model=gain_model,
+                                     verbose=True, num_devices=4, maxiter=1, maxiter_cg=1)
                 )
