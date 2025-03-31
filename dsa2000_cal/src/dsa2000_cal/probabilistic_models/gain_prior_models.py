@@ -60,8 +60,8 @@ class GainPriorModel(AbstractGainPriorModel):
     """
     num_source: int
     num_ant: int
-    freqs: FloatArray
-    times: FloatArray
+    freqs: FloatArray # [Cs]
+    times: FloatArray # [Ts]
 
     full_stokes: bool = True
 
@@ -252,7 +252,7 @@ class GainPriorModel(AbstractGainPriorModel):
         args = list(filter(lambda a: a is not None, args))
 
         def to_ones(a, dtype):
-            ones = (a == a).astype(jnp.float32)
+            ones = (a == a).astype(dtype)
             return ones
 
         arrays = []
@@ -263,7 +263,7 @@ class GainPriorModel(AbstractGainPriorModel):
                 arg = arg[None]
             for _ in range(len(args) - idx - 1):
                 arg = arg[..., None]
-            arrays.append(to_ones(arg, dtype=jnp.float32))
+            arrays.append(to_ones(arg, dtype=jnp.float64))
         ones = arrays[0]
         for arg in arrays[1:]:
             ones *= arg

@@ -234,7 +234,8 @@ def vis2dirty(uvw: jax.Array, freqs: jax.Array, vis: jax.Array,
             npix_m=npix_m, npix_l=npix_l, pixsize_m=pixsize_m, pixsize_l=pixsize_l,
             center_m=center_m, center_l=center_l, epsilon=epsilon, do_wgridding=do_wgridding,
             flip_v=flip_v, divide_by_n=divide_by_n, sigma_min=sigma_min, sigma_max=sigma_max,
-            verbosity=verbosity, double_precision_accumulation=double_precision_accumulation
+            verbosity=verbosity, double_precision_accumulation=double_precision_accumulation,
+            num_threads=1
         )
 
     args = (

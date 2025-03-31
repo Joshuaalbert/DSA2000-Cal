@@ -1,13 +1,12 @@
 import pytest
 
-from dsa2000_common.common.one_factor import one_factorization_round, get_one_factors
+from dsa2000_common.common.one_factor import get_one_factors
 
 
 @pytest.mark.parametrize('N', [4, 6, 2048])
 def test_one_factorization_round_correctness(N):
     # For N=4, the complete graph K_4 has edges:
     # {(0,1), (0,2), (0,3), (1,2), (1,3), (2,3)}
-    N = 4
     all_edges = {(i, j) for i in range(N) for j in range(i + 1, N)}
     rounds = []
 
@@ -27,6 +26,9 @@ def test_one_factorization_round_correctness(N):
 
         # Check that the pairs in this round are lex sorted.
         assert factor == sorted(factor), f"Round {r} pairs are not lex sorted."
+        antenna1, antenna2 = zip(*factor)
+        assert antenna1 == tuple(sorted(antenna1))
+
 
     # The union of all rounds should equal the full set of edges.
     union_edges = set.union(*rounds)
