@@ -132,7 +132,7 @@ def prepare_data(D: int, T, C, BTs, BTm, BCs, BCm) -> Dict[str, Any]:
     vis_data = np.zeros((T // BTm, B, C // BCm, 2, 2), dtype=mp_policy.vis_dtype)
     gains = np.zeros((D, T // BTs, num_antennas, C // BCs, 2, 2), dtype=mp_policy.gain_dtype)
 
-    dsa_logger.info(f"Model size D * {vis_data.nbytes / D / 2 ** 20} MB, gain size D * {gains.nbytes / D / 2 ** 20} MB")
+    dsa_logger.info(f"Model size D * {vis_model.nbytes / D / 2 ** 20} MB, gain size D * {gains.nbytes / D / 2 ** 10} KB")
 
     return dict(
         vis_model=vis_model,
