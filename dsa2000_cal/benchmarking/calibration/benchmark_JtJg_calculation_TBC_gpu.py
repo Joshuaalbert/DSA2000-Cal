@@ -1,6 +1,8 @@
 import os
 from functools import partial
 
+from dsa2000_cal.solvers.cg import tree_scalar_mul, tree_add
+
 os.environ['JAX_PLATFORMS'] = 'cuda,cpu'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={8}"
@@ -16,7 +18,7 @@ from dsa2000_common.common.mixed_precision_utils import mp_policy
 import itertools
 import time
 from typing import Dict, Any
-
+import jax.numpy as jnp
 import jax
 import numpy as np
 
@@ -67,7 +69,10 @@ def entry_point(data):
     J = J_bare(gains)
     R = fn(gains)
     g = J.matvec(R, adjoint=True)
-    return J.matvec(J.matvec(g), adjoint=True)
+    p = jax.tree.map(jnp.ones_like, g)
+    JTJv = J.matvec(J.matvec(p), adjoint=True)
+    damping = jnp.asarray(1.)
+    return tree_add(JTJv, tree_scalar_mul(damping, p))
 
 
 def build_sharded_entry_point(devices):
