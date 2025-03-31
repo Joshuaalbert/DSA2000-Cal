@@ -49,9 +49,9 @@ def prepare_data_cal(D: int, T, C, BTs, BTm, BCs, BCm) -> Dict[str, Any]:
         times=np.linspace(0., 6, T // BTs),
         gain_stddev=2.,
         full_stokes=True,
-        dd_type='unconstrained',
-        di_type='unconstrained',
-        dd_dof=1,
+        dd_type='phase',
+        di_type='amplitude+clock',
+        dd_dof=4,
         di_dof=1
     )
     return dict(
