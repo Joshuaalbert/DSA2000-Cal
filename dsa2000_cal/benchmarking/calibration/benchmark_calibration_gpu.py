@@ -1,7 +1,8 @@
 import os
 
-os.environ['JAX_PLATFORMS'] = 'cuda'
+os.environ['JAX_PLATFORMS'] = 'cuda,cpu'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={8}"
 
 from dsa2000_common.common.fit_benchmark import fit_timings
 
@@ -55,92 +56,59 @@ def prepare_data(D: int, T, C, Ts, Tm, Cs, Cm) -> Dict[str, Any]:
     )
 
 
-def entry_point_gpu(data):
-    vis_model = data['vis_model']
-    vis_data = data['vis_data']
-    weights = data['weights']
-    antenna1 = data['antenna1']
-    antenna2 = data['antenna2']
-    gain_probabilistic_model = data['gain_probabilistic_model']
+def build_sharded_entry_point(backend):
+    devices = jax.devices(backend)
+    num_devices = len(devices)
 
-    return calibration_step(
-        params=None, vis_model=vis_model, vis_data=vis_data, weights=weights,
-        antenna1=antenna1, antenna2=antenna2,
-        gain_probabilistic_model=gain_probabilistic_model, verbose=False,
-        backend='cuda', num_B_shards=1, num_C_shards=1, num_devices=1,
-        maxiter=1, maxiter_cg=1
-    )
+    def entry_point(data):
+        vis_model = data['vis_model']
+        vis_data = data['vis_data']
+        weights = data['weights']
+        antenna1 = data['antenna1']
+        antenna2 = data['antenna2']
+        gain_probabilistic_model = data['gain_probabilistic_model']
+
+        return calibration_step(
+            params=None, vis_model=vis_model, vis_data=vis_data, weights=weights,
+            antenna1=antenna1, antenna2=antenna2,
+            gain_probabilistic_model=gain_probabilistic_model, verbose=False,
+            backend=backend, num_B_shards=num_devices, num_C_shards=1, num_devices=num_devices,
+            maxiter=1, maxiter_cg=1
+        )
+
+    return entry_point
 
 
-def entry_point_cpu(data):
-    vis_model = data['vis_model']
-    vis_data = data['vis_data']
-    weights = data['weights']
-    antenna1 = data['antenna1']
-    antenna2 = data['antenna2']
-    gain_probabilistic_model = data['gain_probabilistic_model']
+def run(T, C, Ts, Tm, Cs, Cm, backend, m=10, task='LMSolver-1iter-1CG'):
+    sharded_entry_point = build_sharded_entry_point(backend)
+    sharded_entry_point_jit = jax.jit(sharded_entry_point)
+    # Run benchmarking over number of calibration directions
+    shard_time_array = []
+    d_array = []
+    for D in range(1, 9):
+        data = prepare_data(D, T, C, Ts, Tm, Cs, Cm)
+        sharded_entry_point_jit_compiled = sharded_entry_point_jit.lower(data).compile()
+        t0 = time.time()
+        for _ in range(m):
+            jax.block_until_ready(sharded_entry_point_jit_compiled(data))
+        t1 = time.time()
+        dt = (t1 - t0) / m
+        dsa_logger.info(f"{task}: {backend} D={D}: {dt}")
+        shard_time_array.append(dt)
+        d_array.append(D)
 
-    return calibration_step(
-        params=None, vis_model=vis_model, vis_data=vis_data, weights=weights,
-        antenna1=antenna1, antenna2=antenna2,
-        gain_probabilistic_model=gain_probabilistic_model, verbose=False,
-        backend='cpu', num_B_shards=8, num_C_shards=1, num_devices=8,
-        maxiter=1, maxiter_cg=1
-    )
+    shard_time_array = np.array(shard_time_array)
+    d_array = np.array(d_array)
+
+    a, b, c = fit_timings(d_array, shard_time_array)
+    dsa_logger.info(f"{task}: {backend}: t(n) = {a:.4f} * n ** {b:.2f} + {c:.4f}")
 
 
 def main():
-    gpus = jax.devices("cuda")
-    gpu = gpus[0]
-
-    entry_point_jit = jax.jit(entry_point_gpu)
-    # Run benchmarking over number of calibration directions
-    time_array = []
-    d_array = []
-    for D in range(1, 9):
-        data = prepare_data(D, T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40)
-        data = jax.device_put(data, device=gpu)
-        entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-        t0 = time.time()
-        for _ in range(10):
-            jax.block_until_ready(entry_point_jit_compiled(data))
-        t1 = time.time()
-        dt = (t1 - t0) / 10
-        dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (full avg.): GPU D={D}: {dt}")
-        time_array.append(dt)
-        d_array.append(D)
-
-    time_array = np.array(time_array)
-    d_array = np.array(d_array)
-
-    a, b, c = fit_timings(d_array, time_array)
-    dsa_logger.info(f"Fit GPU: t(n) = {a:.4f} * n ** {b:.2f} + {c:.4f}")
-
-    cpus = jax.devices("cpu")
-    cpu = cpus[0]
-
-    entry_point_jit = jax.jit(entry_point_cpu)
-    # Run benchmarking over number of calibration directions
-    time_array = []
-    d_array = []
-    for D in range(1, 9):
-        data = prepare_data(D, T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40)
-        data = jax.device_put(data, device=cpu)
-        entry_point_jit_compiled = entry_point_jit.lower(data).compile()
-        t0 = time.time()
-        for _ in range(10):
-            jax.block_until_ready(entry_point_jit_compiled(data))
-        t1 = time.time()
-        dt = (t1 - t0) / 10
-        dsa_logger.info(f"Calibration Single-Iteration Single-CG Step (full avg.): CPU D={D}: {dt}")
-        time_array.append(dt)
-        d_array.append(D)
-
-    time_array = np.array(time_array)
-    d_array = np.array(d_array)
-
-    a, b, c = fit_timings(d_array, time_array)
-    dsa_logger.info(f"Fit CPU: t(n) = {a:.4f} * n ** {b:.2f} + {c:.4f}")
+    run(T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40, backend='cuda', m=10, task='LMSolver-1iter-1CG [all-GPU]')
+    run(T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40, backend='cpu', m=10, task='LMSolver-1iter-1CG [all-GPU]')
+    run(T=4, C=4, Ts=4, Tm=4, Cs=4, Cm=4, backend='cuda', m=10, task='LMSolver-1iter-1CG [per-GPU]')
+    run(T=4, C=4, Ts=4, Tm=4, Cs=4, Cm=4, backend='cpu', m=10, task='LMSolver-1iter-1CG [per-GPU]')
 
 
 if __name__ == '__main__':

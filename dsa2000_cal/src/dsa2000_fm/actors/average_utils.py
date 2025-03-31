@@ -25,8 +25,9 @@ def average_rule(array, num_model_size: int, axis: int):
     return array.reshape(np.shape(array)[:axis] + (num_model_size, block_size) + np.shape(array)[axis + 1:]).mean(
         axis=axis + 1)
 
+
 def test_average_rule():
-    assert np.shape(average_rule(np.ones((5,6,10)), 1, axis=1)) == (5, 1, 10)
+    assert np.shape(average_rule(np.ones((5, 6, 10)), 1, axis=1)) == (5, 1, 10)
 
 
 def average_flags(flags, num_model_size: int, axis: int):
