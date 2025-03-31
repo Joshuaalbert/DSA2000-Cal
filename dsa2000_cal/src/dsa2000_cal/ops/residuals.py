@@ -55,30 +55,32 @@ def compute_residual_TBC(vis_model, vis_data, gains, antenna1, antenna2):
 
     Args:
         vis_model: [D, Tm, B, Cm[,2,2]] the model visibilities per direction
-        vis_data: [Ts, B, Cs[,2,2]] the data visibilities, Ts = 0 mod Tm, Cs = 0 mod Cm i.e. Ts % Tm = 0, Cs % Cm = 0
-        gains: [D, Tm, A, Cm[,2,2]] the gains
+        vis_data: [Tm, B, Cm[,2,2]] the data visibilities, Ts = 0 mod Tm, Cs = 0 mod Cm i.e. Ts % Tm = 0, Cs % Cm = 0
+        gains: [D, Ts, A, Cs[,2,2]] the gains
         antenna1: [B] the antenna1
         antenna2: [B] the antenna2
 
     Returns:
         [Ts, B, Cs[, 2, 2]] the residuals
     """
-    print(vis_model, vis_data, gains, antenna1, antenna2)
+    if np.shape(vis_model)[1:] != np.shape(vis_data):
+        raise ValueError("The model visibilities and data must have the same shape.")
+    D, Tm, B, Cm = np.shape(vis_model)[:4]
+    _, Ts, A, Cs = np.shape(gains)[:4]
+
+    # Replicate gains if necessary
+    if Ts > 1 and Ts != Tm:
+        time_reps = Tm // Ts
+        gains = jnp.repeat(gains, time_reps, axis=1)
+
+    if Cs > 1 and Cs != Cm:
+        freq_reps = Cm // Cs
+        gains = jnp.repeat(gains, freq_reps, axis=3)
 
     accumulate = apply_gains_to_model_vis_TBC(vis_model, gains, antenna1, antenna2)
 
-    # Invert average rule with tile
-    Ts = np.shape(vis_data)[0]
-    Tm = np.shape(accumulate)[0]
-    Cs = np.shape(vis_data)[2]
-    Cm = np.shape(accumulate)[2]
-    if Tm > 1 and Ts != Tm:
-        time_reps = Ts // Tm
-        accumulate = jnp.repeat(accumulate, time_reps, axis=0)
-    if Cm > 1 and Cs != Cm:
-        freq_reps = Cs // Cm
-        accumulate = jnp.repeat(accumulate, freq_reps, axis=2)
-    print(accumulate)
+    if np.shape(accumulate) != np.shape(vis_data):
+        raise ValueError(f"Accumulate {np.shape(accumulate)} and vis_data {np.shape(vis_data)} must have the same shape.")
     return vis_data - accumulate
 
 
