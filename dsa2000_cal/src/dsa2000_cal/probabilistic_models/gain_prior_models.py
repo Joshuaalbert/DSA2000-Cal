@@ -60,8 +60,8 @@ class GainPriorModel(AbstractGainPriorModel):
     """
     num_source: int
     num_ant: int
-    freqs: FloatArray
-    times: FloatArray
+    freqs: FloatArray # [Cs]
+    times: FloatArray # [Ts]
 
     full_stokes: bool = True
 

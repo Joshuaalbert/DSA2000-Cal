@@ -29,8 +29,8 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
     Args:
         params: Possible initial guesses.
         vis_model: [D, Tm, B, Cm[, 2, 2]]
-        vis_data: [T, B, C[, 2, 2]] Tm and Cm divide T and C.
-        weights: [T, B, C[, 2, 2]] flagged vis imply weights of zero.
+        vis_data: [Tm, B, Cm[, 2, 2]] Tm and Cm divide T and C.
+        weights: [Tm, B, Cm[, 2, 2]] flagged vis imply weights of zero.
         antenna1: [B] antenna 1
         antenna2: [B] antenna 2
         gain_probabilistic_model: the gain model
@@ -56,37 +56,35 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
     if num_B_shards * num_C_shards != num_devices:
         raise ValueError(f"Sharding requirement not met: B_shard_size * C_shard_size == num_devices")
 
-    T, B, C = np.shape(vis_data)[:3]
-    if B < num_B_shards:
-        raise ValueError(f"Sharding requirement not met: B < num_B_shards")
-    if C < num_C_shards:
-        raise ValueError(f"Sharding requirement not met: C < num_C_shards")
+    if np.shape(vis_data)[:3] != np.shape(vis_model)[1:4]:
+        raise ValueError(f"Data {np.shape(vis_data)} not compatible with model {np.shape(vis_model)}.")
 
     D, Tm, B, Cm = np.shape(vis_model)[:4]
-    if (gain_probabilistic_model.gain_shape()[0] != D or gain_probabilistic_model.gain_shape()[1] != Tm or
-            gain_probabilistic_model.gain_shape()[3] != Cm):
-        raise ValueError(
-            f"gain shape {gain_probabilistic_model.gain_shape()} isn't compatible vis model {np.shape(vis_model)}.")
+    if B < num_B_shards:
+        raise ValueError(f"Sharding requirement not met: B ({B}) < num_B_shards ({num_B_shards})")
+    if Cm < num_C_shards:
+        raise ValueError(f"Sharding requirement not met: Cm ({Cm}) < num_C_shards ({num_C_shards})")
 
-    if T % Tm != 0:
-        raise ValueError(f"Tm must be divide T.")
-    if C % Cm != 0:
-        raise ValueError(f"Cm must be divide c.")
-    no_rep_needed = T == Tm and C == Cm
+    D_, Ts, A, Cs = gain_probabilistic_model.gain_shape()[:4]
+    if D != D_:
+        raise ValueError(f"Number of model and gain directions mismatch {D} and {D_}")
 
-    if B * C % num_devices != 0:
-        raise ValueError(f"The number of devices {num_devices} is not a multiple of B ({B}) * C ({C}) = {B * C}.")
+    if Ts > Tm or Cs > Cm:
+        raise ValueError(f"Model dimension ({Tm}, {Cm}) smaller than solution interval ({Ts}, {Cs}).")
+
+    # shard_T = Ts == Tm # solution interval matches model interval
+    shard_C = Cs == Cm  # solution interval matches model interval
 
     devices = jax.local_devices(backend=backend)[:num_devices]
     mesh = create_mesh((num_B_shards, num_C_shards), ('B', 'C'), devices)
     P = PartitionSpec
     gain_probabilistic_model_spec = gain_probabilistic_model.get_spec(
-        freq_spec=P('C') if no_rep_needed else P(), time_spec=P())
+        freq_spec=P('C') if shard_C else P(), time_spec=P())
 
     in_specs = (
         P(),
         gain_probabilistic_model_spec,
-        P(None, None, 'B', 'C') if no_rep_needed else P(None, None, 'B'),
+        P(None, None, 'B', 'C') if shard_C else P(None, None, 'B'),
         P(None, 'B', 'C'),
         P(None, 'B', 'C'),
         P('B'),
