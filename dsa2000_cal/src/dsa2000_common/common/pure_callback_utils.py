@@ -55,11 +55,7 @@ def _build_callback_from_kernel(cb_kernel: Callable, batch_shape_determiner: Cal
             args_slice = jax.tree.map(_slice, args)
             return cb_kernel(*args_slice)
 
-        if num_threads is not None:
-            with ThreadPoolExecutor(max_workers=num_threads) as executor:
-                result_map = executor.map(sliced_kernel, range(batch_size))
-        else:
-            executor = _ThreadPoolSingleton.get_instance()
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
             result_map = executor.map(sliced_kernel, range(batch_size))
 
         results_list = list(result_map)
