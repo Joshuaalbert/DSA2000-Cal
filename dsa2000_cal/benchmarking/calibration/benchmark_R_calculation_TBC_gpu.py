@@ -100,8 +100,8 @@ def run(T, C, Ts, Tm, Cs, Cm, backend, m=10, task='R(x)'):
 
 
 def main():
-    run(T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40, backend='cuda', m=10, task='R(x) [all-GPU]')
-    run(T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40, backend='cpu', m=10, task='R(x) [all-GPU]')
+    # run(T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40, backend='cuda', m=10, task='R(x) [all-GPU]')
+    # run(T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40, backend='cpu', m=10, task='R(x) [all-GPU]')
     run(T=4, C=4, Ts=4, Tm=4, Cs=4, Cm=4, backend='cuda', m=10, task='R(x) [per-GPU]')
     run(T=4, C=4, Ts=4, Tm=4, Cs=4, Cm=4, backend='cpu', m=10, task='R(x) [per-GPU]')
 
