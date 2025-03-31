@@ -105,7 +105,7 @@ def run(T, C, Ts, Tm, Cs, Cm, backend, m=10, task='LMSolver-1iter-1CG'):
 
 def main():
     # run(T=4, C=40, Ts=4, Tm=4, Cs=40, Cm=40, backend='cpu', m=10, task='LMSolver-1iter-1CG [all-GPU]')
-    run(T=4, C=4, Ts=4, Tm=4, Cs=4, Cm=4, backend='cpu', m=10, task='LMSolver-1iter-1CG [per-GPU]')
+    run(T=4, C=4, Ts=4, Tm=4, Cs=4, Cm=4, backend='cpu', m=10, task='LMSolver-1iter-1CG [Full.Avg. per-GPU]')
 
 
 if __name__ == '__main__':
