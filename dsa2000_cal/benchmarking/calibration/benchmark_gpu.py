@@ -1,6 +1,8 @@
 import os
 from functools import partial
 
+from jaxlib.xla_extension import XlaRuntimeError
+
 os.environ['JAX_PLATFORMS'] = 'cuda,cpu'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={8}"
@@ -127,7 +129,8 @@ def prepare_data(D: int, T, C, BTs, BTm, BCs, BCm) -> Dict[str, Any]:
     vis_data = np.zeros((T // BTm, B, C // BCm, 2, 2), dtype=mp_policy.vis_dtype)
     gains = np.zeros((D, T // BTs, num_antennas, C // BCs, 2, 2), dtype=mp_policy.gain_dtype)
 
-    dsa_logger.info(f"Model size D * {vis_model.nbytes / D / 2 ** 20} MB, gain size D * {gains.nbytes / D / 2 ** 10} KB")
+    dsa_logger.info(
+        f"Model size D * {vis_model.nbytes / D / 2 ** 20} MB, gain size D * {gains.nbytes / D / 2 ** 10} KB")
 
     return dict(
         vis_model=vis_model,
@@ -278,20 +281,26 @@ def main():
             for task, build_sharded_entry_point_fn in zip(
                     ['R(x)', 'J^T.R(x)', 'J^T.J.p'],
                     [build_sharded_entry_point_R, build_sharded_entry_point_JtR, build_sharded_entry_point_JtJp]):
-                run(build_sharded_entry_point_fn, T=T, C=C, BTs=BTs, BTm=BTm, BCs=BCs, BCm=BCm, backend=backend, m=10,
-                    task=task, scheme=scheme)
-            run_cal(
-                T=T,
-                C=C,
-                BTs=BTs,
-                BCs=BCs,
-                BTm=BTm,
-                BCm=BCm,
-                backend=backend,
-                m=10,
-                task='LM-Solver 1-iter 1-CG-iter',
-                scheme=scheme
-            )
+                try:
+                    run(build_sharded_entry_point_fn, T=T, C=C, BTs=BTs, BTm=BTm, BCs=BCs, BCm=BCm, backend=backend,
+                        m=10,
+                        task=task, scheme=scheme)
+                except XlaRuntimeError:
+                    dsa_logger.info(f"{task} {scheme}: {backend}: XlaRuntimeError")
+            try:
+                run_cal(
+                    T=T,
+                    C=C,
+                    BTs=BTs,
+                    BCs=BCs,
+                    BTm=BTm,
+                    BCm=BCm, backend=backend,
+                    m=10,
+                    task='LM-Solver 1-iter 1-CG-iter',
+                    scheme=scheme
+                )
+            except XlaRuntimeError:
+                dsa_logger.info(f"LM-Solver 1-iter 1-CG-iter {scheme}: {backend}: XlaRuntimeError")
 
 
 if __name__ == '__main__':
