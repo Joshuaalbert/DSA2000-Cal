@@ -6,7 +6,7 @@ os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.ray_utils import TimerLog
-from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst
+from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
 from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation
 
 import astropy.coordinates as ac
@@ -22,7 +22,7 @@ from dsa2000_common.common.quantity_utils import quantity_to_np
 from dsa2000_fm.array_layout.psf_quality_fn import dense_annulus, sparse_annulus, create_target, evaluate_psf
 from dsa2000_assets.registries import array_registry
 from dsa2000_assets.content_registry import fill_registries
-from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV6
+from dsa2000_assets.array_constraints.v6.array_constraint import ArrayConstraintsV6
 
 import jax
 import jax.numpy as jnp
@@ -200,13 +200,11 @@ def main(
             target_log_psf_mean=target_log_psf_mean,
             target_log_psf_stddev=target_log_psf_stddev
         )
-        cost, _, _ = compute_mst(
+        cost = compute_mst_cost(
             k=6,
             antennas=sample_point.antennas,
             obstime=obstime,
-            array_location=array_location,
-            plot=False,
-            save_file='mst'
+            array_location=array_location
         )
         gen_response = SampleEvaluation(
             quality=quality,

@@ -41,6 +41,7 @@ class SampleEvaluation(SerialisableBaseModel):
     quality: float
     cost: float
     antennas: ac.EarthLocation
+    done: bool = False
 
 
 class Results(SerialisableBaseModel):
@@ -212,6 +213,8 @@ def build_search_point_generator(
                     plt.close(fig)
                 pbar.update(1)
                 break
+        if evaluation.done:
+            break
 
 
 def pareto_front(points):

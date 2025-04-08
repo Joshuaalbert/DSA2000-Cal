@@ -89,10 +89,64 @@ def compute_mst_costed(G, target_node: int = 0):
     return mst
 
 
-def compute_mst(k: int, antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation,
-                target_node: int = 0,
-                plot: bool = False,
-                save_file: str | None = None):
+def compute_mst_cost(k: int, antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation):
+    """
+    Compute the minimal spanning tree of the array, calculate edge and node flow counts,
+    and optionally plot the MST colored by flow counts.
+
+    Each node (except the target) sends a signal to the target node, and the flow
+    along each edge is the cumulative count of signals passing through that edge.
+    Each node's flow count is given by the number of signals that pass through it
+    (its subtree size when the MST is rooted at the target).
+
+    Args:
+        antennas: the antennas
+        obstime: the observation time
+        array_location: the location of the array
+
+    Returns:
+        total_distance: the total distance of the minimal spanning tree
+        node_angles: the maximal angles between edges that connect to each node
+        connections: the number of connections for each node
+        edge_flow: a numpy array of shape [E] with the flow count on each edge in the MST
+    """
+
+    earth_radius = np.linalg.norm(array_location.get_itrs().cartesian.xyz.to(au.m).value)
+    antennas_enu_xyz = antennas.get_itrs(obstime=obstime, location=array_location).transform_to(
+        ENU(obstime=obstime, location=array_location)
+    ).cartesian.xyz.T.to('m').value
+
+    G = nx.Graph()
+
+    # Compute the cost for k nearest neighbors, k large enough to encompass MST
+    tree_kd = KDTree(antennas_enu_xyz)
+    nn_dists, nn_idxs = tree_kd.query(antennas_enu_xyz, k=k + 1)
+    nn_idxs = nn_idxs[:, 1:]
+    # nn_dists = nn_dists[:, 1:]
+
+    antenna_lon = antennas.geodetic.lon.to('rad').value
+    antenna_lat = antennas.geodetic.lat.to('rad').value
+    nn_dists_haversine = earth_radius * haversine(
+        antenna_lon[:, None],
+        antenna_lat[:, None],
+        antenna_lon[nn_idxs],
+        antenna_lat[nn_idxs]
+    )  # [N, k]
+
+    for i in range(antennas_enu_xyz.shape[0]):
+        for dist, j in zip(nn_dists_haversine[i], nn_idxs[i]):
+            G.add_edge(i, int(j), distance=float(dist))
+
+    mst = nx.minimum_spanning_tree(G, algorithm='kruskal', weight='distance')
+
+    total_cost = sum([mst.edges[i, j]['distance'] for i, j in mst.edges()])
+    return total_cost
+
+
+def compute_mst_with_fiber_costs(k: int, antennas: ac.EarthLocation, obstime: at.Time, array_location: ac.EarthLocation,
+                                 target_node: int = 0,
+                                 plot: bool = False,
+                                 save_file: str | None = None):
     """
     Compute the minimal spanning tree of the array, calculate edge and node flow counts,
     and optionally plot the MST colored by flow counts.
@@ -127,18 +181,19 @@ def compute_mst(k: int, antennas: ac.EarthLocation, obstime: at.Time, array_loca
     # Compute the cost for k nearest neighbors, k large enough to encompass MST
     tree_kd = KDTree(antennas_enu_xyz)
     nn_dists, nn_idxs = tree_kd.query(antennas_enu_xyz, k=k + 1)
-    nn_idxs = nn_idxs[:, 1:]
-    nn_dists = nn_dists[:, 1:]
+    # nn_dists = nn_dists[:, 1:]
+
+    antenna_lon = antennas.geodetic.lon.to('rad').value
+    antenna_lat = antennas.geodetic.lat.to('rad').value
+    nn_dists_haversine = earth_radius * haversine(
+        antenna_lon[:, None],
+        antenna_lat[:, None],
+        antenna_lon[nn_idxs],
+        antenna_lat[nn_idxs]
+    )  # [N, k]
 
     for i in range(antennas_enu_xyz.shape[0]):
-        for dist, j in zip(nn_dists[i], nn_idxs[i]):
-            # compute haversine distance
-            dist = earth_radius * haversine(
-                antennas[i].geodetic.lon.to('rad').value,
-                antennas[i].geodetic.lat.to('rad').value,
-                antennas[j].geodetic.lon.to('rad').value,
-                antennas[j].geodetic.lat.to('rad').value
-            )
+        for dist, j in zip(nn_dists_haversine[i], nn_idxs[i]):
             G.add_edge(i, int(j), distance=float(dist))
 
     mst = compute_mst_costed(G, target_node=target_node)

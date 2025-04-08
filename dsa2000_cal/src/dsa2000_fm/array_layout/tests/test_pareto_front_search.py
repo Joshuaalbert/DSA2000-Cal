@@ -2,8 +2,8 @@ import numpy as np
 import pylab as plt
 from astropy import coordinates as ac, units as au, time as at
 
-from dsa2000_assets.array_constraints.array_constraint_content import ArrayConstraintsV3
-from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst
+from dsa2000_assets.array_constraints.spring_valley_31b.array_constraint import ArrayConstraintsV3
+from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
 from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation, pareto_front
 
 
@@ -33,7 +33,7 @@ def test_point_generator():
         except StopIteration:
             break
         quality = np.random.normal()
-        cost, _, _ = compute_mst(
+        cost, _, _ = compute_mst_cost(
             k=5,
             antennas=sample_point.antennas,
             obstime=obstime,
