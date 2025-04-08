@@ -15,3 +15,13 @@ def kahan_sum(accum_fn, init_accumulate, xs):
     init_error_accumulate = jax.tree.map(jnp.zeros_like, init_accumulate)
     (accumulate, error_accumulate), _ = jax.lax.scan(body_fn, (init_accumulate, init_error_accumulate), xs)
     return accumulate, error_accumulate
+
+
+
+def scan_sum(accum_fn, init_accumulate, xs):
+    def body_fn(accumulate, x):
+        delta = accum_fn(x)
+        return jax.tree.map(jax.lax.add, accumulate, delta), None
+
+    accumulate, _ = jax.lax.scan(body_fn, init_accumulate, xs)
+    return accumulate

@@ -51,7 +51,7 @@ def create_lmn_target():
 def create_lmn_inner():
     lm = np.concatenate(
         [
-            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
+            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcsec),
                           dl=quantity_to_np(0.25 * au.arcsec), frac=1., dtype=jnp.float64)
         ],
         axis=0
@@ -121,7 +121,7 @@ def main(
 
     antennas = antennas0.copy()
 
-    freqs = np.linspace(700e6, 2000e6, 1) * au.Hz
+    freqs = np.linspace(700e6, 2000e6, 2) * au.Hz
     decs = [0, -30, 30, 60, 90] * au.deg
     freqs_jax = quantity_to_jnp(freqs, 'Hz')
     decs_jax = quantity_to_jnp(decs, 'rad')
@@ -182,6 +182,11 @@ def main(
                 num_antennas=num_antennas,
                 accumulate_dtype=jnp.float32
             )
+            # Check finite
+            if not np.all(np.isfinite(target_psf_dB_mean)):
+                raise ValueError("Target PSF mean is not finite")
+            if not np.all(np.isfinite(target_psf_dB_stddev)):
+                raise ValueError("Target PSF stddev is not finite")
 
     # Performing the optimization
 
@@ -227,6 +232,10 @@ def main(
             obstime=obstime,
             array_location=array_location
         )
+        if np.isnan(cost):
+            dsa_logger.warning(f"Cost is NaN for {sample_point}")
+        if np.isnan(quality):
+            dsa_logger.warning(f"Quality is NaN for {sample_point}")
         gen_response = SampleEvaluation(
             quality=quality,
             cost=cost,

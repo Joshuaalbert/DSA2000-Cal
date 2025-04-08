@@ -4,7 +4,7 @@ import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
-from dsa2000_common.common.sum_utils import kahan_sum
+from dsa2000_common.common.sum_utils import scan_sum
 
 tfpd = tfp.distributions
 
@@ -135,5 +135,5 @@ def compute_psf(antennas: FloatArray, lmn: FloatArray, freqs: FloatArray, latitu
         return delta
 
     psf_accum = jnp.zeros(np.shape(lmn)[:-1], dtype=accumulate_dtype)
-    psf, _ = kahan_sum(compute_psf_delta, psf_accum, freqs)
-    return psf
+    psf = scan_sum(compute_psf_delta, psf_accum, freqs)
+    return psf / np.shape(freqs)[0]  # average over frequencies
