@@ -65,6 +65,7 @@ def main(
         init_config: str | None,
         target_array_name: str,
         array_constraint: AbstractArrayConstraint,
+        num_evaluations: int,
         num_antennas: int | None = None
 ):
     os.makedirs(run_name, exist_ok=True)
@@ -179,7 +180,9 @@ def main(
     )
 
     gen_response = None
-    while True:
+    count_evals = 0
+    while count_evals < num_evaluations:
+        count_evals += 1
         try:
             sample_point = gen.send(gen_response)
         except StopIteration:
@@ -213,6 +216,7 @@ def main(
         )
 
 
+
 if __name__ == '__main__':
     import warnings
 
@@ -236,6 +240,7 @@ if __name__ == '__main__':
             init_config=init_config,
             run_name=run_name,
             num_antennas=None,
+            num_evaluations=10000,
             array_constraint=array_constraint
         )
         init_config = new_config
