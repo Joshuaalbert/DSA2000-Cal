@@ -1,14 +1,13 @@
 import os
 
-from dsa2000_common.common.logging import dsa_logger
-from dsa2000_common.common.ray_utils import TimerLog
-from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst
-from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation
-
 os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 # os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
+from dsa2000_common.common.logging import dsa_logger
+from dsa2000_common.common.ray_utils import TimerLog
+from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst
+from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation
 
 import astropy.coordinates as ac
 import astropy.time as at

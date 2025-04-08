@@ -486,15 +486,14 @@ class ArrayConstraintsV6(BaseContent, AbstractArrayConstraint):
         _100ft = 30.48
         _200ft = 60.96
 
-        aoi_data = [
-            # (RegionSampler(os.path.join(folder, "Western Expansion Areas.shp")), _60ft),
-            (RegionSampler(os.path.join(folder, "AOI 5.0c.shp")), _60ft),
-            # (RegionSampler(os.path.join(folder, "Eastern Expansion Areas.shp")), _60ft),
-        ]
-        # if self.ellipses_version == "A2":
-        #     aoi_data.append((RegionSampler(os.path.join(folder, "Serving Areas (Ellipses) 5.0 A2.shp")), _60ft))
-        # elif self.ellipses_version == "C":
-        #     aoi_data.append((RegionSampler(os.path.join(folder, "Serving Areas (Ellipses) 5.0 C.shp")), _60ft))
+        if self.extension == 'full':
+            aoi_data = [
+                (RegionSampler(os.path.join(folder, f"AOI 6.0.shp")), _60ft),
+            ]
+        else:
+            aoi_data = [
+                (RegionSampler(os.path.join(folder, f"AOI 6.0{self.extension}.shp")), _60ft),
+            ]
         return aoi_data
 
 
