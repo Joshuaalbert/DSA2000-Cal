@@ -74,7 +74,7 @@ def create_target(key, target_array_name: str, lmn: FloatArray, freqs: au.Quanti
     antennas_enu = antennas.get_itrs(obstime=obstime, location=array_location).transform_to(
         ENU(0, 0, 1, obstime=obstime, location=array_location)
     )
-    antennas_enu_xyz = quantity_to_jnp(antennas_enu.cartesian.xyz.T)
+    antennas_enu_xyz = quantity_to_jnp(antennas_enu.cartesian.xyz.T, 'm')
     latitude = quantity_to_jnp(array_location.geodetic.lat, 'rad')
     freqs_jax = quantity_to_jnp(freqs, 'Hz')
     transit_decs_jax = quantity_to_jnp(transit_decs, 'rad')

@@ -15,6 +15,7 @@ from shapely.ops import nearest_points, unary_union
 
 from dsa2000_common.common.astropy_utils import mean_itrs
 from dsa2000_common.common.enu_frame import ENU
+from dsa2000_common.common.logging import dsa_logger
 
 
 class RegionSampler:
@@ -317,7 +318,7 @@ def is_violation(
         dist = np.pi / 180. * angular_dist * earth_radius
         if dist <= buffer + additional_buffer:
             if verbose:
-                print(f"Antenna {check_idx} violates constraint buffer constraints")
+                dsa_logger.info(f"Antenna {check_idx} violates constraint buffer constraints {constraint_sampler.name}")
             return True
 
     # Check that it is far enough from other antennas, excluding the one being replaced

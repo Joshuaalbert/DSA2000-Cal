@@ -8,6 +8,7 @@ from astropy import coordinates as ac, time as at, units as au
 from scipy.spatial import ConvexHull
 from tqdm import tqdm
 
+from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.quantity_utils import quantity_to_np
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_fm.abc import AbstractArrayConstraint
@@ -51,7 +52,6 @@ class Results(SerialisableBaseModel):
     minimal_antenna_sep: au.Quantity
     evaluations: List[SampleEvaluation]
 
-
 def build_search_point_generator(
         plot_dir: str,
         results_file: str,
@@ -91,6 +91,22 @@ def build_search_point_generator(
     aoi_data = [(merged_aoi_sampler, merged_buffer)]
     constraint_data = array_constraint.get_constraint_regions()
 
+    # Plot
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    for sampler, buffer in aoi_data:
+        sampler.plot_region(ax=ax, color='blue')
+    for sampler, buffer in constraint_data:
+        sampler.plot_region(ax=ax, color='red')
+    ax.scatter(antennas.lon.deg, antennas.lat.deg, c='green', marker='x', label='Antennas')
+    ax.scatter(array_location.lon.deg, array_location.lat.deg, c='black', marker='*', label='Array location')
+    ax.set_xlabel('Longitude (deg)')
+    ax.set_ylabel('Latitude (deg)')
+    ax.set_xlim(-114.6, -114.3)
+    ax.set_ylim(39.45, 39.70)
+    ax.legend()
+    fig.savefig(os.path.join(plot_dir, "aoi_prior.png"))
+    plt.close(fig)
+
     additional_buffer_m = float(quantity_to_np(additional_buffer, 'm'))
     minimal_antenna_sep_m = float(quantity_to_np(minimal_antenna_sep, 'm'))
 
@@ -116,13 +132,28 @@ def build_search_point_generator(
         for check_idx in range(len(antennas)):
             if is_violation(
                     check_idx, antennas, array_location, obstime, additional_buffer_m,
-                    minimal_antenna_sep_m, aoi_data, constraint_data
+                    minimal_antenna_sep_m, aoi_data, constraint_data, verbose=True
             ):
-                print(f"Initial antenna {check_idx} violates constraints. Replacing")
+                dsa_logger.info(f"Initial antenna {check_idx} violates constraints. Replacing")
                 antennas = sample_aoi(
                     check_idx, antennas, array_location, obstime, additional_buffer_m,
                     minimal_antenna_sep_m, aoi_data, constraint_data
                 )
+
+        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+        for sampler, buffer in aoi_data:
+            sampler.plot_region(ax=ax, color='blue')
+        for sampler, buffer in constraint_data:
+            sampler.plot_region(ax=ax, color='red')
+        ax.scatter(antennas.lon.deg, antennas.lat.deg, c='green', marker='x', label='Antennas')
+        ax.scatter(array_location.lon.deg, array_location.lat.deg, c='black', marker='*', label='Array location')
+        ax.set_xlabel('Longitude (deg)')
+        ax.set_ylabel('Latitude (deg)')
+        ax.set_xlim(-114.6, -114.3)
+        ax.set_ylim(39.45, 39.70)
+        ax.legend()
+        fig.savefig(os.path.join(plot_dir, "aoi_init.png"))
+        plt.close(fig)
         # Add initial points to create a hull
         evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
         results.evaluations.append(evaluation)

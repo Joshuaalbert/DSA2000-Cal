@@ -116,13 +116,14 @@ def compute_psf(antennas: FloatArray, lmn: FloatArray, freqs: FloatArray, latitu
         antennas_proj = project_antennas(antennas, latitude, transit_dec)
         wavelength = mp_policy.cast_to_length(299792458. / freq)
         r = antennas_proj / wavelength
-        delay = (-2 * jnp.pi) * jnp.sum(r * lmn[..., None, :], axis=-1)  # [..., N]
+        delay = (2 * jnp.pi) * (jnp.sum(r * lmn[..., None, :], axis=-1) - r[..., 2])  # [..., N]
         delay = delay.astype(accumulate_dtype)
         voltage_beam_real = jnp.cos(delay).mean(axis=-1)  # [...]
         voltage_beam_imag = jnp.sin(delay).mean(axis=-1)  # [...]
         # voltage_beam = jax.lax.complex(jnp.cos(delay), jnp.sin(delay))  # [..., N]
         # voltage_beam = jnp.mean(voltage_beam, axis=-1)  # [...]
         power_beam = jnp.square(voltage_beam_real) + jnp.square(voltage_beam_imag)  # [...]
+        power_beam *= lmn[..., 2].astype(accumulate_dtype)
         if with_autocorr:
             delta = power_beam
         else:

@@ -36,7 +36,7 @@ def create_lmn_target():
     lm = np.concatenate(
         [
             dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
-                          dl=quantity_to_np((3.3 / 7) * au.arcsec), frac=1., dtype=jnp.float64),
+                          dl=quantity_to_np(1 * au.arcsec), frac=1., dtype=jnp.float64),
             sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
                            outer_radius=quantity_to_np(0.5 * au.deg), num_samples=1000, dtype=jnp.float64),
             sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
@@ -52,7 +52,7 @@ def create_lmn_inner():
     lm = np.concatenate(
         [
             dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
-                          dl=quantity_to_np((3.3 / 7) * au.arcsec), frac=1., dtype=jnp.float64)
+                          dl=quantity_to_np(0.25 * au.arcsec), frac=1., dtype=jnp.float64)
         ],
         axis=0
     )
@@ -74,6 +74,7 @@ def main(
 
     key = jax.random.PRNGKey(0)
     np.random.seed(0)
+    obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
 
     with TimerLog("Loading initial configuration"):
         if init_config is not None:
@@ -94,17 +95,33 @@ def main(
         else:
             fill_registries()
             array = array_registry.get_instance(array_registry.get_match(target_array_name))
-            antennas0 = array.get_antennas()
             array_location = array.get_array_location()
+            antennas0 = array.get_antennas()
+            antennas0_enu = antennas0.get_itrs(obstime=obstime, location=array_location).transform_to(ENU(
+                obstime=obstime, location=array_location
+            )).cartesian.xyz.T
+            # elongate the array in north-south direction
+            latitude = quantity_to_jnp(array_location.geodetic.lat, 'rad')
+            antennas0_enu[:, 1] /= np.cos(latitude)
+            antennas0 = ENU(antennas0_enu[:, 0], antennas0_enu[:, 1], antennas0_enu[:, 2],
+                            obstime=obstime, location=array_location).transform_to(ac.ITRS(obstime=obstime,
+                                                                                           location=array_location)
+                                                                                   ).earth_location
+
+            # antennas_proj = project_antennas(quantity_to_np(antennas0_enu), latitude, 0)
+            # print('antennas0_enu[:, 2]',antennas0_enu[:, 2])
+            # print('antennas_proj[:, 2]',antennas_proj[:, 2])
+            # plt.scatter(antennas_proj[:, 0], antennas_proj[:, 1], s=1, c=antennas_proj[:, 2], marker='.')
+            # plt.scatter(antennas0_enu[:, 0], antennas0_enu[:, 1], s=1, c=antennas0_enu[:, 2].value, marker='.')
+            # plt.show()
 
     if num_antennas is not None:
         keep_idxs = np.random.choice(antennas0.shape[0], num_antennas, replace=False)
         antennas0 = antennas0[keep_idxs]
 
-    obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
     antennas = antennas0.copy()
 
-    freqs = np.linspace(700e6, 2000e6, 10000) * au.Hz
+    freqs = np.linspace(700e6, 2000e6, 1) * au.Hz
     decs = [0, -30, 30, 60, 90] * au.deg
     freqs_jax = quantity_to_jnp(freqs, 'Hz')
     decs_jax = quantity_to_jnp(decs, 'rad')
@@ -120,24 +137,13 @@ def main(
 
     with TimerLog("Creating LMN sample points"):
         lmn_inner = create_lmn_inner()
-        lmn = create_lmn_target()
+        lmn_target = create_lmn_target()
 
-        dsa_logger.info(f"LMN shape: {lmn.shape}")
+        dsa_logger.info(f"LMN shape: {lmn_target.shape}")
         dsa_logger.info(f"LMN inner shape: {lmn_inner.shape}")
 
-        with TimerLog("Calculating target PSF"):
-            target_log_psf_mean, target_log_psf_stddev = create_target(
-                key=key,
-                target_array_name=target_array_name,
-                lmn=lmn_inner,
-                freqs=freqs,
-                transit_decs=decs,
-                num_samples=1000,
-                num_antennas=num_antennas,
-                accumulate_dtype=jnp.float32
-            )
         with TimerLog("Calculating inner target PSF"):
-            target_log_psf_mean_inner, target_log_psf_stddev_inner = create_target(
+            target_psf_dB_mean_inner, target_psf_dB_stddev_inner = create_target(
                 key=key,
                 target_array_name=target_array_name,
                 lmn=lmn_inner,
@@ -146,25 +152,36 @@ def main(
                 num_antennas=num_antennas,
                 accumulate_dtype=jnp.float32
             )
+            # Plots the target
+            fig, axs = plt.subplots(2, 1, figsize=(16, 16), squeeze=False)
+            sc = axs[0, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
+                                   c=target_psf_dB_mean_inner.flatten(), s=1, cmap='jet', marker='.',
+                                   vmin=-60, vmax=10 * np.log10(0.5))
+            plt.colorbar(sc, ax=axs[0, 0], label='Power (dB)')
+            axs[0, 0].set_xlabel('l (proj.rad)')
+            axs[0, 0].set_ylabel('m (proj.rad)')
+            axs[0, 0].set_title('Target mean inner PSF')
+            sc = axs[1, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
+                                   c=target_psf_dB_stddev_inner.flatten(), s=1,
+                                   cmap='jet', marker='.')
+            plt.colorbar(sc, ax=axs[1, 0], label='Power (dB)')
+            axs[1, 0].set_xlabel('l (proj.rad)')
+            axs[1, 0].set_ylabel('m (proj.rad)')
+            axs[1, 0].set_title('Target stddev inner PSF')
+            fig.savefig(os.path.join(plot_folder, f'target_psf.png'))
+            plt.close(fig)
 
-        # Plots the target
-        fig, axs = plt.subplots(2, 2, figsize=(16, 16))
-        sc = axs[0, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
-                               c=target_log_psf_mean_inner.flatten(), s=1, cmap='jet', marker='.',
-                               vmin=-60, vmax=10 * np.log10(0.5))
-        plt.colorbar(sc, ax=axs[0, 0], label='Power (dB)')
-        axs[0, 0].set_xlabel('l (proj.rad)')
-        axs[0, 0].set_ylabel('m (proj.rad)')
-        axs[0, 0].set_title('Target mean inner PSF')
-        sc = axs[1, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
-                               c=target_log_psf_stddev_inner.flatten(), s=1,
-                               cmap='jet', marker='.')
-        plt.colorbar(sc, ax=axs[1, 0], label='Power (dB)')
-        axs[1, 0].set_xlabel('l (proj.rad)')
-        axs[1, 0].set_ylabel('m (proj.rad)')
-        axs[1, 0].set_title('Target stddev inner PSF')
-        fig.savefig(os.path.join(plot_folder, f'target_psf.png'))
-        plt.close(fig)
+        with TimerLog("Calculating target PSF"):
+            target_psf_dB_mean, target_psf_dB_stddev = create_target(
+                key=key,
+                target_array_name=target_array_name,
+                lmn=lmn_target,
+                freqs=freqs,
+                transit_decs=decs,
+                num_samples=1000,
+                num_antennas=num_antennas,
+                accumulate_dtype=jnp.float32
+            )
 
     # Performing the optimization
 
@@ -196,12 +213,13 @@ def main(
         latitude = quantity_to_jnp(sample_point.latitude, 'rad')
         quality = evaluate_psf(
             antennas_enu=proposal_antennas_enu,
-            lmn=lmn,
+            lmn=lmn_target,
             latitude=latitude,
             freqs=freqs_jax,
-            decs=decs_jax,
-            target_log_psf_mean=target_log_psf_mean,
-            target_log_psf_stddev=target_log_psf_stddev
+            transit_decs=decs_jax,
+            target_psf_dB_mean=target_psf_dB_mean,
+            target_psf_dB_stddev=target_psf_dB_stddev,
+            accumulate_dtype=jnp.float32
         )
         cost = compute_mst_cost(
             k=6,
@@ -214,7 +232,6 @@ def main(
             cost=cost,
             antennas=sample_point.antennas
         )
-
 
 
 if __name__ == '__main__':
