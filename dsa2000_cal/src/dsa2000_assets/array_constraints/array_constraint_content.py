@@ -357,7 +357,7 @@ class ArrayConstraintsV5Extended(BaseContent, AbstractArrayConstraint):
         return aoi_data
 
 
-class ArrayConstraintsVExtendedPlus(BaseContent, AbstractArrayConstraint):
+class ArrayConstraintsV5ExtendedPlus(BaseContent, AbstractArrayConstraint):
     """
     Abstract array class.
     """
@@ -497,8 +497,8 @@ class ArrayConstraintsV6(BaseContent, AbstractArrayConstraint):
         return aoi_data
 
 
-def test_merge_aoi():
-    aoi = ArrayConstraintsVExtendedPlus()
+def _test_merge_aoi():
+    aoi = ArrayConstraintsV6(extension='a')
     aoi.get_area_of_interest_regions()
     merged_aoi = RegionSampler.merge([sampler for sampler, _ in aoi.get_area_of_interest_regions()])
     merged_aoi.info()
@@ -509,3 +509,6 @@ def test_merge_aoi():
     for sampler, _ in aoi.get_area_of_interest_regions():
         sampler.plot_region(axs[1])
     plt.show()
+
+if __name__ == '__main__':
+    _test_merge_aoi()
