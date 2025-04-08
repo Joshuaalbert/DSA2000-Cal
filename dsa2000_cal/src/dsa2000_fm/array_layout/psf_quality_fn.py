@@ -40,7 +40,7 @@ def dense_annulus(inner_radius, outer_radius, dl, frac, dtype):
     M = M.flatten()
     LM = L ** 2 + M ** 2
     _lm = np.stack([L, M], axis=-1)
-    keep = np.logical_and(np.sqrt(LM) >= inner_radius, np.sqrt(LM) < inner_radius)
+    keep = np.logical_and(np.sqrt(LM) >= inner_radius, np.sqrt(LM) < outer_radius)
     _lm = _lm[keep]
     if frac < 1:
         select_idx = np.random.choice(_lm.shape[0], int(frac * _lm.shape[0]), replace=False)

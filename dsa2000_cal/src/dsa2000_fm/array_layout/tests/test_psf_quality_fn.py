@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
-from dsa2000_fm.array_layout.psf_quality_fn import create_target, sparse_annulus
+from dsa2000_fm.array_layout.psf_quality_fn import create_target, sparse_annulus, dense_annulus
 import pylab as plt
 tfpd = tfp.distributions
 
@@ -67,6 +67,21 @@ def test_sample_annulus():
     key = jax.random.PRNGKey(0)
     dtype = jnp.float32
     samples = sparse_annulus(key, inner_radius, outer_radius, dtype, num_samples)
+    import pylab as plt
+    plt.scatter(samples[:, 0], samples[:, 1])
+    plt.show()
+    assert np.all(samples[:, 0] ** 2 + samples[:, 1] ** 2 >= inner_radius ** 2)
+    assert np.all(samples[:, 0] ** 2 + samples[:, 1] ** 2 <= outer_radius ** 2)
+
+
+def test_dense_annulus():
+    inner_radius = 0.5
+    outer_radius = 1.0
+    dl=0.01
+    frac = 1.
+    dtype = jnp.float32
+    samples = dense_annulus(inner_radius, outer_radius, dl, frac, dtype)
+    print(samples)
     import pylab as plt
     plt.scatter(samples[:, 0], samples[:, 1])
     plt.show()
