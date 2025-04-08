@@ -51,7 +51,7 @@ def create_lmn_target():
 def create_lmn_inner():
     lm = np.concatenate(
         [
-            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcsec),
+            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
                           dl=quantity_to_np(0.25 * au.arcsec), frac=1., dtype=jnp.float64)
         ],
         axis=0
