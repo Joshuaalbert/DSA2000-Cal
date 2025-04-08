@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
-from dsa2000_fm.array_layout.geo_constraints import RegionSampler
+from dsa2000_fm.array_layout.sample_constraints import RegionSampler
 
 
 class AbstractArrayConstraint(ABC):
