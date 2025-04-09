@@ -132,7 +132,7 @@ def build_search_point_generator(
         for check_idx in range(len(antennas)):
             if is_violation(
                     check_idx, antennas, array_location, obstime, additional_buffer_m,
-                    minimal_antenna_sep_m, aoi_data, constraint_data, verbose=True
+                    minimal_antenna_sep_m, aoi_data, constraint_data, verbose=False
             ):
                 dsa_logger.info(f"Initial antenna {check_idx} violates constraints. Replacing")
                 antennas = sample_aoi(
