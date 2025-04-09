@@ -33,14 +33,16 @@ tfpd = tfp.distributions
 
 
 def create_lmn_target():
+    dense_inner = dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
+                                dl=quantity_to_np(0.8 * au.arcsec), frac=1., dtype=jnp.float64)
+    M = np.shape(dense_inner)[0]
     lm = np.concatenate(
         [
-            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
-                          dl=quantity_to_np(1 * au.arcsec), frac=1., dtype=jnp.float64),
+            dense_inner,
             sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
-                           outer_radius=quantity_to_np(0.5 * au.deg), num_samples=1000, dtype=jnp.float64),
+                           outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M // 2, dtype=jnp.float64),
             sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
-                           outer_radius=quantity_to_np(1.5 * au.deg), num_samples=1000, dtype=jnp.float64)
+                           outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M // 2, dtype=jnp.float64)
         ],
         axis=0
     )
@@ -121,7 +123,7 @@ def main(
 
     antennas = antennas0.copy()
 
-    freqs = np.linspace(700e6, 2000e6, 2) * au.Hz
+    freqs = np.linspace(700e6, 2000e6, 100) * au.Hz
     decs = [0, -30, 30, 60, 90] * au.deg
     freqs_jax = quantity_to_jnp(freqs, 'Hz')
     decs_jax = quantity_to_jnp(decs, 'rad')
@@ -241,6 +243,12 @@ def main(
             cost=cost,
             antennas=sample_point.antennas
         )
+    # Store to final_config
+    final_config = os.path.join(run_name, 'final_config.txt')
+    with open(final_config, 'w') as f:
+        for antenna in antennas:
+            f.write(f"{antenna.x.to('m').value},{antenna.y.to('m').value},{antenna.z.to('m').value}\n")
+    return final_config
 
 
 if __name__ == '__main__':
@@ -258,15 +266,17 @@ if __name__ == '__main__':
     )
 
     init_config = None
-    for prefix in ['full', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']:
-        array_constraint = ArrayConstraintsV6(prefix)
-        run_name = f"pareto_opt_v6_{prefix}"
-        new_config = main(
-            target_array_name='dsa1650_9P',
-            init_config=init_config,
-            run_name=run_name,
-            num_antennas=None,
-            num_evaluations=10000,
-            array_constraint=array_constraint
-        )
-        init_config = new_config
+    while True:
+        # From smallest to largest, so smaller one fits in next as good starting point
+        for prefix in reversed(['full', 'h', 'g', 'f', 'e', 'd', 'c', 'b', 'a']):
+            array_constraint = ArrayConstraintsV6(prefix)
+            run_name = f"pareto_opt_v6_{prefix}"
+            final_config = main(
+                target_array_name='dsa1650_9P',
+                init_config=init_config,
+                run_name=run_name,
+                num_antennas=None,
+                num_evaluations=1000,
+                array_constraint=array_constraint
+            )
+            init_config = final_config
