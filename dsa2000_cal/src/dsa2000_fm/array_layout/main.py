@@ -4,18 +4,21 @@ os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 # os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
-from dsa2000_common.common.logging import dsa_logger
-from dsa2000_common.common.ray_utils import TimerLog
-from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
-from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation
-
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
 import pylab as plt
+import jax
+import jax.numpy as jnp
+import numpy as np
+import tensorflow_probability.substrates.jax as tfp
+
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.astropy_utils import mean_itrs
-
+from dsa2000_common.common.logging import dsa_logger
+from dsa2000_common.common.ray_utils import TimerLog
+from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
+from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_fm.abc import AbstractArrayConstraint
 from dsa2000_common.common.quantity_utils import quantity_to_np
@@ -23,11 +26,6 @@ from dsa2000_fm.array_layout.psf_quality_fn import dense_annulus, sparse_annulus
 from dsa2000_assets.registries import array_registry
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.array_constraints.v6.array_constraint import ArrayConstraintsV6
-
-import jax
-import jax.numpy as jnp
-import numpy as np
-import tensorflow_probability.substrates.jax as tfp
 
 tfpd = tfp.distributions
 
@@ -62,7 +60,96 @@ def create_lmn_inner():
     return jnp.concatenate([lm, n], axis=-1)
 
 
+def create_psf_target(run_name, target_array_name, freqs, decs, num_antennas: int | None):
+    os.makedirs(run_name, exist_ok=True)
+    plot_folder = os.path.join(run_name, 'plots')
+    os.makedirs(plot_folder, exist_ok=True)
+
+    np.random.seed(0)
+    key = jax.random.PRNGKey(0)
+
+    dsa_logger.info(f"Target array name: {target_array_name}")
+
+    with TimerLog("Creating LMN sample points"):
+        lmn_inner = create_lmn_inner()
+        lmn_target = create_lmn_target()
+
+        dsa_logger.info(f"LMN shape: {lmn_target.shape}")
+        dsa_logger.info(f"LMN inner shape: {lmn_inner.shape}")
+
+        with TimerLog("Calculating inner target PSF"):
+            target_psf_dB_mean_inner, target_psf_dB_stddev_inner = create_target(
+                key=key,
+                target_array_name=target_array_name,
+                lmn=lmn_inner,
+                freqs=freqs,
+                transit_decs=decs[:1],
+                num_samples=20,
+                num_antennas=num_antennas,
+                accumulate_dtype=jnp.float32
+            )
+            # Plots the target
+            fig, axs = plt.subplots(2, 1, figsize=(16, 16), squeeze=False)
+            sc = axs[0, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
+                                   c=target_psf_dB_mean_inner.flatten(), s=1, cmap='jet', marker='.',
+                                   vmin=-60, vmax=10 * np.log10(0.5))
+            plt.colorbar(sc, ax=axs[0, 0], label='Power (dB)')
+            axs[0, 0].set_xlabel('l (proj.rad)')
+            axs[0, 0].set_ylabel('m (proj.rad)')
+            axs[0, 0].set_title('Target mean inner PSF')
+            sc = axs[1, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
+                                   c=target_psf_dB_stddev_inner.flatten(), s=1,
+                                   cmap='jet', marker='.')
+            plt.colorbar(sc, ax=axs[1, 0], label='Power (dB)')
+            axs[1, 0].set_xlabel('l (proj.rad)')
+            axs[1, 0].set_ylabel('m (proj.rad)')
+            axs[1, 0].set_title('Target stddev inner PSF')
+            fig.savefig(os.path.join(plot_folder, f'target_psf_inner.png'))
+            plt.close(fig)
+
+        with TimerLog("Calculating target PSF"):
+            target_psf_dB_mean, target_psf_dB_stddev = create_target(
+                key=key,
+                target_array_name=target_array_name,
+                lmn=lmn_target,
+                freqs=freqs,
+                transit_decs=decs,
+                num_samples=1000,
+                num_antennas=num_antennas,
+                accumulate_dtype=jnp.float32
+            )
+            # Check finite
+            if not np.all(np.isfinite(target_psf_dB_mean)):
+                raise ValueError("Target PSF mean is not finite")
+            if not np.all(np.isfinite(target_psf_dB_stddev)):
+                raise ValueError("Target PSF stddev is not finite")
+            # Plots the target
+            fig, axs = plt.subplots(2, 1, figsize=(16, 16), squeeze=False)
+            sc = axs[0, 0].scatter(lmn_target[..., 0].flatten(), lmn_target[..., 1].flatten(),
+                                   c=target_psf_dB_mean[0].flatten(), s=1, cmap='jet', marker='.',
+                                   vmin=-60, vmax=10 * np.log10(0.5))
+            plt.colorbar(sc, ax=axs[0, 0], label='Power (dB)')
+            axs[0, 0].set_xlabel('l (proj.rad)')
+            axs[0, 0].set_ylabel('m (proj.rad)')
+            axs[0, 0].set_title('Target mean PSF')
+            sc = axs[1, 0].scatter(lmn_target[..., 0].flatten(), lmn_target[..., 1].flatten(),
+                                   c=target_psf_dB_stddev[0].flatten(), s=1,
+                                   cmap='jet', marker='.')
+            plt.colorbar(sc, ax=axs[1, 0], label='Power (dB)')
+            axs[1, 0].set_xlabel('l (proj.rad)')
+            axs[1, 0].set_ylabel('m (proj.rad)')
+            axs[1, 0].set_title('Target stddev PSF')
+            fig.savefig(os.path.join(plot_folder, f'target_psf.png'))
+            plt.close(fig)
+    return lmn_target, target_psf_dB_mean, target_psf_dB_stddev
+
+
 def main(
+        lmn_target,
+        target_psf_dB_mean,
+        target_psf_dB_stddev,
+        freqs,
+        decs,
         run_name: str,
         init_config: str | None,
         target_array_name: str,
@@ -74,7 +161,6 @@ def main(
     plot_folder = os.path.join(run_name, 'plots')
     os.makedirs(plot_folder, exist_ok=True)
 
-    key = jax.random.PRNGKey(0)
     np.random.seed(0)
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
 
@@ -122,14 +208,12 @@ def main(
         antennas0 = antennas0[keep_idxs]
 
     antennas = antennas0.copy()
+    dsa_logger.info(f"Number of antennas: {len(antennas)}")
 
-    freqs = np.linspace(700e6, 2000e6, 100) * au.Hz
-    decs = [0, -30, 30, 60, 90] * au.deg
     freqs_jax = quantity_to_jnp(freqs, 'Hz')
     decs_jax = quantity_to_jnp(decs, 'rad')
 
     dsa_logger.info(f"Run name: {run_name}")
-    dsa_logger.info(f"Target array name: {target_array_name}")
     dsa_logger.info(f"Initial configuration: {init_config}")
     dsa_logger.info(f"Array constraint: {array_constraint}")
     dsa_logger.info(f"Number of antennas: {len(antennas)}")
@@ -137,61 +221,7 @@ def main(
     dsa_logger.info(f"Number of frequencies: {len(freqs)}")
     dsa_logger.info(f"Declinations: {decs}")
 
-    with TimerLog("Creating LMN sample points"):
-        lmn_inner = create_lmn_inner()
-        lmn_target = create_lmn_target()
-
-        dsa_logger.info(f"LMN shape: {lmn_target.shape}")
-        dsa_logger.info(f"LMN inner shape: {lmn_inner.shape}")
-
-        with TimerLog("Calculating inner target PSF"):
-            target_psf_dB_mean_inner, target_psf_dB_stddev_inner = create_target(
-                key=key,
-                target_array_name=target_array_name,
-                lmn=lmn_inner,
-                freqs=freqs, transit_decs=decs[:1],
-                num_samples=20,
-                num_antennas=num_antennas,
-                accumulate_dtype=jnp.float32
-            )
-            # Plots the target
-            fig, axs = plt.subplots(2, 1, figsize=(16, 16), squeeze=False)
-            sc = axs[0, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
-                                   c=target_psf_dB_mean_inner.flatten(), s=1, cmap='jet', marker='.',
-                                   vmin=-60, vmax=10 * np.log10(0.5))
-            plt.colorbar(sc, ax=axs[0, 0], label='Power (dB)')
-            axs[0, 0].set_xlabel('l (proj.rad)')
-            axs[0, 0].set_ylabel('m (proj.rad)')
-            axs[0, 0].set_title('Target mean inner PSF')
-            sc = axs[1, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
-                                   c=target_psf_dB_stddev_inner.flatten(), s=1,
-                                   cmap='jet', marker='.')
-            plt.colorbar(sc, ax=axs[1, 0], label='Power (dB)')
-            axs[1, 0].set_xlabel('l (proj.rad)')
-            axs[1, 0].set_ylabel('m (proj.rad)')
-            axs[1, 0].set_title('Target stddev inner PSF')
-            fig.savefig(os.path.join(plot_folder, f'target_psf.png'))
-            plt.close(fig)
-
-        with TimerLog("Calculating target PSF"):
-            target_psf_dB_mean, target_psf_dB_stddev = create_target(
-                key=key,
-                target_array_name=target_array_name,
-                lmn=lmn_target,
-                freqs=freqs,
-                transit_decs=decs,
-                num_samples=1000,
-                num_antennas=num_antennas,
-                accumulate_dtype=jnp.float32
-            )
-            # Check finite
-            if not np.all(np.isfinite(target_psf_dB_mean)):
-                raise ValueError("Target PSF mean is not finite")
-            if not np.all(np.isfinite(target_psf_dB_stddev)):
-                raise ValueError("Target PSF stddev is not finite")
-
     # Performing the optimization
-
     gen = build_search_point_generator(
         results_file=os.path.join(run_name, 'results.json'),
         plot_dir=plot_folder,
@@ -260,9 +290,21 @@ if __name__ == '__main__':
     #     category=UserWarning,
     #     module="pyogrio"
     # )
+
     warnings.filterwarnings(
         "ignore",
         category=UserWarning
+    )
+
+    freqs = np.linspace(700e6, 2000e6, 100) * au.Hz
+    decs = [0, -30, 30, 60, 90] * au.deg
+
+    lmn_target, target_psf_dB_mean, target_psf_dB_stddev = create_psf_target(
+        run_name='pareto_opt_target',
+        target_array_name='dsa1650_9P',
+        freqs=freqs,
+        decs=decs,
+        num_antennas=None
     )
 
     init_config = None
@@ -272,6 +314,11 @@ if __name__ == '__main__':
             array_constraint = ArrayConstraintsV6(prefix)
             run_name = f"pareto_opt_v6_{prefix}"
             final_config = main(
+                lmn_target=lmn_target,
+                target_psf_dB_mean=target_psf_dB_mean,
+                target_psf_dB_stddev=target_psf_dB_stddev,
+                freqs=freqs,
+                decs=decs,
                 target_array_name='dsa1650_9P',
                 init_config=init_config,
                 run_name=run_name,

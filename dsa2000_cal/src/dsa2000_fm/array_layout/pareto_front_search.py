@@ -52,6 +52,7 @@ class Results(SerialisableBaseModel):
     minimal_antenna_sep: au.Quantity
     evaluations: List[SampleEvaluation]
 
+
 def build_search_point_generator(
         plot_dir: str,
         results_file: str,
@@ -224,12 +225,13 @@ def build_search_point_generator(
                 hull.add_points(point[None, :], restart=False)
                 # protect from KeyboardInterrupt
                 try:
-                    pass
-                except KeyboardInterrupt:
-                    raise
-                finally:
                     with open(results_file, 'w') as f:
                         f.write(results.json(indent=2))
+                except KeyboardInterrupt:
+                    with open(results_file, 'w') as f:
+                        f.write(results.json(indent=2))
+                    raise
+                finally:
                     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
                     sc = ax.scatter(hull.points[:, 0], hull.points[:, 1], c=range(len(hull.points)), cmap='jet')
                     plt.colorbar(sc, ax=ax, label='Iteration')
