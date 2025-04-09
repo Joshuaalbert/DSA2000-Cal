@@ -187,7 +187,7 @@ def evaluate_psf(antennas_enu, lmn, latitude, freqs, transit_decs, target_psf_dB
                 accumulate_dtype=accumulate_dtype
             )
         )
-        z_scores = (psf_dB - target_psf_dB_mean) / target_psf_dB_stddev
+        z_scores = (psf_dB - target_psf_dB_mean) / (target_psf_dB_stddev + 1e-2)
         quality = -jnp.mean(z_scores ** 2)
         return quality
 
