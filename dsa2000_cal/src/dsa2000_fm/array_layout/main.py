@@ -276,7 +276,7 @@ if __name__ == '__main__':
                 init_config=init_config,
                 run_name=run_name,
                 num_antennas=None,
-                num_evaluations=1000,
+                num_evaluations=500,
                 array_constraint=array_constraint
             )
             init_config = final_config
