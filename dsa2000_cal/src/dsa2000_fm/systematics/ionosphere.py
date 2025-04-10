@@ -1302,7 +1302,7 @@ def construct_ionosphere_model(x0_radius: FloatArray,
         yF1: the half-width of F1 layer in km
         yF2: the half-width of F2 layer in km
         vtec: the vertical total electron content in TECU = 10^16 e/m^2 = 1e3 * (1e10 e/m^3) * km
-        turbulent: If True then uses larger relative spatial variations
+        turbulent: If True then assumes shorter spatial scales
 
     Returns:
         An ionosphere model
