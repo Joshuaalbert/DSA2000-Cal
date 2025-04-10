@@ -6,8 +6,7 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid, get_time_of_local_meridean
 from dsa2000_common.common.enu_frame import ENU
-from dsa2000_fm.systematics.ionosphere import construct_canonical_ionosphere, \
-    compute_x0_radius, simulate_ionosphere
+from dsa2000_fm.systematics.ionosphere import compute_x0_radius, simulate_ionosphere, construct_ionosphere_model
 
 
 def test_ionosphere_tec_simulation():
@@ -32,12 +31,28 @@ def test_ionosphere_tec_simulation():
     print(f"Number of directions: {len(directions)}")
 
     x0_radius = compute_x0_radius(ref_location, ref_time)
-    ionosphere = construct_canonical_ionosphere(
+    ionosphere = construct_ionosphere_model(
         x0_radius=x0_radius,
-        turbulent=True,
-        dawn=True,
-        high_sun_spot=True
+        f0E=3.51,
+        f0F1=5.08,
+        f0F2=9.475,
+        hmE=101.6,
+        hmF1=171.0,
+        hmF2=288.7,
+        yE=11.3,
+        yF1=55.4,
+        yF2=95.7,
+        vtec=29.0,
+        longitude_pole=0.,
+        latitude_pole=np.pi / 2.,
+        turbulent=True
     )
+    # ionosphere = construct_canonical_ionosphere(
+    #     x0_radius=x0_radius,
+    #     turbulent=True,
+    #     dawn=True,
+    #     high_sun_spot=True
+    # )
 
     simulate_ionosphere(
         key=jax.random.PRNGKey(0),

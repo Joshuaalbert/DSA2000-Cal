@@ -23,6 +23,7 @@ from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.astropy_utils import create_spherical_earth_grid, mean_itrs
 from dsa2000_common.common.interp_utils import InterpolatedArray
 from dsa2000_common.common.jax_utils import multi_vmap
+from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.quantity_utils import time_to_jnp, quantity_to_jnp
 from dsa2000_common.common.serialise_utils import SerialisableBaseModel
 from dsa2000_common.delay_models.uvw_utils import perley_lmn_from_icrs
@@ -54,17 +55,17 @@ def calc_intersections(x, s, x0_radius, bottom, width, s_normed: bool = False):
     if not s_normed:
         # cheapest is just to norm s
         s = s / jnp.linalg.norm(s)
-    x2 = jnp.sum(x ** 2)
+    x2 = jnp.sum(x * x)
     x_norm = jnp.sqrt(x2)
-    two_x_norm = 2 * x_norm
+    two_x_norm = x_norm + x_norm
     xs = jnp.sum(x * s)
-    xs2 = xs ** 2
-    x02_minus_x2 = x0_radius ** 2 - x2
+    xs2 = xs * xs
+    x02_minus_x2 = x0_radius * x0_radius - x2
     _tmp = xs2 + x02_minus_x2
     dr = bottom
-    s_bottom = -xs + jnp.sqrt(_tmp + two_x_norm * dr + dr ** 2)
+    s_bottom = -xs + jnp.sqrt(_tmp + two_x_norm * dr + dr * dr)
     dr = bottom + width
-    s_top = -xs + jnp.sqrt(_tmp + two_x_norm * dr + dr ** 2)
+    s_top = -xs + jnp.sqrt(_tmp + two_x_norm * dr + dr * dr)
     return s_bottom, s_top
 
 
@@ -1276,6 +1277,73 @@ def construct_canonical_ionosphere(x0_radius: FloatArray, turbulent: bool = True
             fed_sigma=_fed_mu_F * _sigma_factor
         )
     ]
+    return IonosphereMultiLayer(layers)
+
+
+def construct_ionosphere_model(x0_radius: FloatArray,
+                               f0E, f0F1, f0F2,
+                               hmE, hmF1, hmF2,
+                               yE, yF1, yF2,
+                               vtec,
+                               longitude_pole=0., latitude_pole=jnp.pi / 2.,
+                               turbulent: bool = True):
+    """
+    Construct a canonical ionosphere model.
+
+    Args:
+        x0_radius: see `compute_x0_radius` in km
+        f0E: the critical frequency of E layer in MHz
+        f0F1: the critical frequency of F1 layer in MHz
+        f0F2: the critical frequency of F2 layer in MHz
+        hmE: the height of E layer in km
+        hmF1: the height of F1 layer in km
+        hmF2: the height of F2 layer in km
+        yE: the half-width of E layer in km
+        yF1: the half-width of F1 layer in km
+        yF2: the half-width of F2 layer in km
+        vtec: the vertical total electron content in TECU = 10^16 e/m^2 = 1e3 * (1e10 e/m^3) * km
+        turbulent: If True then uses larger relative spatial variations
+
+    Returns:
+        An ionosphere model
+    """
+
+    def critical_freq_to_mu(f0):
+        return 1e-10 * (1e6 * f0 / 8.979) ** 2  # [e/m^3]
+
+    _bottoms = [hmE - yE, hmF1 - yF1, hmF2 - yF2]
+    _widths = [2 * yE, 2 * yF1, 2 * yF2]
+    _mus_peak = [critical_freq_to_mu(f0) for f0 in [f0E, f0F1, f0F2]]
+    mean_vtec = 1e-3 * sum([w * mu for w, mu in zip(_widths, _mus_peak)])  # [TECU]
+    scale = vtec / mean_vtec
+    _mus = [mu * scale for mu in _mus_peak]
+    _bottom_velocity = [0.1, 0.2, 0.3]  # [km/s]
+    _radial_velocity = [0., 0., 0.]  # [km/s]
+    # (mu_peak - mu) / mu = (mu_peak - scale * mu_peak) / scale * mu_peak = (1 - scale) / scale
+    _sigma_factor = abs(1 - scale) / scale
+    dsa_logger.info(f"Scaling Mean VTEC: {mean_vtec} TECU -> Peak VTEC {vtec} TECU ==> Scale: {scale}, Sigma factor: {_sigma_factor}")
+
+    if turbulent:
+        _length_scales = [yE / 10, yF1 / 10, yF2 / 10]
+    else:
+        _length_scales = [yE / 5, yF1 / 5, yF2 / 5]
+
+    layers = []
+    for i in range(3):
+        layers.append(
+            IonosphereLayer(
+                length_scale=_length_scales[i],
+                longitude_pole=longitude_pole,
+                latitude_pole=latitude_pole,
+                bottom_velocity=_bottom_velocity[i],
+                radial_velocity=_radial_velocity[i],
+                x0_radius=x0_radius,
+                bottom=_bottoms[i],
+                width=_widths[i],
+                fed_mu=_mus[i],
+                fed_sigma=_mus[i] * _sigma_factor
+            )
+        )
     return IonosphereMultiLayer(layers)
 
 
