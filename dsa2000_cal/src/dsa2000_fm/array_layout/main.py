@@ -296,7 +296,7 @@ if __name__ == '__main__':
         category=UserWarning
     )
 
-    freqs = np.linspace(700e6, 2000e6, 100) * au.Hz
+    freqs = np.linspace(700e6, 2000e6, 250) * au.Hz
     decs = [0, -30, 30, 60, 90] * au.deg
 
     lmn_target, target_psf_dB_mean, target_psf_dB_stddev = create_psf_target(
@@ -307,10 +307,10 @@ if __name__ == '__main__':
         num_antennas=None
     )
 
-    init_config = None
+    init_config = 'pareto_opt_v6_b/final_config.txt'
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
-        for prefix in reversed(['full', 'h', 'g', 'f', 'e', 'd', 'c', 'b', 'a']):
+        for prefix in ['a', 'b', 'c', 'd', 'e', 'f', 'h', 'full']:
             array_constraint = ArrayConstraintsV6(prefix)
             run_name = f"pareto_opt_v6_{prefix}"
             final_config = main(
