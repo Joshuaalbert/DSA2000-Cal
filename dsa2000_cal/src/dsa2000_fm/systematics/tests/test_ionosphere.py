@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import jax
 import numpy as np
 from astropy import coordinates as ac, units as au, time as at
@@ -9,7 +11,9 @@ from dsa2000_assets.registries import array_registry
 from dsa2000_cal.solvers.multi_step_lm import lm_solver
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral, construct_eval_interp_struct, \
-    IonosphereLayer, calibrate_resolution, construct_ionosphere_model
+    IonosphereLayer, calibrate_resolution
+from dsa2000_fm.systematics.ionosphere_models import construct_ionosphere_model, fetch_ionosphere_data, \
+    construct_ionosphere_model_from_didb_db
 from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_gcrs, calc_intersections
 
 
@@ -280,4 +284,51 @@ def test_construct_ionosphere_model():
         latitude_pole=np.pi / 2.,
         turbulent=True
     )
+    print(ionosphere)
+
+
+def test_fetch_ionosphere_data():
+    # Define the start and end datetimes with timezone awareness (UTC in this case)
+    start_dt = datetime(2024, 4, 7, 21, 0, 0)
+    end_dt = datetime(2024, 4, 8, 21, 1, 0)
+    station_code = "AU930"
+
+    data = fetch_ionosphere_data(start_dt, end_dt, station_code)
+    for record in data:
+        print(record)
+
+    # concate tree
+    data = jax.tree.map(lambda *x: np.stack(x),*data)
+    print(data)
+
+    # plot histograms of each column
+    import pylab as plt
+    plt.hist(data.vtec, bins='auto')
+    plt.title("VTEC Histogram")
+    plt.xlabel("VTEC [TECU]")
+    plt.show()
+
+    plt.hist(data.f0E, bins='auto')
+    plt.title("f0E Histogram")
+    plt.xlabel("f0E [MHz]")
+    plt.show()
+
+    plt.hist(data.hmE, bins='auto')
+    plt.title("hmE Histogram")
+    plt.xlabel("hmE [km]")
+    plt.show()
+
+    plt.hist(data.yE, bins='auto')
+    plt.title("yE Histogram")
+    plt.xlabel("yE [km]")
+    plt.show()
+
+def test_construct_ionosphere_model_from_didb_db():
+    ionosphere = construct_ionosphere_model_from_didb_db(
+        start=datetime(2024, 4, 7, 21, 0, 0),
+        end=datetime(2024, 4, 8, 21, 1, 0),
+        ursi_station="AU930",
+        x0_radius=6371.0,
+    )
+
     print(ionosphere)

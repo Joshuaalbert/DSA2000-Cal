@@ -13,7 +13,8 @@ from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.plot_utils import figs_to_gif
 from dsa2000_fm.systematics.ionosphere import construct_eval_interp_struct, IonosphereLayer, IonosphereMultiLayer, \
-    build_ionosphere_gain_model, construct_canonical_ionosphere, compute_x0_radius
+    build_ionosphere_gain_model, compute_x0_radius
+from dsa2000_fm.systematics.ionosphere_models import construct_canonical_ionosphere
 
 
 def test_ionosphere_dtec_gain_model():

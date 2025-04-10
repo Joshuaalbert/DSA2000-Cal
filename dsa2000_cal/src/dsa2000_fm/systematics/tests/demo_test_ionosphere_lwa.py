@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import jax
 import numpy as np
 from astropy import time as at, units as au, coordinates as ac
@@ -7,8 +9,9 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.astropy_utils import create_spherical_spiral_grid, get_time_of_local_meridean
 from dsa2000_common.common.enu_frame import ENU
-from dsa2000_fm.systematics.ionosphere import compute_x0_radius, simulate_ionosphere, construct_ionosphere_model, \
-    construct_eval_interp_struct
+from dsa2000_common.common.logging import dsa_logger
+from dsa2000_fm.systematics.ionosphere import compute_x0_radius, simulate_ionosphere, construct_eval_interp_struct
+from dsa2000_fm.systematics.ionosphere_models import construct_ionosphere_model, construct_ionosphere_model_from_didb_db
 
 
 def test_ionosphere_tec_simulation():
@@ -77,33 +80,25 @@ def test_ionosphere_frozen_flow_tec_longtime_single_antenna():
     antennas = array.get_antennas()[:1]
     ref_location = array.get_array_location()
     phase_center = ENU(
-        0, 0, 1, obstime=at.Time('2025-06-10T09:00:00', scale='utc'),
+        0, 0, 1, obstime=at.Time('2025-06-10T16:00:00', scale='utc'),
         location=ref_location
     ).transform_to(ac.ICRS())
     # Or if you know the ICRS coord you can find the time when it is at the local transit
     ref_time = get_time_of_local_meridean(phase_center, array.get_array_location(),
-                                          at.Time('2025-06-10T09:00:00', scale='utc'))
-    times = ref_time + (10 * au.s) * np.arange(360)
+                                          at.Time('2025-06-10T16:00:00', scale='utc'))
+    times = ref_time + (10 * au.s) * np.arange(60)
 
     directions = phase_center[None]
 
     x0_radius = compute_x0_radius(ref_location, ref_time)
-    ionosphere = construct_ionosphere_model(
+    ionosphere = construct_ionosphere_model_from_didb_db(
+        start=datetime(2024, 6, 10, 16, 0, 0),
+        end=datetime(2024, 6, 10, 18, 0, 0),
+        ursi_station="AU930",
         x0_radius=x0_radius,
-        f0E=3.51,
-        f0F1=5.08,
-        f0F2=9.475,
-        hmE=101.6,
-        hmF1=171.0,
-        hmF2=288.7,
-        yE=11.3,
-        yF1=55.4,
-        yF2=95.7,
-        vtec=29.0,
-        longitude_pole=0.,
-        latitude_pole=np.pi / 2.,
-        turbulent=True
+        latitude=ref_location.lat
     )
+    dsa_logger.info(f"Using ionosphere: {ionosphere}")
 
     T = int((times.max() - times.min()) / (1 * au.min)) + 1
     model_times = times.min() + np.arange(0., T) * au.min

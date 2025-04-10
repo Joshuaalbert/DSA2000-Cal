@@ -32,8 +32,8 @@ from dsa2000_common.geodesics.base_geodesic_model import build_geodesic_model, B
 from dsa2000_common.visibility_model.source_models.celestial.base_point_source_model import \
     build_point_source_model_from_wsclean_components, BasePointSourceModel
 from dsa2000_fm.systematics.dish_aperture_effects import build_dish_aperture_effects
-from dsa2000_fm.systematics.ionosphere import compute_x0_radius, construct_canonical_ionosphere, \
-    build_ionosphere_gain_model
+from dsa2000_fm.systematics.ionosphere import compute_x0_radius, build_ionosphere_gain_model
+from dsa2000_fm.systematics.ionosphere_models import construct_canonical_ionosphere
 
 
 def print_debug_info(tree):
