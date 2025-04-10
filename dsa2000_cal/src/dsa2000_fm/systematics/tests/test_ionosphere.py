@@ -12,9 +12,9 @@ from dsa2000_cal.solvers.multi_step_lm import lm_solver
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral, construct_eval_interp_struct, \
     IonosphereLayer, calibrate_resolution
-from dsa2000_fm.systematics.ionosphere_models import construct_ionosphere_model, fetch_ionosphere_data, \
-    construct_ionosphere_model_from_didb_db
 from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_gcrs, calc_intersections
+from dsa2000_fm.systematics.ionosphere_models import construct_ionosphere_model, fetch_ionosphere_data, \
+    construct_ionosphere_model_from_didb_db, plot_fetched_data
 
 
 def gaussian_numerical_line_integral(t1, t2, a, u, mu, Sigma):
@@ -270,16 +270,16 @@ def test_construct_ionosphere_model():
 
     ionosphere = construct_ionosphere_model(
         x0_radius=6371.0,
-        f0E = 3.51,
-        f0F1 = 5.08,
-        f0F2 = 9.475,
-        hmE = 101.6,
-        hmF1 = 171.0,
-        hmF2 = 288.7,
-        yE = 11.3,
-        yF1 = 55.4,
-        yF2 = 95.7,
-        vtec = 29.0,
+        f0E=3.51,
+        f0F1=5.08,
+        f0F2=9.475,
+        hmE=101.6,
+        hmF1=171.0,
+        hmF2=288.7,
+        yE=11.3,
+        yF1=55.4,
+        yF2=95.7,
+        vtec=29.0,
         longitude_pole=0.,
         latitude_pole=np.pi / 2.,
         turbulent=True
@@ -297,31 +297,8 @@ def test_fetch_ionosphere_data():
     for record in data:
         print(record)
 
-    # concate tree
-    data = jax.tree.map(lambda *x: np.stack(x),*data)
-    print(data)
+    plot_fetched_data(data)
 
-    # plot histograms of each column
-    import pylab as plt
-    plt.hist(data.vtec, bins='auto')
-    plt.title("VTEC Histogram")
-    plt.xlabel("VTEC [TECU]")
-    plt.show()
-
-    plt.hist(data.f0E, bins='auto')
-    plt.title("f0E Histogram")
-    plt.xlabel("f0E [MHz]")
-    plt.show()
-
-    plt.hist(data.hmE, bins='auto')
-    plt.title("hmE Histogram")
-    plt.xlabel("hmE [km]")
-    plt.show()
-
-    plt.hist(data.yE, bins='auto')
-    plt.title("yE Histogram")
-    plt.xlabel("yE [km]")
-    plt.show()
 
 def test_construct_ionosphere_model_from_didb_db():
     ionosphere = construct_ionosphere_model_from_didb_db(

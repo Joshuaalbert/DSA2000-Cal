@@ -2,7 +2,9 @@ from datetime import datetime
 from typing import List, NamedTuple
 
 import astropy.units as au
+import jax
 import numpy as np
+import pylab as plt
 import requests
 from jax import numpy as jnp
 
@@ -25,6 +27,42 @@ class IonosphereModel(NamedTuple):
     yF1: float  # km (F1-layer half thickness)
     yF2: float  # km (F2-layer half thickness)
     vtec: float  # TECU (Total electron content)
+
+
+def plot_fetched_data(data: List[IonosphereModel], savefile: str = None):
+    data = jax.tree.map(lambda *x: np.stack(x), *data)
+    fig, axs = plt.subplots(3, 4, figsize=(15, 10))
+
+    for f0, hm, y, col, name in [
+        (data.f0E, data.hmE, data.yE, 0, 'E'),
+        (data.f0F1, data.hmF1, data.yF1, 1, 'F1'),
+        (data.f0F2, data.hmF2, data.yF2, 2, 'F2')
+    ]:
+        axs[0, col].hist(f0, bins='auto')
+        # axs[0, col].set_title(f"{name} f0 Histogram")
+        axs[0, col].set_xlabel(f"{name} f0 [MHz]")
+
+        axs[1, col].hist(hm, bins='auto')
+        # axs[1, col].set_title(f"{name} hm Histogram")
+        axs[1, col].set_xlabel(f"{name} hm [km]")
+
+        axs[2, col].hist(y, bins='auto')
+        # axs[2, col].set_title(f"{name} y Histogram")
+        axs[2, col].set_xlabel(f"{name} y [km]")
+
+    axs[0, 3].hist(data.vtec, bins='auto')
+    # axs[0, 3].set_title("VTEC Histogram")
+    axs[0, 3].set_xlabel("VTEC [TECU]")
+
+    # Turn off extra
+    axs[1, 3].set_visible(False)
+    axs[2, 3].set_visible(False)
+
+    if savefile is not None:
+        fig.savefig("ionosphere_histograms.png")
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def fetch_ionosphere_data(start: datetime, end: datetime, ursi_station: str) -> List[IonosphereModel]:
