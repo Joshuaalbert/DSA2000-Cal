@@ -8,6 +8,8 @@ import uuid
 import warnings
 from typing import Tuple
 
+from dsa2000_common.common.logging import dsa_logger
+
 
 def deterministic_uuid(seed: str) -> uuid.UUID:
     """
@@ -117,7 +119,7 @@ def sync_content(prefix_path: str | None = None):
                 last_sync = datetime.datetime.fromisoformat(last_line.strip())
                 if datetime.datetime.now() - last_sync < datetime.timedelta(days=1):
                     return
-        print(
+        dsa_logger.info(
             f"Syncing {os.path.join(*content_prefix_path)} assets. This happens at most once per day, and may take a few minutes.")
 
         def remove_content_prefix(content_path, content_prefix_path):

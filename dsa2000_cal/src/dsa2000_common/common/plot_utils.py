@@ -36,3 +36,4 @@ def figs_to_gif(fig_generator, gif_path, duration=0.5, loop=0, dpi=80):
         # Temporary files are automatically cleaned up when exiting the block
 
     print(f"GIF saved as {gif_path}")
+

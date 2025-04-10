@@ -6,10 +6,10 @@ from scipy.integrate import quad
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
-from dsa2000_cal.solvers.multi_step_lm import MultiStepLevenbergMarquardt
+from dsa2000_cal.solvers.multi_step_lm import lm_solver
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral, construct_eval_interp_struct, \
-    IonosphereLayer, calibrate_resolution
+    IonosphereLayer, calibrate_resolution, construct_ionosphere_model
 from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_gcrs, calc_intersections
 
 
@@ -106,14 +106,7 @@ def test_infer_params():
             ))(dt)
             return x_after - x_after_expect
 
-        solver = MultiStepLevenbergMarquardt(
-            residual_fn=residual_fn,
-            num_approx_steps=0,
-            num_iterations=100,
-            verbose=True
-        )
-        state = solver.create_initial_state(init_params)
-        return solver.solve(state)
+        return lm_solver(residual_fn, init_params, maxiter=100, verbose=True)
 
     state, diagnostics = run_solver(
         x0=x0,
@@ -243,3 +236,48 @@ def test_calibrate_resolution():
     height = 400
     max_sep = 0.5 * fov * height + max_baseline
     resolution = calibrate_resolution(layer, max_sep, fov)
+
+
+def test_construct_ionosphere_model():
+    # https://giro.uml.edu/didbase/scaled.php
+    # # Query for measurement intervals of time:
+    # # 2024-04-07T21:00:00.000Z - 2024-04-08T21:01:00.000Z
+    # #
+    # # Data Selection:
+    # # CS is Autoscaling Confidence Score (from 0 to 100, 999 if manual scaling, -1 if unknown)
+    # # foF2 [MHz] - F2 layer critical frequency
+    # # foF1 [MHz] - F1 layer critical frequency
+    # # foE [MHz] - E layer critical frequency
+    # # hmE [km] - Peak height of E-layer
+    # # yE [km] - Half thickness of E-layer
+    # # hmF2 [km] - Peak height F2-layer
+    # # hmF1 [km] - Peak height F1-layer
+    # # yF2 [km] - Half thickness of F2-layer, parabolic model
+    # # yF1 [km] - Half thickness of F1-layer, parabolic model
+    # # TEC [10^16 m^-2] - Total electron content
+    # #
+    # # All GIRO measurements are released under CC-BY-NC-SA 4.0 license
+    # # Please follow the Lowell GIRO Data Center RULES OF THE ROAD
+    # # https://ulcar.uml.edu/DIDBase/RulesOfTheRoadForDIDBase.htm
+    # # Requires acknowledgement of BC840 data provider
+    # #
+    # #Time                     CS   foF2 QD  foF1 QD   foE QD    hmE QD     yE QD   hmF2 QD   hmF1 QD    yF2 QD    yF1 QD   TEC QD
+    # 2024-04-07T21:05:05.000Z 100  9.475 //  5.08 //  3.51 //  101.6 //   11.3 //  288.7 //  171.0 //   95.7 //   55.4 //  29.0 //
+
+    ionosphere = construct_ionosphere_model(
+        x0_radius=6371.0,
+        f0E = 3.51,
+        f0F1 = 5.08,
+        f0F2 = 9.475,
+        hmE = 101.6,
+        hmF1 = 171.0,
+        hmF2 = 288.7,
+        yE = 11.3,
+        yF1 = 55.4,
+        yF2 = 95.7,
+        vtec = 29.0,
+        longitude_pole=0.,
+        latitude_pole=np.pi / 2.,
+        turbulent=True
+    )
+    print(ionosphere)
