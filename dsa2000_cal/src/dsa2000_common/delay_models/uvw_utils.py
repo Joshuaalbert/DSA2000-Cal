@@ -44,3 +44,17 @@ def cartesian_to_celestial(x, y, z):
     ra = jnp.arctan2(y, x)
     dec = jnp.arcsin(jnp.clip(jax.lax.select(norm == 0, norm, z / norm), -1, 1))
     return ra, dec, norm
+
+def test_gcrs_to_icrs():
+    import astropy.time as at
+    import astropy.coordinates as ac
+    import astropy.units as au
+
+    k = ac.ICRS(ra=0 * au.deg, dec=50 * au.deg)
+    k_cartesian = k.cartesian.xyz
+
+    t = at.Time('9125-06-10T15:00:00', scale='utc')
+    k_gcrs = k.transform_to(ac.GCRS(obstime=t))
+    k_gcrs_cartesian = k_gcrs.cartesian.xyz
+
+    print(k_cartesian, k_gcrs_cartesian)

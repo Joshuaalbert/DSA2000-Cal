@@ -1,12 +1,9 @@
 import jax.numpy as jnp
 import numpy as np
-import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.sum_utils import scan_sum
-
-tfpd = tfp.distributions
 
 
 # Compose PSF
@@ -111,12 +108,15 @@ def compute_psf(antennas: FloatArray, lmn: FloatArray, freqs: FloatArray, latitu
     Returns:
         psf: [...] the point spread function
     """
+    antennas -= antennas[0]
+    antennas_proj = project_antennas(antennas, latitude, transit_dec)
+    tau = antennas_proj[..., 2]
 
     def compute_psf_delta(freq):
-        antennas_proj = project_antennas(antennas, latitude, transit_dec)
+
         wavelength = mp_policy.cast_to_length(299792458. / freq)
         r = antennas_proj / wavelength
-        delay = (2 * jnp.pi) * (jnp.sum(r * lmn[..., None, :], axis=-1) - r[..., 2])  # [..., N]
+        delay = (2 * jnp.pi) * (jnp.sum(r * lmn[..., None, :], axis=-1) - tau/wavelength)  # [..., N]
         delay = delay.astype(accumulate_dtype)
         voltage_beam_real = jnp.cos(delay).mean(axis=-1)  # [...]
         voltage_beam_imag = jnp.sin(delay).mean(axis=-1)  # [...]

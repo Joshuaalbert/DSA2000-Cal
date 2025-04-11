@@ -310,7 +310,7 @@ if __name__ == '__main__':
     init_config = 'pareto_opt_v6_b/final_config.txt'
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
-        for prefix in ['a', 'b', 'c', 'd', 'e', 'f', 'h', 'full']:
+        for prefix in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'full']:
             array_constraint = ArrayConstraintsV6(prefix)
             run_name = f"pareto_opt_v6_{prefix}"
             final_config = main(
