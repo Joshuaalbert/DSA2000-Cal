@@ -1,3 +1,9 @@
+import os
+
+from dsa2000_common.common.logging import dsa_logger
+
+os.environ['JAX_PLATFORMS'] = 'cuda'
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 import astropy.coordinates as ac
 import astropy.time as at
 import astropy.units as au
@@ -16,8 +22,10 @@ from dsa2000_fm.imaging.base_imagor import fit_beam
 compute_psf_from_gcrs_jit = jax.jit(compute_psf_from_gcrs, static_argnames=['with_autocorr', 'accumulate_dtype'])
 
 
-def main(save_name, array_config, fov, pixel_size, transit_dec: au.Quantity, num_times: int, dt: au.Quantity,
+def main(save_folder, save_name, array_config, fov, pixel_size, transit_dec: au.Quantity, num_times: int,
+         dt: au.Quantity,
          num_freqs: int):
+    os.makedirs(save_folder, exist_ok=True)
     # fill_registries()
     # array = array_registry.get_instance(array_registry.get_match(array_name))
     x, y, z = [], [], []
@@ -36,6 +44,8 @@ def main(save_name, array_config, fov, pixel_size, transit_dec: au.Quantity, num
 
     antennas_gcrs = quantity_to_jnp(antennas.get_gcrs(obstime=obstime).cartesian.xyz.T)
     n = int(fov / pixel_size)
+    if n % 2 == 1:
+        n += 1
 
     lvec = mvec = (-n / 2 + np.arange(n)) * pixel_size.to(au.rad).value
     L, M = np.meshgrid(lvec, lvec, indexing='ij')
@@ -71,6 +81,8 @@ def main(save_name, array_config, fov, pixel_size, transit_dec: au.Quantity, num
             dl=quantity_to_jnp(pixel_size, 'rad'),
             dm=quantity_to_jnp(pixel_size, 'rad')
         )
+        dsa_logger.info(
+            f"Beam fit: {major * 3600 * 180 / np.pi:.2f}arcsec, {minor * 3600 * 180 / np.pi:.2f}arcsec, {posang * 180 / np.pi:.2f}dec")
 
         image_model = ImageModel(
             phase_center=ac.ICRS(zenith.ra, transit_dec),
@@ -88,21 +100,26 @@ def main(save_name, array_config, fov, pixel_size, transit_dec: au.Quantity, num
             image=psf[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
         )
         save_image_to_fits(
-            file_path=f'{save_name}_psf.fits',
+            file_path=os.path.join(save_folder, f'{save_name}_psf.fits'),
             image_model=image_model,
             overwrite=True
         )
 
 
 if __name__ == '__main__':
-    for cadence in [1,2,4,8]:
-        main(
-            save_name=f"dsa1650_9P_a_optimal_v1_{cadence}",
-            array_config='/home/albert/Downloads/dsa1650_9P_a_optimal_v1.txt',
-            pixel_size=0.8 * au.arcsec,
-            fov=3 * au.arcmin,
-            transit_dec=0 * au.rad,
-            num_times=420 * cadence,
-            dt=1.5 * au.s,
-            num_freqs=250
-        )
+    for prefix in ['e', 'f', 'g', 'h', 'full', 'a', 'b', 'c', 'd']:
+        for transit_dec in [0, -30, 30, 60, 90] * au.deg:
+            for cadence in [1, 2, 4, 8]:
+                save_name = f"dsa1650_9P_{prefix}_optimal_v1_cadence_{cadence}_dec_{transit_dec.value}"
+                with TimerLog(f"Working on {save_name}"):
+                    main(
+                        save_folder='cadenced_psfs',
+                        save_name=save_name,
+                        array_config=f"pareto_opt_solution_{prefix}/dsa1650_9P_{prefix}_optimal_v1.txt",
+                        pixel_size=0.8 * au.arcsec,
+                        fov=3 * au.arcmin,
+                        transit_dec=transit_dec,
+                        num_times=420 * cadence,
+                        dt=1.5 * au.s,
+                        num_freqs=10000
+                    )

@@ -9,6 +9,21 @@ from dsa2000_common.common.array_types import FloatArray
 
 @dataclasses.dataclass(eq=False)
 class Gaussian:
+    """
+    Represents a Gaussian with definition:
+
+        f(x) = 1/sigma_major/sigma_minor/(2 pi) e^(-1/2 (x - x0)^T R^-T D^-T D^-1 R^-1 (x - x0))
+
+        F(s) = e^(-2pi i s^T x0) e^(-1/2 (4 pi^2) s^T R D D^T R^T s)
+             = e^(-2pi i s^T x0) e^(-1/2 s^T R^-T E^-T E^-1 R^-1 s)
+    where:
+        sigma_minor is the semi-minor axis
+        sigma_major is the semi-major axis
+        x0 is the center of the Gaussian
+        R is the rotation matrix
+        D = disg(sigma_minor, sigma_major) / (2 sqrt(2 log(2)))
+        E = diag((2pi)/sigma_minor, (2pi)/sigma_major) * / (2 sqrt(2 log(2)))
+    """
     x0: FloatArray  # [2]
     major_fwhm: FloatArray  # []
     minor_fwhm: FloatArray  # []
