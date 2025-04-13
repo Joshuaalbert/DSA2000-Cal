@@ -69,7 +69,7 @@ def main(save_folder, save_name, array_config, fov, pixel_size, transit_dec: au.
                     lmn=lmn,
                     times=times,
                     freqs=freqs_jax,
-                    with_autocorr=True,
+                    with_autocorr=False,
                     accumulate_dtype=jnp.float32
                 ).reshape(L.shape)
             )
@@ -115,7 +115,7 @@ if __name__ == '__main__':
                     main(
                         save_folder='cadenced_psfs',
                         save_name=save_name,
-                        array_config=f"pareto_opt_solution_{prefix}/dsa1650_9P_{prefix}_optimal_v1.txt",
+                        array_config=f"dsa1650_9P_{prefix}_optimal_v1.txt",
                         pixel_size=0.8 * au.arcsec,
                         fov=3 * au.arcmin,
                         transit_dec=transit_dec,
