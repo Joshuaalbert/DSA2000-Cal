@@ -140,11 +140,11 @@ services:
               count: all
               capabilities: [ gpu ]
   jupyter:
-    image: ray
+    image: jupyter
     container_name: jupyter
     build:
       context: ../..
-      dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+      dockerfile: workflows/streaming_fm_distributed/jupyter/Dockerfile
     ports:
       - "8899:8888"        # Jupyter
     env_file:
