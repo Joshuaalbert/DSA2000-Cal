@@ -54,77 +54,21 @@ fi
 
 echo "Node IP address: $NODE_IP_ADDRESS ($NODE_NAME)"
 
-if [ "$IS_RAY_HEAD" = true ]; then
-  echo "Starting Ray head node..."
 
-  ray start --head \
-    --port=6379 \
-    --metrics-export-port=8090 \
-    --dashboard-host=0.0.0.0 \
-    --temp-dir=$TEMP_DIR \
-    --ray-client-server-port=10001 \
-    --redis-shard-ports=6380,6381 \
-    --node-manager-port=12345 \
-    --object-manager-port=12346 \
-    --runtime-env-agent-port=12347 \
-    --dashboard-agent-grpc-port=12348 \
-    --dashboard-agent-listen-port=52365 \
-    --dashboard-port=8265 \
-    --dashboard-grpc-port=50052 \
-    --min-worker-port=20000 \
-    --max-worker-port=20100 \
-    --node-ip-address=$NODE_IP_ADDRESS \
-    --node-name=$NODE_NAME
+# Start Jupyter Notebook only on the head node
+JUPYTER_ROOT_DIR="$PACKAGE_DIR/notebooks"
+jupyter notebook \
+  --port=8888 --no-browser --allow-root \
+  --ServerApp.allow_origin='*' \
+  --ServerApp.ip='0.0.0.0' \
+  --ServerApp.root_dir="${JUPYTER_ROOT_DIR}" \
+  --ServerApp.token="$JUPYTER_TOKEN" \
+  --PasswordIdentityProvider.allow_password_change="False" \
+  --ServerApp.password="" \
+  &
 
-  ray status
+jupyter server list
 
-  # Start Jupyter Notebook only on the head node
-  JUPYTER_ROOT_DIR="$PACKAGE_DIR/notebooks"
-  jupyter notebook \
-    --port=8888 --no-browser --allow-root \
-    --ServerApp.allow_origin='*' \
-    --ServerApp.ip='0.0.0.0' \
-    --ServerApp.root_dir="${JUPYTER_ROOT_DIR}" \
-    --ServerApp.token="$JUPYTER_TOKEN" \
-    --PasswordIdentityProvider.allow_password_change="False" \
-    --ServerApp.password="" \
-    &
-
-  jupyter server list
-
-  streamlit run "${PACKAGE_DIR}/dashboards/dsa/home.py" --server.port 8501 &
-
-#  service cron start
-#
-#  # chmod +x /dsa/code/src/cleanup_logs.sh
-#  # (crontab -l 2>/dev/null; echo "0 * * * * /dsa/code/cleanup_logs.sh") | crontab -
-#  chmod +x /dsa/code/src/scrape_metric_targets.py
-#  # Run every minute
-#  (crontab -l 2>/dev/null; echo "* * * * * python /dsa/code/src/scrape_metric_targets.py") | crontab -
-#  #service cron start
-
-else
-  if [ -z "$RAY_HEAD_IP" ]; then
-    echo "Error: RAY_HEAD_IP must be specified for worker nodes."
-    exit 1
-  fi
-  echo "Starting Ray worker node connecting to head at ${RAY_HEAD_IP}..."
-
-  ray start --address="${RAY_HEAD_IP}:6379" \
-    --metrics-export-port=8090 \
-    --node-manager-port=12345 \
-    --object-manager-port=12346 \
-    --runtime-env-agent-port=12347 \
-    --dashboard-agent-grpc-port=12348 \
-    --dashboard-agent-listen-port=52365 \
-    --min-worker-port=20000 \
-    --max-worker-port=20100 \
-    --node-ip-address=$NODE_IP_ADDRESS \
-    --node-name=$NODE_NAME
-
-  ray status
-
-fi
 
 python /dsa/code/src/resource_logger.py &
 

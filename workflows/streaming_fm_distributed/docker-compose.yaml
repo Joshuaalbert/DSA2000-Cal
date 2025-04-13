@@ -139,6 +139,39 @@ services:
             - driver: nvidia
               count: all
               capabilities: [ gpu ]
+  jupyter:
+    image: ray
+    container_name: jupyter
+    build:
+      context: ../..
+      dockerfile: workflows/streaming_fm_distributed/ray/Dockerfile
+    ports:
+      - "8899:8888"        # Jupyter
+    env_file:
+      - .env
+    cap_add:
+      - SYS_PTRACE
+    pid: host # Use host PID namespace so GPU metrics are available
+    environment:
+      - XLA_FLAGS=${XLA_FLAGS}
+      - PYTHONMALLOC=${PYTHONMALLOC}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - DSA_CONTENT_SSH_USERNAME=${DSA_CONTENT_SSH_USERNAME}
+    #    shm_size: '100gb'
+    volumes:
+      - /dev/shm:/dev/shm
+      - ${HOST_RUN_DIR}:/dsa/run
+      - ../../dsa2000_cal:/dsa/code/package
+      - ~/.ssh:/root/.ssh_tmp:ro
+      - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
 volumes:
   grafana-data:
   prometheus-data:
