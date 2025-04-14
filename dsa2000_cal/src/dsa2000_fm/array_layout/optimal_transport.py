@@ -1,5 +1,7 @@
 import time
 
+import astropy.constants as const
+import astropy.units as au
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -7,6 +9,8 @@ import tensorflow_probability.substrates.jax as tfp
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
+from dsa2000_common.common.interp_utils import InterpolatedArray
+from dsa2000_common.common.quantity_utils import quantity_to_np
 from dsa2000_common.common.sum_utils import scan_sum
 from dsa2000_fm.array_layout.fast_psf_evaluation import project_antennas, rotation_matrix_change_dec
 
@@ -64,6 +68,54 @@ def wasserstein_1D(x, y, x_weights, y_weights):
     return _cdf_distance_jax(1, x, y, x_weights, y_weights)
 
 
+def wasserstein_1D_p(p, x, y, x_weights, y_weights, resolution: int):
+    # Sort
+    x_sort = jnp.argsort(x)
+    y_sort = jnp.argsort(y)
+    x = x[x_sort]
+    y = y[y_sort]
+    q = (0.5 + jnp.arange(resolution + 1)) / (resolution + 1)
+    dq = 1. / resolution
+    if x_weights is not None:
+        x_weights = x_weights[x_sort]
+        x_cdf = jnp.cumsum(x_weights)
+        x_cdf /= x_cdf[-1]  # Normalize to sum to 1
+        x_interp = InterpolatedArray(x_cdf, x, regular_grid=False, check_spacing=False, clip_out_of_bounds=True)
+    else:
+        x_cdf = jnp.arange(1, 1 + len(x)) / len(x)
+        x_interp = InterpolatedArray(x_cdf, x, regular_grid=True, check_spacing=False, clip_out_of_bounds=True)
+    x_gridded = x_interp(q)
+    if y_weights is not None:
+        y_weights = y_weights[y_sort]
+        y_cdf = jnp.cumsum(y_weights)
+        y_cdf /= y_cdf[-1]  # Normalize to sum to 1
+        y_interp = InterpolatedArray(y_cdf, y, regular_grid=False, check_spacing=False, clip_out_of_bounds=True)
+    else:
+        y_cdf = jnp.arange(1, 1 + len(y)) / len(y)
+        y_interp = InterpolatedArray(y_cdf, y, regular_grid=True, check_spacing=False, clip_out_of_bounds=True)
+    y_gridded = y_interp(q)
+    if p == 1:
+        d = jnp.sum(jnp.abs(x_gridded - y_gridded)) * dq
+    elif p == 2:
+        d = jnp.sqrt(jnp.sum(jnp.square(x_gridded - y_gridded)) * dq)
+    else:
+        d = (jnp.sum(jnp.abs(x_gridded - y_gridded) ** p) * dq) ** (1 / p)
+    return d
+
+
+def test_wasserstein_1D_p():
+    x = np.random.normal(size=(2000,))
+    y = np.random.normal(size=(1000,))
+    x_weights = np.random.uniform(size=(2000,))
+    y_weights = np.random.uniform(size=(1000,))
+    resolution = 100
+    p = 1
+    dist1 = wasserstein_1D_p(p, x, y, x_weights, y_weights, resolution)
+    dist2 = wasserstein_1D(x, y, x_weights, y_weights)
+    print(dist1, dist2)
+    np.testing.assert_allclose(dist1, dist2, atol=1e-2)
+
+
 def weighted_wasserstein_1d_gaussian(empirical_data, weights, target_mean, target_std, p=1):
     """
     Computes the 1D p-Wasserstein distance between a weighted empirical distribution and a Gaussian.
@@ -103,7 +155,6 @@ def weighted_wasserstein_1d_gaussian(empirical_data, weights, target_mean, targe
     # Approximate the Wasserstein distance using a Riemann sum
     # Differences in cumulative weights give the "mass" associated to each sample gap.
 
-    print(sorted_data.shape, target_quantiles.shape, mass_differences.shape)
     if p == 1:
         return jnp.sum(jnp.multiply(jnp.abs(sorted_data - target_quantiles), mass_differences))
     if p == 2:
@@ -113,34 +164,18 @@ def weighted_wasserstein_1d_gaussian(empirical_data, weights, target_mean, targe
     return distance ** (1 / p)
 
 
-def sliced_wasserstein(key, x, y, x_weights, y_weights, num_samples: int):
-    """
-    Compute the sliced Wasserstein distance between two point clouds.
-    This is a Monte Carlo approximation of the Wasserstein distance.
+def test_weighted_wasserstein_1d_gaussian():
+    x = np.random.normal(size=(20000,))
+    y = 1 + np.random.normal(size=(20000,))
+    x_weights = None  # np.random.uniform(size=(2000,))
+    y_weights = None  # np.random.uniform(size=(2000,))
+    target_mean = 1
+    target_std = 1
+    p = 1
 
-    Args:
-        key: PRNGKey
-        x: [N, D] points in first point cloud with uniform weight
-        y: [M, D] points in second point cloud with uniform weight
-        x_weights: [N] weights for the first point cloud
-        y_weights: [M] weights for the second point cloud
-        num_samples: number of samples
-        p: the weight norm
-
-    Returns:
-        scalar
-    """
-    D = np.shape(x)[1]
-
-    def accum_fn(key):
-        proj = jax.random.normal(key, shape=(D,))
-        proj /= jnp.linalg.norm(proj)
-        x_proj = x @ proj
-        y_proj = y @ proj
-        return wasserstein_1D(x_proj, y_proj, x_weights, y_weights)
-
-    sum = scan_sum(accum_fn, jnp.zeros(()), jax.random.split(key, num_samples), unroll=1)
-    return sum / num_samples
+    dist2 = wasserstein_1D(x, y, x_weights, y_weights)
+    dist1 = weighted_wasserstein_1d_gaussian(x, x_weights, target_mean, target_std, p)
+    np.testing.assert_allclose(dist1, dist2, atol=1e-2)
 
 
 def sliced_wasserstein_gaussian(key, x, x_weights, target_mean, target_Sigma, num_samples: int, p=1, unroll=1):
@@ -177,6 +212,93 @@ def sliced_wasserstein_gaussian(key, x, x_weights, target_mean, target_Sigma, nu
     return sum / num_samples
 
 
+def sliced_wasserstein(key, x, y, x_weights, y_weights, p=1, num_samples: int = 100, resolution: int = 100, unroll=1):
+    """
+    Compute the sliced Wasserstein distance between two point clouds.
+    This is a Monte Carlo approximation of the Wasserstein distance.
+
+    Args:
+        key: PRNGKey
+        x: [N, D] points in first point cloud with uniform weight
+        y: [M, D] points in second point cloud with uniform weight
+        x_weights: [N] weights for the first point cloud
+        y_weights: [M] weights for the second point cloud
+        num_samples: number of samples
+        p: the weight norm
+
+    Returns:
+        scalar
+    """
+    D = np.shape(x)[1]
+
+    def accum_fn(key):
+        proj = jax.random.normal(key, shape=(D,))
+        proj /= jnp.linalg.norm(proj)
+        x_proj = x @ proj
+        y_proj = y @ proj
+        return wasserstein_1D_p(p, x_proj, y_proj, x_weights, y_weights, resolution)
+
+    sum = scan_sum(accum_fn, jnp.zeros(()), jax.random.split(key, num_samples), unroll=unroll)
+    return sum / num_samples
+
+
+def test_sliced_wasserstein():
+    # 2D gaussians same mean, sigma -> 0
+    # assert sliced_wasserstein(jax.random.PRNGKey(0), np.random.normal(size=(2000, 2)), np.random.normal(size=(2000, 2)), 100) < sliced_wasserstein(jax.random.PRNGKey(0), np.random.normal(size=(100, 2)), np.random.normal(size=(100, 2)), 100)
+
+    # Different means
+    x = np.random.normal(size=(2000, 2))
+    y = np.random.normal(size=(2000, 2)) + 2
+
+    dist1 = sliced_wasserstein(jax.random.PRNGKey(0), x, y, None, None, p=1, num_samples=1000, resolution=100)
+    dist2 = sliced_wasserstein_gaussian(jax.random.PRNGKey(0), x, None, target_mean=2 * jnp.ones(2),
+                                        target_Sigma=jnp.eye(2), num_samples=1000, p=1)
+    print(dist1, dist2)
+    np.testing.assert_allclose(dist1, dist2, atol=1e-2)
+
+
+def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, ref_freq: au.Quantity):
+    wavelength = quantity_to_np(const.c / ref_freq, 'm')
+    gamma = 2 * np.sqrt(2) * np.log(2) / (2 * np.pi * quantity_to_np(target_fwhm, 'rad')) * wavelength
+    R_jax = quantity_to_np(R, 'm')
+    du_jax = quantity_to_np(du, 'm')
+    uvec = np.arange(-R_jax, R_jax + du_jax, du_jax)
+    U, V = np.meshgrid(uvec, uvec, indexing='ij')
+    norm = np.reciprocal(2 * np.pi * gamma ** 2)
+    mask = U ** 2 + V ** 2 < R_jax ** 2
+
+    def target_gaussian(u, v):
+        return np.where(mask, norm * np.exp(-0.5 * (u ** 2 + v ** 2) / gamma ** 2), 0.)
+
+    target_dist = target_gaussian(U, V)
+
+    return target_dist
+
+
+def test_compute_ideal_uv_distribution():
+    du = 100 * au.m
+    R = 8000 * au.m
+    target_fwhm = 3 * au.arcsec
+    ref_freq = 1.4 * au.GHz
+    target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, ref_freq)
+    import pylab as plt
+
+    plt.imshow(target_dist.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value))
+    plt.colorbar()
+    plt.xlabel('U (m)')
+    plt.ylabel('V (m)')
+    plt.show()
+
+    N = 10
+    antennas = quantity_to_np(R, 'm') * np.random.normal(size=(N, 2))
+
+
+    sliced_wasserstein(
+        key=jax.random.PRNGKey(0),
+
+    )
+
+
 def wasserstein_uvw_vs_gaussian(key, uvw, weights, sigma, latitude, transit_dec, num_samples, p=1, unroll=1):
     """
     Compute the sliced wasserstein distance between a 2D set of weighted saamples and a 2D gaussian with
@@ -208,20 +330,6 @@ def wasserstein_uvw_vs_gaussian(key, uvw, weights, sigma, latitude, transit_dec,
         key, uvw_rotated, weights, target_mean=target_mean, target_Sigma=target_Sigma,
         p=p, num_samples=num_samples, unroll=unroll
     )
-
-
-def test_sliced_wasserstein():
-    # 2D gaussians same mean, sigma -> 0
-    # assert sliced_wasserstein(jax.random.PRNGKey(0), np.random.normal(size=(2000, 2)), np.random.normal(size=(2000, 2)), 100) < sliced_wasserstein(jax.random.PRNGKey(0), np.random.normal(size=(100, 2)), np.random.normal(size=(100, 2)), 100)
-
-    # Different means
-    x = np.random.normal(size=(2000, 2))
-    y = np.random.normal(size=(2000, 2)) + 2
-
-    dist = sliced_wasserstein(jax.random.PRNGKey(0), x, y,None, None, 100)
-    dist_2 = sliced_wasserstein_gaussian(jax.random.PRNGKey(0), y, None, target_mean=2*jnp.ones(2), target_Sigma=jnp.eye(2), num_samples=100, p=1)
-    print(dist, dist_2)
-
 
 
 def _cdf_distance_np(p, u_values, v_values, u_weights=None, v_weights=None):

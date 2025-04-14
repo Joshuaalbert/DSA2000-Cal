@@ -153,12 +153,7 @@ RUN set -eux; \
 ENV DEBIAN_FRONTEND=dialog
 
 # === Install rest of package ===
-
-
 RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential g++ ssh git htop vim cron
-
-# Install py-spy for inspecting running processes
-RUN pip install py-spy && chown root:root `which py-spy` && chmod u+s `which py-spy`
 
 # Install the ducc0 package from source for best performance
 # This must be installed before requirement.txt, to avoid install from binary
