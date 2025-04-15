@@ -17,8 +17,8 @@ from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.astropy_utils import mean_itrs
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.ray_utils import TimerLog
-from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
-from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation
+from dsa2000_fm.array_layout.pareto_front_search import SampleEvaluation, \
+    build_quality_only_search_point_generator
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_fm.abc import AbstractArrayConstraint
 from dsa2000_assets.registries import array_registry
@@ -109,7 +109,7 @@ def main(
     dsa_logger.info(f"Number of frequencies: {len(obsfreqs)}")
 
     # Performing the optimization
-    gen = build_search_point_generator(
+    gen = build_quality_only_search_point_generator(
         results_file=os.path.join(run_name, 'results.json'),
         plot_dir=plot_folder,
         array_constraint=array_constraint,
@@ -151,7 +151,7 @@ def main(
         #     obstime=ref_time,
         #     array_location=array_location
         # )
-        cost = np.random.normal()
+        cost = np.random.uniform()
         if np.isnan(cost):
             dsa_logger.warning(f"Cost is NaN for {sample_point}")
         if np.isnan(quality):
