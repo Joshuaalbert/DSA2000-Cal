@@ -275,22 +275,23 @@ def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bin
         the negative sliced Wasserstein distance, a scalar
     """
     dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
-    uv_grid = jnp.reshape(target_uv, (-1, 2))
-    x_weights = jnp.reshape(dist, (-1,))
-    x_weights /= jnp.sum(x_weights)
-    y_weights = jnp.reshape(target_dist, (-1,))
-    y_weights /= jnp.sum(y_weights)
-    dist = sliced_wasserstein(
-        key=key,
-        x=uv_grid,
-        y=uv_grid,
-        x_weights=x_weights,
-        y_weights=y_weights,
-        p=1,
-        num_samples=100,
-        resolution=100
-    )
-    return -dist
+    return -jnp.mean((dist - target_dist)**2)
+    # uv_grid = jnp.reshape(target_uv, (-1, 2))
+    # x_weights = jnp.reshape(dist, (-1,))
+    # x_weights /= jnp.sum(x_weights)
+    # y_weights = jnp.reshape(target_dist, (-1,))
+    # y_weights /= jnp.sum(y_weights)
+    # dist = sliced_wasserstein(
+    #     key=key,
+    #     x=uv_grid,
+    #     y=uv_grid,
+    #     x_weights=x_weights,
+    #     y_weights=y_weights,
+    #     p=1,
+    #     num_samples=100,
+    #     resolution=100
+    # )
+    # return -dist
 
 
 def wasserstein_uvw_vs_gaussian(key, uvw, weights, sigma, latitude, transit_dec, num_samples, p=1, unroll=1):

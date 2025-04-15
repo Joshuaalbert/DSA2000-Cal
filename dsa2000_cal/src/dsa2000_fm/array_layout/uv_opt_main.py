@@ -20,7 +20,7 @@ from dsa2000_common.common.astropy_utils import mean_itrs
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.ray_utils import TimerLog
 from dsa2000_fm.array_layout.pareto_front_search import SampleEvaluation, \
-    build_search_point_generator
+    build_search_point_generator, build_quality_only_search_point_generator
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_fm.abc import AbstractArrayConstraint
 from dsa2000_assets.registries import array_registry
