@@ -257,12 +257,13 @@ def main(
             target_psf_dB_stddev=target_psf_dB_stddev,
             accumulate_dtype=jnp.float32
         )
-        cost = compute_mst_cost(
-            k=6,
-            antennas=sample_point.antennas,
-            obstime=obstime,
-            array_location=array_location
-        )
+        # cost = compute_mst_cost(
+        #     k=6,
+        #     antennas=sample_point.antennas,
+        #     obstime=ref_time,
+        #     array_location=array_location
+        # )
+        cost = np.random.normal()
         if np.isnan(cost):
             dsa_logger.warning(f"Cost is NaN for {sample_point}")
         if np.isnan(quality):

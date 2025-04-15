@@ -145,12 +145,13 @@ def main(
             uv_grid,
             target_dist
         )
-        cost = compute_mst_cost(
-            k=6,
-            antennas=sample_point.antennas,
-            obstime=ref_time,
-            array_location=array_location
-        )
+        # cost = compute_mst_cost(
+        #     k=6,
+        #     antennas=sample_point.antennas,
+        #     obstime=ref_time,
+        #     array_location=array_location
+        # )
+        cost = np.random.normal()
         if np.isnan(cost):
             dsa_logger.warning(f"Cost is NaN for {sample_point}")
         if np.isnan(quality):
