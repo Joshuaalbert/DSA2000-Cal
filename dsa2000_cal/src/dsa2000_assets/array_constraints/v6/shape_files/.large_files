@@ -7,10 +7,21 @@ AOI 6.0e.*
 AOI 6.0f.*
 AOI 6.0g.*
 AOI 6.0h.*
+AOI 6.1.*
+AOI 6.1a.*
+AOI 6.1b.*
+AOI 6.1c.*
+AOI 6.1d.*
+AOI 6.1e.*
+AOI 6.1f.*
+AOI 6.1g.*
+AOI 6.1h.*
 aoi_NHD_V2_Flowlines.*
 aoi_NHD_V2_Waterbodies.*
 aoi_NWI_Wetland.*
+Avoidance - PHMA within AOI.*
 Avoidance - Potential Rocky Conditions.*
+Avoidance - Observed Rocky Conditions.*
 Avoidance - Terrain.*
 Environmental Avoidance (Combined).*
 Ephemeral Streams.*

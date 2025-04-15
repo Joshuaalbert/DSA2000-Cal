@@ -37,8 +37,9 @@ class ArrayConstraintsV6(BaseContent, AbstractArrayConstraint):
         folder = self.get_array_constraint_folder()
 
         return [
-            (RegionSampler(os.path.join(folder, "Avoidance - Potential Rocky Conditions.shp")), _60ft),
+            (RegionSampler(os.path.join(folder, "Avoidance - Observed Rocky Conditions.shp")), _60ft),
             (RegionSampler(os.path.join(folder, "Avoidance - Terrain.shp")), _60ft),
+            (RegionSampler(os.path.join(folder, "Avoidance - PHMA within AOI.shp")), _60ft),
             (RegionSampler(os.path.join(folder, "Environmental Avoidance (Combined).shp")), _60ft),
             (RegionSampler(os.path.join(folder, "Fences.shp")), _60ft),
             (RegionSampler(os.path.join(folder, "Existing Access Paths.shp")), _30ft),
@@ -69,11 +70,11 @@ class ArrayConstraintsV6(BaseContent, AbstractArrayConstraint):
 
         if self.extension == 'full':
             aoi_data = [
-                (RegionSampler(os.path.join(folder, f"AOI 6.0.shp")), _60ft),
+                (RegionSampler(os.path.join(folder, f"AOI 6.1.shp")), _60ft),
             ]
         else:
             aoi_data = [
-                (RegionSampler(os.path.join(folder, f"AOI 6.0{self.extension}.shp")), _60ft),
+                (RegionSampler(os.path.join(folder, f"AOI 6.1{self.extension}.shp")), _60ft),
             ]
         return aoi_data
 

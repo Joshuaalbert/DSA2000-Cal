@@ -1,6 +1,5 @@
 from datetime import datetime
 
-import jax
 import numpy as np
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
@@ -8,10 +7,9 @@ from scipy.integrate import quad
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
-from dsa2000_cal.solvers.multi_step_lm import lm_solver
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_fm.systematics.ionosphere import GaussianLineIntegral, construct_eval_interp_struct, \
-    IonosphereLayer, calibrate_resolution
+    IonosphereLayer, calibrate_resolution, build_evolve_gcrs
 from dsa2000_fm.systematics.ionosphere import efficient_rodriges_rotation, evolve_gcrs, calc_intersections
 from dsa2000_fm.systematics.ionosphere_models import construct_ionosphere_model, fetch_ionosphere_data, \
     construct_ionosphere_model_from_didb_db, plot_fetched_data
@@ -80,46 +78,7 @@ def test_efficient_rodriges_rotation():
 
 
 def test_infer_params():
-    # Infers the rotation parameters
-    a: ac.EarthLocation = ac.EarthLocation.of_site('vla')
-    k = ac.ICRS(0 * au.deg, 10 * au.deg)
-    dt = np.linspace(0., 86400., 100)
-    t = at.Time.now() + dt * au.s
-
-    a_gcrs = a.get_gcrs(t).cartesian.xyz.to('km').value.T
-
-    x0 = a_gcrs[0, :]  # [3]
-    x_after_expect = a_gcrs[1:, :]
-    dt = dt[1:]
-
-    # Perform optimisation with scipy
-    @jax.jit
-    def run_solver(x0, dt, x_after_expect):
-        init_params = jnp.array([7.307418278891732e-05 * 1e5, 0., np.pi / 2.])
-
-        def residual_fn(params):
-            omega, alpha_pole, delta_pole = params
-            omega *= 1e-5
-            x_after = jax.vmap(lambda dt: efficient_rodriges_rotation(
-                x_proj=x0,
-                rdot=0.,
-                omega=omega,
-                dt=dt,
-                alpha_pole=alpha_pole,
-                delta_pole=delta_pole
-            ))(dt)
-            return x_after - x_after_expect
-
-        return lm_solver(residual_fn, init_params, maxiter=100, verbose=True)
-
-    state, diagnostics = run_solver(
-        x0=x0,
-        dt=dt,
-        x_after_expect=x_after_expect
-    )
-    omega, alpha_pole, delta_pole = state.x
-    omega *= 1e-5
-    print(omega, alpha_pole, delta_pole)
+    print(build_evolve_gcrs(at.Time.now() + np.arange(5) * au.min))
 
 
 def test_evolve_gcrs():
@@ -140,8 +99,6 @@ def test_evolve_gcrs():
     print(f"latdot = {latdot}")
     print(k.transform_to(a_gcrs).cartesian.xyz.value)
     print(k.transform_to(a.get_gcrs(t_next)).cartesian.xyz.value)
-
-
 
     a_gcrs_xyz_from = a_gcrs.cartesian.xyz.to('km').value
     a_gcrs_xyz_to = a.get_gcrs(t_next).cartesian.xyz.to('km').value

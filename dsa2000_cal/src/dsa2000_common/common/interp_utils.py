@@ -203,7 +203,7 @@ def get_interp_indices_and_weights(x: FloatArray, xp: FloatArray, regular_grid: 
     if clip_out_of_bounds:
         x = jax.lax.clamp(xp[0], x, xp[-1])
 
-    # Find xp[i1-1] < x <= xp[i1]
+    # Find xp[i0=i1-1] < x <= xp[i1]
     one = jnp.asarray(1, mp_policy.index_dtype)
     if regular_grid:
         # Use faster index determination

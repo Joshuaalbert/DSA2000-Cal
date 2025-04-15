@@ -1,4 +1,5 @@
 import time
+from functools import partial
 
 import astropy.constants as const
 import astropy.units as au
@@ -9,10 +10,17 @@ import tensorflow_probability.substrates.jax as tfp
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
+from dsa2000_assets.content_registry import fill_registries
+from dsa2000_assets.registries import array_registry
+from dsa2000_common.common.enu_frame import ENU
+from dsa2000_common.common.fourier_utils import ApertureTransform
 from dsa2000_common.common.interp_utils import InterpolatedArray
-from dsa2000_common.common.quantity_utils import quantity_to_np
+from dsa2000_common.common.quantity_utils import quantity_to_np, quantity_to_jnp, time_to_jnp
 from dsa2000_common.common.sum_utils import scan_sum
+from dsa2000_common.delay_models.uvw_utils import geometric_uvw_from_gcrs
 from dsa2000_fm.array_layout.fast_psf_evaluation import project_antennas, rotation_matrix_change_dec
+from dsa2000_fm.imaging.base_imagor import fit_beam
+from dsa2000_fm.systematics.ionosphere import evolve_gcrs
 
 tfpd = tfp.distributions
 
@@ -257,12 +265,13 @@ def test_sliced_wasserstein():
     np.testing.assert_allclose(dist1, dist2, atol=1e-2)
 
 
-def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, ref_freq: au.Quantity):
-    wavelength = quantity_to_np(const.c / ref_freq, 'm')
-    gamma = 2 * np.sqrt(2) * np.log(2) / (2 * np.pi * quantity_to_np(target_fwhm, 'rad')) * wavelength
-    R_jax = quantity_to_np(R, 'm')
-    du_jax = quantity_to_np(du, 'm')
-    uvec = np.arange(-R_jax, R_jax + du_jax, du_jax)
+def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, max_freq: au.Quantity):
+    min_wavelength = quantity_to_np(const.c / max_freq, 'm')
+    gamma = np.sqrt(2) * np.log(2) / (np.pi * quantity_to_np(target_fwhm, 'rad'))
+    R_jax = quantity_to_np(R, 'm') / min_wavelength
+    du_jax = quantity_to_np(du, 'm') / min_wavelength
+    uvec_bins = np.arange(-R_jax - du_jax, R_jax + du_jax, du_jax)
+    uvec = 0.5 * (uvec_bins[1:] + uvec_bins[:-1])
     U, V = np.meshgrid(uvec, uvec, indexing='ij')
     norm = np.reciprocal(2 * np.pi * gamma ** 2)
     mask = U ** 2 + V ** 2 < R_jax ** 2
@@ -271,32 +280,164 @@ def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: 
         return np.where(mask, norm * np.exp(-0.5 * (u ** 2 + v ** 2) / gamma ** 2), 0.)
 
     target_dist = target_gaussian(U, V)
+    uv_grid = np.stack((U, V), axis=-1)
+    return uvec_bins, uv_grid, target_dist
 
-    return target_dist
+
+@partial(jax.jit, static_argnames=['unroll'])
+def accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uvec_bins, unroll=1):
+    def get_idx(x):
+        # bins [0, 1, 2] -> mid points [0, 1], i0=0, i1=1 -> i0
+        dx = uvec_bins[1] - uvec_bins[0]
+        one = jnp.ones((), jnp.int32)
+        _i1 = jnp.ceil((x - uvec_bins[0]) / dx).astype(jnp.int32)
+        i1 = jnp.clip(_i1, one, len(uvec_bins) - 1).astype(jnp.int32)
+        i0 = i1 - one
+        return i0
+
+    zero_accum = jnp.zeros((uvec_bins.size - 1, uvec_bins.size - 1), dtype=jnp.float64)
+
+    def accumm_time(time):
+        antennas_uvw = geometric_uvw_from_gcrs(evolve_gcrs(antennas_gcrs, time), ra0, dec0)
+        i_idxs, j_idxs = np.triu_indices(antennas_uvw.shape[0], k=1)
+        uvw = antennas_uvw[i_idxs] - antennas_uvw[j_idxs]  # [..., 3]
+
+        u = uvw[..., 0]
+        v = uvw[..., 1]
+
+        def accum_freq(freq):
+            wavelength = quantity_to_jnp(const.c) / freq
+            u_idx = get_idx(u / wavelength)
+            v_idx = get_idx(v / wavelength)
+            accum = zero_accum.at[u_idx, v_idx].add(1.0)
+            return accum
+
+        accum = scan_sum(accum_freq, zero_accum, freqs, unroll=unroll)
+        return accum
+
+    accum = scan_sum(accumm_time, zero_accum, times, unroll=unroll)
+    return accum
+
+@jax.jit
+def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bins, target_uv, target_dist):
+    """
+    Evaluate the UV distribution using the negative sliced Wasserstein distance.
+
+    Args:
+        antennas_gcrs: [N, 3] GCRS coordinates of antennas at the reference time
+        times: [T] times in seconds since the reference time
+        freqs: [C] frequencies in Hz
+        ra0: the right ascension of the tracking center in radians
+        dec0: the declination of the tracking center in radians
+        uv_bins: [M + 1] bins for the UV distribution
+        target_uv: [M, M, 2] target UV coordinates
+        target_dist: [M, M] target UV distribution
+
+    Returns:
+        the negative sliced Wasserstein distance, a scalar
+    """
+    dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
+    uv_grid = jnp.reshape(target_uv, (-1, 2))
+    x_weights = jnp.reshape(dist, (-1, ))
+    y_weights = jnp.reshape(target_dist, (-1, ))
+    dist = sliced_wasserstein(
+        key=key,
+        x=uv_grid,
+        y=uv_grid,
+        x_weights=x_weights,
+        y_weights=y_weights,
+        p=1,
+        num_samples=100,
+        resolution=100
+    )
+    return -dist
 
 
 def test_compute_ideal_uv_distribution():
-    du = 100 * au.m
-    R = 8000 * au.m
-    target_fwhm = 3 * au.arcsec
-    ref_freq = 1.4 * au.GHz
-    target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, ref_freq)
+    du = 10 * au.m
+    R = 16000 * au.m
+    target_fwhm = 3. * au.arcsec
+    max_freq = 2 * au.GHz
+    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
+
+    a = ApertureTransform()
+    dx = uv_bins[1] - uv_bins[0]
+
+    dl = 1 / (target_dist.shape[0] * dx)
+    psf = a.to_image(target_dist, axes=(-2, -1), dx=dx, dy=dx).real
+    psf /= np.max(psf)
     import pylab as plt
 
-    plt.imshow(target_dist.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value))
+    plt.imshow(psf.T, cmap='gray')
     plt.colorbar()
-    plt.xlabel('U (m)')
-    plt.ylabel('V (m)')
     plt.show()
 
-    N = 10
-    antennas = quantity_to_np(R, 'm') * np.random.normal(size=(N, 2))
+    major, minor, pos_angle = fit_beam(psf, dl, dl)
+    rad2arcsec = 180 / np.pi * 3600
 
-
-    sliced_wasserstein(
-        key=jax.random.PRNGKey(0),
-
+    print(
+        f"Beam major: {major * rad2arcsec:.2f}arcsec, "
+        f"minor: {minor * rad2arcsec:.2f}arcsec, "
+        f"posang: {pos_angle * 180 / np.pi:.2f}deg"
     )
+
+
+def test_accumulate_uv_distribution():
+    du = 100 * au.m
+    R = 16000 * au.m
+    target_fwhm = 3.3 * au.arcsec
+    max_freq = 2 * au.GHz
+    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
+    import pylab as plt
+    import astropy.time as at
+    import astropy.coordinates as ac
+
+    fill_registries()
+    array = array_registry.get_instance(array_registry.get_match('dsa1650_9P'))
+    array_location = array.get_array_location()
+    antennas = array.get_antennas()
+
+    ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
+    obstimes = ref_time + np.arange(2) * array.get_integration_time()
+    phase_center = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
+
+    antennas_gcrs = quantity_to_jnp(antennas.get_gcrs(ref_time).cartesian.xyz.T, 'm')
+    times = time_to_jnp(obstimes, ref_time)
+    obsfreqs = array.get_channels()[:2]
+    freqs = quantity_to_jnp(obsfreqs, 'Hz')
+    ra0 = quantity_to_jnp(phase_center.ra, 'rad')
+    dec0 = quantity_to_jnp(phase_center.dec, 'rad')
+
+    dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
+
+    target_dist /= jnp.sum(target_dist)
+    dist /= jnp.sum(dist)
+
+    plt.imshow(dist.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value),
+               interpolation='nearest', cmap='hot')
+    plt.colorbar()
+    plt.xlabel(r'U ($\lambda$)')
+    plt.ylabel(r'V ($\lambda$)')
+    plt.show()
+
+    plt.imshow(target_dist.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value),
+               interpolation='nearest', cmap='hot')
+    plt.colorbar()
+    plt.xlabel(r'U ($\lambda$)')
+    plt.ylabel(r'V ($\lambda$)')
+    plt.show()
+
+    dist = sliced_wasserstein(
+        key=jax.random.PRNGKey(0),
+        x=jnp.asarray(uv_grid.reshape((-1, 2))),
+        y=jnp.asarray(uv_grid.reshape((-1, 2))),
+        x_weights=jnp.asarray(dist.reshape((-1,))),
+        y_weights=jnp.asarray(target_dist.reshape((-1,))),
+        p=1,
+        num_samples=100,
+        resolution=100
+    )
+    print(dist)
 
 
 def wasserstein_uvw_vs_gaussian(key, uvw, weights, sigma, latitude, transit_dec, num_samples, p=1, unroll=1):

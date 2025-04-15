@@ -19,6 +19,7 @@ from jax import numpy as jnp
 from matplotlib.widgets import Slider
 from typing_extensions import NamedTuple
 
+from dsa2000_cal.solvers.multi_step_lm import lm_solver
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.astropy_utils import create_spherical_earth_grid, mean_itrs
 from dsa2000_common.common.interp_utils import InterpolatedArray
@@ -1704,9 +1705,54 @@ def explore_dtec(dtec: np.ndarray, antennas: ac.EarthLocation, directions: ac.IC
     plt.show()
 
 
+def build_evolve_gcrs(times: at.Time):
+    if len(times) < 2:
+        raise ValueError("Need at least two times to build the evolution.")
+
+    # Infers the rotation parameters
+    a: ac.EarthLocation = ac.EarthLocation.of_site('vla')
+    a_gcrs = a.get_gcrs(times).cartesian.xyz.to('km').value.T
+    x0 = a_gcrs[0, :]  # [3]
+    x_after_expect = a_gcrs[1:, :]
+
+    dt = time_to_jnp(times[1:], times[0])
+
+    # Perform optimisation with scipy
+    @jax.jit
+    def run_solver(x0, dt, x_after_expect):
+        init_omega = 7.292115315411851e-05  # ~ 2 * np.pi / ((23 + 56 / 60) * 3600)
+        init_alpha_pole = 0.015949670685007602
+        init_delta_pole = 1.5683471107500062
+        init_params = jnp.array([init_omega * 1e5, init_alpha_pole, init_delta_pole])
+
+        def residual_fn(params):
+            omega, alpha_pole, delta_pole = params
+            omega *= 1e-5
+            x_after = jax.vmap(lambda dt: efficient_rodriges_rotation(
+                x_proj=x0,
+                rdot=0.,
+                omega=omega,
+                dt=dt,
+                alpha_pole=alpha_pole,
+                delta_pole=delta_pole
+            ))(dt)
+            return x_after - x_after_expect
+
+        return lm_solver(residual_fn, init_params, maxiter=100, verbose=True)
+
+    state, diagnostics = run_solver(
+        x0=x0,
+        dt=dt,
+        x_after_expect=x_after_expect
+    )
+    omega, alpha_pole, delta_pole = state
+    omega *= 1e-5
+    return partial(evolve_gcrs, omega=float(omega), alpha_pole=float(alpha_pole), delta_pole=float(delta_pole))
+
+
 # simulate ionosphere over a give resolution
 
-def evolve_gcrs(gcrs, dt):
+def evolve_gcrs(gcrs, dt, omega=7.292115315411851e-05, alpha_pole=0.015949670685007602, delta_pole=1.5683471107500062):
     """
     Evolve GCRS coordinates in time via rotation around Earth's rotational pole.
 
@@ -1718,9 +1764,6 @@ def evolve_gcrs(gcrs, dt):
         [3] the evolved position in GCRS
     """
     # TODO: could replace InterpolatedArrays with application of this about a reference time.
-    omega = 7.292115315411851e-05  # ~ 2 * np.pi / ((23 + 56 / 60) * 3600)
-    alpha_pole = 0.015949670685007602
-    delta_pole = 1.5683471107500062
     return efficient_rodriges_rotation(
         x_proj=gcrs,
         rdot=0.,
@@ -1746,13 +1789,13 @@ def efficient_rodriges_rotation(x_proj, rdot, omega, dt, alpha_pole, delta_pole)
     Returns:
         [3] the x_proj vector rotated
     """
-    if np.shape(x_proj) != (3,):
-        raise ValueError(f"Expected 3D vector input, got {np.shape(x_proj)}.")
-    r_init = jnp.linalg.norm(x_proj)
+    if np.shape(x_proj)[-1] != 3:
+        raise ValueError(f"Expected 3D vector input, got {np.shape(x_proj)}")
+    r_init = jnp.linalg.norm(x_proj, axis=-1, keepdims=True)
     x_proj /= r_init
     r_final = r_init + rdot * dt
 
-    x, y, z = x_proj[0], x_proj[1], x_proj[2]
+    x, y, z = x_proj[..., 0], x_proj[..., 1], x_proj[..., 2]
     x0 = dt * omega
     x1 = jnp.cos(x0)
     x2 = -x1
@@ -1775,4 +1818,4 @@ def efficient_rodriges_rotation(x_proj, rdot, omega, dt, alpha_pole, delta_pole)
     x_out = -x * (x2 + x3 ** 2 * x7) - x14 * (-x10 + x13) - y * (x15 + x16)
     y_out = -x * (-x15 + x16) - x14 * (x17 + x18) - y * (x2 + x7 * x8 ** 2)
     z_out = -x * x4 * (x10 + x13) - x4 * y * (-x17 + x18) + z * (x1 * x5 - x5 + 1)
-    return r_final * jnp.stack([x_out, y_out, z_out])
+    return r_final * jnp.stack([x_out, y_out, z_out], axis=-1) # [..., 3]
