@@ -306,13 +306,13 @@ if __name__ == '__main__':
         num_antennas=None
     )
 
-    init_config = 'pareto_opt_v6_b/final_config.txt'
     np.random.seed(0)
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
         for prefix in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'full']:
+            init_config = f'./pareto_opt_v6_{prefix}/final_config.txt'
             array_constraint = ArrayConstraintsV6(prefix)
-            run_name = f"pareto_opt_v6_{prefix}"
+            run_name = f"pareto_opt_v6_{prefix}_v1"
             final_config = main(
                 lmn_target=lmn_target,
                 target_psf_dB_mean=target_psf_dB_mean,
@@ -326,4 +326,3 @@ if __name__ == '__main__':
                 num_evaluations=500,
                 array_constraint=array_constraint
             )
-            init_config = final_config
