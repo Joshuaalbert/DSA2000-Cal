@@ -415,7 +415,6 @@ def build_quality_only_search_point_generator(
                 fig.savefig(os.path.join(plot_dir, f"objective.png"))
                 plt.close(fig)
             pbar.update(1)
-            break
         if evaluation.done:
             break
 
