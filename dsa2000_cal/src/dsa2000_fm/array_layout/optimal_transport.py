@@ -267,7 +267,7 @@ def test_sliced_wasserstein():
 
 def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, max_freq: au.Quantity):
     min_wavelength = quantity_to_np(const.c / max_freq, 'm')
-    gamma = np.sqrt(2) * np.log(2) / (np.pi * quantity_to_np(target_fwhm, 'rad'))
+    gamma = np.sqrt(2 * np.log(2)) / (np.pi * quantity_to_np(target_fwhm, 'rad'))
     R_jax = quantity_to_np(R, 'm') / min_wavelength
     du_jax = quantity_to_np(du, 'm') / min_wavelength
     uvec_bins = np.arange(-R_jax - du_jax, R_jax + du_jax, du_jax)
@@ -318,6 +318,7 @@ def accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uvec_bins
     accum = scan_sum(accumm_time, zero_accum, times, unroll=unroll)
     return accum
 
+
 @jax.jit
 def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bins, target_uv, target_dist):
     """
@@ -338,8 +339,8 @@ def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bin
     """
     dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
     uv_grid = jnp.reshape(target_uv, (-1, 2))
-    x_weights = jnp.reshape(dist, (-1, ))
-    y_weights = jnp.reshape(target_dist, (-1, ))
+    x_weights = jnp.reshape(dist, (-1,))
+    y_weights = jnp.reshape(target_dist, (-1,))
     dist = sliced_wasserstein(
         key=key,
         x=uv_grid,
@@ -354,9 +355,9 @@ def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bin
 
 
 def test_compute_ideal_uv_distribution():
-    du = 10 * au.m
+    du = 100 * au.m
     R = 16000 * au.m
-    target_fwhm = 3. * au.arcsec
+    target_fwhm = 3 * au.arcsec
     max_freq = 2 * au.GHz
     uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
 
@@ -380,12 +381,14 @@ def test_compute_ideal_uv_distribution():
         f"minor: {minor * rad2arcsec:.2f}arcsec, "
         f"posang: {pos_angle * 180 / np.pi:.2f}deg"
     )
+    np.testing.assert_allclose(major * rad2arcsec, target_fwhm.value, atol=1e-2)
+    np.testing.assert_allclose(minor * rad2arcsec, target_fwhm.value, atol=1e-2)
 
 
 def test_accumulate_uv_distribution():
     du = 100 * au.m
     R = 16000 * au.m
-    target_fwhm = 3.3 * au.arcsec
+    target_fwhm = 3.0 * au.arcsec
     max_freq = 2 * au.GHz
     uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
     import pylab as plt
