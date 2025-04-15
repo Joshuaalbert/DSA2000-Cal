@@ -309,7 +309,7 @@ if __name__ == '__main__':
     np.random.seed(0)
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
-        for prefix in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'full']:
+        for prefix in ['a', 'e', ]:
             init_config = f'./pareto_opt_v6_{prefix}/final_config.txt'
             array_constraint = ArrayConstraintsV6(prefix)
             run_name = f"pareto_opt_v6_{prefix}_v1"

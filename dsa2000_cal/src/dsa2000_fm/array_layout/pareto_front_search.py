@@ -112,6 +112,7 @@ def build_search_point_generator(
     minimal_antenna_sep_m = float(quantity_to_np(minimal_antenna_sep, 'm'))
 
     if os.path.exists(results_file):
+        dsa_logger.info("Loading prior results")
         results = Results.parse_file(results_file)
     else:
         results = Results(
@@ -129,70 +130,70 @@ def build_search_point_generator(
         if obstime is None:
             raise ValueError("Observation time must be provided if results file does not exist.")
 
-    # Make sure initial antennas satisfy constraints
-    for check_idx in range(len(antennas)):
-        if is_violation(
-                check_idx, antennas, array_location, obstime, additional_buffer_m,
-                minimal_antenna_sep_m, aoi_data, constraint_data, verbose=False
-        ):
-            dsa_logger.info(f"Initial antenna {check_idx} violates constraints. Replacing")
-            antennas = sample_aoi(
-                check_idx, antennas, array_location, obstime, additional_buffer_m,
-                minimal_antenna_sep_m, aoi_data, constraint_data
-            )
+        # Make sure initial antennas satisfy constraints
+        for check_idx in range(len(antennas)):
+            if is_violation(
+                    check_idx, antennas, array_location, obstime, additional_buffer_m,
+                    minimal_antenna_sep_m, aoi_data, constraint_data, verbose=False
+            ):
+                dsa_logger.info(f"Initial antenna {check_idx} violates constraints. Replacing")
+                antennas = sample_aoi(
+                    check_idx, antennas, array_location, obstime, additional_buffer_m,
+                    minimal_antenna_sep_m, aoi_data, constraint_data
+                )
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    for sampler, buffer in aoi_data:
-        sampler.plot_region(ax=ax, color='blue')
-    for sampler, buffer in constraint_data:
-        sampler.plot_region(ax=ax, color='red')
-    ax.scatter(antennas.lon.deg, antennas.lat.deg, c='green', marker='x', label='Antennas')
-    ax.scatter(array_location.lon.deg, array_location.lat.deg, c='black', marker='*', label='Array location')
-    ax.set_xlabel('Longitude (deg)')
-    ax.set_ylabel('Latitude (deg)')
-    ax.set_xlim(-114.6, -114.3)
-    ax.set_ylim(39.45, 39.70)
-    ax.legend()
-    fig.savefig(os.path.join(plot_dir, "aoi_init.png"))
-    plt.close(fig)
-    # Add initial points to create a hull
-    evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
-    results.evaluations.append(evaluation)
-    for _ in range(2):
-        # Choose a random antenna to replace
-        replace_idx = np.random.choice(len(antennas))
-        antennas = sample_aoi(
-            replace_idx=replace_idx,
-            antennas=antennas,
-            array_location=results.array_location,
-            obstime=results.obstime,
-            additional_buffer=additional_buffer_m,
-            minimal_antenna_sep=minimal_antenna_sep_m,
-            aoi_data=aoi_data,
-            constraint_data=constraint_data
-        )
+        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+        for sampler, buffer in aoi_data:
+            sampler.plot_region(ax=ax, color='blue')
+        for sampler, buffer in constraint_data:
+            sampler.plot_region(ax=ax, color='red')
+        ax.scatter(antennas.lon.deg, antennas.lat.deg, c='green', marker='x', label='Antennas')
+        ax.scatter(array_location.lon.deg, array_location.lat.deg, c='black', marker='*', label='Array location')
+        ax.set_xlabel('Longitude (deg)')
+        ax.set_ylabel('Latitude (deg)')
+        ax.set_xlim(-114.6, -114.3)
+        ax.set_ylim(39.45, 39.70)
+        ax.legend()
+        fig.savefig(os.path.join(plot_dir, "aoi_init.png"))
+        plt.close(fig)
+        # Add initial points to create a hull
         evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
         results.evaluations.append(evaluation)
-    # hull = ConvexHull(points=np.asarray([[e.cost, e.quality] for e in results.evaluations]), incremental=True)
-    # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
-    # while len(vertex_idxs) == 0:
-    #  #   Choose a random antenna to replace
-    # replace_idx = np.random.choice(len(antennas))
-    # antennas = sample_aoi(
-    #     replace_idx=replace_idx,
-    #     antennas=antennas,
-    #     array_location=results.array_location,
-    #     obstime=results.obstime,
-    #     additional_buffer=additional_buffer_m,
-    #     minimal_antenna_sep=minimal_antenna_sep_m,
-    #     aoi_data=aoi_data,
-    #     constraint_data=constraint_data
-    # )
-    # evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
-    # results.evaluations.append(evaluation)
-    # hull.add_points(np.asarray([evaluation.cost, evaluation.quality])[None, :], restart=False)
-    # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
-    # del hull
+        for _ in range(2):
+            # Choose a random antenna to replace
+            replace_idx = np.random.choice(len(antennas))
+            antennas = sample_aoi(
+                replace_idx=replace_idx,
+                antennas=antennas,
+                array_location=results.array_location,
+                obstime=results.obstime,
+                additional_buffer=additional_buffer_m,
+                minimal_antenna_sep=minimal_antenna_sep_m,
+                aoi_data=aoi_data,
+                constraint_data=constraint_data
+            )
+            evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
+            results.evaluations.append(evaluation)
+        # hull = ConvexHull(points=np.asarray([[e.cost, e.quality] for e in results.evaluations]), incremental=True)
+        # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
+        # while len(vertex_idxs) == 0:
+        #  #   Choose a random antenna to replace
+        # replace_idx = np.random.choice(len(antennas))
+        # antennas = sample_aoi(
+        #     replace_idx=replace_idx,
+        #     antennas=antennas,
+        #     array_location=results.array_location,
+        #     obstime=results.obstime,
+        #     additional_buffer=additional_buffer_m,
+        #     minimal_antenna_sep=minimal_antenna_sep_m,
+        #     aoi_data=aoi_data,
+        #     constraint_data=constraint_data
+        # )
+        # evaluation = yield SamplePoint(antennas=antennas, latitude=results.array_location.geodetic.lat)
+        # results.evaluations.append(evaluation)
+        # hull.add_points(np.asarray([evaluation.cost, evaluation.quality])[None, :], restart=False)
+        # _, _, _, _, vertex_idxs = get_pareto_eqs(hull)
+        # del hull
 
     hull = ConvexHull(points=np.asarray([[e.cost, e.quality] for e in results.evaluations]), incremental=True)
     pbar = tqdm(itertools.count())
