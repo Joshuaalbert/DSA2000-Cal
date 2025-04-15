@@ -161,7 +161,6 @@ def main(
     plot_folder = os.path.join(run_name, 'plots')
     os.makedirs(plot_folder, exist_ok=True)
 
-    np.random.seed(0)
     obstime = at.Time('2021-01-01T00:00:00', format='isot', scale='utc')
 
     with TimerLog("Loading initial configuration"):
@@ -308,6 +307,7 @@ if __name__ == '__main__':
     )
 
     init_config = 'pareto_opt_v6_b/final_config.txt'
+    np.random.seed(0)
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
         for prefix in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'full']:

@@ -1,7 +1,5 @@
 import os
 
-from dsa2000_fm.array_layout.optimal_transport import compute_ideal_uv_distribution, evaluate_uv_distribution
-
 os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 # os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
@@ -11,9 +9,9 @@ import astropy.time as at
 import astropy.units as au
 import pylab as plt
 import jax
-import jax.numpy as jnp
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
+from dsa2000_fm.array_layout.optimal_transport import compute_ideal_uv_distribution, evaluate_uv_distribution
 
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.astropy_utils import mean_itrs
@@ -23,127 +21,11 @@ from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
 from dsa2000_fm.array_layout.pareto_front_search import build_search_point_generator, SampleEvaluation
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_fm.abc import AbstractArrayConstraint
-from dsa2000_common.common.quantity_utils import quantity_to_np
-from dsa2000_fm.array_layout.psf_quality_fn import dense_annulus, sparse_annulus, create_target
 from dsa2000_assets.registries import array_registry
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.array_constraints.v6.array_constraint import ArrayConstraintsV6
 
 tfpd = tfp.distributions
-
-
-def create_lmn_target():
-    dense_inner = dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
-                                dl=quantity_to_np(0.8 * au.arcsec), frac=1., dtype=jnp.float64)
-    M = np.shape(dense_inner)[0]
-    lm = np.concatenate(
-        [
-            dense_inner,
-            sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
-                           outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M // 2, dtype=jnp.float64),
-            sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
-                           outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M // 2, dtype=jnp.float64)
-        ],
-        axis=0
-    )
-    n = 1. - np.square(lm).sum(axis=-1, keepdims=True)
-    return jnp.concatenate([lm, n], axis=-1)
-
-
-def create_lmn_inner():
-    lm = np.concatenate(
-        [
-            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
-                          dl=quantity_to_np(0.25 * au.arcsec), frac=1., dtype=jnp.float64)
-        ],
-        axis=0
-    )
-    n = 1. - np.square(lm).sum(axis=-1, keepdims=True)
-    return jnp.concatenate([lm, n], axis=-1)
-
-
-def create_psf_target(run_name, target_array_name, freqs, decs, num_antennas: int | None):
-    os.makedirs(run_name, exist_ok=True)
-    plot_folder = os.path.join(run_name, 'plots')
-    os.makedirs(plot_folder, exist_ok=True)
-
-    np.random.seed(0)
-    key = jax.random.PRNGKey(0)
-
-    dsa_logger.info(f"Target array name: {target_array_name}")
-
-    with TimerLog("Creating LMN sample points"):
-        lmn_inner = create_lmn_inner()
-        lmn_target = create_lmn_target()
-
-        dsa_logger.info(f"LMN shape: {lmn_target.shape}")
-        dsa_logger.info(f"LMN inner shape: {lmn_inner.shape}")
-
-        with TimerLog("Calculating inner target PSF"):
-            target_psf_dB_mean_inner, target_psf_dB_stddev_inner = create_target(
-                key=key,
-                target_array_name=target_array_name,
-                lmn=lmn_inner,
-                freqs=freqs,
-                transit_decs=decs[:1],
-                num_samples=20,
-                num_antennas=num_antennas,
-                accumulate_dtype=jnp.float32
-            )
-            # Plots the target
-            fig, axs = plt.subplots(2, 1, figsize=(16, 16), squeeze=False)
-            sc = axs[0, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
-                                   c=target_psf_dB_mean_inner.flatten(), s=1, cmap='jet', marker='.',
-                                   vmin=-60, vmax=10 * np.log10(0.5))
-            plt.colorbar(sc, ax=axs[0, 0], label='Power (dB)')
-            axs[0, 0].set_xlabel('l (proj.rad)')
-            axs[0, 0].set_ylabel('m (proj.rad)')
-            axs[0, 0].set_title('Target mean inner PSF')
-            sc = axs[1, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
-                                   c=target_psf_dB_stddev_inner.flatten(), s=1,
-                                   cmap='jet', marker='.')
-            plt.colorbar(sc, ax=axs[1, 0], label='Power (dB)')
-            axs[1, 0].set_xlabel('l (proj.rad)')
-            axs[1, 0].set_ylabel('m (proj.rad)')
-            axs[1, 0].set_title('Target stddev inner PSF')
-            fig.savefig(os.path.join(plot_folder, f'target_psf_inner.png'))
-            plt.close(fig)
-
-        with TimerLog("Calculating target PSF"):
-            target_psf_dB_mean, target_psf_dB_stddev = create_target(
-                key=key,
-                target_array_name=target_array_name,
-                lmn=lmn_target,
-                freqs=freqs,
-                transit_decs=decs,
-                num_samples=1000,
-                num_antennas=num_antennas,
-                accumulate_dtype=jnp.float32
-            )
-            # Check finite
-            if not np.all(np.isfinite(target_psf_dB_mean)):
-                raise ValueError("Target PSF mean is not finite")
-            if not np.all(np.isfinite(target_psf_dB_stddev)):
-                raise ValueError("Target PSF stddev is not finite")
-            # Plots the target
-            fig, axs = plt.subplots(2, 1, figsize=(16, 16), squeeze=False)
-            sc = axs[0, 0].scatter(lmn_target[..., 0].flatten(), lmn_target[..., 1].flatten(),
-                                   c=target_psf_dB_mean[0].flatten(), s=1, cmap='jet', marker='.',
-                                   vmin=-60, vmax=10 * np.log10(0.5))
-            plt.colorbar(sc, ax=axs[0, 0], label='Power (dB)')
-            axs[0, 0].set_xlabel('l (proj.rad)')
-            axs[0, 0].set_ylabel('m (proj.rad)')
-            axs[0, 0].set_title('Target mean PSF')
-            sc = axs[1, 0].scatter(lmn_target[..., 0].flatten(), lmn_target[..., 1].flatten(),
-                                   c=target_psf_dB_stddev[0].flatten(), s=1,
-                                   cmap='jet', marker='.')
-            plt.colorbar(sc, ax=axs[1, 0], label='Power (dB)')
-            axs[1, 0].set_xlabel('l (proj.rad)')
-            axs[1, 0].set_ylabel('m (proj.rad)')
-            axs[1, 0].set_title('Target stddev PSF')
-            fig.savefig(os.path.join(plot_folder, f'target_psf.png'))
-            plt.close(fig)
-    return lmn_target, target_psf_dB_mean, target_psf_dB_stddev
 
 
 def main(
@@ -165,7 +47,6 @@ def main(
     plot_folder = os.path.join(run_name, 'plots')
     os.makedirs(plot_folder, exist_ok=True)
 
-    np.random.seed(0)
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match(target_array_name))
     array_location = array.get_array_location()
@@ -313,17 +194,18 @@ if __name__ == '__main__':
     uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    ax.imshow(target_dist, extent=[uv_bins[0], uv_bins[-1], uv_bins[0], uv_bins[-1]], origin='lower',
-              interpolation='nearest', cmap='jet')
+    im = ax.imshow(target_dist, extent=[uv_bins[0], uv_bins[-1], uv_bins[0], uv_bins[-1]], origin='lower',
+                   interpolation='nearest', cmap='jet')
     ax.set_xlabel('u (lambda)')
     ax.set_ylabel('v (lambda)')
     ax.set_title('Target distribution')
-    plt.colorbar(ax=ax, label='Density')
+    plt.colorbar(im, ax=ax, label='Density')
     plt.savefig(f'target_uv_distribution_{target_fwhm.to("arcsec").value}arcsec_psf.png')
     plt.close(fig)
 
-    init_config = 'pareto_opt_v6_a/final_config.txt'
+    init_config = None
     key = jax.random.PRNGKey(0)
+    np.random.seed(0)
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
         for prefix in ['a', 'e']:
