@@ -277,7 +277,9 @@ def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bin
     dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
     uv_grid = jnp.reshape(target_uv, (-1, 2))
     x_weights = jnp.reshape(dist, (-1,))
+    x_weights /= jnp.sum(x_weights)
     y_weights = jnp.reshape(target_dist, (-1,))
+    y_weights /= jnp.sum(y_weights)
     dist = sliced_wasserstein(
         key=key,
         x=uv_grid,
