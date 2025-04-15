@@ -275,6 +275,8 @@ def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bin
         the negative sliced Wasserstein distance, a scalar
     """
     dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
+    dist /= jnp.sum(dist)
+    target_dist /= jnp.sum(target_dist)
     return -jnp.mean((dist - target_dist)**2)
     # uv_grid = jnp.reshape(target_uv, (-1, 2))
     # x_weights = jnp.reshape(dist, (-1,))
