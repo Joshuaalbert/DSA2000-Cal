@@ -304,11 +304,11 @@ if __name__ == '__main__':
 
     obsfreqs = np.linspace(700e6, 2000e6, 250) * au.Hz
     ref_time = at.Time("2025-06-10T00:00:00", format='isot', scale='utc')
-    obstimes = ref_time + np.linspace(0., 7., 10) * au.min
+    obstimes = ref_time + np.linspace(0., 7., 8) * au.min
 
-    du = 10 * au.m
+    du = 100 * au.m
     R = 16000 * au.m
-    target_fwhm = 3.3 * au.arcsec
+    target_fwhm = 3. * au.arcsec
     max_freq = 2 * au.GHz
     uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
 
