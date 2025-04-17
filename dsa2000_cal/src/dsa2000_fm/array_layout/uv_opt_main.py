@@ -1,7 +1,5 @@
 import os
 
-from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
-
 os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
 # os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
@@ -14,6 +12,7 @@ import jax
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from dsa2000_fm.array_layout.optimal_transport import compute_ideal_uv_distribution, evaluate_uv_distribution
+from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
 
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.astropy_utils import mean_itrs
@@ -111,7 +110,7 @@ def main(
     dsa_logger.info(f"Number of frequencies: {len(obsfreqs)}")
 
     # Performing the optimization
-    gen = build_search_point_generator(
+    gen = build_quality_only_search_point_generator(
         results_file=os.path.join(run_name, 'results.json'),
         plot_dir=plot_folder,
         array_constraint=array_constraint,
@@ -186,6 +185,7 @@ if __name__ == '__main__':
     )
 
     obsfreqs = np.linspace(700e6, 2000e6, 250) * au.Hz
+    obsfreqs = [1350] * au.MHz
     ref_time = at.Time("2025-06-10T00:00:00", format='isot', scale='utc')
     obstimes = ref_time + np.linspace(0., 7., 8) * au.min
 

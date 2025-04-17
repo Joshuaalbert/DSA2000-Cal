@@ -108,7 +108,7 @@ def test_compute_ideal_uv_distribution():
 def test_accumulate_uv_distribution():
     du = 100 * au.m
     R = 16000 * au.m
-    target_fwhm = 3.0 * au.arcsec
+    target_fwhm = 3.2 * au.arcsec
     max_freq = 2 * au.GHz
     uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
     import pylab as plt
@@ -126,7 +126,7 @@ def test_accumulate_uv_distribution():
 
     antennas_gcrs = quantity_to_jnp(antennas.get_gcrs(ref_time).cartesian.xyz.T, 'm')
     times = time_to_jnp(obstimes, ref_time)
-    obsfreqs = array.get_channels()[:2]
+    obsfreqs = [1350]*au.MHz #array.get_channels()[[0, -1]]
     freqs = quantity_to_jnp(obsfreqs, 'Hz')
     ra0 = quantity_to_jnp(phase_center.ra, 'rad')
     dec0 = quantity_to_jnp(phase_center.dec, 'rad')
@@ -144,6 +144,15 @@ def test_accumulate_uv_distribution():
     plt.show()
 
     plt.imshow(target_dist.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value),
+               interpolation='nearest', cmap='hot')
+    plt.colorbar()
+    plt.xlabel(r'U ($\lambda$)')
+    plt.ylabel(r'V ($\lambda$)')
+    plt.show()
+
+    diff = target_dist - dist
+
+    plt.imshow(diff.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value),
                interpolation='nearest', cmap='hot')
     plt.colorbar()
     plt.xlabel(r'U ($\lambda$)')

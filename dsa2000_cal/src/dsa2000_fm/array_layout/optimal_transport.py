@@ -237,7 +237,12 @@ def accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uvec_bins
     def accumm_time(time):
         antennas_uvw = geometric_uvw_from_gcrs(evolve_gcrs(antennas_gcrs, time), ra0, dec0)
         i_idxs, j_idxs = np.triu_indices(antennas_uvw.shape[0], k=1)
-        uvw = antennas_uvw[i_idxs] - antennas_uvw[j_idxs]  # [..., 3]
+        # uvw = antennas_uvw[i_idxs] - antennas_uvw[j_idxs]  # [..., 3]
+        uvw = jnp.concatenate(
+            [antennas_uvw[i_idxs] - antennas_uvw[j_idxs],
+             antennas_uvw[j_idxs] - antennas_uvw[i_idxs]],
+            axis=0
+        )  # [..., 3]
 
         u = uvw[..., 0]
         v = uvw[..., 1]
@@ -277,7 +282,7 @@ def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bin
     dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
     dist /= jnp.sum(dist)
     target_dist /= jnp.sum(target_dist)
-    return -jnp.mean((dist - target_dist)**2)
+    return -jnp.mean((dist - target_dist) ** 2)
     # uv_grid = jnp.reshape(target_uv, (-1, 2))
     # x_weights = jnp.reshape(dist, (-1,))
     # x_weights /= jnp.sum(x_weights)

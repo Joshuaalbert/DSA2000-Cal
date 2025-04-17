@@ -1,6 +1,5 @@
 import os
 
-from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
 
 os.environ['JAX_PLATFORMS'] = 'cuda'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
@@ -15,6 +14,7 @@ import jax.numpy as jnp
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 
+from dsa2000_fm.array_layout.fiber_cost_fn import compute_mst_cost
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.astropy_utils import mean_itrs
 from dsa2000_common.common.logging import dsa_logger
@@ -40,9 +40,9 @@ def create_lmn_target():
         [
             dense_inner,
             sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
-                           outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M // 2, dtype=jnp.float64),
+                           outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M, dtype=jnp.float64),
             sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
-                           outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M // 2, dtype=jnp.float64)
+                           outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M, dtype=jnp.float64)
         ],
         axis=0
     )
