@@ -115,7 +115,12 @@ def test_compute_ideal_uv_distribution():
 
 
 def test_accumulate_uv_distribution():
-    du = 50 * au.m
+    du = 20 * au.m
+
+    dconv = 200 * au.m
+
+    conv_size = (int(dconv / du) // 2) * 2 + 1
+    print(f"conv_size: {conv_size}")
     R = 16000 * au.m
     target_fwhm = 3.14 * au.arcsec
     freq = 1350 * au.MHz
@@ -135,7 +140,7 @@ def test_accumulate_uv_distribution():
     ra0 = quantity_to_jnp(phase_center.ra, 'rad')
     dec0 = quantity_to_jnp(phase_center.dec, 'rad')
 
-    dist = accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uv_bins)
+    dist = accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uv_bins, conv_size=conv_size)
 
     # dist /= jnp.sum(dist)
     target_dist *= jnp.sum(dist) / jnp.sum(target_dist)

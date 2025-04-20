@@ -179,7 +179,7 @@ if __name__ == '__main__':
     ref_time = at.Time("2025-06-10T00:00:00", format='isot', scale='utc')
     obstimes = ref_time[None]
 
-    du = 50 * au.m
+    du = 100 * au.m
     R = 16000 * au.m
     target_fwhm = 3.14 * au.arcsec
     freq = 1350 * au.MHz
@@ -195,7 +195,7 @@ if __name__ == '__main__':
     plt.savefig(f'target_uv_distribution_{target_fwhm.to("arcsec").value}arcsec_psf.png')
     plt.close(fig)
 
-    init_config = None
+    init_config = './pareto_opt_solution_a/dsa1650_9P_a_optimal_v1.2.txt'
     np.random.seed(0)
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
@@ -211,7 +211,7 @@ if __name__ == '__main__':
                 init_config=init_config,
                 run_name=run_name,
                 num_antennas=None,
-                num_evaluations=500,
+                num_evaluations=100000,
                 array_constraint=array_constraint
             )
             init_config = final_config

@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
+from jax._src.scipy.signal import convolve2d
 from scipy.optimize import brentq
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
@@ -313,8 +314,11 @@ def accumulate_uv_distribution_lambda(antennas_gcrs, times, freqs, ra0, dec0, uv
     return accum
 
 
-@partial(jax.jit, static_argnames=['unroll'])
-def accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uvec_bins, unroll=1):
+@partial(jax.jit, static_argnames=['conv_size', 'unroll'])
+def accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uvec_bins, conv_size=1, unroll=1):
+    if conv_size % 2 == 0:
+        raise ValueError("conv_size must be odd")
+
     def get_idx(x):
         # bins [0, 1, 2] -> mid points [0, 1], i0=0, i1=1 -> i0
         dx = uvec_bins[1] - uvec_bins[0]
@@ -346,6 +350,16 @@ def accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uvec_bins, unrol
         return accum
 
     accum = scan_sum(accumm_time, zero_accum, times, unroll=unroll)
+
+    if conv_size > 1:
+        k_vec = jnp.linspace(-1, 1, conv_size)
+        kx, ky = jnp.meshgrid(k_vec, k_vec, indexing='ij')
+        mask = jnp.sqrt(kx ** 2 + ky ** 2) <= 1 # [conv_size, conv_size]
+        kernel = mask.astype(accum.dtype)
+        kernel /= jnp.sum(kernel)
+        # do 2D convolution
+        accum = convolve2d(accum, kernel, mode='same')
+
     return accum
 
 
@@ -357,7 +371,6 @@ def evaluate_uv_distribution(antennas_gcrs, times, ra0, dec0, uv_bins, target_uv
     Args:
         antennas_gcrs: [N, 3] GCRS coordinates of antennas at the reference time
         times: [T] times in seconds since the reference time
-        freqs: [C] frequencies in Hz
         ra0: the right ascension of the tracking center in radians
         dec0: the declination of the tracking center in radians
         uv_bins: [M + 1] bins for the UV distribution
