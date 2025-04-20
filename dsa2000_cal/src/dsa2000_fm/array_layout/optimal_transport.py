@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
+from scipy.optimize import brentq
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
@@ -202,11 +203,33 @@ def sliced_wasserstein(key, x, y, x_weights, y_weights, p=1, num_samples: int = 
     return sum / num_samples
 
 
-def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, max_freq: au.Quantity):
-    min_wavelength = quantity_to_np(const.c / max_freq, 'm')
-    gamma = np.sqrt(2 * np.log(2)) / (np.pi * quantity_to_np(target_fwhm, 'rad'))
-    R_jax = quantity_to_np(R, 'm') / min_wavelength
-    du_jax = quantity_to_np(du, 'm') / min_wavelength
+def compute_uv_gaussian_width(target_psf_fwhm: au.Quantity, freq: au.Quantity) -> au.Quantity:
+    wavelength = quantity_to_np(const.c / freq, 'm')
+    gamma_lambda = np.sqrt(2 * np.log(2)) / (np.pi * quantity_to_np(target_psf_fwhm, 'rad'))
+    gamma = (gamma_lambda * wavelength) * au.m
+    return gamma
+
+
+def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, freq: au.Quantity):
+    """
+    Compute the ideal UV distribution for a Gaussian beam.
+    The UV distribution is a 2D Gaussian with a given FWHM and a circular aperture, constrained by the maximum
+    baseline length.
+
+    Args:
+        du: the UV bin size in meters
+        R: the maximum baseline length in meters
+        target_fwhm: the target FWHM in radians
+        freq: the frequency in Hz
+
+    Returns:
+        uv_bins: [M + 1] bins for the UV distribution
+        uv_grid: [M, M, 2] UV coordinates in lambda
+        target_dist: [M, M] target UV distribution
+    """
+    gamma = quantity_to_np(compute_uv_gaussian_width(target_fwhm, freq), 'm')
+    R_jax = quantity_to_np(R, 'm')
+    du_jax = quantity_to_np(du, 'm')
     uvec_bins = np.arange(-R_jax - du_jax, R_jax + du_jax, du_jax)
     uvec = 0.5 * (uvec_bins[1:] + uvec_bins[:-1])
     U, V = np.meshgrid(uvec, uvec, indexing='ij')
@@ -221,8 +244,37 @@ def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: 
     return uvec_bins, uv_grid, target_dist
 
 
+def find_optimal_ref_fwhm(freqs, ref_freq, target_fwhm):
+    """
+    Find the optimal gamma for a given frequency and target FWHM.
+
+    Args:
+        freqs: frequencies in Hz
+        ref_freq: reference frequency in Hz
+        target_fwhm: target FWHM in radians
+
+    Returns:
+        the optimal FWHM of ref frequency
+    """
+
+    # given arrays nu, and scalars gamma, nu0:
+    w = ref_freq / freqs
+    W = w.sum()
+
+    def gaussian(x, gamma):
+        return np.exp(-0.5 * x ** 2 / gamma ** 2)
+
+    def f(ref_fwhm):
+        ref_gamma = ref_fwhm / (2 * np.sqrt(2 * np.log(2)))
+        return 0.5 - np.sum(gaussian(0.5 * target_fwhm, ref_gamma * w) * w) / W
+
+    # bracket the root between Delta_min and Delta_max:
+    ref_fwhm = brentq(f, 0.001 * target_fwhm, 10 * target_fwhm)  # adjust upper bound as needed
+    return ref_fwhm
+
+
 @partial(jax.jit, static_argnames=['unroll'])
-def accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uvec_bins, unroll=1):
+def accumulate_uv_distribution_lambda(antennas_gcrs, times, freqs, ra0, dec0, uvec_bins, unroll=1):
     def get_idx(x):
         # bins [0, 1, 2] -> mid points [0, 1], i0=0, i1=1 -> i0
         dx = uvec_bins[1] - uvec_bins[0]
@@ -261,8 +313,44 @@ def accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uvec_bins
     return accum
 
 
+@partial(jax.jit, static_argnames=['unroll'])
+def accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uvec_bins, unroll=1):
+    def get_idx(x):
+        # bins [0, 1, 2] -> mid points [0, 1], i0=0, i1=1 -> i0
+        dx = uvec_bins[1] - uvec_bins[0]
+        one = jnp.ones((), jnp.int32)
+        _i1 = jnp.ceil((x - uvec_bins[0]) / dx).astype(jnp.int32)
+        i1 = jnp.clip(_i1, one, len(uvec_bins) - 1).astype(jnp.int32)
+        i0 = i1 - one
+        return i0
+
+    zero_accum = jnp.zeros((uvec_bins.size - 1, uvec_bins.size - 1), dtype=jnp.float64)
+
+    def accumm_time(time):
+        antennas_uvw = geometric_uvw_from_gcrs(evolve_gcrs(antennas_gcrs, time), ra0, dec0)
+        i_idxs, j_idxs = np.triu_indices(antennas_uvw.shape[0], k=1)
+        # uvw = antennas_uvw[i_idxs] - antennas_uvw[j_idxs]  # [..., 3]
+        uvw = jnp.concatenate(
+            [antennas_uvw[i_idxs] - antennas_uvw[j_idxs],
+             antennas_uvw[j_idxs] - antennas_uvw[i_idxs]],
+            axis=0
+        )  # [..., 3]
+
+        u = uvw[..., 0]
+        v = uvw[..., 1]
+
+        u_idx = get_idx(u)
+        v_idx = get_idx(v)
+        accum = zero_accum.at[u_idx, v_idx].add(1.0)
+
+        return accum
+
+    accum = scan_sum(accumm_time, zero_accum, times, unroll=unroll)
+    return accum
+
+
 @jax.jit
-def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bins, target_uv, target_dist):
+def evaluate_uv_distribution(antennas_gcrs, times, ra0, dec0, uv_bins, target_uv, target_dist):
     """
     Evaluate the UV distribution using the negative sliced Wasserstein distance.
 
@@ -279,10 +367,11 @@ def evaluate_uv_distribution(key, antennas_gcrs, times, freqs, ra0, dec0, uv_bin
     Returns:
         the negative sliced Wasserstein distance, a scalar
     """
-    dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
-    dist /= jnp.sum(dist)
-    target_dist /= jnp.sum(target_dist)
-    return -jnp.mean((dist - target_dist) ** 2)
+    dist = accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uv_bins)
+    target_dist *= jnp.sum(dist) / jnp.sum(target_dist)
+    diff = dist - target_dist
+    return -jnp.max(jnp.abs(diff))
+
     # uv_grid = jnp.reshape(target_uv, (-1, 2))
     # x_weights = jnp.reshape(dist, (-1,))
     # x_weights /= jnp.sum(x_weights)

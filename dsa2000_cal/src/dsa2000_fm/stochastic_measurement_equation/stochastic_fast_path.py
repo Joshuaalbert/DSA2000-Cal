@@ -100,7 +100,7 @@ def _test_stochastic_dft_from_generalised_gains():
     phase_center = ENU(0, 0, 1, location=array_location, obstime=obstime).transform_to(ac.ICRS())
     antenna1, antenna2 = np.asarray(list(itertools.combinations(range(np.shape(antennas)[0]), 2))).T
 
-    D = 2
+    D = 1000
     directions = create_spherical_spiral_grid(pointing=phase_center, num_points=D, angular_radius=1. * au.deg,
                                               inner_radius=0. * au.deg)
     lmn = np.stack(
@@ -133,30 +133,32 @@ def _test_stochastic_dft_from_generalised_gains():
         _var_mean_array = []
         for i in range(10):
             V = stochastic_dft_from_generalised_gains(jax.random.PRNGKey(i), g, antenna1, antenna2, num_samples=M)
-            error = (V - V_perfect) / np.abs(V_perfect)
+            error = (V - V_perfect)
             error_mean = np.abs(np.mean(error))
             _error_mean_array.append(error_mean)
-            var = np.abs(np.var(error))
+            var = np.var(error)
             _var_mean_array.append(var)
         error_mean_array.append(np.mean(_error_mean_array))
         error_std_array.append(np.std(_error_mean_array))
-        var_mean_array.append(np.mean(_var_mean_array))
-        var_std_array.append(np.std(_var_mean_array))
+        var_mean_array.append(np.sqrt(np.mean(_var_mean_array)))
+        var_std_array.append(np.std(np.sqrt(_var_mean_array)))
         print(f"Stochastic DFT rel bias for {M} samples: {error_mean_array[-1]} +- {error_std_array[-1]}")
+        print(f"Stochastic DFT rel stddev for {M} samples: {var_mean_array[-1]} +- {var_std_array[-1]}")
 
     fig, ax = plt.subplots(1, 2, figsize=(12, 8))
     # Plot error stats v M using error bars
     ax[0].scatter(m_array, error_mean_array, c='black')
     ax[0].errorbar(m_array,error_mean_array, error_std_array, fmt='o')
     ax[0].set_xlabel('M')
-    ax[0].set_ylabel(r'Rel. Bias $\langle\mathbb{E}[\delta V/|V|]\rangle$')
-    ax[0].set_title(f'Rel Bias: D={D}, N={len(antennas)}')
+    ax[0].set_ylabel(r'Bias $\langle\mathbb{E}[\delta V]\rangle$')
+    ax[0].set_title(f'Bias: D={D}, N={len(antennas)}')
 
     ax[1].scatter(m_array, var_mean_array, c='black')
+    ax[1].set_yscale('log')
     ax[1].errorbar(m_array, var_mean_array, var_std_array, fmt='o')
     ax[1].set_xlabel('M')
-    ax[1].set_ylabel(r'Rel. Variance $\langle\mathrm{Var}[\delta V/|V|]\rangle$')
-    ax[1].set_title(f'Rel. Variance: D={D}, N={len(antennas)}')
+    ax[1].set_ylabel(r'Std.Dev. $\sqrt{\langle\mathrm{Var}[\delta V]\rangle}$')
+    ax[1].set_title(f'Std.Dev.: D={D}, N={len(antennas)}')
     plt.show()
 
 

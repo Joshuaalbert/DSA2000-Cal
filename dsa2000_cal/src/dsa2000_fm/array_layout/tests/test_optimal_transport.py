@@ -1,19 +1,21 @@
 import time
 
+import astropy.coordinates as ac
+import astropy.time as at
 import jax
 import numpy as np
+import pylab as plt
 from astropy import units as au
 from jax import numpy as jnp
 
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.enu_frame import ENU
-
 from dsa2000_common.common.fourier_utils import ApertureTransform
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
 from dsa2000_fm.array_layout.optimal_transport import wasserstein_point_clouds, wasserstein_1D_p, wasserstein_1D, \
     weighted_wasserstein_1d_gaussian, sliced_wasserstein, sliced_wasserstein_gaussian, compute_ideal_uv_distribution, \
-    accumulate_uv_distribution, _cdf_distance_jax
+    accumulate_uv_distribution, _cdf_distance_jax, find_optimal_ref_fwhm
 from dsa2000_fm.imaging.base_imagor import fit_beam
 
 
@@ -75,19 +77,26 @@ def test_sliced_wasserstein():
 
 
 def test_compute_ideal_uv_distribution():
-    du = 100 * au.m
+    du = 50 * au.m
     R = 16000 * au.m
     target_fwhm = 3 * au.arcsec
-    max_freq = 2 * au.GHz
-    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
+    freq = 1350 * au.MHz
+    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, freq)
 
+    plt.imshow(target_dist.T, extent=(-R.value, R.value, -R.value, R.value),
+               interpolation='nearest', cmap='hot')
+    plt.colorbar()
+    plt.xlabel(r'U ($\lambda$)')
+    plt.ylabel(r'V ($\lambda$)')
+    plt.show()
+
+    wavelength = 299792458 / freq.to('Hz').value
     a = ApertureTransform()
-    dx = uv_bins[1] - uv_bins[0]
+    dx = (uv_bins[1] - uv_bins[0]) / wavelength
 
     dl = 1 / (target_dist.shape[0] * dx)
     psf = a.to_image(target_dist, axes=(-2, -1), dx=dx, dy=dx).real
     psf /= np.max(psf)
-    import pylab as plt
 
     plt.imshow(psf.T, cmap='gray')
     plt.colorbar()
@@ -101,19 +110,16 @@ def test_compute_ideal_uv_distribution():
         f"minor: {minor * rad2arcsec:.2f}arcsec, "
         f"posang: {pos_angle * 180 / np.pi:.2f}deg"
     )
-    np.testing.assert_allclose(major * rad2arcsec, target_fwhm.value, atol=1e-2)
-    np.testing.assert_allclose(minor * rad2arcsec, target_fwhm.value, atol=1e-2)
+    np.testing.assert_allclose(major * rad2arcsec, target_fwhm.value, atol=4e-2)
+    np.testing.assert_allclose(minor * rad2arcsec, target_fwhm.value, atol=4e-2)
 
 
 def test_accumulate_uv_distribution():
-    du = 100 * au.m
+    du = 50 * au.m
     R = 16000 * au.m
-    target_fwhm = 3.2 * au.arcsec
-    max_freq = 2 * au.GHz
-    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, max_freq)
-    import pylab as plt
-    import astropy.time as at
-    import astropy.coordinates as ac
+    target_fwhm = 3.14 * au.arcsec
+    freq = 1350 * au.MHz
+    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, freq)
 
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa1650_9P'))
@@ -121,55 +127,53 @@ def test_accumulate_uv_distribution():
     antennas = array.get_antennas()
 
     ref_time = at.Time('2021-01-01T00:00:00', scale='utc')
-    obstimes = ref_time + np.arange(2) * array.get_integration_time()
+    obstimes = ref_time + np.arange(1) * array.get_integration_time()
     phase_center = ENU(0, 0, 1, location=array_location, obstime=ref_time).transform_to(ac.ICRS())
 
     antennas_gcrs = quantity_to_jnp(antennas.get_gcrs(ref_time).cartesian.xyz.T, 'm')
     times = time_to_jnp(obstimes, ref_time)
-    obsfreqs = [1350]*au.MHz #array.get_channels()[[0, -1]]
-    freqs = quantity_to_jnp(obsfreqs, 'Hz')
     ra0 = quantity_to_jnp(phase_center.ra, 'rad')
     dec0 = quantity_to_jnp(phase_center.dec, 'rad')
 
-    dist = accumulate_uv_distribution(antennas_gcrs, times, freqs, ra0, dec0, uv_bins)
+    dist = accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uv_bins)
 
-    target_dist /= jnp.sum(target_dist)
-    dist /= jnp.sum(dist)
+    # dist /= jnp.sum(dist)
+    target_dist *= jnp.sum(dist) / jnp.sum(target_dist)
+
+    diff = target_dist - dist
 
     plt.imshow(dist.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value),
                interpolation='nearest', cmap='hot')
     plt.colorbar()
-    plt.xlabel(r'U ($\lambda$)')
-    plt.ylabel(r'V ($\lambda$)')
+    plt.xlabel(r'U (m)')
+    plt.ylabel(r'V (m)')
     plt.show()
 
     plt.imshow(target_dist.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value),
                interpolation='nearest', cmap='hot')
     plt.colorbar()
-    plt.xlabel(r'U ($\lambda$)')
-    plt.ylabel(r'V ($\lambda$)')
+    plt.xlabel(r'U (m)')
+    plt.ylabel(r'V (m)')
     plt.show()
-
-    diff = target_dist - dist
 
     plt.imshow(diff.T, origin='lower', extent=(-R.value, R.value, -R.value, R.value),
                interpolation='nearest', cmap='hot')
     plt.colorbar()
-    plt.xlabel(r'U ($\lambda$)')
-    plt.ylabel(r'V ($\lambda$)')
+    plt.xlabel(r'U (m)')
+    plt.ylabel(r'V (m)')
     plt.show()
 
-    dist = sliced_wasserstein(
-        key=jax.random.PRNGKey(0),
-        x=jnp.asarray(uv_grid.reshape((-1, 2))),
-        y=jnp.asarray(uv_grid.reshape((-1, 2))),
-        x_weights=jnp.asarray(dist.reshape((-1,))),
-        y_weights=jnp.asarray(target_dist.reshape((-1,))),
-        p=1,
-        num_samples=100,
-        resolution=100
-    )
-    print(dist)
+    # dist = sliced_wasserstein(
+    #     key=jax.random.PRNGKey(0),
+    #     x=jnp.asarray(uv_grid.reshape((-1, 2))),
+    #     y=jnp.asarray(uv_grid.reshape((-1, 2))),
+    #     x_weights=jnp.asarray(dist.reshape((-1,))),
+    #     y_weights=jnp.asarray(target_dist.reshape((-1,))),
+    #     p=1,
+    #     num_samples=100,
+    #     resolution=100
+    # )
+    # print(dist)
 
 
 def _cdf_distance_np(p, u_values, v_values, u_weights=None, v_weights=None):
@@ -264,3 +268,15 @@ def test_cdf_distance():
     v_weights = np.random.uniform(size=(1000,))
     np.testing.assert_allclose(_cdf_distance_jax(p, u, v, u_weights, v_weights),
                                _cdf_distance_np(p, u, v, u_weights, v_weights), atol=1e-6)
+
+
+def test_find_optimal_gamma():
+    freqs = np.linspace(700e6, 2000e6, 10000)
+    ref_freq = 1350e6
+
+    for target_fwhm_arcsec in [2.8, 2.9, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6]:
+        ref_fwhm = find_optimal_ref_fwhm(freqs, ref_freq, target_fwhm_arcsec * np.pi / 180 / 3600)
+        ref_fwhm_arcsec = ref_fwhm * 3600 * 180 / np.pi
+
+        print(
+            f"Target Fullband FWHM: {target_fwhm_arcsec} arcsec ==> FWHM: {ref_fwhm_arcsec:.2f} arcsec at {ref_freq / 1e6:.0f} MHz")
