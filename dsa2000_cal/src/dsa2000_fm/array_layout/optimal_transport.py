@@ -1,3 +1,4 @@
+import itertools
 from functools import partial
 
 import astropy.constants as const
@@ -332,6 +333,7 @@ def accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uvec_bins, conv_
 
     def accumm_time(time):
         antennas_uvw = geometric_uvw_from_gcrs(evolve_gcrs(antennas_gcrs, time), ra0, dec0)
+        # i_idxs, j_idxs = np.asarray(list(itertools.combinations(range(antennas_uvw.shape[0]), 2))).T
         i_idxs, j_idxs = np.triu_indices(antennas_uvw.shape[0], k=1)
         # uvw = antennas_uvw[i_idxs] - antennas_uvw[j_idxs]  # [..., 3]
         uvw = jnp.concatenate(

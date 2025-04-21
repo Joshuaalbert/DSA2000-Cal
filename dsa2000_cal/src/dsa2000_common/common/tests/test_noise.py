@@ -5,8 +5,8 @@ from dsa2000_common.common.noise import calc_baseline_noise, calc_image_noise
 
 
 def test_calc_noise_10000chan_1hour():
-    num_antennas = 2048
-    system_equivalent_flux_density = 5022.  # Jy
+    num_antennas = 1650
+    system_equivalent_flux_density = 3360.  # Jy
     chan_width_hz = 1300e6 / 10000  # Hz
     t_int_s = 1.5  # s
     num_channels = 10000
@@ -29,7 +29,7 @@ def test_calc_noise_10000chan_1hour():
         t_int_s=t_int_s
     )
     print(f"Baseline noise: {baseline_noise} Jy")
-    assert np.isclose(baseline_noise, 11.37, atol=1e-1)
+    assert np.isclose(baseline_noise, 7.6, atol=1e-1)
 
 
 @pytest.mark.parametrize('num_chan', [1, 1920])
@@ -93,12 +93,12 @@ def test_calc_noise_8000chan_1hour():
 
 
 def test_calc_noise_fullband_obs():
-    num_antennas = 2048
-    system_equivalent_flux_density = 5022.  # Jy
+    num_antennas = 1650
+    system_equivalent_flux_density = 3360.  # Jy
     chan_width_hz = 130000.0  # Hz
     t_int_s = 1.5  # s
     num_channels = 10000
-    num_integrations = 1# 10.3 * 60 / t_int_s
+    num_integrations = int(7 * 60 / t_int_s)
     flag_frac = 0.33
     image_noise = calc_image_noise(
         system_equivalent_flux_density=system_equivalent_flux_density,
@@ -108,7 +108,7 @@ def test_calc_noise_fullband_obs():
         flag_frac=flag_frac,
         num_pol=2
     )
-    print(f"Image noise (10.3min 33% flagged): {image_noise} Jy / beam")
+    print(f"Image noise (7min 33% flagged): {image_noise} Jy / beam")
 
     baseline_noise = calc_baseline_noise(
         system_equivalent_flux_density=system_equivalent_flux_density,

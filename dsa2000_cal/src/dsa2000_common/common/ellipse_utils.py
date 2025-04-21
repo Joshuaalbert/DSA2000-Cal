@@ -55,6 +55,9 @@ class Gaussian:
 
                  Sigma^-1 = R^-T D^-T D^-1 R^-1
                  Sigma = R D D^T R^T
+
+        Note: Beware that this gives the exact Fourier transform, so if you combine with Point DFT
+        (where you divide by adjoint normalising factor), you'll need to scale this by that too.
         Args:
             k: [2] the k coordinates
 

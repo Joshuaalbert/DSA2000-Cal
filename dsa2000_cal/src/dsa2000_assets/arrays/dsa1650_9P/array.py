@@ -24,6 +24,12 @@ class DSA1650_9P(DSA2000WArray):
         beam_model = beam_model_registry.get_instance(beam_model_registry.get_match('dsa_nominal'))
         return beam_model.get_antenna_model()
 
+    def get_system_equivalent_flux_density(self) -> au.Quantity:
+        return 3360. * au.Jy  # Jy
+
+    def get_antenna_diameter(self) -> au.Quantity:
+        return 6.1 * au.m
+
 
 def transfer_and_add_station_names():
     old_array = DSA2000OptimalV1(seed='abc')

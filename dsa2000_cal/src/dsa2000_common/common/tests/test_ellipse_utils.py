@@ -3,6 +3,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from dsa2000_common.common.ellipse_utils import Gaussian, ellipse_rotation
+from dsa2000_common.common.fourier_utils import ApertureTransform
 
 
 def test_ellipse_definitions():
@@ -11,12 +12,46 @@ def test_ellipse_definitions():
         major_fwhm=1,
         minor_fwhm=0.5,
         pos_angle=0.,
-        total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=1, minor_fwhm=0.5, )
+        total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=1, minor_fwhm=0.5)
     )
     # [minor, major]
     assert ellipse.compute_flux_density(np.array([0., 0.])) == 1
     assert ellipse.compute_flux_density(np.array([0.0, 0.5])) == 1 / 2
     assert ellipse.compute_flux_density(np.array([0.25, 0.])) == 1 / 2
+
+def test_ellipse_fourier():
+    arcsec2rad = np.pi / 180. / 3600.
+    major = 40 * arcsec2rad
+    minor = 20 * arcsec2rad
+    peak = 1
+
+    dx = 10/0.22 # m
+    n = (int(16000/dx/0.22)//2) * 2
+    dl = 1/(n * dx)  # m
+    xvec = (-0.5 * n + np.arange(n)) * dx
+    lvec = (-0.5 * n + np.arange(n)) * dl
+    U,V = np.meshgrid(xvec, xvec, indexing='ij')
+    UV = np.stack([U, V], axis=-1)
+    L,M = np.meshgrid(lvec, lvec, indexing='ij')
+
+    g = Gaussian(
+        x0=jnp.asarray([0., 0.]),
+        major_fwhm=major,
+        minor_fwhm=minor,
+        pos_angle=0.,
+        total_flux=Gaussian.total_flux_from_peak(peak, major_fwhm=major, minor_fwhm=minor)
+    )
+
+    vis = jax.vmap(jax.vmap(g.fourier))(UV)
+    a = ApertureTransform()
+    img = a.to_image(vis, axes=(-2, -1), dx=dx, dy=dx).real
+    import pylab as plt
+    plt.imshow(img.T[n//2 - 100: n//2 + 100, n//2 - 100: n//2 + 100], origin='lower', extent=[lvec.min(), lvec.max(), lvec.min(), lvec.max()],
+                interpolation='none', )
+    plt.colorbar()
+    plt.show()
+
+    np.testing.assert_allclose(np.max(img), 1, atol=1e-5) # peak flux density
 
 
 def test_ellipse():
