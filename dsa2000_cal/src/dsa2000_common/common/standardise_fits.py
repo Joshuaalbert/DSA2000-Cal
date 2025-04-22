@@ -1,18 +1,21 @@
+from contextlib import contextmanager
+
+import astropy.constants as const
+import astropy.units as u
 import numpy as np
 from astropy.io import fits
-from astropy.wcs import WCS, WCSSUB_LONGITUDE, WCSSUB_LATITUDE, WCSSUB_SPECTRAL, WCSSUB_STOKES
-from contextlib import contextmanager
-import astropy.units as u
-import astropy.constants as const
+from astropy.wcs import WCS
 
 from dsa2000_common.common.logging import dsa_logger
 
 try:
     from reproject import reproject_interp
+
     HAVE_REPROJECT = True
 except ImportError:
     dsa_logger.warning("Reproject not available, skipping reprojection.")
     HAVE_REPROJECT = False
+
 
 @contextmanager
 def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True):
@@ -34,104 +37,122 @@ def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True):
     Yields
     ------
     hdul : astropy.io.fits.HDUList
-        Standardized HDUList.
+        The standardized HDUList.
     """
-    # --- ENTRY: read and build original WCS ---
+    # --- Read input ---
     hdul_in = fits.open(input_file)
     hdu = hdul_in[hdu_index]
     data = hdu.data
     header = hdu.header.copy()
 
-    w = WCS(header)
-    orig_ctypes = list(w.wcs.ctype)
-    prefixes = [ct.split('-')[0] for ct in orig_ctypes]
+    # Ensure 4D array: (STOKES,FREQ,DEC,RA) in memory order
+    while data.ndim < 4:
+        data = np.expand_dims(data, axis=0)
 
-    # 1) Transpose to header-order
-    data_header = data.transpose(tuple(range(data.ndim)[::-1]))
+    # Transpose to header order (axis1..NAXIS)
+    data_hdr = data.transpose(tuple(range(data.ndim)[::-1]))
 
-    # 2) Map desired axes logic
+    # Identify original WCS
+    w_orig = WCS(header)
+    orig = w_orig.wcs
+    prefixes = [ctype.split('-')[0] for ctype in orig.ctype]
+
+    # Reorder to logical order [RA, DEC, FREQ, STOKES]
     desired = ['RA', 'DEC', 'FREQ', 'STOKES']
-    mapping_header = []
+    map_hdr = []
     for ax in desired:
         if ax in prefixes:
-            mapping_header.append(prefixes.index(ax))
+            map_hdr.append(prefixes.index(ax))
         else:
-            mapping_header.append(len(prefixes))
+            map_hdr.append(len(prefixes))
             prefixes.append(ax)
+    # Inject singletons
+    while data_hdr.ndim < len(prefixes):
+        data_hdr = np.expand_dims(data_hdr, axis=-1)
+    # Logical data
+    data_log = data_hdr.transpose(tuple(map_hdr))
 
-    # 3) Add singleton dims
-    while data_header.ndim < len(prefixes):
-        data_header = np.expand_dims(data_header, axis=-1)
+    # --- Build new WCS with exactly 4 axes explicitly ---
+    w_std = WCS(naxis=4)
+    # Identify original axis indices (or use defaults for new singleton)
+    prefixes = prefixes  # from above
+    ra_idx = prefixes.index('RA') if 'RA' in prefixes else None
+    dec_idx = prefixes.index('DEC') if 'DEC' in prefixes else None
+    freq_idx = prefixes.index('FREQ') if 'FREQ' in prefixes else None
 
-    # 4) Reorder to logical
-    data_logical = data_header.transpose(tuple(mapping_header))
+    # CTYPE
+    w_std.wcs.ctype = ['RA---SIN', 'DEC--SIN', 'FREQ', 'STOKES']
+    # CRPIX: use original reference pixels or 1 for new axes
+    w_std.wcs.crpix = [
+        orig.crpix[ra_idx] if ra_idx is not None else 1.0,
+        orig.crpix[dec_idx] if dec_idx is not None else 1.0,
+        orig.crpix[freq_idx] if freq_idx is not None else 1.0,
+        1.0
+    ]
+    # CDELT: pixel scales
+    w_std.wcs.cdelt = [
+        orig.cdelt[ra_idx] if ra_idx is not None else 1.0,
+        orig.cdelt[dec_idx] if dec_idx is not None else 1.0,
+        orig.cdelt[freq_idx] if freq_idx is not None else 1.0,
+        1.0
+    ]
+    # CRVAL: world coordinate at reference pixel
+    w_std.wcs.crval = [
+        orig.crval[ra_idx] if ra_idx is not None else 0.0,
+        orig.crval[dec_idx] if dec_idx is not None else 0.0,
+        orig.crval[freq_idx] if freq_idx is not None else 0.0,
+        1.0  # Stokes I
+    ]
+    # CUNIT: units
+    w_std.wcs.cunit = ['deg', 'deg', 'Hz', '']
+    # Finalize WCS
+    w_std.wcs.set()
 
-    # 5) Build standardized WCS and enforce SIN
-    axes_codes = [WCSSUB_LONGITUDE, WCSSUB_LATITUDE, WCSSUB_SPECTRAL, WCSSUB_STOKES]
-    w_std = w.sub(axes_codes)
-    for i in (0, 1):
-        if not w_std.wcs.ctype[i].endswith('SIN'):
-            w_std.wcs.ctype[i] = w_std.wcs.ctype[i][:5] + 'SIN'
-
-    # 6) Create new header and ensure 4 axes
+    # Generate header from new WCS
     new_header = w_std.to_header()
-    new_header['NAXIS'] = 4
-    if 'CTYPE4' not in new_header:
-        new_header.set('CTYPE4', 'STOKES', 'Stokes parameter')
-        new_header.set('CUNIT4', '', 'Unitless Stokes index')
-        new_header.set('CRPIX4', 1.0, 'Reference pixel')
-        new_header.set('CRVAL4', 1.0, 'Reference value (I)')
-        new_header.set('CDELT4', 1.0, 'Stokes step')
 
-    # 7) Copy non-WCS cards
+    # Copy non-WCS cards
     for card in header.cards:
         key = card.keyword
-        if key in new_header or key.startswith(('CTYPE','CRPIX','CRVAL','CDELT','CUNIT','WCSAXES')):
+        if key in new_header or key.startswith(('CTYPE', 'CRPIX', 'CRVAL', 'CDELT', 'CUNIT', 'WCSAXES')):
             continue
         if key in ('HISTORY', 'COMMENT'):
             new_header[key] = card.value
-            continue
-        try:
-            new_header.set(key, card.value, card.comment)
-        except Exception:
-            continue
+        else:
+            try:
+                new_header.set(key, card.value, card.comment)
+            except Exception:
+                pass
 
-    # 8) Optional reprojection to SIN
-    if HAVE_REPROJECT and any(not c.endswith('SIN') for c in orig_ctypes[:2]):
-        target_header = new_header.copy()
-        target_header['CTYPE1'] = 'RA---SIN'
-        target_header['CTYPE2'] = 'DEC--SIN'
-        data_reproj, _ = reproject_interp((data_logical, w_std), target_header)
-        data_logical = data_reproj
-        new_header = target_header
+    # Optional reprojection if needed
+    if HAVE_REPROJECT and not (orig.ctype[0].endswith('SIN') and orig.ctype[1].endswith('SIN')):
+        target_hdr = new_header.copy()
+        target_hdr['CTYPE1'] = 'RA---SIN'
+        target_hdr['CTYPE2'] = 'DEC--SIN'
+        data_log, _ = reproject_interp((data_log, w_std), target_hdr)
+        new_header = target_hdr
 
-    # 9) Back to numpy memory order
-    data_out = data_logical.transpose(tuple(range(data_logical.ndim)[::-1]))
+    # Back to native memory order
+    data_out = data_log.transpose(tuple(range(data_log.ndim)[::-1]))
 
-    # 10) Unit conversion: ensure JY/PIXEL
-    bunit = header.get('BUNIT').upper()
-    dsa_logger.info(f"The original BUNIT is {bunit}")
+    # Unit conversion to JY/PIXEL
+    bunit = header.get('BUNIT', '').upper()
+    dsa_logger.info(f"Original BUNIT: {bunit}")
     if bunit != 'JY/PIXEL':
         dsa_logger.info(f"Converting units from {bunit} to JY/PIXEL")
-        factor = 1.
-        if "/B" in bunit:
-            # pixel area (steradian)
+        factor = 1.0
+        if '/B' in bunit:
             pix_dx = abs(new_header['CDELT1']) * u.deg
             pix_dy = abs(new_header['CDELT2']) * u.deg
             pixel_area = pix_dx.to(u.rad) * pix_dy.to(u.rad)
-
-            # beam area (steradian)
-            if 'BMAJ' not in header:
-                dsa_logger.warning(f"No BMAJ in header, assuming beam area = pixel area.")
-            bmaj = header.get('BMAJ', pix_dx.to('deg').value) * u.deg
-            bmin = header.get('BMIN', pix_dy.to('deg').value) * u.deg
+            bmaj = header.get('BMAJ', pix_dx.value) * u.deg
+            bmin = header.get('BMIN', pix_dy.value) * u.deg
             beam_area = 0.25 * np.pi * bmaj.to(u.rad) * bmin.to(u.rad)
-
-            factor *= float(beam_area / pixel_area)
-        if "*M/S" in bunit:
-            cdelt3 = new_header['CDELT3'] * u.Hz
-            crval3 = new_header['CRVAL3'] * u.Hz
-            dv = (cdelt3 / crval3) * const.c
+            factor *= float((beam_area / pixel_area).value)
+        if '*M/S' in bunit:
+            cd3 = new_header['CDELT3'] * u.Hz
+            cr3 = new_header['CRVAL3'] * u.Hz
+            dv = (cd3 / cr3) * const.c
             factor /= abs(dv.to('m/s').value)
         data_out *= factor
         new_header['BUNIT'] = 'JY/PIXEL'
@@ -143,13 +164,10 @@ def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True):
     try:
         yield hdul
     finally:
-        # write if requested
         if output_file:
             hdul.writeto(output_file, overwrite=overwrite)
-        # close resources
         hdul.close()
         hdul_in.close()
-
 
 # if __name__ == '__main__':
 #     standardize_fits('../../dsa2000_assets/source_models/ncg_5194/NGC_5194_RO_MOM0_THINGS.FITS', 'NGC_5194_RO_MOM0_THINGS_STD.FITS', overwrite=True)

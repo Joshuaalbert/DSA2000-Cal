@@ -268,11 +268,11 @@ if __name__ == '__main__':
         main(
             config_file=config_file,
             plot_folder='plots',
-            source_name='ncg_5194',  # ncg_5194
+            source_name='point_sources',
             num_threads=os.cpu_count(),
             freq_block_size=10,
             duration=7 * au.min,
-            spectral_line=True,
+            spectral_line=False,
             with_noise=True,
             with_earth_rotation=True,
             with_freq_synthesis=True,
@@ -288,6 +288,21 @@ if __name__ == '__main__':
             freq_block_size=10,
             duration=7 * au.min,
             spectral_line=False,
+            with_noise=True,
+            with_earth_rotation=True,
+            with_freq_synthesis=True,
+            num_reduced_obsfreqs=10,
+            num_reduced_obstimes=10
+        )
+
+        main(
+            config_file=config_file,
+            plot_folder='plots',
+            source_name='ncg_5194',  # ncg_5194
+            num_threads=os.cpu_count(),
+            freq_block_size=10,
+            duration=7 * au.min,
+            spectral_line=True,
             with_noise=True,
             with_earth_rotation=True,
             with_freq_synthesis=True,
