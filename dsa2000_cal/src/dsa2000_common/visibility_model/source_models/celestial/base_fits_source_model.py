@@ -18,6 +18,7 @@ from dsa2000_common.common.array_types import ComplexArray, FloatArray
 from dsa2000_common.common.corr_utils import broadcast_translate_corrs
 from dsa2000_common.common.interp_utils import InterpolatedArray, select_interpolation_points
 from dsa2000_common.common.jax_utils import multi_vmap
+from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.pure_callback_utils import construct_threaded_callback
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, quantity_to_np
@@ -575,7 +576,7 @@ def build_calibration_fits_source_models_from_wsclean(
         repoint_centre: ac.ICRS | None = None,
         crop_box_size: au.Quantity | None = None,
         num_facets: int = 1,
-):
+) -> BaseFITSSourceModel:
     """
     Build a calibration source model from wsclean components.
 
@@ -642,6 +643,7 @@ def build_fits_source_model_from_wsclean_components(
     Returns:
         FitsSourceModel
     """
+
     wsclean_fits_freqs_and_fits = []
     for fits_file in wsclean_fits_files:
         # Get frequency from header, open with astropy
@@ -656,13 +658,15 @@ def build_fits_source_model_from_wsclean_components(
                 frequency = header['RESTFRQ'] * au.Hz
             elif 'CRVAL3' in header:  # Assuming the frequency is in the third axis
                 if header['CTYPE3'].strip().upper() != 'FREQ':
-                    raise ValueError(f"Expected CTYPE3 to be FREQ, got {header['CTYPE3']}")
-                unit = header['CUNIT3']
+                    raise ValueError(f"Expected CTYPE3 to be FREQ, got {header['CTYPE3']} in {header}")
+                unit = header.get('CUNIT3', 'Hz')
                 frequency = au.Quantity(header['CRVAL3'], unit=unit)
             else:
                 raise KeyError("Frequency information not found in FITS header.")
             wsclean_fits_freqs_and_fits.append((frequency, fits_file))
-    print(f"Found {len(wsclean_fits_freqs_and_fits)} fits files")
+
+    dsa_logger.info(f"Found {len(wsclean_fits_files)} fits files. {len(wsclean_fits_freqs_and_fits)} valid.")
+
 
     # Sort by freq
     wsclean_fits_freqs_and_fits = sorted(wsclean_fits_freqs_and_fits, key=lambda x: x[0])
@@ -670,13 +674,14 @@ def build_fits_source_model_from_wsclean_components(
     # Each fits file is a 2D image, and we linearly interpolate between frequencies
     available_freqs = au.Quantity([freq for freq, _ in wsclean_fits_freqs_and_fits])
 
+
     select_idx = select_interpolation_points(
         desired_freqs=quantity_to_np(model_freqs, 'MHz'),
         model_freqs=quantity_to_np(available_freqs, 'MHz')
     )
     # hereafter model freqs is the selected freqs
     model_freqs = available_freqs[select_idx]
-    print(f"Selecting frequencies: {model_freqs}")
+    dsa_logger.info(f"Selecting frequencies: {model_freqs}")
 
     images = []
     ras = []
@@ -690,8 +695,30 @@ def build_fits_source_model_from_wsclean_components(
         freq, fits_file = wsclean_fits_freqs_and_fits[select_file_idx]
         with fits.open(fits_file) as hdul0:
             # image = hdul0[0].data.T[:, :, 0, 0].T # [Nm, Nl]
+            # Get the name of each axis
+
+            ra_axis = None
+            dec_axis = None
+            freq_axis = None
+            stokes_axis = None
+            for i in range(1, 6):
+                if f'CTYPE{i}' not in hdul0[0].header:
+                    break
+                axis_name = hdul0[0].header[f'CTYPE{i}']
+                dsa_logger.info(f"Axis {i} name: {axis_name}")
+                if axis_name.strip().upper().startswith('RA'):
+                    ra_axis = i
+                elif axis_name.strip().upper().startswith('DEC'):
+                    dec_axis = i
+                elif axis_name.strip().upper().startswith('FREQ'):
+                    freq_axis = i
+                elif axis_name.strip().upper().startswith('STOKES'):
+                    stokes_axis = i
+            if ra_axis is None or dec_axis is None:
+                raise ValueError(f"RA and DEC axes not found in header. Found {hdul0[0].header['CTYPE1']}, {hdul0[0].header['CTYPE2']}")
+
             if np.shape(hdul0[0].data)[1] > 1:
-                raise ValueError(f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}")
+                raise ValueError(f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}. Entire data shape {np.shape(hdul0[0].data)}.")
             image = hdul0[0].data[:, 0, :, :]  # [stokes, Nm, Nl]
             w0 = WCS(hdul0[0].header)
             image = au.Quantity(image, 'Jy')  # [stokes, Nm, Nl]
@@ -711,7 +738,7 @@ def build_fits_source_model_from_wsclean_components(
                 pass
             elif hdul0[0].header['BUNIT'].upper() == 'JY/BEAM':
                 # Convert to JY/PIXEL
-                print(f"Converting from JY/BEAM to JY/PIXEL")
+                dsa_logger.info(f"Converting from JY/BEAM to JY/PIXEL")
                 bmaj = hdul0[0].header['BMAJ'] * au.deg
                 bmin = hdul0[0].header['BMIN'] * au.deg
                 beam_area = (0.25 * np.pi) * bmaj * bmin
@@ -781,7 +808,7 @@ def build_fits_source_model_from_wsclean_components(
                 image = image[l_slice, m_slice, :]  # [Nl, Nm, stokes]
                 Nl, Nm, num_stokes = image.shape
 
-            print(
+            dsa_logger.info(
                 f"freq={freq.to('MHz')}, dl={pixel_size_l.to('rad')}, dm={pixel_size_m.to('rad')}\n"
                 f"centre_ra={ra0}, centre_dec={dec0}\n"
                 f"centre_l_pix={centre_l_pix}, centre_m_pix={centre_m_pix}\n"

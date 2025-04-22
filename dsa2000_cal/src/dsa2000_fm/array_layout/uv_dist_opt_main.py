@@ -15,7 +15,7 @@ import jax
 import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_fm.array_layout.optimal_transport import compute_ideal_uv_distribution, accumulate_uv_distribution
-from dsa2000_fm.array_layout.sample_constraints import RegionSampler, sample_aoi
+from dsa2000_fm.array_layout.sample_constraints import RegionSampler, sample_aoi, is_violation
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, time_to_jnp
@@ -36,11 +36,13 @@ def run(
         ref_time,
         run_name: str,
         target_array_name: str,
+        min_antenna_sep_m: float,
         array_constraint: AbstractArrayConstraint,
         num_antennas: int,
         num_trials_per_antenna: int,
         num_time_per_antenna_s: float,
         loss_obj: str,
+        deadline: datetime.datetime | None = None,
         resume_ant: int | None = None
 ):
     os.makedirs(run_name, exist_ok=True)
@@ -80,7 +82,7 @@ def run(
             array_location=array_location,
             obstime=ref_time,
             additional_buffer=0.,
-            minimal_antenna_sep=8.,
+            minimal_antenna_sep=min_antenna_sep_m,
             aoi_data=aoi_data,
             constraint_data=constraint_data
         )
@@ -103,6 +105,26 @@ def run(
                 z * au.m
             )
 
+    # Check for violating antennas and remove them
+    for check_idx in reversed(range(len(antennas))):
+        if is_violation(
+                check_idx=check_idx,
+                antennas=antennas,
+                array_location=array_location,
+                obstime=ref_time,
+                additional_buffer=0.,
+                minimal_antenna_sep=min_antenna_sep_m,
+                aoi_data=aoi_data,
+                constraint_data=constraint_data,
+                verbose=False
+        ):
+            # remove that antenna
+            antennas = ac.EarthLocation(
+                x=np.concatenate((antennas.x[:check_idx], antennas.x[check_idx + 1:])),
+                y=np.concatenate((antennas.y[:check_idx], antennas.y[check_idx + 1:])),
+                z=np.concatenate((antennas.z[:check_idx], antennas.z[check_idx + 1:]))
+            )
+
     while len(antennas) < num_antennas:
         # clear JAX cache
         jax.clear_caches()
@@ -120,12 +142,18 @@ def run(
         acceptances = 0
         trials = 0
 
+        if deadline is not None:
+            time_left = deadline - datetime.datetime.now(datetime.timezone.utc)
+            num_time_per_antenna_s = time_left.total_seconds() / (num_antennas - len(antennas))
+
+        assert num_time_per_antenna_s is not None
+
         while (time.time() - t0 < num_time_per_antenna_s) and (trials < num_trials_per_antenna):
             trials += 1
             # sample AOI to replace it
             proposal_antennas = sample_aoi(
                 replace_idx, best_config, array_location, ref_time, additional_buffer=0.,
-                minimal_antenna_sep=8., aoi_data=aoi_data, constraint_data=constraint_data
+                minimal_antenna_sep=min_antenna_sep_m, aoi_data=aoi_data, constraint_data=constraint_data
             )
             # Evaluate the new config
             proposal_antennas_gcrs = quantity_to_jnp(
@@ -209,6 +237,10 @@ def plot_result(target_dist, dist, antennas, diff, objective, uv_bins, plot_fold
 
 
 def main(target_fwhm_arcsec, loss_obj, prefix, num_antennas, num_trials_per_antenna, num_time_per_antenna_s,
+         deadline_dt,
+         min_antenna_sep_m,
+         du: au.Quantity,
+         dconv: au.Quantity,
          resume_ant):
     warnings.filterwarnings(
         "ignore",
@@ -218,8 +250,6 @@ def main(target_fwhm_arcsec, loss_obj, prefix, num_antennas, num_trials_per_ante
     ref_time = at.Time("2025-06-10T00:00:00", format='isot', scale='utc')
     obstimes = ref_time[None]
 
-    du = 20 * au.m
-    dconv = 200 * au.m
     conv_size = (int(dconv / du) // 2) * 2 + 1
     R = 16000 * au.m
     freq = 1350 * au.MHz
@@ -245,6 +275,8 @@ def main(target_fwhm_arcsec, loss_obj, prefix, num_antennas, num_trials_per_ante
         num_trials_per_antenna=num_trials_per_antenna,
         num_time_per_antenna_s=num_time_per_antenna_s,
         loss_obj=loss_obj,
+        min_antenna_sep_m=min_antenna_sep_m,
+        deadline=deadline_dt,
         resume_ant=resume_ant
     )
 
@@ -264,20 +296,18 @@ if __name__ == '__main__':
         category=UserWarning
     )
 
-    # num_time_per_antenna_s = args.num_time_per_antenna_s
-
-    deadline = datetime.datetime.fromisoformat("2025-04-22T06:00:00-07:00")
-    dt_now = datetime.datetime.now(datetime.timezone.utc)
-    dt = deadline - dt_now
-    num_time_per_antenna_s = dt.total_seconds() / 1650
-    dsa_logger.info(f"Number of seconds per antenna: {num_time_per_antenna_s:.2f} s")
+    deadline = datetime.datetime.fromisoformat("2025-04-22T09:00:00-07:00")
 
     main(
         target_fwhm_arcsec=2.61,
         loss_obj='lst_sq',
         prefix='a',
         num_antennas=1650,
-        num_trials_per_antenna=4000,
-        num_time_per_antenna_s=num_time_per_antenna_s,
+        num_trials_per_antenna=10000, # max 10000
+        num_time_per_antenna_s=None,
+        deadline_dt=deadline,  # use deadline to set time per round
+        min_antenna_sep_m=0.,
+        du=20 * au.m,
+        dconv=120 * au.m,
         resume_ant=1024
     )

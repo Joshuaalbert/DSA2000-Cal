@@ -356,8 +356,10 @@ def accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uvec_bins, conv_
     if conv_size > 1:
         k_vec = jnp.linspace(-1, 1, conv_size)
         kx, ky = jnp.meshgrid(k_vec, k_vec, indexing='ij')
-        mask = jnp.sqrt(kx ** 2 + ky ** 2) <= 1 # [conv_size, conv_size]
-        kernel = mask.astype(accum.dtype)
+        fwhm = 0.5
+        sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
+        k2 = (kx ** 2 + ky ** 2)/sigma**2
+        kernel = jnp.exp(-0.5 * k2)
         kernel /= jnp.sum(kernel)
         # do 2D convolution
         accum = convolve2d(accum, kernel, mode='same')

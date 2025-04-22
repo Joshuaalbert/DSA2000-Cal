@@ -321,22 +321,23 @@ def is_violation(
                 dsa_logger.info(f"Antenna {check_idx} violates constraint buffer constraints {constraint_sampler.name}")
             return True
 
-    # Check that it is far enough from other antennas, excluding the one being replaced
-    sample_enu = ac.EarthLocation.from_geodetic(
-        lon=sample_proposal[0] * au.deg,
-        lat=sample_proposal[1] * au.deg,
-        height=array_location.geodetic.height
-    ).get_itrs(
-        obstime=obstime, location=array_location
-    ).transform_to(
-        ENU(obstime=obstime, location=array_location)
-    ).cartesian.xyz.to('m').value  # [3]
-    dists = np.linalg.norm(antennas_enu - sample_enu, axis=-1)  # [N]
-    dists[check_idx] = np.inf
-    if np.min(dists) < minimal_antenna_sep:
-        if verbose:
-            print(f"Antenna {check_idx} violates minimal antenna separation")
-        return True
+    if minimal_antenna_sep > 0:
+        # Check that it is far enough from other antennas, excluding the one being replaced
+        sample_enu = ac.EarthLocation.from_geodetic(
+            lon=sample_proposal[0] * au.deg,
+            lat=sample_proposal[1] * au.deg,
+            height=array_location.geodetic.height
+        ).get_itrs(
+            obstime=obstime, location=array_location
+        ).transform_to(
+            ENU(obstime=obstime, location=array_location)
+        ).cartesian.xyz.to('m').value  # [3]
+        dists = np.linalg.norm(antennas_enu - sample_enu, axis=-1)  # [N]
+        dists[check_idx] = np.inf
+        if np.min(dists) < minimal_antenna_sep:
+            if verbose:
+                print(f"Antenna {check_idx} violates minimal antenna separation")
+            return True
 
     return False
 
