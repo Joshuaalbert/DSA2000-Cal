@@ -9,7 +9,6 @@ import astropy.units as au
 import jax
 import numpy as np
 import pylab as plt
-from astropy.io import fits
 from astropy.wcs import WCS
 from jax import numpy as jnp, lax
 
@@ -22,6 +21,7 @@ from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.pure_callback_utils import construct_threaded_callback
 from dsa2000_common.common.quantity_utils import quantity_to_jnp, quantity_to_np
+from dsa2000_common.common.standardise_fits import standardize_fits
 from dsa2000_common.common.types import VisibilityCoords
 from dsa2000_common.common.vec_utils import kron_product
 from dsa2000_common.delay_models.base_far_field_delay_engine import BaseFarFieldDelayEngine
@@ -576,7 +576,7 @@ def build_calibration_fits_source_models_from_wsclean(
         repoint_centre: ac.ICRS | None = None,
         crop_box_size: au.Quantity | None = None,
         num_facets: int = 1,
-) -> BaseFITSSourceModel:
+) -> List[BaseFITSSourceModel]:
     """
     Build a calibration source model from wsclean components.
 
@@ -647,7 +647,7 @@ def build_fits_source_model_from_wsclean_components(
     wsclean_fits_freqs_and_fits = []
     for fits_file in wsclean_fits_files:
         # Get frequency from header, open with astropy
-        with fits.open(fits_file) as hdul:
+        with standardize_fits(fits_file) as hdul:
             header = hdul[0].header
             # Try to find freq
             if 'FREQ' in header:
@@ -667,13 +667,11 @@ def build_fits_source_model_from_wsclean_components(
 
     dsa_logger.info(f"Found {len(wsclean_fits_files)} fits files. {len(wsclean_fits_freqs_and_fits)} valid.")
 
-
     # Sort by freq
     wsclean_fits_freqs_and_fits = sorted(wsclean_fits_freqs_and_fits, key=lambda x: x[0])
 
     # Each fits file is a 2D image, and we linearly interpolate between frequencies
     available_freqs = au.Quantity([freq for freq, _ in wsclean_fits_freqs_and_fits])
-
 
     select_idx = select_interpolation_points(
         desired_freqs=quantity_to_np(model_freqs, 'MHz'),
@@ -693,7 +691,8 @@ def build_fits_source_model_from_wsclean_components(
         # interpolate between the two closest frequencies
         select_file_idx = select_idx[freq_idx]
         freq, fits_file = wsclean_fits_freqs_and_fits[select_file_idx]
-        with fits.open(fits_file) as hdul0:
+        with standardize_fits(fits_file, hdu_index=0) as hdul0:
+            # with fits.open(fits_file) as hdul0:
             # image = hdul0[0].data.T[:, :, 0, 0].T # [Nm, Nl]
             # Get the name of each axis
 
@@ -715,10 +714,12 @@ def build_fits_source_model_from_wsclean_components(
                 elif axis_name.strip().upper().startswith('STOKES'):
                     stokes_axis = i
             if ra_axis is None or dec_axis is None:
-                raise ValueError(f"RA and DEC axes not found in header. Found {hdul0[0].header['CTYPE1']}, {hdul0[0].header['CTYPE2']}")
+                raise ValueError(
+                    f"RA and DEC axes not found in header. Found {hdul0[0].header['CTYPE1']}, {hdul0[0].header['CTYPE2']}")
 
             if np.shape(hdul0[0].data)[1] > 1:
-                raise ValueError(f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}. Entire data shape {np.shape(hdul0[0].data)}.")
+                raise ValueError(
+                    f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}. Entire data shape {np.shape(hdul0[0].data)}.")
             image = hdul0[0].data[:, 0, :, :]  # [stokes, Nm, Nl]
             w0 = WCS(hdul0[0].header)
             image = au.Quantity(image, 'Jy')  # [stokes, Nm, Nl]
@@ -726,6 +727,10 @@ def build_fits_source_model_from_wsclean_components(
             image = image[:, :, ::-1]  # [stokes, Nm, Nl]
             # Transpose
             image = image.T  # [Nl, Nm, stokes]
+            if np.shape(image)[0] % 2 != 0:
+                image = image[:-1]
+            if np.shape(image)[1] % 2 != 0:
+                image = image[:, :-1]
             Nl, Nm, num_stokes = image.shape
             if Nl % 2 != 0 or Nm % 2 != 0:
                 raise ValueError("Nl and Nm must be even.")

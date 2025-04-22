@@ -147,9 +147,9 @@ def _host_dirty2vis(uvw: FloatArray, freqs: FloatArray,
 
     if mask is not None:
         mask = np.asarray(mask, order='F').astype(np.uint8)  # [num_rows, num_freqs]
-    if dirty.dtype == np.float32:
+    if dirty.dtype == jnp.float32:
         output_vis = np.zeros((num_rows, num_freq), order='F', dtype=np.complex64)
-    elif dirty.dtype == np.float64:
+    elif dirty.dtype == jnp.float64:
         output_vis = np.zeros((num_rows, num_freq), order='F', dtype=np.complex128)
     else:
         raise ValueError(f"Expected dirty to be float32 or float64, got {dirty.dtype}")

@@ -260,7 +260,7 @@ def main(target_fwhm_arcsec, loss_obj, prefix, num_antennas, num_trials_per_ante
     target_fwhm = target_fwhm_arcsec * au.arcsec
     uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, freq)
     array_constraint = ArrayConstraintsV6(prefix)
-    run_name = f"pareto_opt_v6_{prefix}_{target_fwhm.to('arcsec').value}arcsec_{loss_obj}_v2"
+    run_name = f"pareto_opt_v6_{prefix}_{target_fwhm.to('arcsec').value}arcsec_{loss_obj}_v2.1"
     run(
         uv_bins=uv_bins,
         target_dist=target_dist,
@@ -306,8 +306,8 @@ if __name__ == '__main__':
         num_trials_per_antenna=10000, # max 10000
         num_time_per_antenna_s=None,
         deadline_dt=deadline,  # use deadline to set time per round
-        min_antenna_sep_m=0.,
+        min_antenna_sep_m=8.,
         du=20 * au.m,
         dconv=120 * au.m,
-        resume_ant=1024
+        resume_ant=None
     )

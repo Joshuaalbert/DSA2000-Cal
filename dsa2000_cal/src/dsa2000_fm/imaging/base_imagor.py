@@ -12,6 +12,7 @@ from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.corr_translation import unflatten_coherencies, flatten_coherencies
 from dsa2000_common.common.ellipse_utils import Gaussian
 from dsa2000_common.common.jax_utils import multi_vmap, simple_broadcast
+from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.mixed_precision_utils import mp_policy
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.common.vec_utils import kron_inv, kron_product
@@ -194,7 +195,6 @@ def evaluate_beam(freqs: jax.Array, times: jax.Array,
     geodesics = geodesic_model.compute_far_field_geodesic(
         times=times, lmn_sources=lmn_sources, antenna_indices=jnp.asarray([0], mp_policy.index_dtype)
     )  # [num_sources, num_time, 1, 3]
-    # jax.debug.print("geodesics={geodesics}", geodesics=geodesics)
     beam = beam_gain_model.compute_gain(freqs=freqs, times=times,
                                         lmn_geodesic=geodesics)  # [num_sources, num_time, 1, num_freqs[, 2, 2]]
     beam = beam[:, :, 0, ...]  # [num_sources, num_time, num_freqs[, 2, 2]]
@@ -296,36 +296,43 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
     if num_l < max_central_size or num_m < max_central_size:
         raise ValueError(f"Expected PSF to be at least {max_central_size}x{max_central_size}, got {num_l}x{num_m}")
     # Trim equally from both sides until num_l and num_m <= max_central_size
-    trim_size_l = 0
-    while num_l - trim_size_l * 2 > max_central_size:
-        trim_size_l += 1
-    trim_size_m = 0
-    while num_m - trim_size_m * 2 > max_central_size:
-        trim_size_m += 1
-    psf = psf[trim_size_l:-trim_size_l, trim_size_m:-trim_size_m]
-    print(f"Trimmed PSF from {num_l}x{num_m} to {np.shape(psf)}")
+    trim_l_from = num_l // 2 - max_central_size // 2
+    trim_l_to = num_l // 2 + max_central_size // 2
+    trim_m_from = num_m // 2 - max_central_size // 2
+    trim_m_to = num_m // 2 + max_central_size // 2
+    psf = psf[trim_l_from:trim_l_to, trim_m_from:trim_m_to]
+    dsa_logger.info(f"Trimmed PSF from {num_l}x{num_m} to {np.shape(psf)}")
     lvec = (-0.5 * num_l + jnp.arange(num_l)) * dl  # [num_l]
     mvec = (-0.5 * num_m + jnp.arange(num_m)) * dm  # [num_m]
     # Trim lvec and mvec too
-    lvec = lvec[trim_size_l:-trim_size_l]
-    mvec = mvec[trim_size_m:-trim_size_m]
+    lvec = lvec[trim_l_from:trim_l_to]
+    mvec = mvec[trim_m_from:trim_m_to]
     L, M = jnp.meshgrid(lvec, mvec, indexing='ij')  # [num_l, num_m]
     lm = jnp.stack([L, M], axis=-1).reshape((-1, 2))  # [num_l, num_m, 2]
     psf = jnp.reshape(psf, (-1,))
 
     def residual_fn(params):
-        x0_1, x0_2, major, minor, pos_angle = params
-        x0 = jnp.stack([x0_1, x0_2], axis=-1)
+        log_major, log_minor, pos_angle = params
+        major = jnp.exp(log_major)
+        minor = jnp.exp(log_minor)
+        x0 = jnp.asarray([0., 0.])
         g = Gaussian(x0=x0, minor_fwhm=minor, major_fwhm=major, pos_angle=pos_angle,
-                     total_flux=Gaussian.total_flux_from_peak(1, major_fwhm=major, minor_fwhm=minor))
-        return jax.vmap(g.compute_flux_density)(lm) - psf
+                     total_flux=Gaussian.total_flux_from_peak(1., major_fwhm=major, minor_fwhm=minor))
+        residual = jax.vmap(g.compute_flux_density)(lm) - psf
+        return residual
 
-    solution, diagnostics = lm_solver(residual_fn, jnp.array([dl * 0., dl * 0., dl * 5, dm * 5, 0.]), gtol=1e-6)
-    _, _, major, minor, posang = solution
+    solution, diagnostics = lm_solver(residual_fn, jnp.array([jnp.log(dl * 5), jnp.log(dm * 5), 0.]), gtol=1e-6)
+    log_major, log_minor, posang = solution
+    major = jnp.exp(log_major)
+    minor = jnp.exp(log_minor)
     swap = minor > major
     major, minor, posang = (
         jnp.where(swap, minor, major),
         jnp.where(swap, major, minor),
         jnp.where(swap, posang + jnp.pi / 2., posang)
     )
+    # wrap posang
+    def wrap(x):
+        return jnp.arctan2(jnp.sin(x), jnp.cos(x))
+    posang = wrap(posang)
     return major, minor, posang
