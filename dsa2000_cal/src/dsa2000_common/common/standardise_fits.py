@@ -18,7 +18,7 @@ except ImportError:
 
 
 @contextmanager
-def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True):
+def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True, reproject:bool = False):
     """
     Context manager to open, standardize axes to [RA, DEC, FREQ, STOKES],
     enforce SIN projection, convert units to JY/PIXEL, and optionally write.
@@ -125,7 +125,7 @@ def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True):
                 pass
 
     # Optional reprojection if needed
-    if HAVE_REPROJECT and not (orig.ctype[0].endswith('SIN') and orig.ctype[1].endswith('SIN')):
+    if reproject and HAVE_REPROJECT and not (orig.ctype[0].endswith('SIN') and orig.ctype[1].endswith('SIN')):
         target_hdr = new_header.copy()
         target_hdr['CTYPE1'] = 'RA---SIN'
         target_hdr['CTYPE2'] = 'DEC--SIN'

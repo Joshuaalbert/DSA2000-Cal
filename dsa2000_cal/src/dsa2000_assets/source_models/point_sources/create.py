@@ -15,8 +15,8 @@ def main():
 
     num_l = num_m = 512
     dirty = np.zeros((num_l, num_m), dtype=np.float32)
-    dirty[num_l // 2, num_m // 2] = 1.0
-    dirty[num_l // 3, num_m // 3] = 1.0
+    dirty[num_l // 2, num_m // 2] = 500e-3
+    dirty[num_l // 3, num_m // 3] = 500e-3
 
     beam_major = dl * au.rad
     beam_minor = dl * au.rad

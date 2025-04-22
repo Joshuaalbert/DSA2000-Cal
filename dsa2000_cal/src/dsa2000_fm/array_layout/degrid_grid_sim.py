@@ -261,66 +261,68 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
 
 
 if __name__ == '__main__':
-    for config_file in [
-        'dsa1650_a_2.9_v2-prelim.txt',
-        'dsa1650_a_3.5_v2.0.txt'
-    ]:
-        main(
-            config_file=config_file,
-            plot_folder='plots',
-            source_name='point_sources',
-            num_threads=os.cpu_count(),
-            freq_block_size=10,
-            duration=7 * au.min,
-            spectral_line=False,
-            with_noise=True,
-            with_earth_rotation=True,
-            with_freq_synthesis=True,
-            num_reduced_obsfreqs=10,
-            num_reduced_obstimes=10
-        )
+    for prefix in ['a', 'e']:
+        for res in ['2.61', '2.88', '3.14']:
+            config_file = f'dsa1650_{prefix}_{res}.txt'
 
-        main(
-            config_file=config_file,
-            plot_folder='plots',
-            source_name='skamid_b1_1000h',
-            num_threads=os.cpu_count(),
-            freq_block_size=10,
-            duration=7 * au.min,
-            spectral_line=False,
-            with_noise=True,
-            with_earth_rotation=True,
-            with_freq_synthesis=True,
-            num_reduced_obsfreqs=10,
-            num_reduced_obstimes=10
-        )
+            plot_folder = 'plots_100freqs_10times'
 
-        main(
-            config_file=config_file,
-            plot_folder='plots',
-            source_name='ncg_5194',  # ncg_5194
-            num_threads=os.cpu_count(),
-            freq_block_size=10,
-            duration=7 * au.min,
-            spectral_line=True,
-            with_noise=True,
-            with_earth_rotation=True,
-            with_freq_synthesis=True,
-            num_reduced_obsfreqs=10,
-            num_reduced_obstimes=10
-        )
+            main(
+                config_file=config_file,
+                plot_folder=plot_folder,
+                source_name='point_sources',
+                num_threads=os.cpu_count(),
+                freq_block_size=100,
+                duration=7 * au.min,
+                spectral_line=False,
+                with_noise=True,
+                with_earth_rotation=True,
+                with_freq_synthesis=True,
+                num_reduced_obsfreqs=100,
+                num_reduced_obstimes=10
+            )
 
-        main(
-            config_file=config_file,
-            plot_folder='plots',
-            source_name='meerkat_gc',
-            num_threads=os.cpu_count(),
-            freq_block_size=10,
-            duration=7 * au.min,
-            spectral_line=False,
-            with_noise=True,
-            with_earth_rotation=True,
-            with_freq_synthesis=True,
-            num_reduced_obsfreqs=10,
-            num_reduced_obstimes=10
-        )
+            main(
+                config_file=config_file,
+                plot_folder=plot_folder,
+                source_name='skamid_b1_1000h',
+                num_threads=os.cpu_count(),
+                freq_block_size=100,
+                duration=7 * au.min,
+                spectral_line=False,
+                with_noise=True,
+                with_earth_rotation=True,
+                with_freq_synthesis=True,
+                num_reduced_obsfreqs=100,
+                num_reduced_obstimes=10
+            )
+
+            main(
+                config_file=config_file,
+                plot_folder=plot_folder,
+                source_name='ncg_5194',  # ncg_5194
+                num_threads=os.cpu_count(),
+                freq_block_size=100,
+                duration=7 * au.min,
+                spectral_line=True,
+                with_noise=True,
+                with_earth_rotation=True,
+                with_freq_synthesis=True,
+                num_reduced_obsfreqs=100,
+                num_reduced_obstimes=10
+            )
+
+            main(
+                config_file=config_file,
+                plot_folder=plot_folder,
+                source_name='meerkat_gc',
+                num_threads=os.cpu_count(),
+                freq_block_size=100,
+                duration=7 * au.min,
+                spectral_line=False,
+                with_noise=True,
+                with_earth_rotation=True,
+                with_freq_synthesis=True,
+                num_reduced_obsfreqs=100,
+                num_reduced_obstimes=10
+            )
