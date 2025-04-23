@@ -21,7 +21,6 @@ from dsa2000_common.common.wgridder import image_to_vis_np, vis_to_image_np
 from dsa2000_common.delay_models.uvw_utils import geometric_uvw_from_gcrs
 from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_model import \
     build_fits_source_model_from_wsclean_components
-from dsa2000_fm.array_layout.fast_psf_evaluation_evolving import compute_psf_from_gcrs
 from dsa2000_fm.imaging.base_imagor import fit_beam
 from dsa2000_fm.systematics.ionosphere import evolve_gcrs
 
@@ -36,6 +35,7 @@ def compute_uvw(antennas_gcrs, time, ra0, dec0):
 
 
 def main(config_file, plot_folder, source_name, num_threads, duration, freq_block_size, spectral_line: bool,
+         spectral_bandwidth: au.Quantity | None,
          with_noise: bool, with_earth_rotation: bool, with_freq_synthesis: bool, num_reduced_obsfreqs: int | None,
          num_reduced_obstimes: int | None):
     image_name_base = f"{source_name}_{os.path.basename(config_file).replace('.txt', '')}"
@@ -63,10 +63,6 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     channel_width = array.get_channel_width()
     system_equivalent_flux_density = 3360 * au.Jy
     integration_time = array.get_integration_time()
-    obsfreqs = array.get_channels()
-    if num_reduced_obsfreqs is not None:
-        channel_width *= len(obsfreqs) // num_reduced_obsfreqs
-        obsfreqs = obsfreqs[::len(obsfreqs) // num_reduced_obsfreqs]
 
     antennas: ac.EarthLocation
     array_location = mean_itrs(antennas.get_itrs()).earth_location
@@ -74,7 +70,7 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         source_model_registry.get_match(source_name)).get_wsclean_fits_files()
     source_model = build_fits_source_model_from_wsclean_components(
         wsclean_fits_files=wsclean_fits_files,
-        model_freqs=obsfreqs,
+        model_freqs=array.get_channels(),
         full_stokes=False,
         repoint_centre=None,
         crop_box_size=None,
@@ -87,10 +83,25 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
                                           ref_time=at.Time("2025-06-10T00:00:00", format='isot', scale='utc'))
 
     obstimes = ref_time + np.arange(int(duration / integration_time)) * integration_time
-
     if num_reduced_obstimes is not None:
-        integration_time *= len(obstimes) // num_reduced_obstimes
+        times_before = len(obstimes)
         obstimes = obstimes[::len(obstimes) // num_reduced_obstimes]
+        times_after = len(obstimes)
+        integration_time *= times_before / times_after
+        dsa_logger.info(f"Adjusted integration time: {integration_time}")
+
+    obsfreqs = array.get_channels()
+    if not spectral_line and num_reduced_obsfreqs is not None:
+        chans_before = len(obsfreqs)
+        obsfreqs = obsfreqs[::len(obsfreqs) // num_reduced_obsfreqs]
+        chans_after = len(obsfreqs)
+        channel_width *= chans_before / chans_after
+        dsa_logger.info(f"Adjusted channel width: {channel_width}")
+
+    if spectral_line:
+        obsfreqs = np.asarray(source_model.model_freqs) * au.Hz
+        assert spectral_bandwidth is not None
+        channel_width = spectral_bandwidth
 
     baseline_noise = calc_baseline_noise(
         system_equivalent_flux_density=quantity_to_jnp(system_equivalent_flux_density, 'Jy'),
@@ -103,9 +114,6 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         simulated_noise_reduction = np.sqrt(float(integration_time / duration))
         dsa_logger.info(f"Simulated earth rotation noise reduction: {simulated_noise_reduction:.2f}")
         baseline_noise *= simulated_noise_reduction
-
-    if spectral_line:
-        obsfreqs = np.asarray(source_model.model_freqs) * au.Hz
 
     bandwidth = channel_width * len(obsfreqs)
 
@@ -141,6 +149,9 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     num_l, num_m = dirty.shape
     output_img_buffer = np.zeros((num_l, num_m), dtype=np.float32, order='F')
     output_img_accum = np.zeros((num_l, num_m), dtype=np.float32, order='F')
+
+    output_psf_buffer = np.zeros((num_l, num_m), dtype=np.float32, order='F')
+    output_psf_accum = np.zeros((num_l, num_m), dtype=np.float32, order='F')
 
     for t_idx in range(len(times)):
         uvw = np.array(compute_uvw(antennas_gcrs, times[t_idx], ra0, dec0), order='F')
@@ -186,29 +197,37 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
                 num_threads=num_threads
             )
             output_img_accum += output_img_buffer
+
+            vis_to_image_np(
+                uvw=uvw,
+                freqs=freqs[nu_start_idx:nu_end_idx],
+                vis=np.ones_like(vis),
+                pixsize_l=dl,
+                pixsize_m=dm,
+                center_l=0.,
+                center_m=0.,
+                npix_m=num_m,
+                npix_l=num_l,
+                wgt=None,
+                mask=None,
+                epsilon=1e-5,
+                double_precision_accumulation=False,
+                scale_by_n=True,
+                normalise=True,
+                output_buffer=output_psf_buffer,
+                num_threads=num_threads
+            )
+            output_psf_accum += output_psf_buffer
     output_img_accum /= len(obstimes)
-    psf_dl = (0.5 * au.arcsec).to('rad').value
-    lvec = (-0.5 * 128 + np.arange(128)) * psf_dl
-    mvec = (-0.5 * 128 + np.arange(128)) * psf_dl
-    L, M = np.meshgrid(lvec, mvec, indexing='ij')
-    lmn = np.stack([L, M, np.sqrt(1 - L ** 2 - M ** 2)], axis=-1)  # [num_l, num_m, 3]
-    psf = compute_psf_from_gcrs(
-        antennas_gcrs=antennas_gcrs,
-        ra=ra0,
-        dec=dec0,
-        lmn=lmn,
-        times=times,
-        freqs=freqs,
-        with_autocorr=False,
-        accumulate_dtype=jnp.float32
-    )  # [num_pixels, num_pixels]
+    output_psf_accum /= len(obstimes)
+    psf = output_psf_accum
 
     rad2arcsec = 3600 * 180 / np.pi
 
     major_beam, minor_beam, pa_beam = fit_beam(
         psf=psf,
-        dl=psf_dl * rad2arcsec,
-        dm=psf_dl * rad2arcsec
+        dl=dl * rad2arcsec,
+        dm=dm * rad2arcsec
     )
 
     major_beam /= rad2arcsec
@@ -243,8 +262,8 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     image_model = ImageModel(
         phase_center=pointing,
         obs_time=ref_time,
-        dl=psf_dl * au.rad,
-        dm=psf_dl * au.rad,
+        dl=dl * au.rad,
+        dm=dm * au.rad,
         freqs=np.mean(obsfreqs)[None],
         bandwidth=bandwidth,
         coherencies=('I',),
@@ -261,68 +280,83 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
 
 
 if __name__ == '__main__':
+    config_files = []
     for prefix in ['a', 'e']:
         for res in ['2.61', '2.88', '3.14']:
             config_file = f'dsa1650_{prefix}_{res}.txt'
+            config_files.append(config_file)
 
-            plot_folder = 'plots_100freqs_10times'
+    config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
+    config_files.append('dsa1650_9P_e_optimal_v1.2.txt')
+    dsa_logger.info(f"Running with config files: {config_files}")
 
-            main(
-                config_file=config_file,
-                plot_folder=plot_folder,
-                source_name='point_sources',
-                num_threads=os.cpu_count(),
-                freq_block_size=100,
-                duration=7 * au.min,
-                spectral_line=False,
-                with_noise=True,
-                with_earth_rotation=True,
-                with_freq_synthesis=True,
-                num_reduced_obsfreqs=100,
-                num_reduced_obstimes=10
-            )
+    for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (200, 280)]:
+        for with_noise in [False, True]:
+            for config_file in config_files:
+                if with_noise:
+                    plot_folder = f'plots_{num_reduced_obsfreqs}freqs_{num_reduced_obstimes}times_with_noise'
+                else:
+                    plot_folder = f'plots_{num_reduced_obsfreqs}freqs_{num_reduced_obstimes}times_no_noise'
+                main(
+                    config_file=config_file,
+                    plot_folder=plot_folder,
+                    source_name='point_sources',
+                    num_threads=os.cpu_count(),
+                    freq_block_size=100,
+                    duration=7 * au.min,
+                    spectral_line=False,
+                    spectral_bandwidth=None,
+                    with_noise=with_noise,
+                    with_earth_rotation=True,
+                    with_freq_synthesis=True,
+                    num_reduced_obsfreqs=num_reduced_obsfreqs,
+                    num_reduced_obstimes=num_reduced_obstimes
+                )
 
-            main(
-                config_file=config_file,
-                plot_folder=plot_folder,
-                source_name='skamid_b1_1000h',
-                num_threads=os.cpu_count(),
-                freq_block_size=100,
-                duration=7 * au.min,
-                spectral_line=False,
-                with_noise=True,
-                with_earth_rotation=True,
-                with_freq_synthesis=True,
-                num_reduced_obsfreqs=100,
-                num_reduced_obstimes=10
-            )
+                main(
+                    config_file=config_file,
+                    plot_folder=plot_folder,
+                    source_name='skamid_b1_1000h',
+                    num_threads=os.cpu_count(),
+                    freq_block_size=100,
+                    duration=7 * au.min,
+                    spectral_line=False,
+                    spectral_bandwidth=None,
+                    with_noise=with_noise,
+                    with_earth_rotation=True,
+                    with_freq_synthesis=True,
+                    num_reduced_obsfreqs=num_reduced_obsfreqs,
+                    num_reduced_obstimes=num_reduced_obstimes
+                )
 
-            main(
-                config_file=config_file,
-                plot_folder=plot_folder,
-                source_name='ncg_5194',  # ncg_5194
-                num_threads=os.cpu_count(),
-                freq_block_size=100,
-                duration=7 * au.min,
-                spectral_line=True,
-                with_noise=True,
-                with_earth_rotation=True,
-                with_freq_synthesis=True,
-                num_reduced_obsfreqs=100,
-                num_reduced_obstimes=10
-            )
+                main(
+                    config_file=config_file,
+                    plot_folder=plot_folder,
+                    source_name='ncg_5194',
+                    num_threads=os.cpu_count(),
+                    freq_block_size=100,
+                    duration=7 * au.min,
+                    spectral_line=True,
+                    spectral_bandwidth=5 * au.MHz,
+                    with_noise=with_noise,
+                    with_earth_rotation=True,
+                    with_freq_synthesis=True,
+                    num_reduced_obsfreqs=num_reduced_obsfreqs,
+                    num_reduced_obstimes=num_reduced_obstimes
+                )
 
-            main(
-                config_file=config_file,
-                plot_folder=plot_folder,
-                source_name='meerkat_gc',
-                num_threads=os.cpu_count(),
-                freq_block_size=100,
-                duration=7 * au.min,
-                spectral_line=False,
-                with_noise=True,
-                with_earth_rotation=True,
-                with_freq_synthesis=True,
-                num_reduced_obsfreqs=100,
-                num_reduced_obstimes=10
-            )
+                main(
+                    config_file=config_file,
+                    plot_folder=plot_folder,
+                    source_name='meerkat_gc',
+                    num_threads=os.cpu_count(),
+                    freq_block_size=100,
+                    duration=7 * au.min,
+                    spectral_line=False,
+                    spectral_bandwidth=None,
+                    with_noise=with_noise,
+                    with_earth_rotation=True,
+                    with_freq_synthesis=True,
+                    num_reduced_obsfreqs=num_reduced_obsfreqs,
+                    num_reduced_obstimes=num_reduced_obstimes
+                )

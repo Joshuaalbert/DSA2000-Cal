@@ -296,18 +296,18 @@ if __name__ == '__main__':
         category=UserWarning
     )
 
-    deadline = datetime.datetime.fromisoformat("2025-04-22T09:00:00-07:00")
+    deadline = datetime.datetime.fromisoformat("2025-04-24T09:00:00-07:00")
 
     main(
         target_fwhm_arcsec=2.61,
         loss_obj='lst_sq',
         prefix='a',
         num_antennas=1650,
-        num_trials_per_antenna=10000, # max 10000
+        num_trials_per_antenna=100000, # max 10000
         num_time_per_antenna_s=None,
         deadline_dt=deadline,  # use deadline to set time per round
         min_antenna_sep_m=8.,
-        du=20 * au.m,
-        dconv=120 * au.m,
+        du=10 * au.m,
+        dconv=20 * au.m, # FHHM 10m
         resume_ant=None
     )
