@@ -1,4 +1,3 @@
-import itertools
 from functools import partial
 
 import astropy.constants as const
@@ -212,7 +211,41 @@ def compute_uv_gaussian_width(target_psf_fwhm: au.Quantity, freq: au.Quantity) -
     return gamma
 
 
-def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, freq: au.Quantity, expand_factor=1.0):
+def compute_target_dist(rho_lambda, gamma_lambda, R_lambda, underlying_type):
+    norm = np.reciprocal(2 * np.pi * gamma_lambda ** 2)
+    mask = rho_lambda < R_lambda
+    dist = np.where(mask, norm * np.exp(-0.5 * rho_lambda ** 2 / gamma_lambda ** 2), 0.)
+    if underlying_type == 'mod':
+        cusp = norm * np.exp(-0.5 * R_lambda ** 2 / gamma_lambda ** 2)
+        dist -= cusp
+        dist /= np.max(dist)
+        dist = np.maximum(dist, 0.)
+    return dist
+
+
+def tukey_window(x, alpha, R):
+    """
+    Flat out to +- alpha/2 * total_width, then taper to 0 at the edges with a cosine.
+    """
+
+    # Calculate the width of the flat part
+    flat_width = alpha * R * 2
+
+    # Create the Tukey window
+
+    # Flat part
+    mask_flat = np.abs(x) <= flat_width / 2
+    taper = (1 + np.cos(np.pi * (np.abs(x) - flat_width / 2) / (R - flat_width / 2))) / 2
+
+    window = np.where(mask_flat, 1., taper)
+
+    window = np.where(x > R, 0., window)
+
+    return window
+
+
+def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, freq: au.Quantity, alpha,
+                                  underlying_type=''):
     """
     Compute the ideal UV distribution for a Gaussian beam.
     The UV distribution is a 2D Gaussian with a given FWHM and a circular aperture, constrained by the maximum
@@ -236,12 +269,23 @@ def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: 
     uvec = 0.5 * (uvec_bins[1:] + uvec_bins[:-1])
     U, V = np.meshgrid(uvec, uvec, indexing='ij')
     norm = np.reciprocal(2 * np.pi * gamma ** 2)
-    mask = U ** 2 + V ** 2 < R_jax ** 2
+    rho2 = U ** 2 + V ** 2
+    mask = rho2 < R_jax ** 2
 
-    def target_gaussian(u, v):
-        return np.where(mask, norm * np.exp(-0.5 * (u ** 2 + v ** 2) / gamma ** 2), 0.)
+    def target_gaussian(rho2):
+        dist = np.where(mask, norm * np.exp(-0.5 * (rho2) / gamma ** 2), 0.)
+        if underlying_type == 'mod':
+            cusp = norm * np.exp(-0.5 * R_jax ** 2 / gamma ** 2)
+            dist -= cusp
+            dist /= np.max(dist)
+            dist = np.maximum(dist, 0.)
+        return dist
 
     target_dist = target_gaussian(U, V)
+
+    window = tukey_window(np.sqrt(rho2), alpha, R_jax)
+    target_dist *= window
+
     uv_grid = np.stack((U, V), axis=-1)
     return uvec_bins, uv_grid, target_dist
 
@@ -358,7 +402,7 @@ def accumulate_uv_distribution(antennas_gcrs, times, ra0, dec0, uvec_bins, conv_
         kx, ky = jnp.meshgrid(k_vec, k_vec, indexing='ij')
         fwhm = 0.5
         sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))
-        k2 = (kx ** 2 + ky ** 2)/sigma**2
+        k2 = (kx ** 2 + ky ** 2) / sigma ** 2
         kernel = jnp.exp(-0.5 * k2)
         kernel /= jnp.sum(kernel)
         # do 2D convolution

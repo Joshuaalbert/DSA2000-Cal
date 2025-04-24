@@ -236,7 +236,7 @@ def plot_result(target_dist, dist, antennas, diff, objective, uv_bins, plot_fold
     plt.close(fig)
 
 
-def main(target_fwhm_arcsec, loss_obj, prefix, num_antennas, num_trials_per_antenna, num_time_per_antenna_s,
+def main(target_fwhm_arcsec, alpha, underlying_type, loss_obj, prefix, num_antennas, num_trials_per_antenna, num_time_per_antenna_s,
          deadline_dt,
          min_antenna_sep_m,
          du: au.Quantity,
@@ -258,9 +258,9 @@ def main(target_fwhm_arcsec, loss_obj, prefix, num_antennas, num_trials_per_ante
     # np.random.seed(0)
     # From smallest to largest, so smaller one fits in next as good starting pointf
     target_fwhm = target_fwhm_arcsec * au.arcsec
-    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, freq)
+    uv_bins, uv_grid, target_dist = compute_ideal_uv_distribution(du, R, target_fwhm, freq, alpha, underlying_type)
     array_constraint = ArrayConstraintsV6(prefix)
-    run_name = f"pareto_opt_v6_{prefix}_{target_fwhm.to('arcsec').value}arcsec_{loss_obj}_v2.1"
+    run_name = f"pareto_opt_v6_{prefix}_{target_fwhm.to('arcsec').value}arcsec_{loss_obj}_v2.3"
     run(
         uv_bins=uv_bins,
         target_dist=target_dist,
@@ -296,17 +296,19 @@ if __name__ == '__main__':
         category=UserWarning
     )
 
-    deadline = datetime.datetime.fromisoformat("2025-04-24T09:00:00-07:00")
+    deadline = datetime.datetime.fromisoformat("2025-04-25T07:30:00-07:00")
 
     main(
         target_fwhm_arcsec=2.61,
+        alpha=15/16.,
+        underlying_type='',
         loss_obj='lst_sq',
         prefix='a',
         num_antennas=1650,
         num_trials_per_antenna=100000, # max 10000
         num_time_per_antenna_s=None,
         deadline_dt=deadline,  # use deadline to set time per round
-        min_antenna_sep_m=8.,
+        min_antenna_sep_m=0.,
         du=10 * au.m,
         dconv=20 * au.m, # FHHM 10m
         resume_ant=None
