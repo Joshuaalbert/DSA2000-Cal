@@ -7,4 +7,4 @@ def main(save_file):
 
 
 if __name__ == '__main__':
-    main('simulated_lwa_tec.json')
+    main('predicted_lwa_tec.json')
