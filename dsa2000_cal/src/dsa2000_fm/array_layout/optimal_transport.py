@@ -212,7 +212,7 @@ def compute_uv_gaussian_width(target_psf_fwhm: au.Quantity, freq: au.Quantity) -
     return gamma
 
 
-def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, freq: au.Quantity):
+def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: au.Quantity, freq: au.Quantity, expand_factor=1.0):
     """
     Compute the ideal UV distribution for a Gaussian beam.
     The UV distribution is a 2D Gaussian with a given FWHM and a circular aperture, constrained by the maximum
@@ -232,7 +232,7 @@ def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: 
     gamma = quantity_to_np(compute_uv_gaussian_width(target_fwhm, freq), 'm')
     R_jax = quantity_to_np(R, 'm')
     du_jax = quantity_to_np(du, 'm')
-    uvec_bins = np.arange(-R_jax - du_jax, R_jax + du_jax, du_jax)
+    uvec_bins = np.arange(-expand_factor * R_jax - du_jax, expand_factor * R_jax + du_jax, du_jax)
     uvec = 0.5 * (uvec_bins[1:] + uvec_bins[:-1])
     U, V = np.meshgrid(uvec, uvec, indexing='ij')
     norm = np.reciprocal(2 * np.pi * gamma ** 2)
