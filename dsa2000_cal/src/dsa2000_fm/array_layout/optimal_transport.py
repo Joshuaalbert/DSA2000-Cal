@@ -281,7 +281,7 @@ def compute_ideal_uv_distribution(du: au.Quantity, R: au.Quantity, target_fwhm: 
             dist = np.maximum(dist, 0.)
         return dist
 
-    target_dist = target_gaussian(U, V)
+    target_dist = target_gaussian(rho2)
 
     window = tukey_window(np.sqrt(rho2), alpha, R_jax)
     target_dist *= window
