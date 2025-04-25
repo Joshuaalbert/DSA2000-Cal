@@ -1,3 +1,4 @@
+import gc
 import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -11,7 +12,6 @@ import astropy.time as at
 import astropy.units as au
 import pylab as plt
 import numpy as np
-import jax
 import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_fm.array_layout.optimal_transport import compute_ideal_uv_distribution, accumulate_uv_distribution
@@ -25,6 +25,25 @@ from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.array_constraints.v6.array_constraint import ArrayConstraintsV6
 
 tfpd = tfp.distributions
+
+
+def evaluate_loss(proposal_antennas, times_jax, ref_time, ra0, transit_dec, target_dist, uv_bins, conv_size, loss_obj):
+    # Evaluate the new config
+    proposal_antennas_gcrs = quantity_to_jnp(
+        proposal_antennas.get_gcrs(obstime=ref_time).cartesian.xyz.T,
+        'm'
+    )
+    dist = accumulate_uv_distribution(proposal_antennas_gcrs, times_jax, ra0, transit_dec, uv_bins,
+                                      conv_size=conv_size)
+    target_dist *= np.sum(dist) / np.sum(target_dist)
+    diff = dist - target_dist
+    if loss_obj == 'lst_sq':
+        loss = np.sqrt(np.mean(np.abs(diff) ** 2))
+    elif loss_obj == 'max':
+        loss = np.max(np.abs(diff))
+    else:
+        raise ValueError(f"loss_obj must be 'lst_sq' or 'max' of {loss_obj}")
+    return loss, dist, diff
 
 
 def run(
@@ -43,7 +62,8 @@ def run(
         num_time_per_antenna_s: float,
         loss_obj: str,
         deadline: datetime.datetime | None = None,
-        resume_ant: int | None = None
+        resume_ant: int | None = None,
+        random_refinement: bool = False
 ):
     os.makedirs(run_name, exist_ok=True)
     plot_folder = os.path.join(run_name, 'plots')
@@ -125,28 +145,35 @@ def run(
                 z=np.concatenate((antennas.z[:check_idx], antennas.z[check_idx + 1:]))
             )
 
-    while len(antennas) < num_antennas:
+    while random_refinement or len(antennas) < num_antennas:
         # clear JAX cache
-        jax.clear_caches()
+        gc.collect()
         t0 = time.time()
-        best_config = ac.EarthLocation(
-            x=np.concatenate([antennas.x, antennas.x[:1]]),
-            y=np.concatenate([antennas.y, antennas.y[:1]]),
-            z=np.concatenate([antennas.z, antennas.z[:1]])
-        )
-        best_loss = np.inf
-
-        best_dist = best_diff = target_dist
-        replace_idx = -1
         objective = []
         acceptances = 0
         trials = 0
 
-        if deadline is not None:
-            time_left = deadline - datetime.datetime.now(datetime.timezone.utc)
-            num_time_per_antenna_s = time_left.total_seconds() / (num_antennas - len(antennas))
+        if len(antennas) < num_antennas:
+            best_config = ac.EarthLocation(
+                x=np.concatenate([antennas.x, antennas.x[:1]]),
+                y=np.concatenate([antennas.y, antennas.y[:1]]),
+                z=np.concatenate([antennas.z, antennas.z[:1]])
+            )
+            best_loss = np.inf
+            best_dist = best_diff = target_dist
+            replace_idx = -1
+            if deadline is not None:
+                time_left = deadline - datetime.datetime.now(datetime.timezone.utc)
+                num_time_per_antenna_s = time_left.total_seconds() / (num_antennas - len(antennas))
 
-        assert num_time_per_antenna_s is not None
+        else:
+            best_config = antennas
+            best_loss, best_dist, best_diff = evaluate_loss(antennas, times_jax, ref_time, ra0, transit_dec,
+                                                            target_dist,
+                                                            uv_bins, conv_size, loss_obj)
+            replace_idx = np.random.randint(0, len(antennas))
+
+        assert num_time_per_antenna_s is not None, "num_time_per_antenna_s must be set"
 
         while (time.time() - t0 < num_time_per_antenna_s) and (trials < num_trials_per_antenna):
             trials += 1
@@ -155,21 +182,9 @@ def run(
                 replace_idx, best_config, array_location, ref_time, additional_buffer=0.,
                 minimal_antenna_sep=min_antenna_sep_m, aoi_data=aoi_data, constraint_data=constraint_data
             )
-            # Evaluate the new config
-            proposal_antennas_gcrs = quantity_to_jnp(
-                proposal_antennas.get_gcrs(obstime=ref_time).cartesian.xyz.T,
-                'm'
-            )
-            dist = accumulate_uv_distribution(proposal_antennas_gcrs, times_jax, ra0, transit_dec, uv_bins,
-                                              conv_size=conv_size)
-            target_dist *= np.sum(dist) / np.sum(target_dist)
-            diff = dist - target_dist
-            if loss_obj == 'lst_sq':
-                loss = np.sqrt(np.mean(np.abs(diff) ** 2))
-            elif loss_obj == 'max':
-                loss = np.max(np.abs(diff))
-            else:
-                raise ValueError(f"loss_obj must be 'lst_sq' or 'max' of {loss_obj}")
+            loss, dist, diff = evaluate_loss(proposal_antennas, times_jax, ref_time, ra0, transit_dec, target_dist,
+                                             uv_bins, conv_size, loss_obj)
+
             objective.append(loss)
             # Evaluate the quality
             if loss < best_loss:
@@ -187,8 +202,13 @@ def run(
             for antenna in best_config:
                 f.write(f"{antenna.x.to('m').value},{antenna.y.to('m').value},{antenna.z.to('m').value}\n")
         dsa_logger.info(
-            f"{len(antennas)} ({100 * len(antennas) / num_antennas:.3f}%): Best loss: {best_loss:.3e} | Acceptance rate: {acceptance_rate:.6f}% | # Trials: {trials} | Time: {t1 - t0:.2f} seconds"
+            f"{len(antennas)} ({100 * len(antennas) / num_antennas:.3f}%): Best loss: {best_loss:.3e} | "
+            f"Acceptance rate: {acceptance_rate:.6f}% | # Trials: {trials} | Time: {t1 - t0:.2f} seconds"
         )
+        if deadline is not None:
+            if datetime.datetime.now(datetime.timezone.utc) > deadline:
+                dsa_logger.info(f"Deadline reached. Stopping.")
+                break
     # Store to final_config
     final_config = os.path.join(run_name, 'final_config.txt')
     with open(final_config, 'w') as f:
@@ -236,12 +256,14 @@ def plot_result(target_dist, dist, antennas, diff, objective, uv_bins, plot_fold
     plt.close(fig)
 
 
-def main(target_fwhm_arcsec, alpha, underlying_type, loss_obj, prefix, num_antennas, num_trials_per_antenna, num_time_per_antenna_s,
+def main(target_fwhm_arcsec, alpha, underlying_type, loss_obj, prefix, num_antennas, num_trials_per_antenna,
+         num_time_per_antenna_s,
          deadline_dt,
          min_antenna_sep_m,
          du: au.Quantity,
          dconv: au.Quantity,
-         resume_ant):
+         resume_ant: int | None,
+         random_refinement: bool):
     warnings.filterwarnings(
         "ignore",
         category=UserWarning
@@ -277,7 +299,8 @@ def main(target_fwhm_arcsec, alpha, underlying_type, loss_obj, prefix, num_anten
         loss_obj=loss_obj,
         min_antenna_sep_m=min_antenna_sep_m,
         deadline=deadline_dt,
-        resume_ant=resume_ant
+        resume_ant=resume_ant,
+        random_refinement=random_refinement
     )
 
 
@@ -300,16 +323,17 @@ if __name__ == '__main__':
 
     main(
         target_fwhm_arcsec=2.61,
-        alpha=15/16.,
+        alpha=15 / 16.,
         underlying_type='',
         loss_obj='lst_sq',
         prefix='a',
         num_antennas=1650,
-        num_trials_per_antenna=100000, # max 10000
+        num_trials_per_antenna=100000,  # max 10000
         num_time_per_antenna_s=None,
         deadline_dt=deadline,  # use deadline to set time per round
         min_antenna_sep_m=0.,
         du=10 * au.m,
-        dconv=20 * au.m, # FHHM 10m
-        resume_ant=None
+        dconv=20 * au.m,  # FHHM 10m
+        resume_ant=None,
+        random_refinement=True
     )

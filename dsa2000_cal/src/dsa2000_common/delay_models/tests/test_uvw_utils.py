@@ -1,11 +1,13 @@
+import jax.random
 import numpy as np
 import pytest
 from astropy import coordinates as ac, units as au, time as at
 from jax import numpy as jnp
 
+from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.coord_utils import icrs_to_lmn, lmn_to_icrs
 from dsa2000_common.delay_models.uvw_utils import perley_lmn_from_icrs, perley_icrs_from_lmn, celestial_to_cartesian, \
-    cartesian_to_celestial
+    cartesian_to_celestial, geometric_uvw_from_gcrs, gcrs_from_geometric_uvw
 
 
 @pytest.mark.parametrize('ra0', [0, np.pi / 2, np.pi])
@@ -80,3 +82,62 @@ def test_lmn_to_icrs_against_perley():
 
     np.testing.assert_allclose(wrap(icrs_ours.ra), wrap(icrs_perley.ra), atol=1e-4)
     np.testing.assert_allclose(icrs_ours.dec, icrs_perley.dec, atol=3e-3)
+
+
+def test_gcrs_to_icrs():
+    import astropy.time as at
+    import astropy.coordinates as ac
+    import astropy.units as au
+
+    k = ac.ICRS(ra=0 * au.deg, dec=50 * au.deg)
+    k_cartesian = k.cartesian.xyz
+
+    t = at.Time('9125-06-10T15:00:00', scale='utc')
+    k_gcrs = k.transform_to(ac.GCRS(obstime=t))
+    k_gcrs_cartesian = k_gcrs.cartesian.xyz
+
+    print(k_cartesian, k_gcrs_cartesian)
+
+
+def test_geometric_uvw_from_gcrs():
+    ra0, dec0 = 0, 50
+    x_gcrs = jax.random.normal(jax.random.PRNGKey(0), shape=(3,))
+    np.testing.assert_allclose(geometric_uvw_from_gcrs(x_gcrs, ra0, dec0),
+                               _brute_force_geometric_uvw_from_gcrs(x_gcrs, ra0, dec0),
+                               atol=1e-6)
+
+    np.testing.assert_allclose(
+        gcrs_from_geometric_uvw(geometric_uvw_from_gcrs(x_gcrs, ra0, dec0), ra0, dec0),
+        x_gcrs,
+        atol=1e-6
+    )
+
+
+def _brute_force_geometric_uvw_from_gcrs(x_gcrs: FloatArray, ra0, dec0):
+    """
+    Convert GCRS coordinates to UVW coordinates assuming no relativistic effects.
+
+    Args:
+        x_gcrs: [3] GCRS coordinates
+        ra0: tracking center right ascension in radians
+        dec0: tracking center declination in radians
+
+    Returns:
+        [3] UVW coordinates
+    """
+    # In strict geometric case GCRS and BCRS are the same, i.e. no relativity effects
+    if np.shape(x_gcrs)[-1] != 3:
+        raise ValueError("x_gcrs must have shape [..., 3]")
+
+    def delay_fn(l, m, n):
+        ra, dec = perley_icrs_from_lmn(l, m, n, ra0, dec0)
+        K_bcrs = celestial_to_cartesian(ra, dec)
+        return x_gcrs @ K_bcrs
+
+    l = m = jnp.asarray(0.)
+    n = jnp.sqrt(1 - l ** 2 - m ** 2)
+    # tau = (-?) c * delay = u l + v m + w sqrt(1 - l^2 - m^2) ==> w = tau(l=0, m=0)
+    # d/dl tau = u + w l / sqrt(1 - l^2 - m^2) ==> u = d/dl tau(l=0, m=0)
+    # d/dm tau = v + w m / sqrt(1 - l^2 - m^2) ==> v = d/dm tau(l=0, m=0)
+    w, (u, v) = jax.value_and_grad(delay_fn, argnums=(0, 1))(l, m, n)
+    return jnp.stack([u, v, w], axis=-1)  # [3]
