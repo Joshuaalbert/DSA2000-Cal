@@ -103,15 +103,8 @@ def test_compute_psf_from_gcrs():
     latitude = array_location.lat.rad
     transit_dec = np.pi / 2
 
-    psf = compute_psf(
-        antennas=antennas_enu,
-        lmn=lmn,
-        freqs=freqs,
-        latitude=latitude,
-        transit_dec=transit_dec,
-        with_autocorr=True,
-        accumulate_dtype=jnp.float64
-    ).reshape(L.shape)
+    psf = compute_psf(antennas=antennas_enu, lmn=lmn, freqs=freqs, time=latitude, ra0=None, dec0=transit_dec,
+                      with_autocorr=True, accumulate_dtype=jnp.float64).reshape(L.shape)
     plt.imshow(
         10 * jnp.log10(psf),
         extent=[lvec.min(), lvec.max(), mvec.min(), mvec.max()],

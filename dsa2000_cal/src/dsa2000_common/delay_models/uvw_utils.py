@@ -71,8 +71,8 @@ def gcrs_from_geometric_uvw(uvw: FloatArray, ra0, dec0):
             + jnp.cos(dec0) * jnp.sin(ra0) * w
     )
     z = (
-            0 * u
-            + jnp.cos(dec0) * v
+            # 0 * u
+            jnp.cos(dec0) * v
             + jnp.sin(dec0) * w
     )
 

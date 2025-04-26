@@ -100,8 +100,20 @@ def test_gcrs_to_icrs():
 
 
 def test_geometric_uvw_from_gcrs():
-    ra0, dec0 = 0, 50
+    ra0, dec0 = 0, 50 * np.pi / 180
     x_gcrs = jax.random.normal(jax.random.PRNGKey(0), shape=(3,))
+    np.testing.assert_allclose(geometric_uvw_from_gcrs(x_gcrs, ra0, dec0),
+                               _brute_force_geometric_uvw_from_gcrs(x_gcrs, ra0, dec0),
+                               atol=1e-6)
+
+    np.testing.assert_allclose(
+        gcrs_from_geometric_uvw(geometric_uvw_from_gcrs(x_gcrs, ra0, dec0), ra0, dec0),
+        x_gcrs,
+        atol=1e-6
+    )
+
+    ra0, dec0 = 10 * np.pi / 180, 50 * np.pi / 180
+    x_gcrs = 100 * jax.random.normal(jax.random.PRNGKey(0), shape=(3,))
     np.testing.assert_allclose(geometric_uvw_from_gcrs(x_gcrs, ra0, dec0),
                                _brute_force_geometric_uvw_from_gcrs(x_gcrs, ra0, dec0),
                                atol=1e-6)

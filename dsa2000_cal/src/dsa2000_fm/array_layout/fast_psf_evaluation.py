@@ -3,7 +3,9 @@ import numpy as np
 
 from dsa2000_common.common.array_types import FloatArray
 from dsa2000_common.common.mixed_precision_utils import mp_policy
-from dsa2000_common.common.sum_utils import scan_sum
+from dsa2000_common.common.sum_utils import scan_sum, kahan_sum
+from dsa2000_common.delay_models.uvw_utils import geometric_uvw_from_gcrs
+from dsa2000_fm.systematics.ionosphere import evolve_gcrs
 
 
 # Compose PSF
@@ -85,8 +87,8 @@ def project_antennas(antennas: FloatArray, latitude: FloatArray, transit_dec: Fl
     return antennas_projected
 
 
-def compute_psf(antennas: FloatArray, lmn: FloatArray, freqs: FloatArray, latitude: FloatArray,
-                transit_dec: FloatArray, with_autocorr: bool = True, accumulate_dtype=jnp.float32) -> FloatArray:
+def compute_psf(antennas: FloatArray, lmn: FloatArray, freqs: FloatArray, time: FloatArray, ra0: FloatArray, dec0: FloatArray,
+                with_autocorr: bool = True, accumulate_dtype=jnp.float32, already_uvw: bool = False) -> FloatArray:
     """
     Compute the point spread function of the array. Uses short cut,
 
@@ -97,37 +99,40 @@ def compute_psf(antennas: FloatArray, lmn: FloatArray, freqs: FloatArray, latitu
     Thus the amount of negative is (-1/(N-1))
 
     Args:
-        antennas: [N, 3] the antennas in ENU
+        ra0:
+        antennas: [N, 3] the antennas in GCRS or UVW
         lmn: [..., 3] the lmn coordinates to evaluate the PSF
         freqs: [C] the frequency in Hz of each channel
-        latitude: the latitude of the array in radians
-        transit_dec: the transit DEC of the array in radians
+        time: the latitude of the array in radians
+        dec0: the transit DEC of the array in radians
         with_autocorr: whether to include the autocorrelation in the PSF
         accumulate_dtype: the dtype to use for accumulation
 
     Returns:
         psf: [...] the point spread function
     """
-    antennas -= antennas[0]
-    antennas_proj = project_antennas(antennas, latitude, transit_dec)
-    tau = antennas_proj[..., 2]
-
+    if not already_uvw:
+        antennas_uvw = geometric_uvw_from_gcrs(evolve_gcrs(antennas, time), ra0, dec0)
+    else:
+        already_uvw = antennas
+    if isinstance(time, (float, int)) and time == 0:
+        antennas_uvw = geometric_uvw_from_gcrs(antennas, ra0, dec0)
+    # antennas_uvw -= antennas_uvw[0]
+    # n = lmn[..., 2].astype(accumulate_dtype)
     def compute_psf_delta(freq):
-
         wavelength = mp_policy.cast_to_length(299792458. / freq)
-        r = antennas_proj / wavelength
-        delay = (2 * jnp.pi) * (jnp.sum(r * lmn[..., None, :], axis=-1) - tau/wavelength)  # [..., N]
+        r = antennas_uvw / wavelength
+        tau = r[..., 2]
+        delay = (2 * jnp.pi) * (jnp.sum(r * lmn[..., None, :], axis=-1) - tau)  # [..., N]
         delay = delay.astype(accumulate_dtype)
         voltage_beam_real = jnp.cos(delay).mean(axis=-1)  # [...]
         voltage_beam_imag = jnp.sin(delay).mean(axis=-1)  # [...]
-        # voltage_beam = jax.lax.complex(jnp.cos(delay), jnp.sin(delay))  # [..., N]
-        # voltage_beam = jnp.mean(voltage_beam, axis=-1)  # [...]
         power_beam = jnp.square(voltage_beam_real) + jnp.square(voltage_beam_imag)  # [...]
-        power_beam *= lmn[..., 2].astype(accumulate_dtype)
+        # power_beam *= n
         if with_autocorr:
             delta = power_beam
         else:
-            N = antennas_proj.shape[-2]
+            N = antennas_uvw.shape[-2]
             N1 = jnp.asarray(N / (N - 1), accumulate_dtype)
             N2 = jnp.asarray(-1 / (N - 1), accumulate_dtype)
             # (N * power_beam - 1)/(N-1)
@@ -135,5 +140,5 @@ def compute_psf(antennas: FloatArray, lmn: FloatArray, freqs: FloatArray, latitu
         return delta
 
     psf_accum = jnp.zeros(np.shape(lmn)[:-1], dtype=accumulate_dtype)
-    psf = scan_sum(compute_psf_delta, psf_accum, freqs)
+    psf, _ = kahan_sum(compute_psf_delta, psf_accum, freqs)
     return psf / np.shape(freqs)[0]  # average over frequencies

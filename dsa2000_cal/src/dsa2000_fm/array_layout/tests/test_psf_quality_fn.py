@@ -16,16 +16,9 @@ def test_create_target():
     lmn = lmn.at[..., 2].set(jnp.sqrt(1 - lmn[..., 0] ** 2 - lmn[..., 1] ** 2))
     freqs = np.linspace(700e6, 2000e6, 2) * au.Hz
     transit_decs = np.linspace(0, np.pi / 4, M) * au.rad
-    psf_dB_mean, psf_dB_std = create_target(
-        key=jax.random.PRNGKey(0),
-        target_array_name='dsa2000W',
-        lmn=lmn,
-        freqs=freqs,
-        transit_decs=transit_decs,
-        num_samples=10,
-        accumulate_dtype=jnp.float32,
-        num_antennas=None
-    )
+    psf_dB_mean, psf_dB_std = create_target(key=jax.random.PRNGKey(0), target_array_name='dsa2000W', lmn=lmn,
+                                            freqs=freqs, ra0=None, dec0s=transit_decs, num_samples=10,
+                                            accumulate_dtype=jnp.float32, num_antennas=None)
 
     # Plot the results
     plt.scatter(

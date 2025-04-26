@@ -286,9 +286,11 @@ def search(num_iterations: int, trials_per_iter):
         tasks = []
         for _ in range(trials_per_iter):
             tasks.append(
-                (
-                    np.random.uniform(0.5, 3.5) * au.arcsec,
-                    np.random.uniform(5, 16),
+                ( # 2.45,,14.62
+                    #2.58,,13.89,2.69,-20.00,-21.96,-23.44
+                    # 2.41,mod,14.91,2.74,-21.87,-22.07,-24.66
+                    np.random.uniform(2.0, 3.5) * au.arcsec,
+                    np.random.uniform(9, 16),
                     np.random.choice(['mod', ''])
                 )
             )
@@ -320,43 +322,42 @@ def search(num_iterations: int, trials_per_iter):
                 )
 
 
-if __name__ == '__main__':
-    search(num_iterations=1000, trials_per_iter=32)
+def explore():
+    import pylab as plt
 
-    with open('results.txt', 'r') as f:
-        beam_size, sidelobe_1, sidelobe_2, sidelobe_3 = [], [], [], []
+    with open('results_highres.txt', 'r') as f:
+        fwhm, _type, alpha_num, beam_size, sidelobe_1, sidelobe_2, sidelobe_3 = [], [], [], [], [], [], []
         for line in f:
             if line.startswith('#'):
                 continue
             parts = line.split(',')
+
+            if float(parts[4]) < float(parts[5]):
+                continue
+            if float(parts[6]) == 0:
+                continue
+            fwhm.append(float(parts[0]))
+            _type.append(parts[1])
+            alpha_num.append(float(parts[2]))
             beam_size.append(float(parts[3]))
             sidelobe_1.append(float(parts[4]))
             sidelobe_2.append(float(parts[5]))
             sidelobe_3.append(float(parts[6]))
 
-            if beam_size[-1] < 2.6 and sidelobe_1[-1] < -22.5:
+        lines = list(zip(fwhm, _type, alpha_num, beam_size, sidelobe_1, sidelobe_2, sidelobe_3))
+        lines = sorted(lines, key=lambda x: x[4])
+
+        for line in lines:
+            if 3.0 < line[3] < 3.2 and line[4] < -20:
                 print(line)
 
-    plt.scatter(beam_size, sidelobe_2, s=1)
+    plt.scatter(beam_size, sidelobe_1, s=1)
     plt.xlabel('Beam Size (arcsec)')
     plt.ylabel('Sidelobe (dB)')
-    plt.title('2nd Sidelobe vs Resolution')
+    plt.title('1st Sidelobe vs Resolution')
     plt.grid()
     plt.savefig('beam_size_vs_sidelobe.png', dpi=300)
     plt.show()
-    # tasks = [
-    #     (fwhm, alpha, underlying_type)
-    #     for fwhm in np.linspace(0.5, 2.1, 20) * au.arcsec
-    #     for alpha in range(5, 16)
-    #     for underlying_type in ['mod', '']
-    # ]
-    #
-    # results = []
-    # # 2) spawn a pool of 32 threads
-    # with ThreadPoolExecutor(max_workers=32) as executor:
-    #     # executor.map will schedule run_window(*args) for each tuple in tasks
-    #     # it returns results in order
-    #     for result in executor.map(lambda args: run_window(*args), tasks):
-    #         results.append(result)
-    #
-    # print(f"Completed {len(results)} runs")
+
+if __name__ == '__main__':
+    search(num_iterations=1000, trials_per_iter=32)

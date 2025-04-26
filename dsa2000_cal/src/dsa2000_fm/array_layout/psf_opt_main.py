@@ -33,16 +33,16 @@ tfpd = tfp.distributions
 
 
 def create_lmn_target():
-    dense_inner = dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
-                                dl=quantity_to_np(0.8 * au.arcsec), frac=1., dtype=jnp.float64)
+    dense_inner = dense_annulus(inner_radius=0., outer_radius=quantity_to_np(200 * au.arcsec),
+                                dl=quantity_to_np(1. * au.arcsec), frac=1., dtype=jnp.float64)
     M = np.shape(dense_inner)[0]
     lm = np.concatenate(
         [
             dense_inner,
-            sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
-                           outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M, dtype=jnp.float64),
-            sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
-                           outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M, dtype=jnp.float64)
+            # sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
+            #                outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M, dtype=jnp.float64),
+            # sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
+            #                outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M, dtype=jnp.float64)
         ],
         axis=0
     )
@@ -53,8 +53,8 @@ def create_lmn_target():
 def create_lmn_inner():
     lm = np.concatenate(
         [
-            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
-                          dl=quantity_to_np(0.25 * au.arcsec), frac=1., dtype=jnp.float64)
+            dense_annulus(inner_radius=0., outer_radius=quantity_to_np(200 * au.arcsec),
+                          dl=quantity_to_np(0.5 * au.arcsec), frac=1., dtype=jnp.float64)
         ],
         axis=0
     )
@@ -80,16 +80,12 @@ def create_psf_target(run_name, target_array_name, freqs, decs, num_antennas: in
         dsa_logger.info(f"LMN inner shape: {lmn_inner.shape}")
 
         with TimerLog("Calculating inner target PSF"):
-            target_psf_dB_mean_inner, target_psf_dB_stddev_inner = create_target(
-                key=key,
-                target_array_name=target_array_name,
-                lmn=lmn_inner,
-                freqs=freqs,
-                transit_decs=decs[:1],
-                num_samples=20,
-                num_antennas=num_antennas,
-                accumulate_dtype=jnp.float32
-            )
+            target_psf_dB_mean_inner, target_psf_dB_stddev_inner = create_target(key=key,
+                                                                                 target_array_name=target_array_name,
+                                                                                 lmn=lmn_inner, freqs=freqs, ra0=None,
+                                                                                 dec0s=decs[:1], num_samples=20,
+                                                                                 accumulate_dtype=jnp.float32,
+                                                                                 num_antennas=num_antennas)
             # Plots the target
             fig, axs = plt.subplots(2, 1, figsize=(16, 16), squeeze=False)
             sc = axs[0, 0].scatter(lmn_inner[..., 0].flatten(), lmn_inner[..., 1].flatten(),
@@ -110,16 +106,10 @@ def create_psf_target(run_name, target_array_name, freqs, decs, num_antennas: in
             plt.close(fig)
 
         with TimerLog("Calculating target PSF"):
-            target_psf_dB_mean, target_psf_dB_stddev = create_target(
-                key=key,
-                target_array_name=target_array_name,
-                lmn=lmn_target,
-                freqs=freqs,
-                transit_decs=decs,
-                num_samples=1000,
-                num_antennas=num_antennas,
-                accumulate_dtype=jnp.float32
-            )
+            target_psf_dB_mean, target_psf_dB_stddev = create_target(key=key, target_array_name=target_array_name,
+                                                                     lmn=lmn_target, freqs=freqs, ra0=None, dec0s=decs,
+                                                                     num_samples=1000, accumulate_dtype=jnp.float32,
+                                                                     num_antennas=num_antennas)
             # Check finite
             if not np.all(np.isfinite(target_psf_dB_mean)):
                 raise ValueError("Target PSF mean is not finite")
@@ -249,16 +239,9 @@ def main(
             'm'
         )
         latitude = quantity_to_jnp(sample_point.latitude, 'rad')
-        quality = evaluate_psf(
-            antennas_enu=proposal_antennas_enu,
-            lmn=lmn_target,
-            latitude=latitude,
-            freqs=freqs_jax,
-            transit_decs=decs_jax,
-            target_psf_dB_mean=target_psf_dB_mean,
-            target_psf_dB_stddev=target_psf_dB_stddev,
-            accumulate_dtype=jnp.float32
-        )
+        quality = evaluate_psf(antennas_gcrs=proposal_antennas_enu, lmn=lmn_target, freqs=freqs_jax, ra0=None,
+                               dec0s=decs_jax, target_psf_dB_mean=target_psf_dB_mean,
+                               target_psf_dB_stddev=target_psf_dB_stddev, accumulate_dtype=jnp.float32)
         cost = compute_mst_cost(
             k=6,
             antennas=sample_point.antennas,
@@ -298,7 +281,7 @@ if __name__ == '__main__':
     )
 
     freqs = np.linspace(700e6, 2000e6, 250) * au.Hz
-    decs = [0, -30, 30, 60, 90] * au.deg
+    decs = [0] * au.deg
 
     lmn_target, target_psf_dB_mean, target_psf_dB_stddev = create_psf_target(
         run_name='pareto_opt_target',
@@ -311,7 +294,7 @@ if __name__ == '__main__':
     np.random.seed(0)
     while True:
         # From smallest to largest, so smaller one fits in next as good starting point
-        for prefix in ['a', 'e', ]:
+        for prefix in ['a']:
             init_config = f'./pareto_opt_v6_{prefix}/final_config.txt'
             array_constraint = ArrayConstraintsV6(prefix)
             run_name = f"pareto_opt_v6_{prefix}_v1"
