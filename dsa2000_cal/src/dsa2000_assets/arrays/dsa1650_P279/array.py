@@ -11,8 +11,8 @@ from dsa2000_common.common.enu_frame import ENU
 from dsa2000_fm.antenna_model.abc import AbstractAntennaModel
 
 
-@array_registry(template='dsa1650_P295')
-class DSA1650_P295(DSA2000WArray):
+@array_registry(template='dsa1650_P279')
+class DSA1650_P279(DSA2000WArray):
     """
     DSA2000W array class, optimised array layout.
     """

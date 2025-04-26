@@ -41,7 +41,7 @@ tfpd = tfp.distributions
 def create_lmn_target():
     lm = dense_annulus(
         inner_radius=0.,
-        outer_radius=quantity_to_np(15 * au.arcsec),
+        outer_radius=quantity_to_np(200 * au.arcsec),
         dl=quantity_to_np(1. * au.arcsec),
         frac=1.,
         dtype=jnp.float64
@@ -431,6 +431,6 @@ if __name__ == '__main__':
         num_time_per_antenna_s=10,
         deadline_dt=deadline,  # use deadline to set time per round
         min_antenna_sep_m=8.,
-        resume_ant=1650,
+        resume_ant=None,
         random_refinement=True
     )
