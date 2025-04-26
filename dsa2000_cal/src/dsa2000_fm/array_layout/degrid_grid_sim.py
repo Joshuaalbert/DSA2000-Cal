@@ -242,6 +242,10 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         f"posang: {pa_beam * 180 / np.pi:.2f}deg"
     )
 
+    beam_area = (0.25 * np.pi) * (major_beam * au.rad) * (minor_beam * au.rad)
+    pixel_area = (dl * au.rad) * (dm * au.rad)
+    flux_ratio = float(pixel_area / beam_area)
+
     image_model = ImageModel(
         phase_center=pointing,
         obs_time=ref_time,
@@ -253,12 +257,12 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         beam_major=np.asarray(major_beam) * au.rad,
         beam_minor=np.asarray(minor_beam) * au.rad,
         beam_pa=np.asarray(pa_beam) * au.rad,
-        unit='JY/PIXEL',
+        unit='JY/BEAM',
         object_name=f'{image_name_base.upper()}',
-        image=output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
+        image=flux_ratio * output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}.fits"), image_model=image_model,
-                       overwrite=True)
+                       overwrite=True, radian_angles=True)
 
     dsa_logger.info(f"Image saved to {os.path.join(plot_folder, f'{image_name_base}.fits')}")
 
@@ -273,27 +277,32 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         beam_major=np.asarray(major_beam) * au.rad,
         beam_minor=np.asarray(minor_beam) * au.rad,
         beam_pa=np.asarray(pa_beam) * au.rad,
-        unit='JY/PIXEL',
+        unit='JY/BEAM',
         object_name=f'{image_name_base.upper()}_PSF',
-        image=psf[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
+        image=flux_ratio * psf[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}_psf.fits"), image_model=image_model,
-                       overwrite=True)
+                       overwrite=True, radian_angles=True)
     dsa_logger.info(f"PSF saved to {os.path.join(plot_folder, f'{image_name_base}_psf.fits')}")
 
 
 if __name__ == '__main__':
     config_files = []
-    for prefix in ['a', 'e']:
-        for res in ['2.61', '2.88', '3.14']:
-            config_file = f'dsa1650_{prefix}_{res}.txt'
-            config_files.append(config_file)
+    # for prefix in ['a', 'e']:
+    #     for res in ['2.61', '2.88', '3.14']:
+    #         config_file = f'dsa1650_{prefix}_{res}.txt'
+    #         config_files.append(config_file)
 
     config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
     config_files.append('dsa1650_9P_e_optimal_v1.2.txt')
-    dsa_logger.info(f"Running with config files: {config_files}")
 
-    for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (200, 280)]:
+    config_files.append('dsa1650_a_2.52_v2.2.txt')
+    config_files.append('dsa1650_a_2.61_v2.2.txt')
+    config_files.append('dsa1650_a_2.88_v2.2.txt')
+    config_files.append('dsa1650_a_3.14_v2.2.txt')
+    config_files.append('dsa1650_a_2.95_v2.3.txt')
+
+    for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (200, 20), (400, 40)]:
         for with_noise in [False, True]:
             for config_file in config_files:
                 if with_noise:
@@ -305,7 +314,7 @@ if __name__ == '__main__':
                     plot_folder=plot_folder,
                     source_name='point_sources',
                     num_threads=os.cpu_count(),
-                    freq_block_size=100,
+                    freq_block_size=200,
                     duration=7 * au.min,
                     spectral_line=False,
                     spectral_bandwidth=None,
@@ -321,7 +330,7 @@ if __name__ == '__main__':
                     plot_folder=plot_folder,
                     source_name='skamid_b1_1000h',
                     num_threads=os.cpu_count(),
-                    freq_block_size=100,
+                    freq_block_size=200,
                     duration=7 * au.min,
                     spectral_line=False,
                     spectral_bandwidth=None,
@@ -337,7 +346,7 @@ if __name__ == '__main__':
                     plot_folder=plot_folder,
                     source_name='ncg_5194',
                     num_threads=os.cpu_count(),
-                    freq_block_size=100,
+                    freq_block_size=200,
                     duration=7 * au.min,
                     spectral_line=True,
                     spectral_bandwidth=5 * au.MHz,
@@ -353,7 +362,7 @@ if __name__ == '__main__':
                     plot_folder=plot_folder,
                     source_name='meerkat_gc',
                     num_threads=os.cpu_count(),
-                    freq_block_size=100,
+                    freq_block_size=200,
                     duration=7 * au.min,
                     spectral_line=False,
                     spectral_bandwidth=None,
