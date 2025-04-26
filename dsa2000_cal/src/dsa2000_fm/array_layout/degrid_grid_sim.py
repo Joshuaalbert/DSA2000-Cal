@@ -153,6 +153,7 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     output_psf_buffer = np.zeros((num_l, num_m), dtype=np.float32, order='F')
     output_psf_accum = np.zeros((num_l, num_m), dtype=np.float32, order='F')
 
+    count = 0
     for t_idx in range(len(times)):
         uvw = np.array(compute_uvw(antennas_gcrs, times[t_idx], ra0, dec0), order='F')
         for nu_start_idx in range(0, len(freqs), freq_block_size):
@@ -218,8 +219,10 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
                 num_threads=num_threads
             )
             output_psf_accum += output_psf_buffer
-    output_img_accum /= len(obstimes)
-    output_psf_accum /= len(obstimes)
+
+            count += 1
+    output_img_accum /= count
+    output_psf_accum /= count
     psf = output_psf_accum
 
     rad2arcsec = 3600 * 180 / np.pi
