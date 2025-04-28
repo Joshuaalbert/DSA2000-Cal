@@ -292,24 +292,32 @@ if __name__ == '__main__':
     #     for res in ['2.61', '2.88', '3.14']:
     #         config_file = f'dsa1650_{prefix}_{res}.txt'
     #         config_files.append(config_file)
-    # config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
     # config_files.append('dsa1650_9P_e_optimal_v1.2.txt')
-    # config_files.append('dsa1650_a_2.52_v2.2.txt')
-    # config_files.append('dsa1650_a_2.61_v2.2.txt')
-    # config_files.append('dsa1650_a_2.88_v2.2.txt')
-    # config_files.append('dsa1650_a_3.14_v2.2.txt')
-    # config_files.append('dsa1650_a_2.95_v2.3.txt')
 
-    # config_files.append('dsa1650_a_P279_v2.4.txt')
-    # config_files.append('dsa1650_a_P295_v2.4.txt')
-    # config_files.append('dsa1650_a_P305_v2.4.txt')
+    config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
+
+    config_files.append('dsa1650_a_2.52_v2.2.txt')
+    config_files.append('dsa1650_a_2.61_v2.2.txt')
+    config_files.append('dsa1650_a_2.88_v2.2.txt')
+    config_files.append('dsa1650_a_3.14_v2.2.txt')
+
+    config_files.append('dsa1650_a_2.95_v2.3.txt')
+
+    config_files.append('dsa1650_a_P279_v2.4.txt')
+    config_files.append('dsa1650_a_P295_v2.4.txt')
+    config_files.append('dsa1650_a_P305_v2.4.txt')
 
     config_files.append('dsa1650_a_P279_v2.4.1.txt')
     config_files.append('dsa1650_a_P295_v2.4.1.txt')
     config_files.append('dsa1650_a_P305_v2.4.1.txt')
+
     config_files.append('dsa1650_a_P279_v2.4.2.txt')
     config_files.append('dsa1650_a_P295_v2.4.2.txt')
     config_files.append('dsa1650_a_P305_v2.4.2.txt')
+
+    config_files.append('dsa1650_a_P279_v2.4.3.txt')
+    config_files.append('dsa1650_a_P295_v2.4.3.txt')
+    config_files.append('dsa1650_a_P305_v2.4.3.txt')
 
     for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (200, 20), (400, 40)]:
         for with_noise in [False, True]:

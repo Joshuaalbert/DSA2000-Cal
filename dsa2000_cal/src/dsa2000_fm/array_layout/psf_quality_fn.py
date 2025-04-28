@@ -11,6 +11,7 @@ from jax import numpy as jnp
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import array_registry
 from dsa2000_common.common.array_types import FloatArray
+from dsa2000_common.common.astropy_utils import get_time_of_local_meridean
 from dsa2000_common.common.enu_frame import ENU
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_common.common.sum_utils import scan_sum
@@ -49,10 +50,29 @@ def dense_annulus(inner_radius, outer_radius, dl, frac, dtype):
     return _lm.astype(dtype)
 
 
-def create_target(key, target_array_name: str, lmn: FloatArray,
-                  freqs: au.Quantity, ref_time: at.Time, ra0: au.Quantity,
-                  dec0s: au.Quantity,
-                  num_samples: int, accumulate_dtype, num_antennas: int | None = None):
+def elongate_antennas(antennas: ac.EarthLocation, array_location: ac.EarthLocation,
+                      ref_time: at.Time) -> ac.EarthLocation:
+    """
+    Elongate the target array in the north-south direction to give circular PSF at DEC=0.
+    """
+    # Get the array
+    latitude = array_location.lat
+    antennas_enu = antennas.get_itrs(obstime=ref_time, location=array_location).transform_to(
+        ENU(obstime=ref_time, location=array_location)).cartesian.xyz.T
+    antennas_enu[:, 1] /= np.cos(latitude)
+    antennas = ENU(antennas_enu[:, 0], antennas_enu[:, 1], antennas_enu[:, 2], obstime=ref_time,
+                   location=array_location).transform_to(
+        ac.ITRS(obstime=ref_time, location=array_location)).earth_location
+    return antennas
+
+
+def create_target(
+        antennas: ac.EarthLocation, array_location: ac.EarthLocation,
+        lmn: FloatArray,
+        freqs: au.Quantity, ref_time: at.Time, ra0: au.Quantity,
+        dec0s: au.Quantity,
+        num_samples: int, accumulate_dtype, num_antennas: int | None = None
+):
     """
     Creates a target PSF distribution for the given array and parameters.
 
@@ -70,54 +90,69 @@ def create_target(key, target_array_name: str, lmn: FloatArray,
     Returns:
         [M, ...] the target PSF mean, [M, ...] the target PSF standard deviation
     """
-    fill_registries()
-    array = array_registry.get_instance(array_registry.get_match(target_array_name))
-    antennas = array.get_antennas()
-    array_location = array.get_array_location()
-    # plt.scatter(antennas.lon, antennas.lat)
-    # plt.show()
-
-    # dist = accumulate_uv_distribution(
-    #     antennas_gcrs_xyz,
-    #     np.array([0]),
-    #     quantity_to_jnp(ra0, 'rad'),
-    #     np.array([0]),
-    #     np.arange(-35000, 35000,20),
-    #     conv_size=3
-    # )
-    # a = ApertureTransform()
-    # dx = 20/0.222
-    # N = dist.shape[0]
-    # dl = 1/(N * dx) * 3600 * 180/np.pi
-    # psf = 10*np.log10(np.abs(a.to_image(dist, (-2,-1), dx, dx)))
-    # plt.imshow(psf.T, origin='lower', extent=(-0.5*N*dl, 0.5*N*dl, -0.5*N*dl, 0.5*N*dl))
-    # plt.show()
-    freqs_jax = quantity_to_jnp(freqs, 'Hz')
+    freqs = quantity_to_jnp(freqs, 'Hz')
     ra0 = quantity_to_jnp(ra0, 'rad')
     dec0s = quantity_to_jnp(dec0s, 'rad')
     # move antennas arround ineast-north by conv_size
-    enu_frame = ENU(obstime=ref_time, location=array_location)
+    antennas_enu0 = antennas.get_itrs(obstime=ref_time, location=array_location).transform_to(
+        ENU(obstime=ref_time, location=array_location)).cartesian.xyz.T
     psf_dB_mean, psf_dB2_mean = 0, 0
     N = len(antennas)
     for _ in range(num_samples):
         delta = 200 * np.random.normal(size=(N, 3))
         delta[..., 2] = 0.
-        antennas_enu = antennas.get_itrs(obstime=ref_time, location=array_location).transform_to(
-            enu_frame).cartesian.xyz.T + delta * au.m
+        antennas_enu = antennas_enu0 + delta * au.m
         antennas_enu = ENU(antennas_enu[:, 0], antennas_enu[:, 1], antennas_enu[:, 2], obstime=ref_time,
                            location=array_location)
         antennas_pert = antennas_enu.transform_to(ac.ITRS(obstime=ref_time, location=array_location)).earth_location
-
-        antennas_gcrs = antennas_pert.get_gcrs(obstime=ref_time)
-        antennas_gcrs_xyz = quantity_to_jnp(antennas_gcrs.cartesian.xyz.T, 'm')
-        psf_dB = compute_only_psf(antennas_gcrs_xyz, lmn, freqs_jax, ra0, dec0s, accumulate_dtype)
+        antennas_gcrs = quantity_to_jnp(antennas_pert.get_gcrs(obstime=ref_time).cartesian.xyz.T, 'm')
+        psf_dB = compute_only_psf(antennas_gcrs, lmn, freqs, ra0, dec0s, accumulate_dtype)
         psf_dB_mean += psf_dB
-        psf_dB2_mean += jnp.square(psf_dB)
+        psf_dB2_mean += np.square(psf_dB)
 
     psf_dB_mean /= num_samples
     psf_dB2_mean /= num_samples
-    psf_dB_stddev = jnp.sqrt(jnp.abs(psf_dB2_mean - psf_dB_mean ** 2))
+    psf_dB_stddev = np.sqrt(np.abs(psf_dB2_mean - psf_dB_mean ** 2))
     return psf_dB_mean, psf_dB_stddev
+
+
+def test_create_target():
+    fill_registries()
+    array = array_registry.get_instance(array_registry.get_match('dsa1650_P279'))
+    array_location = array.get_array_location()
+    antennas = array.get_antennas()
+    ref_time = at.Time("2025-06-10T00:00:00", format='isot', scale='utc')
+    phase_tracking = ENU(0, 0, 1, obstime=ref_time, location=array_location).transform_to(ac.ICRS())
+    ra0 = phase_tracking.ra
+    ref_time = get_time_of_local_meridean(ac.ICRS(ra=ra0, dec=0 * au.deg), location=array_location, ref_time=ref_time)
+    antennas = elongate_antennas(antennas=antennas, array_location=array_location, ref_time=ref_time)
+    lm = dense_annulus(
+        0.,
+        5 * np.pi / 180 / 3600,
+        0.25 * np.pi / 180 / 3600,
+        1.,
+        np.float64
+    )
+    n = np.sqrt(1 - lm[..., 0] ** 2 - lm[..., 1] ** 2)
+    lmn = np.stack([lm[..., 0], lm[..., 1], n], axis=-1)
+    target_psf_dB_mean, target_psf_dB_stddev = create_target(
+        antennas=antennas,
+        array_location=array_location,
+        lmn=lmn,
+        freqs=[1350] * au.MHz,
+        ref_time=ref_time,
+        ra0=ra0,
+        dec0s=[0] * au.deg,
+        num_samples=10,
+        accumulate_dtype=jnp.float32,
+        num_antennas=None
+    )
+    import pylab as plt
+    rad2arcsec = 180 * 3600 / np.pi
+    plt.scatter(lmn[..., 0].flatten() * rad2arcsec, lmn[..., 1].flatten() * rad2arcsec,
+                c=target_psf_dB_mean[0, ...].flatten(), s=20)
+    plt.grid()
+    plt.show()
 
 
 @partial(jax.jit, static_argnames=['num_samples', 'num_antennas', 'accumulate_dtype'])
@@ -222,8 +257,6 @@ def compute_only_psf(antennas_gcrs, lmn, freqs, ra0, dec0s, accumulate_dtype):
         lmn: [..., 3] the lmn coordinates to evaluate the PSF
         freqs: [C] the frequencies in Hz
         dec0s: [M] the declinations in radians
-        target_psf_dB_mean: [M, ...] the target log PSF mean
-        target_psf_dB_stddev: [M, ...] the target log PSF standard deviation
 
     Returns:
         quality: the negative chi squared value

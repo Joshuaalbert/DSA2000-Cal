@@ -28,7 +28,8 @@ from dsa2000_common.common.ray_utils import TimerLog
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_fm.abc import AbstractArrayConstraint
 from dsa2000_common.common.quantity_utils import quantity_to_np
-from dsa2000_fm.array_layout.psf_quality_fn import dense_annulus, create_target, evaluate_psf, sparse_annulus
+from dsa2000_fm.array_layout.psf_quality_fn import dense_annulus, create_target, evaluate_psf, sparse_annulus, \
+    elongate_antennas
 from dsa2000_assets.registries import array_registry
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.array_constraints.v6.array_constraint import ArrayConstraintsV6
@@ -39,35 +40,28 @@ tfpd = tfp.distributions
 
 
 def create_lmn_target():
-    dense_inner = dense_annulus(
-        inner_radius=0.,
-        outer_radius=quantity_to_np(200 * au.arcsec),
-        dl=quantity_to_np(1. * au.arcsec),
-        frac=1.,
-        dtype=jnp.float64
-    )
-    M = np.shape(dense_inner)[0]  # for balancing far sidelobe
+    dense_inner = dense_annulus(inner_radius=0., outer_radius=quantity_to_np(1 * au.arcmin),
+                                dl=quantity_to_np(0.8 * au.arcsec), frac=1., dtype=jnp.float64)
+    M = np.shape(dense_inner)[0]
     lm = np.concatenate(
         [
             dense_inner,
-            sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(200 * au.arcsec),
-                           outer_radius=quantity_to_np(0.67 * au.deg), num_samples=M // 2, dtype=jnp.float64),
-            sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(0.67 * au.deg),
-                           outer_radius=quantity_to_np(3 * au.deg), num_samples=M // 2, dtype=jnp.float64)
+            sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
+                           outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M // 2, dtype=jnp.float64),
+            sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
+                           outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M // 2, dtype=jnp.float64)
         ],
         axis=0
     )
-
     n = np.sqrt(1. - np.square(lm).sum(axis=-1, keepdims=True))
     return jnp.concatenate([lm, n], axis=-1)
 
 
-def create_psf_target(target_array_name: str, freqs: au.Quantity, ra0: au.Quantity, dec0s: au.Quantity,
-                      ref_time: at.Time, num_antennas: int | None):
+def create_psf_target(
+        antennas: ac.EarthLocation, array_location: ac.EarthLocation, freqs: au.Quantity, ra0: au.Quantity,
+        dec0s: au.Quantity,
+        ref_time: at.Time, num_antennas: int | None):
     np.random.seed(0)
-    key = jax.random.PRNGKey(0)
-
-    dsa_logger.info(f"Target array name: {target_array_name}")
 
     with TimerLog("Creating LMN sample points"):
         lmn_target = create_lmn_target()
@@ -76,8 +70,8 @@ def create_psf_target(target_array_name: str, freqs: au.Quantity, ra0: au.Quanti
 
         with TimerLog("Calculating target PSF"):
             target_psf_dB_mean, target_psf_dB_stddev = create_target(
-                key=key,
-                target_array_name=target_array_name,
+                antennas=antennas,
+                array_location=array_location,
                 lmn=lmn_target,
                 freqs=freqs, ra0=ra0, dec0s=dec0s,
                 ref_time=ref_time,
@@ -95,7 +89,7 @@ def create_psf_target(target_array_name: str, freqs: au.Quantity, ra0: au.Quanti
             rad2arcec = 3600 * 180 / np.pi
             radius_mask = (radius * rad2arcec < 20)
             sidelobe_mask = radius_mask[None] & (target_psf_dB_mean < -10)
-            target_psf_dB_mean = np.where(sidelobe_mask, target_psf_dB_mean - 5, target_psf_dB_mean)
+            target_psf_dB_mean = np.where(sidelobe_mask, target_psf_dB_mean - 3, target_psf_dB_mean)
 
     return lmn_target, target_psf_dB_mean, target_psf_dB_stddev
 
@@ -120,7 +114,8 @@ def evaluate_loss(proposal_antennas: ac.EarthLocation, lmn_target: FloatArray, f
 
 def run(
         lmn_target: FloatArray,
-        target_psf_dB_mean: FloatArray, target_psf_dB_stddev: FloatArray,
+        target_psf_dB_mean: FloatArray,
+        target_psf_dB_stddev: FloatArray,
         freqs: FloatArray, ra0: FloatArray, dec0s: FloatArray,
         array_location,
         ref_time,
@@ -130,9 +125,11 @@ def run(
         num_antennas: int,
         num_trials_per_antenna: int,
         num_time_per_antenna_s: float,
+        init_antennas: ac.EarthLocation | None = None,
         deadline: datetime.datetime | None = None,
         resume_ant: int | None = None,
-        random_refinement: bool = False
+        random_refinement: bool = False,
+        plot_cadence: int = 1
 ):
     os.makedirs(run_name, exist_ok=True)
     plot_folder = os.path.join(run_name, 'plots')
@@ -151,21 +148,24 @@ def run(
 
     # Two totally random antennas to start with
     if resume_ant is None:
-        antennas = ac.EarthLocation(
-            x=[0] * au.m,
-            y=[0] * au.m,
-            z=[0] * au.m
-        )
-        antennas = sample_aoi(
-            replace_idx=0,
-            antennas=antennas,
-            array_location=array_location,
-            obstime=ref_time,
-            additional_buffer=0.,
-            minimal_antenna_sep=min_antenna_sep_m,
-            aoi_data=aoi_data,
-            constraint_data=constraint_data
-        )
+        if init_antennas is not None:
+            antennas = init_antennas
+        else:
+            antennas = ac.EarthLocation(
+                x=[0] * au.m,
+                y=[0] * au.m,
+                z=[0] * au.m
+            )
+            antennas = sample_aoi(
+                replace_idx=0,
+                antennas=antennas,
+                array_location=array_location,
+                obstime=ref_time,
+                additional_buffer=0.,
+                minimal_antenna_sep=min_antenna_sep_m,
+                aoi_data=aoi_data,
+                constraint_data=constraint_data
+            )
     else:
         resume_file = os.path.join(run_name, f'best_config_{resume_ant:04d}.txt')
         if not os.path.exists(resume_file):
@@ -205,6 +205,7 @@ def run(
                 z=np.concatenate((antennas.z[:check_idx], antennas.z[check_idx + 1:]))
             )
 
+    iteration = 0
     while random_refinement or len(antennas) < num_antennas:
         # clear JAX cache
         # jax.clear_caches()
@@ -259,8 +260,10 @@ def run(
         t1 = time.time()
         acceptance_rate = 100 * acceptances / num_trials_per_antenna
         antennas = best_config
-        # plot_result(target_psf_dB_mean, best_dist, best_diff, antennas, objective, lmn_target, aoi_data,
-        #             constraint_data, plot_folder)
+        if iteration % plot_cadence == 0:
+            plot_result(target_psf_dB_mean, best_dist, best_diff, antennas, objective, lmn_target, aoi_data,
+                        constraint_data, plot_folder)
+        iteration += 1
         save_name = os.path.join(run_name, f'best_config_{len(antennas):04d}.txt')
         with open(save_name, 'w') as f:
             for antenna in best_config:
@@ -376,13 +379,15 @@ def main(
         deadline_dt,
         min_antenna_sep_m,
         resume_ant: int | None,
-        random_refinement: bool
+        random_refinement: bool,
+        init_target: bool,
+        plot_cadence: int
 ):
     warnings.filterwarnings(
         "ignore",
         category=UserWarning
     )
-
+    dsa_logger.info(f"Starting PSF optimization for {target_array_name}")
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match(target_array_name))
     array_location = array.get_array_location()
@@ -391,13 +396,15 @@ def main(
     ra0 = phase_tracking.ra
     ref_time = get_time_of_local_meridean(ac.ICRS(ra=ra0, dec=0 * au.deg), location=array_location, ref_time=ref_time)
     dsa_logger.info(f"Reference time: {ref_time.isot}")
+    antennas = array.get_antennas()
+    antennas = elongate_antennas(antennas=antennas, array_location=array_location, ref_time=ref_time)
 
-    # freqs = np.linspace(700e6, 2000e6, 2) * au.Hz
     freqs = [1350] * au.MHz
     dec0s = [0] * au.deg
 
     lmn_target, target_psf_dB_mean, target_psf_dB_stddev = create_psf_target(
-        target_array_name=target_array_name,
+        antennas=antennas,
+        array_location=array_location,
         freqs=freqs,
         ra0=ra0,
         dec0s=dec0s,
@@ -406,7 +413,7 @@ def main(
     )
 
     array_constraint = ArrayConstraintsV6(prefix)
-    run_name = f"pareto_opt_v6_{prefix}_{target_array_name}_v2.4.3"
+    run_name = f"pareto_opt_v6_{prefix}_{target_array_name}_v2.4.5"
     run(
         lmn_target, target_psf_dB_mean, target_psf_dB_stddev,
         freqs=quantity_to_jnp(freqs, 'Hz'),
@@ -420,9 +427,11 @@ def main(
         num_trials_per_antenna=num_trials_per_antenna,
         num_time_per_antenna_s=num_time_per_antenna_s,
         min_antenna_sep_m=min_antenna_sep_m,
+        init_antennas=antennas if init_target else None,
         deadline=deadline_dt,
         resume_ant=resume_ant,
-        random_refinement=random_refinement
+        random_refinement=random_refinement,
+        plot_cadence=plot_cadence
     )
 
 
@@ -430,13 +439,15 @@ if __name__ == '__main__':
     deadline = None  # datetime.datetime.fromisoformat("2025-04-27T00:00:00+02:00")
 
     main(
-        target_array_name='dsa1650_P279',
+        target_array_name='dsa1650_P295',
         prefix='a',
         num_antennas=1650,
-        num_trials_per_antenna=1000,  # max 10000
+        num_trials_per_antenna=300,
         num_time_per_antenna_s=100,
         deadline_dt=deadline,  # use deadline to set time per round
         min_antenna_sep_m=8.,
         resume_ant=None,
-        random_refinement=True
+        random_refinement=True,
+        init_target=False,
+        plot_cadence=100
     )
