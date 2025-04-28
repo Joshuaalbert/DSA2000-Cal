@@ -242,9 +242,9 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         f"posang: {pa_beam * 180 / np.pi:.2f}deg"
     )
 
-    beam_area = (0.25 * np.pi) * (major_beam * au.rad) * (minor_beam * au.rad)
+    beam_solid_angle = np.pi / (4 * np.log(2)) * (major_beam * au.rad) * (minor_beam * au.rad)
     pixel_area = (dl * au.rad) * (dm * au.rad)
-    flux_ratio = float(pixel_area / beam_area)
+    pixel_per_beam = float(beam_solid_angle / pixel_area)
 
     image_model = ImageModel(
         phase_center=pointing,
@@ -259,7 +259,7 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         beam_pa=np.asarray(pa_beam) * au.rad,
         unit='JY/BEAM',
         object_name=f'{image_name_base.upper()}',
-        image=flux_ratio * output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
+        image=pixel_per_beam * output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}.fits"), image_model=image_model,
                        overwrite=True, radian_angles=True)
@@ -279,7 +279,7 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         beam_pa=np.asarray(pa_beam) * au.rad,
         unit='JY/BEAM',
         object_name=f'{image_name_base.upper()}_PSF',
-        image=flux_ratio * psf[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
+        image=psf[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}_psf.fits"), image_model=image_model,
                        overwrite=True, radian_angles=True)
@@ -292,15 +292,24 @@ if __name__ == '__main__':
     #     for res in ['2.61', '2.88', '3.14']:
     #         config_file = f'dsa1650_{prefix}_{res}.txt'
     #         config_files.append(config_file)
+    # config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
+    # config_files.append('dsa1650_9P_e_optimal_v1.2.txt')
+    # config_files.append('dsa1650_a_2.52_v2.2.txt')
+    # config_files.append('dsa1650_a_2.61_v2.2.txt')
+    # config_files.append('dsa1650_a_2.88_v2.2.txt')
+    # config_files.append('dsa1650_a_3.14_v2.2.txt')
+    # config_files.append('dsa1650_a_2.95_v2.3.txt')
 
-    config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
-    config_files.append('dsa1650_9P_e_optimal_v1.2.txt')
+    # config_files.append('dsa1650_a_P279_v2.4.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.txt')
 
-    config_files.append('dsa1650_a_2.52_v2.2.txt')
-    config_files.append('dsa1650_a_2.61_v2.2.txt')
-    config_files.append('dsa1650_a_2.88_v2.2.txt')
-    config_files.append('dsa1650_a_3.14_v2.2.txt')
-    config_files.append('dsa1650_a_2.95_v2.3.txt')
+    config_files.append('dsa1650_a_P279_v2.4.1.txt')
+    config_files.append('dsa1650_a_P295_v2.4.1.txt')
+    config_files.append('dsa1650_a_P305_v2.4.1.txt')
+    config_files.append('dsa1650_a_P279_v2.4.2.txt')
+    config_files.append('dsa1650_a_P295_v2.4.2.txt')
+    config_files.append('dsa1650_a_P305_v2.4.2.txt')
 
     for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (200, 20), (400, 40)]:
         for with_noise in [False, True]:

@@ -746,10 +746,10 @@ def build_fits_source_model_from_wsclean_components(
                 dsa_logger.info(f"Converting from JY/BEAM to JY/PIXEL")
                 bmaj = hdul0[0].header['BMAJ'] * au.deg
                 bmin = hdul0[0].header['BMIN'] * au.deg
-                beam_area = (0.25 * np.pi) * bmaj * bmin
+                beam_solid_angle = np.pi / (4 * np.log(2)) * bmaj * bmin
                 pixel_area = np.abs(pixel_size_l * pixel_size_m)
-                beam_per_pixel = beam_area / pixel_area
-                image *= beam_per_pixel
+                pixel_per_beam = beam_solid_angle / pixel_area
+                image /= pixel_per_beam
             else:
                 raise ValueError(f"Unknown BUNIT {hdul0[0].header['BUNIT']}")
 

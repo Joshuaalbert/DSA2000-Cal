@@ -28,7 +28,7 @@ from dsa2000_common.common.ray_utils import TimerLog
 from dsa2000_common.common.quantity_utils import quantity_to_jnp
 from dsa2000_fm.abc import AbstractArrayConstraint
 from dsa2000_common.common.quantity_utils import quantity_to_np
-from dsa2000_fm.array_layout.psf_quality_fn import dense_annulus, create_target, evaluate_psf
+from dsa2000_fm.array_layout.psf_quality_fn import dense_annulus, create_target, evaluate_psf, sparse_annulus
 from dsa2000_assets.registries import array_registry
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.array_constraints.v6.array_constraint import ArrayConstraintsV6
@@ -39,24 +39,24 @@ tfpd = tfp.distributions
 
 
 def create_lmn_target():
-    lm = dense_annulus(
+    dense_inner = dense_annulus(
         inner_radius=0.,
         outer_radius=quantity_to_np(200 * au.arcsec),
         dl=quantity_to_np(1. * au.arcsec),
         frac=1.,
         dtype=jnp.float64
     )
-    # M = np.shape(dense_inner)[0] # for balancing far sidelobe
-    # lm = np.concatenate(
-    #     [
-    #         dense_inner,
-    #         # sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(1 * au.arcmin),
-    #         #                outer_radius=quantity_to_np(0.5 * au.deg), num_samples=M, dtype=jnp.float64),
-    #         # sparse_annulus(key=jax.random.PRNGKey(1), inner_radius=quantity_to_np(0.5 * au.deg),
-    #         #                outer_radius=quantity_to_np(1.5 * au.deg), num_samples=M, dtype=jnp.float64)
-    #     ],
-    #     axis=0
-    # )
+    M = np.shape(dense_inner)[0]  # for balancing far sidelobe
+    lm = np.concatenate(
+        [
+            dense_inner,
+            sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(200 * au.arcsec),
+                           outer_radius=quantity_to_np(0.67 * au.deg), num_samples=M // 2, dtype=jnp.float64),
+            sparse_annulus(key=jax.random.PRNGKey(0), inner_radius=quantity_to_np(0.67 * au.deg),
+                           outer_radius=quantity_to_np(3 * au.deg), num_samples=M // 2, dtype=jnp.float64)
+        ],
+        axis=0
+    )
 
     n = np.sqrt(1. - np.square(lm).sum(axis=-1, keepdims=True))
     return jnp.concatenate([lm, n], axis=-1)
@@ -90,6 +90,12 @@ def create_psf_target(target_array_name: str, freqs: au.Quantity, ra0: au.Quanti
                 raise ValueError("Target PSF mean is not finite")
             if not np.all(np.isfinite(target_psf_dB_stddev)):
                 raise ValueError("Target PSF stddev is not finite")
+
+            radius = np.sqrt(lmn_target[..., 0] ** 2 + lmn_target[..., 1] ** 2)
+            rad2arcec = 3600 * 180 / np.pi
+            radius_mask = (radius * rad2arcec < 20)
+            sidelobe_mask = radius_mask[None] & (target_psf_dB_mean < -10)
+            target_psf_dB_mean = np.where(sidelobe_mask, target_psf_dB_mean - 5, target_psf_dB_mean)
 
     return lmn_target, target_psf_dB_mean, target_psf_dB_stddev
 
@@ -201,7 +207,7 @@ def run(
 
     while random_refinement or len(antennas) < num_antennas:
         # clear JAX cache
-        jax.clear_caches()
+        # jax.clear_caches()
         gc.collect()
         t0 = time.time()
         objective = []
@@ -253,8 +259,8 @@ def run(
         t1 = time.time()
         acceptance_rate = 100 * acceptances / num_trials_per_antenna
         antennas = best_config
-        plot_result(target_psf_dB_mean, best_dist, best_diff, antennas, objective, lmn_target, aoi_data,
-                    constraint_data, plot_folder)
+        # plot_result(target_psf_dB_mean, best_dist, best_diff, antennas, objective, lmn_target, aoi_data,
+        #             constraint_data, plot_folder)
         save_name = os.path.join(run_name, f'best_config_{len(antennas):04d}.txt')
         with open(save_name, 'w') as f:
             for antenna in best_config:
@@ -306,7 +312,7 @@ def plot_result(target_dist, dist, diff, antennas, objective, lmn_target, aoi_da
     axs[1].set_title('Proposed distribution')
     axs[1].set_xlabel('l (proj. arcsec)')
     axs[1].set_ylabel('m (proj. arcsec)')
-    p5, p95 = np.percentile(diff, [5, 95])
+    p5, p95 = np.percentile(diff, [1, 99])
     vmin = min(p5, 0)
     vmax = max(p95, 0)
     vmin, vmax = min(vmin, -vmax), max(vmax, -vmin)
@@ -400,7 +406,7 @@ def main(
     )
 
     array_constraint = ArrayConstraintsV6(prefix)
-    run_name = f"pareto_opt_v6_{prefix}_{target_array_name}_v2.4"
+    run_name = f"pareto_opt_v6_{prefix}_{target_array_name}_v2.4.3"
     run(
         lmn_target, target_psf_dB_mean, target_psf_dB_stddev,
         freqs=quantity_to_jnp(freqs, 'Hz'),
@@ -421,14 +427,14 @@ def main(
 
 
 if __name__ == '__main__':
-    deadline = datetime.datetime.fromisoformat("2025-04-27T12:00:00-07:00")
+    deadline = None  # datetime.datetime.fromisoformat("2025-04-27T00:00:00+02:00")
 
     main(
-        target_array_name='dsa1650_9279',
+        target_array_name='dsa1650_P279',
         prefix='a',
         num_antennas=1650,
-        num_trials_per_antenna=100000,  # max 10000
-        num_time_per_antenna_s=10,
+        num_trials_per_antenna=1000,  # max 10000
+        num_time_per_antenna_s=100,
         deadline_dt=deadline,  # use deadline to set time per round
         min_antenna_sep_m=8.,
         resume_ant=None,

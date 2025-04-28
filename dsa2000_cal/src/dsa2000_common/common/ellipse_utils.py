@@ -46,6 +46,12 @@ class Gaussian:
         """
         return (0.25 * np.pi) * self.major_fwhm * self.minor_fwhm
 
+    def beam_solid_angle(self) -> jax.Array:
+        """
+        Calculate the integral of the Gaussian over the solid angle.
+        """
+        return np.pi / (4. * np.log(2.)) * self.major_fwhm * self.minor_fwhm
+
     def fourier(self, k: jax.Array) -> jax.Array:
         """
         Compute the Fourier transform of the Gaussian at the given k coordinates.

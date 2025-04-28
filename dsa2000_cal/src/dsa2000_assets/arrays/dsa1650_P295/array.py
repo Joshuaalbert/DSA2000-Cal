@@ -59,3 +59,15 @@ def transfer_and_add_station_names():
             f.write(f"{antenna_label},{antenna.x.to('m').value},{antenna.y.to('m').value},{antenna.z.to('m').value}\n")
             idx += 1
 
+
+
+def test_mk_config():
+    with open('antenna_config.txt', 'r') as f:
+        with open('init_config.txt', 'w') as g:
+            for line in f:
+                if line.startswith("#"):
+                    continue
+                if line.strip() == "":
+                    continue
+                antenna_name,x,y,z = line.split(",")
+                g.write(f"{x},{y},{z}")
