@@ -450,7 +450,7 @@ def vis_to_image_np(uvw: FloatArray, freqs: FloatArray, vis: ComplexArray, pixsi
         num_threads: number of threads to use.
 
     Returns:
-        [npix_l, npix_m] array of image.
+        [npix_l, npix_m] array of image in JY/BEAM.
     """
 
     # Make scaled image, I'(l,m)=I(l,m)/n(l,m) such that PSF(l=0,m=0)=1

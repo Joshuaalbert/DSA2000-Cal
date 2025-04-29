@@ -246,6 +246,9 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     pixel_area = (dl * au.rad) * (dm * au.rad)
     pixel_per_beam = float(beam_solid_angle / pixel_area)
 
+    # unit = 'JY/PIXEL'
+    # output_img_buffer /= pixel_per_beam # convert to JY/PIXEL
+
     image_model = ImageModel(
         phase_center=pointing,
         obs_time=ref_time,
@@ -259,7 +262,7 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         beam_pa=np.asarray(pa_beam) * au.rad,
         unit='JY/BEAM',
         object_name=f'{image_name_base.upper()}',
-        image=pixel_per_beam * output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
+        image=output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}.fits"), image_model=image_model,
                        overwrite=True, radian_angles=True)

@@ -148,7 +148,9 @@ def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True, 
             bmaj = header.get('BMAJ', pix_dx.value) * u.deg
             bmin = header.get('BMIN', pix_dy.value) * u.deg
             beam_solid_angle = np.pi / (4 * np.log(2)) * bmaj.to(u.rad) * bmin.to(u.rad)
-            factor *= float(pixel_area / beam_solid_angle)
+            pixel_per_beam = float(beam_solid_angle / pixel_area)
+            # Jy/Beam / pixel_per_beam = Jy/pixel
+            factor /= pixel_per_beam
         if '*M/S' in bunit:
             cd3 = new_header['CDELT3'] * u.Hz
             cr3 = new_header['CRVAL3'] * u.Hz
