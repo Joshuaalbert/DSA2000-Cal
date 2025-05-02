@@ -2,12 +2,12 @@ import os
 
 import numpy as np
 import pytest
-from astropy import io, time as at, coordinates as ac, units as au
+from astropy import time as at, coordinates as ac, units as au
 from astropy.io import fits
 from astropy.wcs import WCS
 
 from dsa2000_assets.mocks.mock_data import MockData
-from dsa2000_common.common.fits_utils import transform_to_wsclean_model, down_sample_fits, prepare_gain_fits, haversine, \
+from dsa2000_common.common.fits_utils import transform_to_wsclean_model, down_sample_fits, haversine, \
     nearest_neighbors_sphere, ImageModel, save_image_to_fits
 
 
@@ -146,43 +146,6 @@ def mock_data():
                      '2023-10-18T08:00:00', '2023-10-18T09:00:00'])
     num_pix = 32
     return pointing_centre, gains, directions, freq_hz, times, num_pix
-
-
-def test_fits_file_content(tmp_path):
-    pointing_centre, gains, directions, freq_hz, times, num_pix = mock_data()
-    output_file = tmp_path / "test_output.fits"
-
-    prepare_gain_fits(output_file, pointing_centre, gains, directions, freq_hz, times, num_pix)
-
-    assert output_file.exists()
-
-    with io.fits.open(output_file) as hdu_list:
-        header = hdu_list[0].header
-        wcs = WCS(hdu_list[0].header)
-        print("\n".join([f"{k} = {header[k]}" for k in header]))
-        data = hdu_list[0].data
-
-        # Check if WCS data in header is as expected
-
-        assert header['BITPIX'] == -32
-
-        # [RA, DEC, MATRIX, ANTENNA, FREQ, TIME]
-
-        assert list(wcs.wcs.ctype) == ["RA---SIN", "DEC--SIN", "MATRIX", "ANTENNA", "FREQ", "TIME"]
-        Nt, Nf, Na, Nmatrix, Ndec, Nra = data.shape
-        assert Nt == len(times)
-        assert Nf == len(freq_hz)
-        assert Na == 5
-        assert Nmatrix == 4
-        assert Nra == num_pix
-        assert Ndec == num_pix
-        assert np.isclose(wcs.wcs.crval[0], pointing_centre.ra.deg, atol=1e-6)
-        assert np.isclose(wcs.wcs.crval[1], pointing_centre.dec.deg, atol=1e-6)
-        assert np.isclose(wcs.wcs.crval[2], 1., atol=1e-6)
-        assert np.isclose(wcs.wcs.crval[3], 1., atol=1e-6)
-        assert np.isclose(wcs.wcs.crval[4], freq_hz.min(), atol=1e-6)
-        assert np.isclose(wcs.wcs.crval[5], times.mjd.min() * 86400, atol=1e-6)
-        assert not np.any(np.isnan(data))
 
 
 def test_image_model():

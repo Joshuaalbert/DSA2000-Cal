@@ -1,11 +1,11 @@
 import logging
 import os
-from typing import List, Tuple, Literal
+from typing import Tuple, Literal
 
 import astropy.time as at
 import astropy.units as au
 import numpy as np
-from astropy import coordinates as ac, io, wcs
+from astropy import coordinates as ac, wcs
 from astropy.io import fits
 from astropy.wcs import WCS
 from scipy.ndimage import zoom
@@ -200,116 +200,6 @@ def nearest_neighbors_sphere(coords1: ac.ICRS, coords2: ac.ICRS) -> Tuple[np.nda
     return nearest_indices, distances
 
 
-def prepare_gain_fits(output_file: str, pointing_centre: ac.ICRS,
-                      gains: np.ndarray, directions: ac.ICRS,
-                      freq_hz: np.ndarray, times: at.Time, num_pix: int):
-    """
-    Given an input gain array, prepare a gain fits file for use with a-term correction in WSClean.
-    Axes should be [RA, DEC, MATRIX, ANTENNA, FREQ, TIME]
-    MATRIX has 4 components: {real XX, imaginary XX, real YY, imaginary YY}
-    Args:
-        output_file: the path to the output fits file
-        pointing_centre: the pointing centre
-        gains: the gain array [num_time, num_ant, num_dir, num_freq, 2, 2]
-        directions: the directions [num_dir]
-        freq_hz: the frequencies [num_freq]
-        times: the times [num_time]
-        num_pix: the screen resolution in pixels
-    References:
-        [1] https://wsclean.readthedocs.io/en/latest/a_term_correction.html#diagonal-gain-correction
-    """
-    Nt, Na, Nd, Nf, _, _ = gains.shape
-    if len(directions) != Nd:
-        raise ValueError("Number of directions does not match gains")
-    if len(freq_hz) != Nf:
-        raise ValueError("Number of frequencies does not match gains")
-    if len(times) != Nt:
-        raise ValueError("Number of times does not match gains")
-
-    # Determine the range of RA and DEC and pad by 20%
-    ra_values = [dir.ra.deg for dir in directions]
-    dec_values = [dir.dec.deg for dir in directions]
-    ra_range = max(ra_values) - min(ra_values)
-    dec_range = max(dec_values) - min(dec_values)
-
-    ra_padding = ra_range * 0.2
-    dec_padding = dec_range * 0.2
-    if ra_range == 0:
-        ra_padding = 1.
-        print("RA range is 0, padding by 1 deg")
-    if dec_range == 0:
-        dec_padding = 1.
-        print("DEC range is 0, padding by 1 deg")
-
-    ra_min = min(ra_values) - ra_padding
-    ra_max = max(ra_values) + ra_padding
-    dec_min = min(dec_values) - dec_padding
-    dec_max = max(dec_values) + dec_padding
-
-    # Create the new WCS
-    w = wcs.WCS(naxis=6)
-    w.wcs.ctype = ["RA---SIN", "DEC--SIN", "MATRIX", "ANTENNA", "FREQ", "TIME"]
-    w.wcs.crpix = [num_pix / 2 + 1, num_pix / 2 + 1, 1, 1, 1, 1]
-    w.wcs.cdelt = [-(ra_max - ra_min) / num_pix, (dec_max - dec_min) / num_pix, 1, 1, freq_hz[1] - freq_hz[0],
-                   (times[1].mjd - times[0].mjd) * 86400]
-    w.wcs.crval = [pointing_centre.ra.deg, pointing_centre.dec.deg, 1, 1, freq_hz[0], times[0].mjd * 86400]
-    w.wcs.set()
-    # Extract pixel directions from the WCS as ICRS coordinates
-    x = np.arange(-num_pix / 2, num_pix / 2) + 1
-    y = np.arange(-num_pix / 2, num_pix / 2) + 1
-    X = np.meshgrid(x, y, np.arange(1), np.arange(1), np.arange(1), np.arange(1), indexing='ij')
-    coords_pix = np.stack([x.flatten() for x in X], axis=1)
-    coords_world = w.all_pix2world(coords_pix, 0)
-    ra = coords_world[:, 0]
-    dec = coords_world[:, 1]
-
-    coords = ac.ICRS(ra=ra * au.deg, dec=dec * au.deg)
-    nn_indices, nn_dist = nearest_neighbors_sphere(coords1=coords, coords2=directions)
-
-    # Prepare data for FITS: row-major to transposed column-major
-    data = np.zeros((Nt, Nf, Na, 4, num_pix, num_pix), dtype=np.float32)
-    # [num_time, num_ant, num_dir, num_freq, 2, 2] -> [num_time, num_freq, num_ant, 2, 2, num_dir]
-    gains = np.transpose(gains, (0, 3, 1, 4, 5, 2))
-
-    # Split gains into real and imaginary parts
-    gains_real = np.real(gains).astype(np.float32)
-    gains_imag = np.imag(gains).astype(np.float32)
-
-    for (i, j), nn_idx in zip(coords_pix[:, :2], nn_indices):
-        i = int(i + num_pix / 2 - 1)
-        j = int(j + num_pix / 2 - 1)
-        # Assign real and imaginary parts of XX and YY to appropriate positions in the data array
-        data[:, :, :, 0, j, i] = gains_real[:, :, :, 0, 0, nn_idx]
-        data[:, :, :, 1, j, i] = gains_imag[:, :, :, 0, 0, nn_idx]
-        data[:, :, :, 2, j, i] = gains_real[:, :, :, 1, 1, nn_idx]
-        data[:, :, :, 3, j, i] = gains_imag[:, :, :, 1, 1, nn_idx]
-
-    # Store the gains in the fits file
-    hdu = io.fits.PrimaryHDU(data, header=w.to_header())
-    hdu.header['EXTEND'] = True
-    hdu.writeto(output_file, overwrite=True)
-
-
-def write_diagonal_a_term_correction_file(a_term_file: str, diagonal_gain_fits_files: List[str]):
-    """
-    Write the diagonal a-term correction file.
-
-    Args:
-        a_term_file: the path to the a-term file
-        diagonal_gain_fits_files: the paths to the diagonal gain fits files
-    """
-    with open(a_term_file, 'w') as f:
-        # The fourierfit, klfit aterms are new since 3.2
-        f.write("aterms = [ diagonal ]\n")
-        # The diagonal correction has parameters 'images' and 'window'.
-        # This fits must match what's in the run config.
-        f.write(f"diagonal.images = [ {' '.join(diagonal_gain_fits_files)} ]\n")
-        # The window parameter is new since 2.7
-        # It supports tukey, hann, raised_hann, rectangular or gaussian.
-        # If not specified, raised_hann is used, which generally performs best.
-        f.write("diagonal.window = raised_hann")
-
-
 class ImageModel(SerialisableBaseModel):
     phase_center: ac.ICRS
     obs_time: at.Time
@@ -414,52 +304,6 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     Raises:
         FileExistsError: if the file already exists and overwrite is False
     """
-
-    # SIMPLE  =                    T / file does conform to FITS standard
-    # BITPIX  =                  -32 / number of bits per data pixel
-    # NAXIS   =                    4 / number of data axes
-    # NAXIS1  =                 1300 / length of data axis 1
-    # NAXIS2  =                 1300 / length of data axis 2
-    # NAXIS3  =                    1 / length of data axis 3
-    # NAXIS4  =                    1 / length of data axis 4
-    # EXTEND  =                    T / FITS dataset may contain extensions
-    # COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy
-    # COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H
-    # BSCALE  =                   1.
-    # BZERO   =                   0.
-    # BUNIT   = 'JY/BEAM '           / Units are in Jansky per beam
-    # BMAJ    =  0.00264824850407388
-    # BMIN    =  0.00205277482609264
-    # BPA     =     88.7325624575301
-    # EQUINOX =                2000. / J2000
-    # BTYPE   = 'Intensity'
-    # TELESCOP= 'LOFAR   '
-    # OBSERVER= 'unknown '
-    # OBJECT  = 'BEAM_0  '
-    # ORIGIN  = 'WSClean '           / W-stacking imager written by Andre Offringa
-    # CTYPE1  = 'RA---SIN'           / Right ascension angle cosine
-    # CRPIX1  =                 651.
-    # CRVAL1  =    -9.13375000000008
-    # CDELT1  = -0.000555555555555556
-    # CUNIT1  = 'deg     '
-    # CTYPE2  = 'DEC--SIN'           / Declination angle cosine
-    # CRPIX2  =                 651.
-    # CRVAL2  =        58.8117777778
-    # CDELT2  = 0.000555555555555556
-    # CUNIT2  = 'deg     '
-    # CTYPE3  = 'FREQ    '           / Central frequency
-    # CRPIX3  =                   1.
-    # CRVAL3  =     53807067.8710938
-    # CDELT3  =            47656250.
-    # CUNIT3  = 'Hz      '
-    # CTYPE4  = 'STOKES  '
-    # CRPIX4  =                   1.
-    # CRVAL4  =                   1.
-    # CDELT4  =                   1.
-    # CUNIT4  = '        '
-    # SPECSYS = 'TOPOCENT'
-    # DATE-OBS= '2015-08-26T16:30:05.0'
-    # END
     if not overwrite and os.path.exists(file_path):
         raise FileExistsError(f"File {file_path} already exists")
 
@@ -469,7 +313,18 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     w.wcs.ctype = ["RA---SIN", "DEC--SIN", "FREQ", "STOKES"]
     if (np.shape(image_model.image)[0] % 2 != 0) or (np.shape(image_model.image)[1] % 2 != 0):
         raise ValueError("Image must have an even number of pixels in each direction")
-    w.wcs.crpix = [image_model.image.shape[0] // 2 + 1, image_model.image.shape[1] // 2 + 1, 1, 1]
+
+    # Since we flip the l axis, the reference pixel is the other side
+    # To see this:
+    # index         : 0     1       2       3 (These indices are the array coordinates in unflipped order)
+    # l (dl units)  : -2    -1      0       1 (the l formula of wgridder is l[i] = (-1/2 N + i) dl + l0)
+    # pixel-0based  : 3     2       1       0 (each pixel is negative -- which is why we flip l)
+    # pixel-1based  : 4     3       2       1 (in fits file we just add one to the pixel-0based)
+    # So l[N//2] == 0 in pixel-0based is N//2 - 1, which is N//2 in pixel-1based
+
+    crpix_l = image_model.image.shape[0] // 2
+    crpix_m = image_model.image.shape[1] // 2 + 1
+    w.wcs.crpix = [crpix_l, crpix_m, 1, 1]
     dfreq = image_model.bandwidth / len(image_model.freqs)
     if radian_angles:
         angle_unit = 'rad'
@@ -485,7 +340,7 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
         image_model.phase_center.ra.to(angle_unit).value,
         image_model.phase_center.dec.to(angle_unit).value,
         image_model.freqs[0].to('Hz').value,
-        1 # {1: I, 2: Q, 3: U, 4: V}
+        1  # {1: I, 2: Q, 3: U, 4: V}
     ]
     w.wcs.cunit = [angle_unit, angle_unit, 'Hz', '']
     w.wcs.set()

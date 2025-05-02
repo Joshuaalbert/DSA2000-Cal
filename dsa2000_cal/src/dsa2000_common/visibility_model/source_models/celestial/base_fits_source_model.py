@@ -696,27 +696,6 @@ def build_fits_source_model_from_wsclean_components(
             # image = hdul0[0].data.T[:, :, 0, 0].T # [Nm, Nl]
             # Get the name of each axis
 
-            ra_axis = None
-            dec_axis = None
-            freq_axis = None
-            stokes_axis = None
-            for i in range(1, 6):
-                if f'CTYPE{i}' not in hdul0[0].header:
-                    break
-                axis_name = hdul0[0].header[f'CTYPE{i}']
-                dsa_logger.info(f"Axis {i} name: {axis_name}")
-                if axis_name.strip().upper().startswith('RA'):
-                    ra_axis = i
-                elif axis_name.strip().upper().startswith('DEC'):
-                    dec_axis = i
-                elif axis_name.strip().upper().startswith('FREQ'):
-                    freq_axis = i
-                elif axis_name.strip().upper().startswith('STOKES'):
-                    stokes_axis = i
-            if ra_axis is None or dec_axis is None:
-                raise ValueError(
-                    f"RA and DEC axes not found in header. Found {hdul0[0].header['CTYPE1']}, {hdul0[0].header['CTYPE2']}")
-
             if np.shape(hdul0[0].data)[1] > 1:
                 raise ValueError(
                     f"Expected 1 FREQ parameter, got {np.shape(hdul0[0].data)[1]}. Entire data shape {np.shape(hdul0[0].data)}.")
@@ -728,8 +707,10 @@ def build_fits_source_model_from_wsclean_components(
             # Transpose
             image = image.T  # [Nl, Nm, stokes]
             if np.shape(image)[0] % 2 != 0:
+                dsa_logger.info("Image has odd number of l pixels, removing last pixel")
                 image = image[:-1]
             if np.shape(image)[1] % 2 != 0:
+                dsa_logger.info("Image has odd number of m pixels, removing last pixel")
                 image = image[:, :-1]
             Nl, Nm, num_stokes = image.shape
             if Nl % 2 != 0 or Nm % 2 != 0:
@@ -737,8 +718,8 @@ def build_fits_source_model_from_wsclean_components(
             # RA--SIN and DEC--SIN
             if not (w0.wcs.ctype[0].strip().endswith('SIN') and w0.wcs.ctype[1].strip().endswith('SIN')):
                 raise ValueError(f"Expected SIN projection, got {w0.wcs.ctype}")
-            pixel_size_l = au.Quantity(w0.wcs.cdelt[0], au.deg)
-            pixel_size_m = au.Quantity(w0.wcs.cdelt[1], au.deg)
+            pixel_size_l = au.Quantity(w0.wcs.cdelt[0], w0.wcs.cunit[0])
+            pixel_size_m = au.Quantity(w0.wcs.cdelt[1], w0.wcs.cunit[1])
             if hdul0[0].header['BUNIT'].upper() == 'JY/PIXEL':
                 pass
             elif hdul0[0].header['BUNIT'].upper() == 'JY/BEAM':
@@ -753,10 +734,10 @@ def build_fits_source_model_from_wsclean_components(
             else:
                 raise ValueError(f"Unknown BUNIT {hdul0[0].header['BUNIT']}")
 
-            centre_l_pix, centre_m_pix = Nl // 2, Nm // 2  # 0 1 2 3 -> 2 (not 1.5. To make facetting work)
+            centre_l_pix, centre_m_pix = w0.wcs.crpix[0] - 1, w0.wcs.crpix[1] - 1  # 0 1 2 3 -> 2 (not 1.5. To make facetting work)
             # Assume pointing is same for all stokes
             pointing_coord, spectral_coord, stokes_coord = w0.pixel_to_world(
-                centre_l_pix, centre_m_pix, 0, 0
+                w0.wcs.crpix[0] - 1, w0.wcs.crpix[1] - 1, w0.wcs.crpix[2] - 1, w0.wcs.crpix[3] - 1
             )
             if repoint_centre is None:
                 # Use WCS conversion instead using crval directly to avoid issues with convention-breaking FITS files

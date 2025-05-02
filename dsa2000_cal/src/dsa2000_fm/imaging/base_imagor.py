@@ -310,19 +310,20 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
     L, M = jnp.meshgrid(lvec, mvec, indexing='ij')  # [num_l, num_m]
     lm = jnp.stack([L, M], axis=-1).reshape((-1, 2))  # [num_l, num_m, 2]
     psf = jnp.reshape(psf, (-1,))
+    mask = (psf > 0.3 * jnp.max(psf)).astype(psf)
 
     def residual_fn(params):
-        log_major, log_minor, pos_angle = params
+        l0, m0, log_major, log_minor, pos_angle = params
         major = jnp.exp(log_major)
         minor = jnp.exp(log_minor)
-        x0 = jnp.asarray([0., 0.])
+        x0 = jnp.asarray([l0, m0])
         g = Gaussian(x0=x0, minor_fwhm=minor, major_fwhm=major, pos_angle=pos_angle,
                      total_flux=Gaussian.total_flux_from_peak(1., major_fwhm=major, minor_fwhm=minor))
         residual = jax.vmap(g.compute_flux_density)(lm) - psf
-        return residual
+        return residual * mask
 
-    solution, diagnostics = lm_solver(residual_fn, jnp.array([jnp.log(dl * 5), jnp.log(dm * 5), 0.]), gtol=1e-6)
-    log_major, log_minor, posang = solution
+    solution, diagnostics = lm_solver(residual_fn, jnp.array([0., 0., jnp.log(dl * 5), jnp.log(dm * 5), 0.]), gtol=1e-6)
+    _, _, log_major, log_minor, posang = solution
     major = jnp.exp(log_major)
     minor = jnp.exp(log_minor)
     swap = minor > major
@@ -331,8 +332,10 @@ def fit_beam(psf, dl, dm, max_central_size: int = 128):
         jnp.where(swap, major, minor),
         jnp.where(swap, posang + jnp.pi / 2., posang)
     )
+
     # wrap posang
     def wrap(x):
         return jnp.arctan2(jnp.sin(x), jnp.cos(x))
+
     posang = wrap(posang)
     return major, minor, posang

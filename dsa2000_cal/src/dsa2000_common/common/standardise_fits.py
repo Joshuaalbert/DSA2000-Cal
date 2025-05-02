@@ -18,7 +18,7 @@ except ImportError:
 
 
 @contextmanager
-def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True, reproject:bool = False):
+def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True, reproject: bool = False):
     """
     Context manager to open, standardize axes to [RA, DEC, FREQ, STOKES],
     enforce SIN projection, convert units to JY/PIXEL, and optionally write.
@@ -104,7 +104,12 @@ def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True, 
         1.0  # Stokes I
     ]
     # CUNIT: units
-    w_std.wcs.cunit = ['deg', 'deg', 'Hz', '']
+    w_std.wcs.cunit = [
+        orig.cunit[ra_idx] if ra_idx is not None else 'deg',
+        orig.cunit[dec_idx] if dec_idx is not None else 'deg',
+        orig.cunit[freq_idx] if freq_idx is not None else 'Hz',
+        ''
+    ]
     # Finalize WCS
     w_std.wcs.set()
 
@@ -142,18 +147,18 @@ def standardize_fits(input_file, output_file=None, hdu_index=0, overwrite=True, 
         dsa_logger.info(f"Converting units from {bunit} to JY/PIXEL")
         factor = 1.0
         if '/B' in bunit:
-            pix_dx = abs(new_header['CDELT1']) * u.deg
-            pix_dy = abs(new_header['CDELT2']) * u.deg
+            pix_dx = u.Quantity(new_header['CDELT1'], new_header['CUNIT1'])
+            pix_dy = u.Quantity(new_header['CDELT2'], new_header['CUNIT2'])
             pixel_area = pix_dx.to(u.rad) * pix_dy.to(u.rad)
             bmaj = header.get('BMAJ', pix_dx.value) * u.deg
             bmin = header.get('BMIN', pix_dy.value) * u.deg
             beam_solid_angle = np.pi / (4 * np.log(2)) * bmaj.to(u.rad) * bmin.to(u.rad)
-            pixel_per_beam = float(beam_solid_angle / pixel_area)
+            pixel_per_beam = abs(float(beam_solid_angle / pixel_area))
             # Jy/Beam / pixel_per_beam = Jy/pixel
             factor /= pixel_per_beam
         if '*M/S' in bunit:
-            cd3 = new_header['CDELT3'] * u.Hz
-            cr3 = new_header['CRVAL3'] * u.Hz
+            cd3 = u.Quantity(new_header['CDELT3'], new_header['CUNIT3'])
+            cr3 = u.Quantity(new_header['CRVAL3'], new_header['CUNIT3'])
             dv = (cd3 / cr3) * const.c
             factor /= abs(dv.to('m/s').value)
         data_out *= factor

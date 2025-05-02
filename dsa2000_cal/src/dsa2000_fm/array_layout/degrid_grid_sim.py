@@ -18,7 +18,7 @@ from dsa2000_common.common.logging import dsa_logger
 from dsa2000_common.common.noise import calc_baseline_noise
 from dsa2000_common.common.quantity_utils import quantity_to_np, time_to_jnp, quantity_to_jnp
 from dsa2000_common.common.wgridder import image_to_vis_np, vis_to_image_np
-from dsa2000_common.delay_models.uvw_utils import geometric_uvw_from_gcrs
+from dsa2000_common.delay_models.uvw_utils import geometric_uvw_from_gcrs, perley_lmn_from_icrs
 from dsa2000_common.visibility_model.source_models.celestial.base_fits_source_model import \
     build_fits_source_model_from_wsclean_components
 from dsa2000_fm.imaging.base_imagor import fit_beam
@@ -146,12 +146,25 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     num_rows = N * (N - 1) // 2
     # output_vis_buffer = np.zeros((num_rows, freq_block_size), dtype=np.complex64, order='F')
 
+    ra_far = ra0 + 5 * np.pi / 180
+    dec_far = dec0
+    far_pointing = ac.ICRS(ra_far * au.rad, dec_far * au.rad)
+    l0_far, m0_far, _ = perley_lmn_from_icrs(
+        ra_far,
+        dec_far,
+        ra0,
+        dec0
+    )
+
     num_l, num_m = dirty.shape
     output_img_buffer = np.zeros((num_l, num_m), dtype=np.float32, order='F')
     output_img_accum = np.zeros((num_l, num_m), dtype=np.float32, order='F')
 
     output_psf_buffer = np.zeros((num_l, num_m), dtype=np.float32, order='F')
     output_psf_accum = np.zeros((num_l, num_m), dtype=np.float32, order='F')
+
+    output_far_psf_buffer = np.zeros((num_l, num_m), dtype=np.float32, order='F')
+    output_far_psf_accum = np.zeros((num_l, num_m), dtype=np.float32, order='F')
 
     count = 0
     for t_idx in range(len(times)):
@@ -220,13 +233,35 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
             )
             output_psf_accum += output_psf_buffer
 
+            # vis_to_image_np(
+            #     uvw=uvw,
+            #     freqs=freqs[nu_start_idx:nu_end_idx],
+            #     vis=np.ones_like(vis),
+            #     pixsize_l=dl,
+            #     pixsize_m=dm,
+            #     center_l=l0_far,
+            #     center_m=m0_far,
+            #     npix_m=num_m,
+            #     npix_l=num_l,
+            #     wgt=None,
+            #     mask=None,
+            #     epsilon=1e-5,
+            #     double_precision_accumulation=False,
+            #     scale_by_n=True,
+            #     normalise=True,
+            #     output_buffer=output_far_psf_buffer,
+            #     num_threads=num_threads
+            # )
+            # output_far_psf_accum += output_psf_buffer
+
             count += 1
     output_img_accum /= count
     output_psf_accum /= count
+    # output_far_psf_accum /= count
+
     psf = output_psf_accum
-
+    # psf_far = output_far_psf_accum
     rad2arcsec = 3600 * 180 / np.pi
-
     major_beam, minor_beam, pa_beam = fit_beam(
         psf=psf,
         dl=dl * rad2arcsec,
@@ -287,9 +322,46 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}_psf.fits"), image_model=image_model,
                        overwrite=True, radian_angles=True)
     dsa_logger.info(f"PSF saved to {os.path.join(plot_folder, f'{image_name_base}_psf.fits')}")
+    #
+    # image_model = ImageModel(
+    #     phase_center=far_pointing,
+    #     obs_time=ref_time,
+    #     dl=dl * au.rad,
+    #     dm=dm * au.rad,
+    #     freqs=np.mean(obsfreqs)[None],
+    #     bandwidth=bandwidth,
+    #     coherencies=('I',),
+    #     beam_major=np.asarray(major_beam) * au.rad,
+    #     beam_minor=np.asarray(minor_beam) * au.rad,
+    #     beam_pa=np.asarray(pa_beam) * au.rad,
+    #     unit='JY/BEAM',
+    #     object_name=f'{image_name_base.upper()}_PSF_FAR',
+    #     image=psf_far[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
+    # )
+    # save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}_psf_far.fits"), image_model=image_model,
+    #                    overwrite=True, radian_angles=True)
+    # dsa_logger.info(f"PSF saved to {os.path.join(plot_folder, f'{image_name_base}_psf_far.fits')}")
 
 
 if __name__ == '__main__':
+
+    main(
+        config_file='dsa1650_a_3.5_v2.0.txt',
+        plot_folder='tests',
+        source_name='skamid_b1_1000h',
+        num_threads=os.cpu_count(),
+        freq_block_size=1,
+        duration=7 * au.min,
+        spectral_line=False,
+        spectral_bandwidth=None,
+        with_noise=False,
+        with_earth_rotation=True,
+        with_freq_synthesis=True,
+        num_reduced_obsfreqs=1,
+        num_reduced_obstimes=1
+    )
+    exit(0)
+
     config_files = []
     # for prefix in ['a', 'e']:
     #     for res in ['2.61', '2.88', '3.14']:
@@ -297,32 +369,58 @@ if __name__ == '__main__':
     #         config_files.append(config_file)
     # config_files.append('dsa1650_9P_e_optimal_v1.2.txt')
 
-    config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
+    # config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
 
     config_files.append('dsa1650_a_2.52_v2.2.txt')
-    config_files.append('dsa1650_a_2.61_v2.2.txt')
-    config_files.append('dsa1650_a_2.88_v2.2.txt')
-    config_files.append('dsa1650_a_3.14_v2.2.txt')
+    # config_files.append('dsa1650_a_2.61_v2.2.txt')
+    # config_files.append('dsa1650_a_2.88_v2.2.txt')
+    # config_files.append('dsa1650_a_3.14_v2.2.txt')
 
-    config_files.append('dsa1650_a_2.95_v2.3.txt')
+    # config_files.append('dsa1650_a_2.95_v2.3.txt')
+    # config_files.append('dsa1650_a_3.05_v2.3.txt')
+    # config_files.append('dsa1650_a_3.20_v2.3.txt')
+    # config_files.append('dsa1650_a_3.30_v2.3.txt')
+    # config_files.append('dsa1650_a_3.35_v2.3.txt')
 
-    config_files.append('dsa1650_a_P279_v2.4.txt')
-    config_files.append('dsa1650_a_P295_v2.4.txt')
-    config_files.append('dsa1650_a_P305_v2.4.txt')
+    # config_files.append('dsa1650_a_P279_v2.4.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.txt')
+    #
+    # config_files.append('dsa1650_a_P279_v2.4.1.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.1.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.1.txt')
+    #
+    # config_files.append('dsa1650_a_P279_v2.4.2.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.2.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.2.txt')
+    #
+    # config_files.append('dsa1650_a_P279_v2.4.3.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.3.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.3.txt')
 
-    config_files.append('dsa1650_a_P279_v2.4.1.txt')
-    config_files.append('dsa1650_a_P295_v2.4.1.txt')
-    config_files.append('dsa1650_a_P305_v2.4.1.txt')
+    # config_files.append('dsa1650_a_P279_v2.4.5.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.5.txt')
+    config_files.append('dsa1650_a_P305_v2.4.5.txt')
 
-    config_files.append('dsa1650_a_P279_v2.4.2.txt')
-    config_files.append('dsa1650_a_P295_v2.4.2.txt')
-    config_files.append('dsa1650_a_P305_v2.4.2.txt')
+    # config_files.append('dsa1650_a_P279_v2.4.6.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.6.txt')
+    config_files.append('dsa1650_a_P305_v2.4.6.txt')
 
-    config_files.append('dsa1650_a_P279_v2.4.3.txt')
-    config_files.append('dsa1650_a_P295_v2.4.3.txt')
-    config_files.append('dsa1650_a_P305_v2.4.3.txt')
+    # config_files.append('dsa1650_a_P279_v2.4.7.txt')
+    config_files.append('dsa1650_a_P295_v2.4.7.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.7.txt')
 
-    for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (200, 20), (400, 40)]:
+    config_files.append('dsa1650_a_P279_v2.4.8.txt')
+    config_files.append('dsa1650_a_P295_v2.4.8.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.8.txt')
+
+    # config_files.append('dsa1650_a_P295_v2.4.9.txt')
+
+    # config_files.append('dsa1650_a_P279_v2.4.10.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.10.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.10.txt')
+
+    for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (400, 40)]:  #
         for with_noise in [False, True]:
             for config_file in config_files:
                 if with_noise:
