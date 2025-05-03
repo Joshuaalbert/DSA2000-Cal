@@ -233,26 +233,6 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
             )
             output_psf_accum += output_psf_buffer
 
-            # vis_to_image_np(
-            #     uvw=uvw,
-            #     freqs=freqs[nu_start_idx:nu_end_idx],
-            #     vis=np.ones_like(vis),
-            #     pixsize_l=dl,
-            #     pixsize_m=dm,
-            #     center_l=l0_far,
-            #     center_m=m0_far,
-            #     npix_m=num_m,
-            #     npix_l=num_l,
-            #     wgt=None,
-            #     mask=None,
-            #     epsilon=1e-5,
-            #     double_precision_accumulation=False,
-            #     scale_by_n=True,
-            #     normalise=True,
-            #     output_buffer=output_far_psf_buffer,
-            #     num_threads=num_threads
-            # )
-            # output_far_psf_accum += output_psf_buffer
 
             count += 1
     output_img_accum /= count
@@ -300,7 +280,7 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         image=output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}.fits"), image_model=image_model,
-                       overwrite=True, radian_angles=True)
+                       overwrite=True, radian_angles=True, casa_compat_center_location=True)
 
     dsa_logger.info(f"Image saved to {os.path.join(plot_folder, f'{image_name_base}.fits')}")
 
@@ -320,47 +300,28 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         image=psf[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
     save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}_psf.fits"), image_model=image_model,
-                       overwrite=True, radian_angles=True)
+                       overwrite=True, radian_angles=True, casa_compat_center_location=True)
     dsa_logger.info(f"PSF saved to {os.path.join(plot_folder, f'{image_name_base}_psf.fits')}")
-    #
-    # image_model = ImageModel(
-    #     phase_center=far_pointing,
-    #     obs_time=ref_time,
-    #     dl=dl * au.rad,
-    #     dm=dm * au.rad,
-    #     freqs=np.mean(obsfreqs)[None],
-    #     bandwidth=bandwidth,
-    #     coherencies=('I',),
-    #     beam_major=np.asarray(major_beam) * au.rad,
-    #     beam_minor=np.asarray(minor_beam) * au.rad,
-    #     beam_pa=np.asarray(pa_beam) * au.rad,
-    #     unit='JY/BEAM',
-    #     object_name=f'{image_name_base.upper()}_PSF_FAR',
-    #     image=psf_far[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
-    # )
-    # save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}_psf_far.fits"), image_model=image_model,
-    #                    overwrite=True, radian_angles=True)
-    # dsa_logger.info(f"PSF saved to {os.path.join(plot_folder, f'{image_name_base}_psf_far.fits')}")
 
 
 if __name__ == '__main__':
 
-    main(
-        config_file='dsa1650_a_3.5_v2.0.txt',
-        plot_folder='tests',
-        source_name='skamid_b1_1000h',
-        num_threads=os.cpu_count(),
-        freq_block_size=1,
-        duration=7 * au.min,
-        spectral_line=False,
-        spectral_bandwidth=None,
-        with_noise=False,
-        with_earth_rotation=True,
-        with_freq_synthesis=True,
-        num_reduced_obsfreqs=1,
-        num_reduced_obstimes=1
-    )
-    exit(0)
+    # main(
+    #     config_file='dsa1650_a_3.5_v2.0.txt',
+    #     plot_folder='tests',
+    #     source_name='skamid_b1_1000h',
+    #     num_threads=os.cpu_count(),
+    #     freq_block_size=1,
+    #     duration=7 * au.min,
+    #     spectral_line=False,
+    #     spectral_bandwidth=None,
+    #     with_noise=False,
+    #     with_earth_rotation=True,
+    #     with_freq_synthesis=True,
+    #     num_reduced_obsfreqs=1,
+    #     num_reduced_obstimes=1
+    # )
+    # exit(0)
 
     config_files = []
     # for prefix in ['a', 'e']:
@@ -371,7 +332,7 @@ if __name__ == '__main__':
 
     # config_files.append('dsa1650_9P_a_optimal_v1.2.txt')
 
-    config_files.append('dsa1650_a_2.52_v2.2.txt')
+    # config_files.append('dsa1650_a_2.52_v2.2.txt')
     # config_files.append('dsa1650_a_2.61_v2.2.txt')
     # config_files.append('dsa1650_a_2.88_v2.2.txt')
     # config_files.append('dsa1650_a_3.14_v2.2.txt')
@@ -400,18 +361,18 @@ if __name__ == '__main__':
 
     # config_files.append('dsa1650_a_P279_v2.4.5.txt')
     # config_files.append('dsa1650_a_P295_v2.4.5.txt')
-    config_files.append('dsa1650_a_P305_v2.4.5.txt')
+    # config_files.append('dsa1650_a_P305_v2.4.5.txt')
 
     # config_files.append('dsa1650_a_P279_v2.4.6.txt')
     # config_files.append('dsa1650_a_P295_v2.4.6.txt')
     config_files.append('dsa1650_a_P305_v2.4.6.txt')
 
     # config_files.append('dsa1650_a_P279_v2.4.7.txt')
-    config_files.append('dsa1650_a_P295_v2.4.7.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.7.txt')
     # config_files.append('dsa1650_a_P305_v2.4.7.txt')
 
-    config_files.append('dsa1650_a_P279_v2.4.8.txt')
-    config_files.append('dsa1650_a_P295_v2.4.8.txt')
+    # config_files.append('dsa1650_a_P279_v2.4.8.txt')
+    # config_files.append('dsa1650_a_P295_v2.4.8.txt')
     # config_files.append('dsa1650_a_P305_v2.4.8.txt')
 
     # config_files.append('dsa1650_a_P295_v2.4.9.txt')
@@ -419,74 +380,75 @@ if __name__ == '__main__':
     # config_files.append('dsa1650_a_P279_v2.4.10.txt')
     # config_files.append('dsa1650_a_P295_v2.4.10.txt')
     # config_files.append('dsa1650_a_P305_v2.4.10.txt')
+    for weighting in ['natural']:
+        for duration in [7 * au.min, 28 * au.min]:
+            for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (10000, 10)]:  #
+                for with_noise in [False, True]:
+                    for config_file in config_files:
+                        if with_noise:
+                            plot_folder = f'plots_{num_reduced_obsfreqs}freqs_{num_reduced_obstimes}times_{duration.value}min_{weighting}_with_noise'
+                        else:
+                            plot_folder = f'plots_{num_reduced_obsfreqs}freqs_{num_reduced_obstimes}times_{duration.value}min_{weighting}_no_noise'
+                        main(
+                            config_file=config_file,
+                            plot_folder=plot_folder,
+                            source_name='point_sources',
+                            num_threads=os.cpu_count(),
+                            freq_block_size=200,
+                            duration=duration,
+                            spectral_line=False,
+                            spectral_bandwidth=None,
+                            with_noise=with_noise,
+                            with_earth_rotation=True,
+                            with_freq_synthesis=True,
+                            num_reduced_obsfreqs=num_reduced_obsfreqs,
+                            num_reduced_obstimes=num_reduced_obstimes
+                        )
 
-    for num_reduced_obsfreqs, num_reduced_obstimes in [(100, 10), (400, 40)]:  #
-        for with_noise in [False, True]:
-            for config_file in config_files:
-                if with_noise:
-                    plot_folder = f'plots_{num_reduced_obsfreqs}freqs_{num_reduced_obstimes}times_with_noise'
-                else:
-                    plot_folder = f'plots_{num_reduced_obsfreqs}freqs_{num_reduced_obstimes}times_no_noise'
-                main(
-                    config_file=config_file,
-                    plot_folder=plot_folder,
-                    source_name='point_sources',
-                    num_threads=os.cpu_count(),
-                    freq_block_size=200,
-                    duration=7 * au.min,
-                    spectral_line=False,
-                    spectral_bandwidth=None,
-                    with_noise=with_noise,
-                    with_earth_rotation=True,
-                    with_freq_synthesis=True,
-                    num_reduced_obsfreqs=num_reduced_obsfreqs,
-                    num_reduced_obstimes=num_reduced_obstimes
-                )
+                        main(
+                            config_file=config_file,
+                            plot_folder=plot_folder,
+                            source_name='skamid_b1_1000h',
+                            num_threads=os.cpu_count(),
+                            freq_block_size=200,
+                            duration=duration,
+                            spectral_line=False,
+                            spectral_bandwidth=None,
+                            with_noise=with_noise,
+                            with_earth_rotation=True,
+                            with_freq_synthesis=True,
+                            num_reduced_obsfreqs=num_reduced_obsfreqs,
+                            num_reduced_obstimes=num_reduced_obstimes
+                        )
 
-                main(
-                    config_file=config_file,
-                    plot_folder=plot_folder,
-                    source_name='skamid_b1_1000h',
-                    num_threads=os.cpu_count(),
-                    freq_block_size=200,
-                    duration=7 * au.min,
-                    spectral_line=False,
-                    spectral_bandwidth=None,
-                    with_noise=with_noise,
-                    with_earth_rotation=True,
-                    with_freq_synthesis=True,
-                    num_reduced_obsfreqs=num_reduced_obsfreqs,
-                    num_reduced_obstimes=num_reduced_obstimes
-                )
+                        main(
+                            config_file=config_file,
+                            plot_folder=plot_folder,
+                            source_name='ncg_5194',
+                            num_threads=os.cpu_count(),
+                            freq_block_size=200,
+                            duration=duration,
+                            spectral_line=True,
+                            spectral_bandwidth=5 * au.MHz,
+                            with_noise=with_noise,
+                            with_earth_rotation=True,
+                            with_freq_synthesis=True,
+                            num_reduced_obsfreqs=num_reduced_obsfreqs,
+                            num_reduced_obstimes=num_reduced_obstimes
+                        )
 
-                main(
-                    config_file=config_file,
-                    plot_folder=plot_folder,
-                    source_name='ncg_5194',
-                    num_threads=os.cpu_count(),
-                    freq_block_size=200,
-                    duration=7 * au.min,
-                    spectral_line=True,
-                    spectral_bandwidth=5 * au.MHz,
-                    with_noise=with_noise,
-                    with_earth_rotation=True,
-                    with_freq_synthesis=True,
-                    num_reduced_obsfreqs=num_reduced_obsfreqs,
-                    num_reduced_obstimes=num_reduced_obstimes
-                )
-
-                main(
-                    config_file=config_file,
-                    plot_folder=plot_folder,
-                    source_name='meerkat_gc',
-                    num_threads=os.cpu_count(),
-                    freq_block_size=200,
-                    duration=7 * au.min,
-                    spectral_line=False,
-                    spectral_bandwidth=None,
-                    with_noise=with_noise,
-                    with_earth_rotation=True,
-                    with_freq_synthesis=True,
-                    num_reduced_obsfreqs=num_reduced_obsfreqs,
-                    num_reduced_obstimes=num_reduced_obstimes
-                )
+                        main(
+                            config_file=config_file,
+                            plot_folder=plot_folder,
+                            source_name='meerkat_gc',
+                            num_threads=os.cpu_count(),
+                            freq_block_size=200,
+                            duration=duration,
+                            spectral_line=False,
+                            spectral_bandwidth=None,
+                            with_noise=with_noise,
+                            with_earth_rotation=True,
+                            with_freq_synthesis=True,
+                            num_reduced_obsfreqs=num_reduced_obsfreqs,
+                            num_reduced_obstimes=num_reduced_obstimes
+                        )

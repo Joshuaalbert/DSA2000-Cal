@@ -293,7 +293,8 @@ def _check_image_model(image_model: ImageModel):
         raise ValueError("beam_minor must be positive")
 
 
-def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool = False, radian_angles: bool = False):
+def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool = False, radian_angles: bool = False,
+                       casa_compat_center_location: bool = False):
     """
     Saves an image to FITS using SIN projection.
 
@@ -314,16 +315,32 @@ def save_image_to_fits(file_path: str, image_model: ImageModel, overwrite: bool 
     if (np.shape(image_model.image)[0] % 2 != 0) or (np.shape(image_model.image)[1] % 2 != 0):
         raise ValueError("Image must have an even number of pixels in each direction")
 
-    # Since we flip the l axis, the reference pixel is the other side
-    # To see this:
-    # index         : 0     1       2       3 (These indices are the array coordinates in unflipped order)
-    # l (dl units)  : -2    -1      0       1 (the l formula of wgridder is l[i] = (-1/2 N + i) dl + l0)
-    # pixel-0based  : 3     2       1       0 (each pixel is negative -- which is why we flip l)
-    # pixel-1based  : 4     3       2       1 (in fits file we just add one to the pixel-0based)
-    # So l[N//2] == 0 in pixel-0based is N//2 - 1, which is N//2 in pixel-1based
+    if not casa_compat_center_location:
+        # Since we flip the l axis, the reference pixel is the other side
+        # To see this:
+        # index         : 0     1       2       3 (These indices are the array coordinates in unflipped order)
+        # l (dl units)  : -2    -1      0       1 (the l formula of wgridder is l[i] = (-1/2 N + i) dl + l0)
+        # pixel-0based  : 3     2       1       0 (each pixel is negative -- which is why we flip l)
+        # pixel-1based  : 4     3       2       1 (in fits file we just add one to the pixel-0based)
+        # So l[N//2] == 0 in pixel-0based is N//2 - 1, which is N//2 in pixel-1based
+        crpix_l = image_model.image.shape[0] // 2
+        crpix_m = image_model.image.shape[1] // 2 + 1
+    else:
+        # Alternatively, if we want the 0-based center pixel to be at N//2, then we want l[N//2 - 1] == 0
+        # To see this:
+        # index         : 0     1       2       3       4       6
+        # l (dl units)  : -3    -2      -1      0       1       2
+        # pixel-0based  : 5     4       3       2       1       0
+        # pixel-1based  : 6     5       4       3       2       1
+        # So l[N//2 - 1] == 0 can be achived by slicing the array from 2:
+        # index         : 0     1       2       3
+        # l (dl units)  : -1    0       1       2
+        # pixel-0based  : 3     2       1       0
+        # pixel-1based  : 4     3       2       1
+        image_model.image = image_model.image[2:, ...]
+        crpix_l = image_model.image.shape[0] // 2 + 1
+        crpix_m = image_model.image.shape[1] // 2 + 1
 
-    crpix_l = image_model.image.shape[0] // 2
-    crpix_m = image_model.image.shape[1] // 2 + 1
     w.wcs.crpix = [crpix_l, crpix_m, 1, 1]
     dfreq = image_model.bandwidth / len(image_model.freqs)
     if radian_angles:
