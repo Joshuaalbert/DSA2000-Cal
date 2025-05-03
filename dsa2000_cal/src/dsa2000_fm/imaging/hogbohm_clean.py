@@ -1,7 +1,6 @@
 import numpy as np
 from astropy.convolution import convolve_fft
 from astropy.io import fits
-from numba import njit, prange
 
 from dsa2000_common.common.logging import dsa_logger
 
@@ -63,7 +62,7 @@ def deconvolve_image(
                 if val < threshold:
                     break
                 comp[y0, x0] += gain * val
-                _subtract_psf2d(plane, beam, gain, val, x0, y0, cx0, cy0)
+                _subtract_psf_slice(plane, beam, gain, val, x0, y0, cx0, cy0)
             # Write back updated slices
             residual[s, f] = plane
             model[s, f] = comp
@@ -83,10 +82,9 @@ def deconvolve_image(
     fits.writeto(residual_output, residual, header, overwrite=True)
 
 
-@njit(parallel=True)
-def _subtract_psf2d(
+def _subtract_psf_slice(
         plane: np.ndarray,
-        psf2d: np.ndarray,
+        beam: np.ndarray,
         gain: float,
         peak_val: float,
         x0: int,
@@ -96,19 +94,25 @@ def _subtract_psf2d(
 ) -> None:
     """
     Subtract a scaled PSF kernel from the residual plane at (y0, x0),
-    using reference center (cx0, cy0) from CRPIX.
+    using numpy slicing. Offsets from (cx0, cy0) center are applied.
     """
-    h, w = psf2d.shape
+    h, w = beam.shape
     ny, nx = plane.shape
-    for i in prange(h):
-        yy = y0 + (i - cy0)
-        if yy < 0 or yy >= ny:
-            continue
-        for j in range(w):
-            xx = x0 + (j - cx0)
-            if xx < 0 or xx >= nx:
-                continue
-            plane[yy, xx] -= gain * peak_val * psf2d[i, j]
+    # Compute offset of PSF origin in image coords
+    y_off = y0 - cy0
+    x_off = x0 - cx0
+    # Clip to valid region
+    y1 = max(y_off, 0)
+    y2 = min(y_off + h, ny)
+    x1 = max(x_off, 0)
+    x2 = min(x_off + w, nx)
+    # Corresponding PSF indices
+    psf_y1 = y1 - y_off
+    psf_y2 = psf_y1 + (y2 - y1)
+    psf_x1 = x1 - x_off
+    psf_x2 = psf_x1 + (x2 - x1)
+    # Perform subtraction
+    plane[y1:y2, x1:x2] -= gain * peak_val * beam[psf_y1:psf_y2, psf_x1:psf_x2]
 
 
 def _make_restore_kernel(header):

@@ -1,7 +1,8 @@
 import os
 
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+import numba
 
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 import itertools
 import astropy.coordinates as ac
 import astropy.time as at
@@ -42,6 +43,8 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
     image_name_base = f"{source_name}_{os.path.basename(config_file).replace('.txt', '')}"
     plot_folder = os.path.join(plot_folder, image_name_base)
     os.makedirs(plot_folder, exist_ok=True)
+
+    numba.set_num_threads(os.cpu_count())
 
     fill_registries()
     array = array_registry.get_instance(array_registry.get_match('dsa1650_9P'))
