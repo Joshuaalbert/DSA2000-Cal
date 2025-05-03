@@ -17,7 +17,8 @@ def deconvolve_image(
         gain: float = 0.1,
         niter: int = 1000,
         threshold: float = None,
-        restore_beam: bool = False
+        restore_beam: bool = False,
+        kappa: float = 4
 ) -> None:
     """
     Perform Hogbom CLEAN on a 4D FITS (stokes, freq, m, l), with optional beam restoration.
@@ -55,7 +56,7 @@ def deconvolve_image(
             comp = model[s, f]
             beam = np.ascontiguousarray(psf[s, f])
             if dynamic_threshold:
-                threshold = 5 * np.std(plane)
+                threshold = kappa * np.std(plane)
             while iteration < niter:
                 iteration += 1
                 # Find peak in current residual
@@ -64,7 +65,7 @@ def deconvolve_image(
                 if val <= 0:
                     break
                 if dynamic_threshold and val < threshold:
-                    threshold = 5 * np.std(plane)
+                    threshold = kappa * np.std(plane)
                 if val < threshold:
                     break
                 comp[y0, x0] += gain * val

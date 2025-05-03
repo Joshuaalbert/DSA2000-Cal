@@ -39,7 +39,7 @@ def compute_uvw(antennas_gcrs, time, ra0, dec0):
 def main(config_file, plot_folder, source_name, num_threads, duration, freq_block_size, spectral_line: bool,
          spectral_bandwidth: au.Quantity | None,
          with_noise: bool, with_earth_rotation: bool, with_freq_synthesis: bool, num_reduced_obsfreqs: int | None,
-         num_reduced_obstimes: int | None, deconvolve: bool = False):
+         num_reduced_obstimes: int | None, deconvolve: bool = False, clean_kappa: float = 4.0):
     image_name_base = f"{source_name}_{os.path.basename(config_file).replace('.txt', '')}"
     plot_folder = os.path.join(plot_folder, image_name_base)
     os.makedirs(plot_folder, exist_ok=True)
@@ -319,7 +319,8 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
             gain=0.1,
             niter=int(1e6),
             threshold=None,
-            restore_beam=True
+            restore_beam=True,
+            kappa=clean_kappa
         )
 
 
@@ -422,7 +423,8 @@ if __name__ == '__main__':
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
                             num_reduced_obstimes=num_reduced_obstimes,
-                            deconvolve=True
+                            deconvolve=True,
+                            clean_kappa=3.
                         )
 
                         main(
@@ -439,7 +441,8 @@ if __name__ == '__main__':
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
                             num_reduced_obstimes=num_reduced_obstimes,
-                            deconvolve=True
+                            deconvolve=True,
+                            clean_kappa=3.
                         )
 
                         main(
@@ -456,7 +459,8 @@ if __name__ == '__main__':
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
                             num_reduced_obstimes=num_reduced_obstimes,
-                            deconvolve=True
+                            deconvolve=True,
+                            clean_kappa=3.
                         )
 
                         main(
@@ -473,5 +477,6 @@ if __name__ == '__main__':
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
                             num_reduced_obstimes=num_reduced_obstimes,
-                            deconvolve=True
+                            deconvolve=True,
+                            clean_kappa=3
                         )
