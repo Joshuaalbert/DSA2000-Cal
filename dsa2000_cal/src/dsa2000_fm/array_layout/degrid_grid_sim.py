@@ -1,5 +1,7 @@
 import os
 
+from dsa2000_fm.imaging.hogbohm_clean import deconvolve_image
+
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 import itertools
@@ -37,7 +39,7 @@ def compute_uvw(antennas_gcrs, time, ra0, dec0):
 def main(config_file, plot_folder, source_name, num_threads, duration, freq_block_size, spectral_line: bool,
          spectral_bandwidth: au.Quantity | None,
          with_noise: bool, with_earth_rotation: bool, with_freq_synthesis: bool, num_reduced_obsfreqs: int | None,
-         num_reduced_obstimes: int | None):
+         num_reduced_obstimes: int | None, deconvolve: bool = False):
     image_name_base = f"{source_name}_{os.path.basename(config_file).replace('.txt', '')}"
     plot_folder = os.path.join(plot_folder, image_name_base)
     os.makedirs(plot_folder, exist_ok=True)
@@ -233,7 +235,6 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
             )
             output_psf_accum += output_psf_buffer
 
-
             count += 1
     output_img_accum /= count
     output_psf_accum /= count
@@ -279,7 +280,8 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         object_name=f'{image_name_base.upper()}',
         image=output_img_buffer[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
-    save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}.fits"), image_model=image_model,
+    image_save_file = os.path.join(plot_folder, f"{image_name_base}.fits")
+    save_image_to_fits(image_save_file, image_model=image_model,
                        overwrite=True, radian_angles=True, casa_compat_center_location=True)
 
     dsa_logger.info(f"Image saved to {os.path.join(plot_folder, f'{image_name_base}.fits')}")
@@ -299,9 +301,24 @@ def main(config_file, plot_folder, source_name, num_threads, duration, freq_bloc
         object_name=f'{image_name_base.upper()}_PSF',
         image=psf[:, :, None, None] * au.Jy  # [num_l, num_m, 1, 1]
     )
-    save_image_to_fits(os.path.join(plot_folder, f"{image_name_base}_psf.fits"), image_model=image_model,
+    psf_save_file = os.path.join(plot_folder, f"{image_name_base}_psf.fits")
+    save_image_to_fits(psf_save_file, image_model=image_model,
                        overwrite=True, radian_angles=True, casa_compat_center_location=True)
     dsa_logger.info(f"PSF saved to {os.path.join(plot_folder, f'{image_name_base}_psf.fits')}")
+
+    if deconvolve:
+        model_save_file = os.path.join(plot_folder, f"{image_name_base}_model.fits")
+        residual_save_file = os.path.join(plot_folder, f"{image_name_base}_residual.fits")
+        deconvolve_image(
+            image_fits=image_save_file,
+            psf_fits=psf_save_file,
+            model_output=model_save_file,
+            residual_output=residual_save_file,
+            gain=0.1,
+            niter=int(1e6),
+            threshold=None,
+            restore_beam=True
+        )
 
 
 if __name__ == '__main__':
@@ -402,7 +419,8 @@ if __name__ == '__main__':
                             with_earth_rotation=True,
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
-                            num_reduced_obstimes=num_reduced_obstimes
+                            num_reduced_obstimes=num_reduced_obstimes,
+                            deconvolve=True
                         )
 
                         main(
@@ -418,7 +436,8 @@ if __name__ == '__main__':
                             with_earth_rotation=True,
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
-                            num_reduced_obstimes=num_reduced_obstimes
+                            num_reduced_obstimes=num_reduced_obstimes,
+                            deconvolve=True
                         )
 
                         main(
@@ -434,7 +453,8 @@ if __name__ == '__main__':
                             with_earth_rotation=True,
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
-                            num_reduced_obstimes=num_reduced_obstimes
+                            num_reduced_obstimes=num_reduced_obstimes,
+                            deconvolve=True
                         )
 
                         main(
@@ -450,5 +470,6 @@ if __name__ == '__main__':
                             with_earth_rotation=True,
                             with_freq_synthesis=True,
                             num_reduced_obsfreqs=num_reduced_obsfreqs,
-                            num_reduced_obstimes=num_reduced_obstimes
+                            num_reduced_obstimes=num_reduced_obstimes,
+                            deconvolve=True
                         )
