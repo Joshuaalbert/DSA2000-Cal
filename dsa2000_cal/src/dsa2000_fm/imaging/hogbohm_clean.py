@@ -136,16 +136,18 @@ def _make_restore_kernel(header):
     sigma_y = bmaj * f2s
     kern = np.exp(-0.5 * ((xp / sigma_x) ** 2 + (yp / sigma_y) ** 2))
     return kern / np.sum(kern)
-
-
-# Example usage:
-deconvolve_image(
-    image_fits='point_sources_dsa1650_a_P305_v2.4.6.fits',
-    psf_fits='point_sources_dsa1650_a_P305_v2.4.6_psf.fits',
-    model_output='point_sources_dsa1650_a_P305_v2.4.6_model.fits',
-    residual_output='point_sources_dsa1650_a_P305_v2.4.6_residual.fits',
-    gain=0.1,
-    niter=1000,
-    threshold=None,
-    restore_beam=False
-)
+#
+#
+# if __name__ == '__main__':
+#
+#     # Example usage:
+#     deconvolve_image(
+#         image_fits='point_sources_dsa1650_a_P305_v2.4.6.fits',
+#         psf_fits='point_sources_dsa1650_a_P305_v2.4.6_psf.fits',
+#         model_output='point_sources_dsa1650_a_P305_v2.4.6_model.fits',
+#         residual_output='point_sources_dsa1650_a_P305_v2.4.6_residual.fits',
+#         gain=0.1,
+#         niter=1000,
+#         threshold=None,
+#         restore_beam=False
+#     )

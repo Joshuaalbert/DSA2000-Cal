@@ -1,7 +1,5 @@
 import os
 
-from dsa2000_fm.imaging.hogbohm_clean import deconvolve_image
-
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 import itertools
@@ -12,6 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from dsa2000_fm.imaging.hogbohm_clean import deconvolve_image
 from dsa2000_assets.content_registry import fill_registries
 from dsa2000_assets.registries import source_model_registry, array_registry
 from dsa2000_common.common.astropy_utils import mean_itrs, get_time_of_local_meridean
