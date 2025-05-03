@@ -89,39 +89,7 @@ def deconvolve_image(
     fits.writeto(residual_output, residual, header, overwrite=True)
 
 
-# def _subtract_psf_slice(
-#         plane: np.ndarray,
-#         beam: np.ndarray,
-#         gain: float,
-#         peak_val: float,
-#         x0: int,
-#         y0: int,
-#         cx0: int,
-#         cy0: int
-# ) -> None:
-#     """
-#     Subtract a scaled PSF kernel from the residual plane at (y0, x0),
-#     using numpy slicing. Offsets from (cx0, cy0) center are applied.
-#     """
-#     h, w = beam.shape
-#     ny, nx = plane.shape
-#     # Compute offset of PSF origin in image coords
-#     y_off = y0 - cy0
-#     x_off = x0 - cx0
-#     # Clip to valid region
-#     y1 = max(y_off, 0)
-#     y2 = min(y_off + h, ny)
-#     x1 = max(x_off, 0)
-#     x2 = min(x_off + w, nx)
-#     # Corresponding PSF indices
-#     psf_y1 = y1 - y_off
-#     psf_y2 = psf_y1 + (y2 - y1)
-#     psf_x1 = x1 - x_off
-#     psf_x2 = psf_x1 + (x2 - x1)
-#     # Perform subtraction
-#     plane[y1:y2, x1:x2] -= gain * peak_val * beam[psf_y1:psf_y2, psf_x1:psf_x2]
-#
-# @njit(parallel=True)
+@njit(parallel=True)
 def _subtract_psf2d(
         plane: np.ndarray,
         psf2d: np.ndarray,
