@@ -146,7 +146,7 @@ services:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/jupyter/Dockerfile
     ports:
-      - "8899:8888"        # Jupyter
+      - "127.0.0.1:8899:8888"        # Jupyter
     env_file:
       - .env
     cap_add:
