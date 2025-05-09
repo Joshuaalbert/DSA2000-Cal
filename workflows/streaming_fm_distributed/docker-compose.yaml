@@ -60,7 +60,7 @@ services:
       - "20000-20100:20000-20100"  # Worker ports range
       - "6380:6380"        # Redis shard port
       - "6381:6381"        # Redis shard port
-      - "127.0.0.1:8899:8888"        # Jupyter
+      - "8899:8888"        # Jupyter
       - "8501:8501"        # Streamlit
     env_file:
       - .env
@@ -146,7 +146,7 @@ services:
       context: ../..
       dockerfile: workflows/streaming_fm_distributed/jupyter/Dockerfile
     ports:
-      - "127.0.0.1:8899:8888"        # Jupyter
+      - "8899:8888"        # Jupyter
     env_file:
       - .env
     cap_add:
