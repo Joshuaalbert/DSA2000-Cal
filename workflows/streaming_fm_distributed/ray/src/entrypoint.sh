@@ -83,7 +83,7 @@ if [ "$IS_RAY_HEAD" = true ]; then
   jupyter notebook \
     --port=8888 --no-browser --allow-root \
     --ServerApp.allow_origin='*' \
-    --ServerApp.ip='0.0.0.0' \
+    --ServerApp.ip='127.0.0.1' \
     --ServerApp.root_dir="${JUPYTER_ROOT_DIR}" \
     --ServerApp.token="$JUPYTER_TOKEN" \
     --PasswordIdentityProvider.allow_password_change="False" \
