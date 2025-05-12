@@ -51,10 +51,29 @@ class DSA1650_A29_Prelim(DSA2000WArray):
     def get_antenna_diameter(self) -> au.Quantity:
         return 6.1 * au.m
 
+@array_registry(template='dsa1650_P305_v2.4.6')
+class DSA1650_P305_v246(DSA2000WArray):
+    """
+    DSA2000W array class, optimised array layout.
+    """
+
+    def get_array_file(self) -> str:
+        return os.path.join(*self.content_path, 'dsa1650_P305_v2.4.6_antenna_config.txt')
+
+    def get_antenna_model(self) -> AbstractAntennaModel:
+        beam_model = beam_model_registry.get_instance(beam_model_registry.get_match('dsa_nominal'))
+        return beam_model.get_antenna_model()
+
+    def get_system_equivalent_flux_density(self) -> au.Quantity:
+        return 3360. * au.Jy  # Jy
+
+    def get_antenna_diameter(self) -> au.Quantity:
+        return 6.1 * au.m
+
 
 def transfer_and_add_station_names():
     x, y, z = [], [], []
-    with open('dsa1650_a_2.9_v2-prelim.txt', 'r') as f:
+    with open('dsa1650_a_P305_v2.4.6.txt', 'r') as f:
         for line in f:
             if line.startswith("#"):
                 continue
@@ -70,7 +89,7 @@ def transfer_and_add_station_names():
 
     # add station names
     idx = 0
-    with open('dsa1650_a29_prelim_antenna_config.txt', 'w') as f:
+    with open('dsa1650_P305_v2.4.6_antenna_config.txt', 'w') as f:
         f.write("#station,X,Y,Z\n")
         for antenna in antennas:
             antenna_label = f"dsa-{idx:04d}"
