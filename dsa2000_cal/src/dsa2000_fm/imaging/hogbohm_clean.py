@@ -21,26 +21,28 @@ def deconvolve_image(
         kappa: float = 4
 ) -> None:
     """
-    Perform Hogbom CLEAN on a 4D FITS (stokes, freq, m, l), with optional beam restoration.
+    Perform Hogbom CLEAN on a 4D FITS (l, m, freqs, stokes), with optional beam restoration.
 
-    Assumes image and PSF both have shape (nstokes, nfreq, ny, nx).
+    Assumes image and PSF both have shape (num_l, num_m, num_freq, nstokes).
+    Note: data is stored transposed in FITS, so the memory order is (stokes, freq, m, l).
     """
 
     numba.set_num_threads(os.cpu_count())
     # Load data and headers
+    # Note it's transposed in FITS
     dirty = fits.getdata(image_fits).astype(np.float64)
     header = fits.getheader(image_fits)
     psf = fits.getdata(psf_fits).astype(np.float64)
     psf_header = fits.getheader(psf_fits)
 
     # Reference pixel from PSF header (1-based in FITS)
-    crpix1 = int(psf_header['CRPIX1'])  # x-axis reference pixel
-    crpix2 = int(psf_header['CRPIX2'])  # y-axis reference pixel
+    crpix1 = int(psf_header['CRPIX1'])  # l-axis reference pixel 1-based
+    crpix2 = int(psf_header['CRPIX2'])  # m-axis reference pixel 1-based
     # Convert to 0-based center indices for numpy arrays
-    cx0 = crpix1 - 1
-    cy0 = crpix2 - 1
+    li0_psf = crpix1 - 1
+    mi0_psf = crpix2 - 1
 
-    nstokes, nfreq, ny, nx = dirty.shape
+    nstokes, nfreq, num_m, num_l = dirty.shape
     # Initialize arrays
     model = np.zeros_like(dirty)
     residual = dirty.copy()
@@ -52,27 +54,36 @@ def deconvolve_image(
     for s in range(nstokes):
         for f in range(nfreq):
             # Extract 2D slices
-            plane = np.ascontiguousarray(residual[s, f])
-            comp = model[s, f]
-            beam = np.ascontiguousarray(psf[s, f])
+            residual_plane = np.ascontiguousarray(residual[s, f])
+            psf_plane = np.ascontiguousarray(psf[s, f])
+            model_plane = model[s, f]
             if dynamic_threshold:
-                threshold = kappa * np.std(plane)
+                threshold = kappa * np.std(residual_plane)
             while iteration < niter:
                 iteration += 1
-                # Find peak in current residual
-                y0, x0 = np.unravel_index(np.argmax(plane), plane.shape)
-                val = plane[y0, x0]
-                if val <= 0:
+                # Find peak in current residual, note the transposed order
+                mi0, li0 = np.unravel_index(np.argmax(residual_plane), residual_plane.shape)
+                peak_val = residual_plane[mi0, li0]
+                if peak_val <= 0:
                     break
-                if dynamic_threshold and val < threshold:
-                    threshold = kappa * np.std(plane)
-                if val < threshold:
+                if dynamic_threshold and peak_val < threshold:
+                    threshold = kappa * np.std(residual_plane)
+                if peak_val < threshold:
                     break
-                comp[y0, x0] += gain * val
-                _subtract_psf2d(plane, beam, gain, val, x0, y0, cx0, cy0)
+                model_plane[mi0, li0] += gain * peak_val
+                subtract_psf2d_slice(
+                    residuals=residual_plane,
+                    psf=psf_plane,
+                    gain=gain,
+                    peak_val=peak_val,
+                    li0=li0,
+                    mi0=mi0,
+                    li0_psf=li0_psf,
+                    mi0_psf=mi0_psf
+                )
             # Write back updated slices
-            residual[s, f] = plane
-            model[s, f] = comp
+            residual[s, f] = residual_plane
+            model[s, f] = model_plane
     dsa_logger.info(f"Cleaned {nstokes} x {nfreq} planes with {iteration} / {niter} iterations")
 
     # Optionally restore beam
@@ -90,31 +101,64 @@ def deconvolve_image(
 
 
 @njit(parallel=True)
-def _subtract_psf2d(
-        plane: np.ndarray,
-        psf2d: np.ndarray,
+def _subtract_psf2d_numba(
+        residuals: np.ndarray,
+        psf: np.ndarray,
         gain: float,
         peak_val: float,
-        x0: int,
-        y0: int,
-        cx0: int,
-        cy0: int
+        li0: int,
+        mi0: int,
+        li0_psf: int,
+        mi0_psf: int
 ) -> None:
     """
-    Subtract a scaled PSF kernel from the residual plane at (y0, x0),
-    using reference center (cx0, cy0) from CRPIX.
+    Inplace subtract a scaled PSF kernel from the residual plane at (li0, mi0),
+    using reference center (li0_psf, mi0_psf) from CRPIX.
+
+    Args:
+        residuals: [num_l, num_m] residuals array in JY/BEAM
+        psf: [num_l_psf, num_m_psf] PSF kernel
+        gain: scaling factor
+        peak_val: peak value of the residuals
+        li0: l-dimension peak in residuals 0-based
+        mi0: m-dimension peak in residuals 0-based
+        li0_psf: l-dimension peak in PSF 0-based
+        mi0_psf: m-dimension peak in PSF 0-based
     """
-    h, w = psf2d.shape
-    ny, nx = plane.shape
-    for i in prange(h):
-        yy = y0 + (i - cy0)
-        if yy < 0 or yy >= ny:
+    num_m_psf, num_l_psf = psf.shape
+    num_m, num_l = residuals.shape
+    for li_psf in prange(num_l_psf):
+        li = li0 + (li_psf - li0_psf)
+        if li < 0 or li >= num_l:
             continue
-        for j in range(w):
-            xx = x0 + (j - cx0)
-            if xx < 0 or xx >= nx:
+        for mi_psf in range(num_m_psf):
+            mi = mi0 + (mi_psf - mi0_psf)
+            if mi < 0 or mi >= num_m:
                 continue
-            plane[yy, xx] -= gain * peak_val * psf2d[i, j]
+            residuals[mi, li] -= gain * peak_val * psf[mi_psf, li_psf]
+
+
+def subtract_psf2d_slice(residuals, psf, gain, peak_val, li0, mi0, li0_psf, mi0_psf):
+    # About 4x faster than numba one.
+    num_m, num_l = residuals.shape
+    num_m_psf, num_l_psf = psf.shape
+
+    li_min = li0 - li0_psf
+    li_max = li_min + num_l_psf
+    mi_min = mi0 - mi0_psf
+    mi_max = mi_min + num_m_psf
+
+    l0 = max(0, li_min)
+    l1 = min(num_l, li_max)
+    m0 = max(0, mi_min)
+    m1 = min(num_m, mi_max)
+
+    psf_l0 = l0 - li_min
+    psf_l1 = psf_l0 + (l1 - l0)
+    psf_m0 = m0 - mi_min
+    psf_m1 = psf_m0 + (m1 - m0)
+
+    residuals[m0:m1, l0:l1] -= gain * peak_val * psf[psf_m0:psf_m1, psf_l0:psf_l1]
 
 
 def _make_restore_kernel(header):
