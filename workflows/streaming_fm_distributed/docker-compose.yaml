@@ -31,7 +31,7 @@ services:
       - GF_PATHS_CONFIG=/etc/grafana/grafana.ini
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
     ports:
-      - "3033:3000"
+      - "127.0.0.1:3033:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana:/etc/grafana
