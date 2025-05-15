@@ -21,7 +21,7 @@ class Gaussian:
         sigma_major is the semi-major axis
         x0 is the center of the Gaussian
         R is the rotation matrix
-        D = disg(sigma_minor, sigma_major) / (2 sqrt(2 log(2)))
+        D = diag(sigma_minor, sigma_major) / (2 sqrt(2 log(2)))
         E = diag((2pi)/sigma_minor, (2pi)/sigma_major) * / (2 sqrt(2 log(2)))
     """
     x0: FloatArray  # [2]
