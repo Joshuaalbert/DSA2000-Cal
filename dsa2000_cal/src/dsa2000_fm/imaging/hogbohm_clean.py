@@ -73,11 +73,11 @@ def deconvolve_image(
                     threshold = kappa * np.std(residual_plane)
                 if peak_val < threshold:
                     break
-                model_plane[mi0, li0] += gain * peak_val
                 subtract_psf2d_slice(
+                    model=model_plane,
                     residuals=residual_plane,
                     psf=psf_plane,
-                    gain=gain,
+                    gain=None,
                     peak_val=peak_val,
                     li0=li0,
                     mi0=mi0,
@@ -142,7 +142,7 @@ def _subtract_psf2d_numba(
             residuals[mi, li] -= gain * peak_val * psf[mi_psf, li_psf]
 
 
-def subtract_psf2d_slice(residuals, psf, gain, peak_val, li0, mi0, li0_psf, mi0_psf):
+def subtract_psf2d_slice(model, residuals, psf, gain, peak_val, li0, mi0, li0_psf, mi0_psf):
     # About 4x faster than numba one.
     num_m, num_l = residuals.shape
     num_m_psf, num_l_psf = psf.shape
@@ -162,7 +162,16 @@ def subtract_psf2d_slice(residuals, psf, gain, peak_val, li0, mi0, li0_psf, mi0_
     psf_m0 = m0 - mi_min
     psf_m1 = psf_m0 + (m1 - m0)
 
-    residuals[m0:m1, l0:l1] -= gain * peak_val * psf[psf_m0:psf_m1, psf_l0:psf_l1]
+    residual_patch = residuals[m0:m1, l0:l1]
+    psf_patch = psf[psf_m0:psf_m1, psf_l0:psf_l1]
+    if gain is None:
+        # least squares optimal gain
+        gain = np.sum(residual_patch * psf_patch) / np.sum(np.square(psf_patch))
+        # Clip
+        gain = np.clip(gain, 1e-3, 0.95)
+
+    residual_patch -= gain * peak_val * psf_patch
+    model[mi0, li0] += gain * peak_val
 
 
 def _make_restore_kernel(header):
