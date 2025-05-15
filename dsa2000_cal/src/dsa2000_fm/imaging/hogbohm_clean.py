@@ -18,7 +18,7 @@ def deconvolve_image(
         model_output: str,
         residual_output: str,
         restored_output: str,
-        gain: float = 0.1,
+        gain: float | None = 0.1,
         niter: int = 1_000_000,
         threshold: float = None,
         kappa: float = 5.
@@ -77,7 +77,7 @@ def deconvolve_image(
                     model=model_plane,
                     residuals=residual_plane,
                     psf=psf_plane,
-                    gain=None,
+                    gain=gain,
                     peak_val=peak_val,
                     li0=li0,
                     mi0=mi0,
