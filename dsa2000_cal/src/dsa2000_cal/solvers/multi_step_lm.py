@@ -1,4 +1,4 @@
-from typing import NamedTuple, TypeVar, Tuple, Callable, Union
+from typing import NamedTuple, TypeVar, Tuple, Callable
 
 import jax
 import jax.numpy as jnp
@@ -30,8 +30,8 @@ class LMDiagnostic(NamedTuple):
     ddelta_x_norm: FloatArray  # |dx_k - dx_{k-1}|
 
 
-CT = TypeVar('CT', bound=Union[jax.Array, DomainType])
-_CT = TypeVar('_CT', bound=Union[jax.Array, DomainType])
+CT = TypeVar('CT')
+_CT = TypeVar('_CT')
 
 
 def convert_to_real(x: CT) -> Tuple[_CT, Callable[[_CT], CT]]:
@@ -66,7 +66,7 @@ def lm_solver(
         args: tuple = (),
         maxiter: int = 50,
         maxiter_cg: int = 100,
-        gtol: float = 1e-5,
+        gtol: float = 3e-5,
         p_accept: float = 0.01,
         p_lower: float = 0.25,
         p_upper: float = 1.1,
@@ -74,7 +74,7 @@ def lm_solver(
         mu_min: float = 1e-6,
         approx_grad: bool = False,
         verbose: bool = False
-):
+) -> Tuple[DomainType, LMDiagnostic]:
     """
     Finds a local minimum to the least squares problem defined by a residual function.
 

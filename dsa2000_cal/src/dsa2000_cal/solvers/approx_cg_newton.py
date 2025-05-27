@@ -1,476 +1,300 @@
-import dataclasses
-from typing import NamedTuple, Any, Callable, TypeVar, Generic, Union, Tuple
+from typing import NamedTuple, TypeVar, Tuple, Callable, Any
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
-from dsa2000_common.common.ad_utils import build_hvp, tree_dot, tree_norm
-from dsa2000_common.common.array_types import FloatArray, IntArray
+from dsa2000_cal.solvers.cg import (
+    tree_vdot_real_part, tree_scalar_mul, tree_add,
+    tree_sub, tree_neg, cg_solve
+)
+from dsa2000_common.common.ad_utils import build_hvp
+from dsa2000_common.common.array_types import FloatArray, IntArray, BoolArray
 
-X = TypeVar('X', bound=Union[jax.Array, Any])
+# ----------------------------------------------------------------
+# Type helpers
+# ----------------------------------------------------------------
+DomainType = TypeVar("DomainType")  # parameter pytree
+ObjectiveRet = TypeVar("ObjectiveRet")  # scalar objective (FloatArray or 0-D ndarray)
 
-CT = TypeVar('CT', bound=Union[jax.Array, Any])
-_CT = TypeVar('_CT', bound=Union[jax.Array, Any])
+CT = TypeVar("CT")
+_CT = TypeVar("_CT")
 
 
+# ----------------------------------------------------------------
+# Utility: split complex pytrees into real pairs so Wirtinger calculus
+#          works out of the box with JAX’s real autodiff.
+# ----------------------------------------------------------------
 def convert_to_real(x: CT) -> Tuple[_CT, Callable[[_CT], CT]]:
-    def should_split_complex(x: jax.Array):
-        if jnp.issubdtype(x.dtype, jnp.complexfloating):
-            return True
-        return False
+    """Return a real-valued twin of `x`   and   a merge-back function."""
 
-    def maybe_split(x: jax.Array):
-        if should_split_complex(x):
-            return (x.real, x.imag)
-        return x
+    def _maybe_split(a: jax.Array | Any):
+        if isinstance(a, jax.Array) and jnp.iscomplexobj(a):
+            return (a.real, a.imag)
+        return a
 
-    x_leaves, treedef = jax.tree.flatten(x)
-    x_real_imag_leaves = jax.tree.map(maybe_split, x_leaves)
-
-    def merge(x: _CT) -> CT:
-        def maybe_merge(x: jax.Array | Tuple[jax.Array, jax.Array]):
-            if isinstance(x, tuple):
-                return jax.lax.complex(x[0], x[1])
-            return x
-
-        x_leaves = list(map(maybe_merge, x))
-        return jax.tree.unflatten(treedef, x_leaves)
-
-    return x_real_imag_leaves, merge
-
-
-class ApproxCGNewtonState(NamedTuple):
-    iteration: IntArray  # iteration number
-    x: X  # current solution, may be a pytree
-    delta_x: X  # step, may be a pytree
-    obj: FloatArray  # objective value
-    grad_obj: X  # gradient of the objective
-    mu: FloatArray  # damping factor, units of 1/[x]
-    cg_maxiter: IntArray  # maximum number of CG iterations
-    error: FloatArray  # |grad|
-    delta_norm: FloatArray  # |dx_k|
-
-
-class ApproxCGNewtonDiagnostic(NamedTuple):
-    iteration: IntArray  # iteration number
-    exact_step: IntArray  # A single iteration is an exact step followed by inexact steps
-    approx_step: IntArray  # An inexact step
-    obj: FloatArray  # objective value
-    r: FloatArray  # r = (obj(x_k) - obj(x_{k+1})) / (obj(x_k) - (obj(x_{k}) + grad_k dx_k + 1/2 dx_k^T H_k dx_k))
-    pred: FloatArray  # predicted reduction
-    act: FloatArray  # actual reduction
-    delta_norm: FloatArray  # |dx_k|
-    error: FloatArray  # |grad|
-    damping: FloatArray  # pre-damping factor
-    mu: FloatArray  # pre-damping multiplier factor
-    cg_maxiter: IntArray  # maximum number of CG iterations
-
-
-@dataclasses.dataclass(eq=False)
-class ApproxCGNewton(Generic[X]):
-    """
-    Multi-step CG Newton algorithm.
-
-    Finds a local minimum to the least squares problem defined by a residual function, F(x)=0.
-
-    Implements the algorithm described in [1]. In addition, it applies CG method to solve the normal equations,
-    efficient use of JVP and VJP to avoid computing the Jacobian matrix, adaptive step size, and mixed precision.
-
-    References:
-        [1] Fan, J., Huang, J. & Pan, J. An Adaptive Multi-step Levenberg–Marquardt Method.
-            J Sci Comput 78, 531–548 (2019). https://doi.org/10.1007/s10915-018-0777-8
-    """
-    obj_fn: Callable[[X], FloatArray]
-    num_approx_steps: int = 2
-    num_iterations: int = 2
-
-    # Improvement threshold
-    p_any_improvement: FloatArray = 0.01  # p0 > 0
-    p_less_newton: FloatArray = 0.25  # p2 -- less than sufficient improvement
-    p_more_newton: FloatArray = 0.9  # p3 -- more than sufficient improvement
-    p_leave_newton: FloatArray = 1.05  # p4 -- leave Newton step
-
-    # Damping alteration factors 0 < c_more_newton < 1 < c_less_newton
-    c_more_newton: FloatArray = 0.16
-    c_less_newton: FloatArray = 2.78
-    # mu_min > 0
-    mu_min: FloatArray = 1e-5  # 1e-3
-    approx_cg: bool = True
-    min_cg_maxiter: IntArray = 10
-    init_cg_maxiter: IntArray | None = 10
-
-    gtol: FloatArray = 1e-6
-    xtol: FloatArray = 1e-6
-
-    verbose: bool = False
-
-    def __post_init__(self):
-        if self.num_approx_steps < 0:
-            raise ValueError("num_approx_steps must be non-negative")
-        if isinstance(self.mu_min, float) and self.mu_min <= 0:
-            raise ValueError("mu_min must be positive")
-        if all(map(lambda p: isinstance(p, float), (self.p_any_improvement,
-                                                    self.p_more_newton,
-                                                    self.p_less_newton))) and not (
-                (0. <= self.p_any_improvement)
-                and (self.p_any_improvement < self.p_less_newton)
-                and (self.p_less_newton < self.p_more_newton)
-                and (self.p_more_newton <= 1.)
-        ):
-            raise ValueError(
-                "Improvement thresholds must satisfy 0 < p(any) < p(less) < p(more) < 1, "
-                f"got {self.p_any_improvement}, {self.p_less_newton}, "
-                f"{self.p_more_newton}"
-            )
-
-        if isinstance(self.c_more_newton, float) and isinstance(self.c_less_newton, float) and not (
-                (0. < self.c_more_newton)
-                and (self.c_more_newton < 1.)
-                and (1. < self.c_less_newton)
-        ):
-            raise ValueError(
-                "Damping alteration factors must satisfy 0 < c_more_newton < 1 < c_less_newton, "
-                f"got {self.c_more_newton}, {self.c_less_newton}"
-            )
-        self.mu_min = jnp.asarray(self.mu_min, dtype=jnp.float32)
-        self.p_any_improvement = jnp.asarray(self.p_any_improvement, dtype=jnp.float32)
-        self.p_less_newton = jnp.asarray(self.p_less_newton, dtype=jnp.float32)
-        self.p_more_newton = jnp.asarray(self.p_more_newton, dtype=jnp.float32)
-        self.c_more_newton = jnp.asarray(self.c_more_newton, dtype=jnp.float32)
-        self.c_less_newton = jnp.asarray(self.c_less_newton, dtype=jnp.float32)
-        self.gtol = jnp.asarray(self.gtol, dtype=jnp.float32)
-        self.xtol = jnp.asarray(self.xtol, dtype=jnp.float32)
-        self.min_cg_maxiter = jnp.asarray(self.min_cg_maxiter, dtype=jnp.int32)
-        self.init_cg_maxiter = jnp.asarray(self.init_cg_maxiter,
-                                           dtype=jnp.int32) if self.init_cg_maxiter is not None else None
-
-    def update_initial_state(self, state: ApproxCGNewtonState, key: jax.Array | None = None) -> ApproxCGNewtonState:
-        """
-        Update another state into a valid initial state, using the current state as a starting point.
-
-        Args:
-            state: previous state to update
-
-        Returns:
-            updated state
-        """
-        # Note: If the obj_fn has significantly changed from the one used to produce `state`, using a new initial state
-        # is advisable.
-        init_state = self.create_initial_state(state.x)
-        # We update state attributes that help the algorithm converge faster, i.e.
-        # 1. help CG converge faster
-        # 2. help choose the right damping factor
-        return init_state._replace(
-            iteration=state.iteration,
-            mu=state.mu,
-            delta_x=state.delta_x,
-            cg_maxiter=state.cg_maxiter
-        )
-
-    def _select_initial_mu(self, obj_fn, obj0: FloatArray, x0: X, grad0: X):
-        grad_norm = tree_norm(grad0)
-        grad_unit = jax.tree.map(lambda x: x / grad_norm, grad0)
-
-        def steepest_descent_point(alpha: FloatArray):
-            return jax.tree.map(lambda x, y: x - alpha * y, x0, grad_unit)
-
-        def search_cond(carry):
-            alpha, obj = carry
-            done = obj < obj0
-            return jnp.logical_not(done)
-
-        def search_iter(carry):
-            alpha, obj = carry
-            alpha = alpha * 0.5
-            obj = obj_fn(steepest_descent_point(alpha))
-            return alpha, obj
-
-        # Use 1 = alpha_init / |grad|
-        alpha_init = grad_norm
-        alpha, obj = jax.lax.while_loop(
-            search_cond, search_iter,
-            (alpha_init, obj_fn(steepest_descent_point(alpha_init)))
-        )
-        # 1/(mu |grad|) = alpha / |grad|
-        mu = jnp.reciprocal(alpha)
-        return mu
-
-    def create_initial_state(self, x0: X) -> ApproxCGNewtonState:
-        """
-        Create the initial state for the algorithm.
-
-        Returns:
-            initial state
-        """
-
-        x = x0
-        delta_x = jax.tree.map(jnp.zeros_like, x)  # zeros_like copies over sharding
-
-        # Extract the real and imaginary parts of the complex numbers of input to do Wirtinger calculus
-        x_real_imag, merge_fn = convert_to_real(x)
-        x_real_imag_size = sum(jax.tree.leaves(jax.tree.map(np.size, x)))
-        # For solving make the inputs purely real.
-        obj_fn = lambda x: self.obj_fn(merge_fn(x))
-        grad_fn = jax.grad(obj_fn)
-
-        obj = obj_fn(x_real_imag)
-        result_dtype = jnp.result_type(obj)
-        if not jnp.issubdtype(result_dtype, jnp.floating):
-            raise ValueError(f"Objective function must return a floating point array, got {result_dtype}.")
-
-        # Linear search to find a suitable damping factor
-        grad_obj = grad_fn(x_real_imag)
-        mu = self._select_initial_mu(obj_fn, obj, x_real_imag, grad_obj)
-
-        error = tree_norm(grad_obj)
-
-        if self.init_cg_maxiter is None:
-            cg_maxiter = jnp.asarray(sum(jax.tree.leaves(jax.tree.map(np.size, x))), dtype=jnp.int32)
-        else:
-            cg_maxiter = self.init_cg_maxiter
-
-        state = ApproxCGNewtonState(
-            iteration=jnp.asarray(0),
-            x=x,
-            delta_x=delta_x,
-            obj=obj,
-            grad_obj=grad_obj,
-            mu=mu,
-            cg_maxiter=cg_maxiter,
-            error=error,
-            delta_norm=error
-        )
-        return state
-
-    def solve(self, state: ApproxCGNewtonState) -> Tuple[
-        ApproxCGNewtonState, ApproxCGNewtonDiagnostic]:
-
-        # Convert complex to real for Wirtinger calculus
-        x_real_imag, merge_fn = convert_to_real(state.x)
-        delta_x_real_imag, _ = convert_to_real(state.delta_x)
-
-        state = state._replace(
-            x=x_real_imag,
-            delta_x=delta_x_real_imag
-        )
-
-        # For solving make the inputs purely real.
-        obj_fn = lambda x: self.obj_fn(merge_fn(x))
-        grad_fn = jax.grad(obj_fn)
-
-        def build_matvec(hvp: Callable[[X], X], damping: FloatArray):
-            # replaces J_k^T J_k + λ_k I
-            def matvec(v: X) -> X:
-                return jax.tree.map(lambda x, y: x + damping * y, hvp(v), v)
-
-            return matvec
-
-        output_dtypes = jax.tree.map(lambda x: x.dtype, state)
-
-        def body(exact_step: IntArray, approx_step: IntArray, state: ApproxCGNewtonState,
-                 hvp: Callable[[X], X]) -> Tuple[ApproxCGNewtonState, ApproxCGNewtonDiagnostic]:
-
-            # Units of [obj]/[x]^2
-            damping = state.mu * state.error
-
-            matvec = build_matvec(hvp, damping)
-            delta_x, _ = jax.scipy.sparse.linalg.cg(
-                A=matvec,
-                b=jax.tree.map(jax.lax.neg, state.grad_obj),
-                x0=state.delta_x,
-                maxiter=state.cg_maxiter
-            )  # Info returned is not used
-
-            # Determine predicted vs actual reduction gain ratio
-            x_prop = jax.tree.map(lambda x, dx: x + dx, state.x, delta_x)
-            obj_prop = obj_fn(x_prop)
-            grad_obj_prop = grad_fn(x_prop)
-            # obj(x0 + dx) ~ obj(x0) + grad(x0).dx + 0.5 dx^T.H(x0).dx
-            d1 = tree_dot(state.grad_obj, delta_x)
-            d2 = 0.5 * tree_dot(delta_x, hvp(delta_x))
-            obj_pushfwd = state.obj + d1 + d2
-            # jax.debug.print("F_prop: {F_prop}, F_pushfwd: {F_pushfwd}", F_prop=F_prop, F_pushfwd=F_pushfwd)
-            predicted_reduction = state.obj - obj_pushfwd
-            actual_reduction = state.obj - obj_prop
-            r = jnp.where(
-                jnp.logical_or(predicted_reduction == 0., actual_reduction <= 0.),
-                jnp.zeros_like(state.obj),
-                actual_reduction / predicted_reduction
-            )
-
-            # Apply our improvement thresholds
-            any_improvement = r >= self.p_any_improvement
-            more_newton = r > self.p_more_newton
-            less_newton = r < self.p_less_newton
-
-            # Determine if we accept the step
-            # In principle, could use lax.cond.
-
-            (obj, x, grad_obj) = jax.tree.map(
-                lambda x1, x2: jnp.where(any_improvement, x1, x2),
-                (obj_prop, x_prop, grad_obj_prop),
-                (state.obj, state.x, state.grad_obj)
-            )
-
-            if self.approx_cg:
-                # adjust the number of CG iterations if there is sufficient improvement
-                x_size = sum(jax.tree.leaves(jax.tree.map(np.size, x)))
-                cg_maxiter = jnp.where(
-                    any_improvement,
-                    jnp.where(
-                        more_newton,
-                        jnp.maximum(state.cg_maxiter * 0.5, self.min_cg_maxiter).astype(state.cg_maxiter),
-                        state.cg_maxiter
-                    ),
-                    jnp.minimum(state.cg_maxiter * 2, x_size).astype(state.cg_maxiter)
-                )
-            else:
-                cg_maxiter = state.cg_maxiter
-
-            # Update mu
-            mu = jnp.where(
-                less_newton,
-                jnp.where(  # If at bottom apply a few extra "less newton jumps"
-                    state.mu == self.mu_min,
-                    self.mu_min * self.c_less_newton ** 5,
-                    self.c_less_newton * state.mu,
-                ),
-                jnp.where(
-                    more_newton,
-                    jnp.maximum(self.c_more_newton * state.mu, self.mu_min),
-                    state.mu
-                )
-            )
-            mu = jnp.where(r > self.p_leave_newton, state.mu, mu)
-
-            delta_norm = tree_norm(delta_x)
-            error = tree_norm(grad_obj)
-
-            if self.verbose:
-                jax.debug.print(
-                    "Iter: {iteration}, Exact Step: {exact_step} Approx Step: {approx_step}, "
-                    "cg_maxiter: {cg_maxiter}, "
-                    "mu: {mu}, damping: {damping}, r: {r}, pred: {predicted_reduction}, act: {actual_reduction}, "
-                    "any_improvement: {any_improvement}, "
-                    "more_newton: {more_newton}, less_newton: {less_newton}:\n"
-                    "\tobj -> {obj}, delta_norm -> {delta_norm}, error -> {error}",
-                    iteration=state.iteration,
-                    exact_step=exact_step, approx_step=approx_step,
-                    cg_maxiter=state.cg_maxiter,
-                    r=r,
-                    predicted_reduction=predicted_reduction, actual_reduction=actual_reduction,
-                    any_improvement=any_improvement,
-                    more_newton=more_newton, less_newton=less_newton, obj=obj, damping=damping,
-                    mu=state.mu, delta_norm=delta_norm, error=error
-                )
-            diagnostic = ApproxCGNewtonDiagnostic(
-                iteration=state.iteration,
-                exact_step=exact_step,
-                approx_step=approx_step,
-                obj=obj,
-                r=r,
-                delta_norm=delta_norm,
-                error=error,
-                damping=damping,
-                mu=state.mu,
-                pred=predicted_reduction,
-                act=actual_reduction,
-                cg_maxiter=state.cg_maxiter
-            )
-            state = ApproxCGNewtonState(
-                iteration=state.iteration + jnp.ones_like(state.iteration),
-                x=x,
-                delta_x=delta_x,
-                grad_obj=grad_obj,
-                obj=obj,
-                mu=mu,
-                cg_maxiter=cg_maxiter,
-                error=error,
-                delta_norm=delta_norm
-            )
-
-            # Cast to the original dtype for sanity
-            state = jax.tree.map(lambda x, dtype: x.astype(dtype), state, output_dtypes)
-
-            return state, diagnostic
-
-        class CarryType(NamedTuple):
-            exact_iteration: IntArray
-            state: ApproxCGNewtonState
-            diagnostics: ApproxCGNewtonDiagnostic
-
-        def single_iteration(carry: CarryType) -> CarryType:
-            # Does one initial exact step using the HVP at the current point, followed by inexact steps using the same
-            # HVP estimate (which is slightly cheaper, because they are already computed).
-            state = carry.state
-            diagnostics = carry.diagnostics
-            hvp = build_hvp(obj_fn, state.x, linearise=True)
-            for approx_step in range(self.num_approx_steps + 1):
-                state, diagnostic = body(
-                    carry.exact_iteration,
-                    approx_step,
-                    state,
-                    hvp
-                )
-                update_index = carry.exact_iteration * (self.num_approx_steps + 1) + approx_step
-                diagnostics = jax.tree.map(lambda x, y: x.at[update_index].set(y), diagnostics, diagnostic)
-
-            exact_iteration = carry.exact_iteration + jnp.ones_like(carry.exact_iteration)
-            return CarryType(exact_iteration, state, diagnostics)
-
-        def term_cond(carry: CarryType):
-            done = jnp.logical_or(
-                carry.exact_iteration >= self.num_iterations,
-                jnp.logical_or(
-                    carry.state.error < self.gtol,
-                    carry.state.delta_norm < self.xtol)
-            )
-            return jnp.logical_not(done)
-
-        # Create diagnostic output structure
-        def _fake_step(state):
-            hvp = build_hvp(obj_fn, state.x, linearise=True)
-            _, diagnostic = body(jnp.zeros_like(state.iteration), jnp.zeros_like(state.iteration), state, hvp)
-            return diagnostic
-
-        diagnostic_aval = jax.eval_shape(_fake_step, state)
-        max_iters = self.num_iterations * (self.num_approx_steps + 1)
-        diagnostics = jax.tree.map(lambda x: jnp.zeros((max_iters,) + x.shape, dtype=x.dtype), diagnostic_aval)
-
-        carry = jax.lax.while_loop(
-            term_cond,
-            single_iteration,
-            CarryType(exact_iteration=jnp.zeros_like(state.iteration), state=state, diagnostics=diagnostics)
-        )
-
-        state = carry.state
-        diagnostics = carry.diagnostics
-        # Convert back to complex
-        state = state._replace(
-            x=merge_fn(state.x),
-            delta_x=merge_fn(state.delta_x)
-        )
-
-        return state, diagnostics
-
-
-def _sample_leaf(key, vec):
-    # if not floating or complex raise error
-    if jnp.issubdtype(vec.dtype, jnp.floating):
-        return jax.random.normal(key, shape=vec.shape, dtype=vec.dtype)
-    elif jnp.issubdtype(vec.dtype, jnp.complexfloating):
-        real_dtype = jnp.real(vec).dtype
-        return jax.lax.complex(jax.random.normal(key, shape=vec.shape, dtype=real_dtype),
-                               jax.random.normal(key, shape=vec.shape, dtype=real_dtype))
-    else:
-        raise ValueError("Only floating or complex dtypes are supported")
-
-
-def sample_unit_vector_pytree(key, x):
     leaves, treedef = jax.tree.flatten(x)
-    keys = list(jax.random.split(key, len(leaves)))
-    v = jax.tree.map(_sample_leaf, jax.tree.unflatten(treedef, keys), x)
-    v_norm = tree_norm(v)
-    v = jax.tree.map(lambda x: x / v_norm, v)
-    return v
+    split_leaves = jax.tree.map(_maybe_split, leaves)
+
+    def merge(split_x: _CT) -> CT:
+        def _maybe_merge(a):
+            if isinstance(a, tuple):
+                return jax.lax.complex(a[0], a[1])
+            return a
+
+        merged = list(map(_maybe_merge, split_x))
+        return jax.tree.unflatten(treedef, merged)
+
+    return split_leaves, merge
+
+
+# ----------------------------------------------------------------
+# Diagnostics – patterned after LMDiagnostic
+# ----------------------------------------------------------------
+class NewtonDiagnostic(NamedTuple):
+    iteration: IntArray
+    g_norm: FloatArray  # |∇f|
+    mu: FloatArray  # damping parameter
+    damping: FloatArray  # g_norm / mu
+    cg_iters: IntArray
+    f: FloatArray  # f(x_k)
+    f_prop: FloatArray  # f(x_k + δx_k)
+    f_quad: FloatArray  # quadratic model at proposal
+    delta_f_pred: FloatArray  # predicted decrease
+    delta_f_actual: FloatArray  # actual decrease
+    gain_ratio: FloatArray  # delta_f_actual / delta_f_pred
+    accepted: BoolArray
+    in_trust_region: BoolArray
+    delta_x_norm: FloatArray  # ‖δx‖
+    ddelta_x_norm: FloatArray  # ‖δx – δx⁰‖
+
+
+# ----------------------------------------------------------------
+# Main solver
+# ----------------------------------------------------------------
+def newton_cg_solver(
+        obj_fn: Callable[..., ObjectiveRet],
+        x0: DomainType,
+        args: tuple = (),
+        maxiter: int = 100,
+        maxiter_cg: int = 100,
+        gtol: float = 3e-5,
+        p_accept: float = 0.01,
+        p_lower: float = 0.25,
+        p_upper: float = 1.10,
+        mu_init: float = 1.0,
+        mu_min: float = 1e-6,
+        approx_hvp: bool = False,  # reuse H·v between rejections
+        verbose: bool = False,
+) -> Tuple[DomainType, NewtonDiagnostic]:
+    """
+    Trust-region Newton-CG minimiser.
+
+    Identical call signature and adaptive-μ logic as `lm_solver`, but uses a
+    scalar objective instead of residuals, and solves
+        (H  +  damping·I) δx = -∇f
+    by CG with Hessian–vector products.
+
+    Returns
+    -------
+    x_final : pytree matching `x0`     (merged back to complex if needed)
+    diagnostics : NewtonDiagnostic[...] array with length = `maxiter`
+    """
+    # ---- 1.  Handle complex inputs -----------------------------------------
+    x0_real, merge_back = convert_to_real(x0)
+
+    # Wrap obj_fn so that it consumes / produces purely real pytrees
+    def _obj_fn(x):
+        val = obj_fn(merge_back(x), *args)
+        if not isinstance(val, jax.Array):
+            raise RuntimeError("Objective function must return a JAX scalar array.")
+        if jnp.ndim(val) != 0:
+            raise RuntimeError("Objective function must return a scalar.")
+        return val
+
+    # ---- 2.  State container -----------------------------------------------
+    class NState(NamedTuple):
+        x: DomainType  # current parameters (real)
+        f: FloatArray  # f(x)
+        g: DomainType  # -∇f  (descent direction)
+        g_norm: FloatArray
+        mu: FloatArray
+        delta_x_prev: DomainType  # δx⁻¹
+        delta_x_prev2: DomainType  # δx⁻²
+        iter: IntArray
+
+    # ---- 3.  Helpers --------------------------------------------------------
+    def _gradient(x):
+        return jax.grad(_obj_fn)(x)
+
+    def _initial_state(x):
+        f0 = _obj_fn(x)
+        grad_f = _gradient(x)
+        g0 = tree_neg(grad_f)  # -∇f
+        g_norm0 = jnp.sqrt(tree_vdot_real_part(g0, g0))
+        g_unit = tree_scalar_mul(1.0 / (g_norm0 + 1e-12), g0)
+
+        # Simple backtracking line search along -∇f to pick starting μ
+        def ls_cond(mu):
+            step = tree_scalar_mul(mu, g_unit)
+            f_new = _obj_fn(tree_add(x, step))
+            return (f_new >= f0) & (mu > mu_min)
+
+        def ls_body(mu):
+            return 0.5 * mu
+
+        mu0 = jax.lax.while_loop(ls_cond, ls_body, mu_init)
+
+        z = jax.tree.map(jnp.zeros_like, x)
+        return NState(
+            x=x, f=f0, g=g0, g_norm=g_norm0, mu=mu0,
+            delta_x_prev=z, delta_x_prev2=z, iter=0
+        )
+
+    # ---- 4.  Iteration ------------------------------------------------------
+    def cond_fn(carry):
+        state, _ = carry
+        return (state.g_norm > gtol) & (state.iter < maxiter)
+
+    def step_fn(state: NState):
+        # 4.1  Warm-start: δx⁰ = 2δx⁻¹ − δx⁻²
+        delta_x0 = tree_sub(tree_add(state.delta_x_prev, state.delta_x_prev),
+                            state.delta_x_prev2)
+
+        # 4.2  Build Hessian-vector product operator (maybe reused)
+        hvp = build_hvp(_obj_fn, state.x, linearise=True)
+        damping = state.g_norm / state.mu
+
+        def A_op(v):
+            return tree_add(hvp(v), tree_scalar_mul(damping, v))
+
+        # 4.3  Solve Newton system with CG
+        delta_x, cg_diag = cg_solve(
+            A=A_op, b=state.g, x0=delta_x0,
+            maxiter=maxiter_cg, tol=1e-5, atol=0.0
+        )
+
+        # 4.4  Book-keeping norms
+        delta_x_norm = jnp.sqrt(tree_vdot_real_part(delta_x, delta_x))
+        ddelta_x = tree_sub(delta_x, delta_x0)
+        ddelta_x_norm = jnp.sqrt(tree_vdot_real_part(ddelta_x, ddelta_x))
+
+        # 4.5  Evaluate objective at proposal
+        x_prop = tree_add(state.x, delta_x)
+        f_prop = _obj_fn(x_prop)
+
+        # Quadratic model prediction
+        hvp_dx = hvp(delta_x)
+        quad_term = 0.5 * tree_vdot_real_part(delta_x, hvp_dx)
+        lin_term = tree_vdot_real_part(state.g, delta_x)  # g·δx
+        f_quad = state.f - (lin_term - quad_term)  # f(x)+...
+        delta_f_pred = state.f - f_quad  # should be >0
+        delta_f_actual = state.f - f_prop
+        gain_ratio = delta_f_actual / delta_f_pred
+        gain_ratio = jnp.where(jnp.isnan(gain_ratio), 0.0, gain_ratio)  # handle NaN
+
+        # 4.6  Trust-region logic
+        in_trust = (delta_f_pred > 0) & (delta_f_actual > p_lower * delta_f_pred) & (
+                delta_f_actual < p_upper * delta_f_pred)
+        new_mu = jax.lax.select(in_trust, 2 * state.mu, 0.5 * state.mu)
+        new_mu = jnp.maximum(new_mu, mu_min)
+
+        accepted = (delta_f_pred > 0) & (delta_f_actual > p_accept * delta_f_pred)
+
+        # 4.7  Diagnostics -----------------------------------------------------
+        diag = NewtonDiagnostic(
+            iteration=state.iter,
+            g_norm=state.g_norm,
+            mu=state.mu,
+            damping=damping,
+            cg_iters=cg_diag.iterations,
+            f=state.f,
+            f_prop=f_prop,
+            f_quad=f_quad,
+            delta_f_pred=delta_f_pred,
+            delta_f_actual=delta_f_actual,
+            gain_ratio=gain_ratio,
+            accepted=accepted,
+            in_trust_region=in_trust,
+            delta_x_norm=delta_x_norm,
+            ddelta_x_norm=ddelta_x_norm
+        )
+        if verbose:
+            jax.debug.print(
+                "iter {iteration:3d}  f={f:9.3e}  |g|={g_norm:9.3e}  "
+                "μ={mu:9.3e}  r={gain_ratio:6.2f}  "
+                "Δf_pred={delta_f_pred:9.3e}  Δf_act={delta_f_actual:9.3e}  "
+                "CG={cg_iters}",
+                iteration=state.iter,
+                f=state.f, g_norm=state.g_norm, mu=state.mu,
+                gain_ratio=diag.gain_ratio,
+                delta_f_pred=diag.delta_f_pred,
+                delta_f_actual=diag.delta_f_actual,
+                cg_iters=diag.cg_iters
+            )
+
+        # 4.8  Accept / reject step
+        (
+            x_new, f_new, delta_x_prev_new, delta_x_prev2_new
+        ) = jax.tree.map(
+            lambda a, b: jax.lax.select(accepted, a, b),
+            (x_prop, f_prop, delta_x, state.delta_x_prev),
+            (state.x, state.f, state.delta_x_prev, state.delta_x_prev2)
+        )
+
+        # 4.9  Gradient at (possibly) new point
+        if approx_hvp:
+            # keep previous hvp & gradient
+            g_new = state.g
+            g_norm_new = state.g_norm
+        else:
+            grad_f_new = _gradient(x_new)
+            g_new = tree_neg(grad_f_new)
+            g_norm_new = jnp.sqrt(tree_vdot_real_part(g_new, g_new))
+
+        # 4.10  Next state
+        return NState(
+            x=x_new, f=f_new, g=g_new, g_norm=g_norm_new, mu=new_mu,
+            delta_x_prev=delta_x_prev_new, delta_x_prev2=delta_x_prev2_new,
+            iter=state.iter + 1
+        ), diag
+
+    # --------------------------------------------------------------------
+    # 5.  Main while-loop with diagnostic accumulation
+    # --------------------------------------------------------------------
+    init_state = _initial_state(x0_real)
+
+    # prototype diag for shape inference
+    diag_aval = jax.eval_shape(lambda s: step_fn(s)[1], init_state)
+    empty_diag = jax.tree.map(
+        lambda arr: jnp.zeros((maxiter,) + arr.shape, arr.dtype),
+        diag_aval
+    )
+
+    def body_fn(carry):
+        st, diag_arr = carry
+        new_st, new_d = step_fn(st)
+        diag_arr = jax.tree.map(
+            lambda arr, d: arr.at[st.iter].set(d),
+            diag_arr, new_d
+        )
+        return new_st, diag_arr
+
+    final_state, final_diag = jax.lax.while_loop(
+        cond_fn, body_fn, (init_state, empty_diag)
+    )
+
+    # Merge complex components back to the user space
+    return merge_back(final_state.x), final_diag
+
+
+def test_newton_cg_solver():
+    """A simple test for the newton_cg_solver function."""
+
+    def obj_fn(x):
+        return jnp.cos(jnp.sum(x ** 2))  # simple quadratic function
+
+    x0 = jnp.array([1.0, 2.0, 3.0])  # initial guess
+    x_final, diag = newton_cg_solver(obj_fn, x0, maxiter=10, verbose=True)
+
+    print("Final solution:", x_final)
+    print("Diagnostics:", diag)

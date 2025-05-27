@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from dsa2000_cal.solvers.approx_cg_newton import ApproxCGNewton
+from dsa2000_cal.solvers.approx_cg_newton import newton_cg_solver
 from dsa2000_common.common.array_types import FloatArray
 
 
@@ -15,14 +15,12 @@ def test_approx_cg_newton(n):
 
     x0 = 10 * jnp.ones(n)
 
-    solver = ApproxCGNewton(rosenbrock_nd, num_approx_steps=2, num_iterations=40, verbose=True)
-    state = solver.create_initial_state(x0)
-    state, diagnostics = solver.solve(state)
-    print(state)
+    solution, diagnostics = newton_cg_solver(rosenbrock_nd, x0, verbose=True)
+    np.testing.assert_allclose(solution, jnp.ones(n), atol=1e-4)
     import pylab as plt
-    plt.plot(np.log(diagnostics.error), label="error")
-    plt.plot(np.log(diagnostics.delta_norm), label="delta_norm")
-    plt.plot(np.log(diagnostics.error/diagnostics.delta_norm), label="error/delta_norm")
+    plt.plot(np.log(diagnostics.g_norm), label="error")
+    plt.plot(np.log(diagnostics.ddelta_x_norm), label="delta_norm")
+    plt.plot(np.log(diagnostics.g_norm / diagnostics.ddelta_x_norm), label="error/delta_norm")
     plt.plot(np.log(diagnostics.damping), label="damping")
     plt.plot(np.log(diagnostics.mu), label="mu")
     plt.legend()
