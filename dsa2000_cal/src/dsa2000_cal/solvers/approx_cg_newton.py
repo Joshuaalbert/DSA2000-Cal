@@ -3,11 +3,8 @@ from typing import NamedTuple, TypeVar, Tuple, Callable, Any
 import jax
 import jax.numpy as jnp
 
-from dsa2000_cal.solvers.cg import (
-    tree_vdot_real_part, tree_scalar_mul, tree_add,
-    tree_sub, tree_neg, cg_solve
-)
-from dsa2000_common.common.ad_utils import build_hvp
+from dsa2000_cal.solvers.cg import tree_neg, tree_vdot_real_part, tree_scalar_mul, tree_add, cg_solve
+from dsa2000_common.common.ad_utils import build_hvp, tree_sub
 from dsa2000_common.common.array_types import FloatArray, IntArray, BoolArray
 
 # ----------------------------------------------------------------
@@ -83,6 +80,8 @@ def newton_cg_solver(
         p_upper: float = 1.10,
         mu_init: float = 1.0,
         mu_min: float = 1e-6,
+        mu_in_factor: float = 5,
+        mu_out_factor: float = 0.1,
         approx_hvp: bool = False,  # reuse H·v between rejections
         verbose: bool = False,
 ) -> Tuple[DomainType, NewtonDiagnostic]:
@@ -106,7 +105,7 @@ def newton_cg_solver(
     def _obj_fn(x):
         val = obj_fn(merge_back(x), *args)
         if not isinstance(val, jax.Array):
-            raise RuntimeError("Objective function must return a JAX scalar array.")
+            raise RuntimeError(f"Objective function must return a JAX scalar array, got {type(val)}.")
         if jnp.ndim(val) != 0:
             raise RuntimeError("Objective function must return a scalar.")
         return val
@@ -140,7 +139,7 @@ def newton_cg_solver(
             return (f_new >= f0) & (mu > mu_min)
 
         def ls_body(mu):
-            return 0.5 * mu
+            return mu * mu_out_factor
 
         mu0 = jax.lax.while_loop(ls_cond, ls_body, mu_init)
 
@@ -195,7 +194,7 @@ def newton_cg_solver(
         # 4.6  Trust-region logic
         in_trust = (delta_f_pred > 0) & (delta_f_actual > p_lower * delta_f_pred) & (
                 delta_f_actual < p_upper * delta_f_pred)
-        new_mu = jax.lax.select(in_trust, 2 * state.mu, 0.5 * state.mu)
+        new_mu = jax.lax.select(in_trust, mu_in_factor * state.mu, state.mu * mu_out_factor)
         new_mu = jnp.maximum(new_mu, mu_min)
 
         accepted = (delta_f_pred > 0) & (delta_f_actual > p_accept * delta_f_pred)
@@ -285,16 +284,3 @@ def newton_cg_solver(
 
     # Merge complex components back to the user space
     return merge_back(final_state.x), final_diag
-
-
-def test_newton_cg_solver():
-    """A simple test for the newton_cg_solver function."""
-
-    def obj_fn(x):
-        return jnp.cos(jnp.sum(x ** 2))  # simple quadratic function
-
-    x0 = jnp.array([1.0, 2.0, 3.0])  # initial guess
-    x_final, diag = newton_cg_solver(obj_fn, x0, maxiter=10, verbose=True)
-
-    print("Final solution:", x_final)
-    print("Diagnostics:", diag)

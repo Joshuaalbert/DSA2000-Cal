@@ -186,7 +186,7 @@ def _make_restore_kernel(header):
     pa = au.Quantity(header['BPA'], 'deg').to('rad').value
 
     # Gaussian of total flux 1.0, order is (l, m) -> (minor, major)
-    g = Gaussian(np.array([0., 0.]), bmaj, bmin, pa, 1.0)
+    g = Gaussian(np.array([0., 0.]), bmaj, bmin, pa, Gaussian.total_flux_from_peak(1.0, bmaj, bmin))
 
     rl = int(np.ceil(5 * bmaj / pix_dl))
     rm = int(np.ceil(5 * bmaj / pix_dm))

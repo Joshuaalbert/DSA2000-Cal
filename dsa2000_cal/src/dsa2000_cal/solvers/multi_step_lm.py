@@ -72,6 +72,8 @@ def lm_solver(
         p_upper: float = 1.1,
         mu_init: float = 1.,
         mu_min: float = 1e-6,
+        mu_in_factor: float = 5,
+        mu_out_factor: float = 0.1,
         approx_grad: bool = False,
         verbose: bool = False
 ) -> Tuple[DomainType, LMDiagnostic]:
@@ -145,7 +147,7 @@ def lm_solver(
             return (Q_new >= Q) & (mu > mu_min)
 
         def line_search_body(mu):
-            mu = 0.5 * mu
+            mu = mu * mu_out_factor
             return mu
 
         mu = jax.lax.while_loop(
@@ -203,7 +205,7 @@ def lm_solver(
         # Adjust the damping parameter μ if in the trust region
         in_trust_region = (delta_Q_convex > 0) & (delta_Q_actual > p_lower * delta_Q_convex) & (
                 delta_Q_actual < p_upper * delta_Q_convex)
-        new_mu = jax.lax.select(in_trust_region, 2 * state.mu, 0.5 * state.mu)
+        new_mu = jax.lax.select(in_trust_region, mu_in_factor * state.mu, state.mu * mu_out_factor)
         # Accept step if the model predicts a convex decrease and ratio is high.
         accepted = (delta_Q_convex > 0) & (delta_Q_actual > p_accept * delta_Q_convex)
 

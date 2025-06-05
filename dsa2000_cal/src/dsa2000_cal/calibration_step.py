@@ -23,12 +23,12 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
                      verbose: bool = False, num_devices: int = 1, backend: str = 'cpu', maxiter: int = 100,
                      maxiter_cg: int = 100):
     """
-    Perform a single calibration step.
+    Perform a single calibration step on a block of averaged data.
 
     Args:
         params: Possible initial guesses.
         vis_model: [D, Tm, B, Cm[, 2, 2]]
-        vis_data: [Tm, B, Cm[, 2, 2]] Tm and Cm divide T and C.
+        vis_data: [Tm, B, Cm[, 2, 2]].
         weights: [Tm, B, Cm[, 2, 2]] flagged vis imply weights of zero.
         antenna1: [B] antenna 1
         antenna2: [B] antenna 2
@@ -51,7 +51,6 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
             f"Visibilities and weights must have the same shape, got {np.shape(vis_data)} and {np.shape(weights)}")
 
     num_B_shards = num_devices
-
     if np.shape(vis_data)[:3] != np.shape(vis_model)[1:4]:
         raise ValueError(f"Data {np.shape(vis_data)} not compatible with model {np.shape(vis_model)}.")
 

@@ -31,7 +31,7 @@ class DSA1650_P305(DSA2000WArray):
         return 6.1 * au.m
 
 
-def transfer_and_add_station_names():
+def test_transfer_and_add_station_names():
     old_array = DSA2000OptimalV1(seed='abc')
     array_location = old_array.get_array_location()
     enu = []
@@ -50,14 +50,15 @@ def transfer_and_add_station_names():
     antennas = ENU(
         antennas_enu[:, 0], antennas_enu[:, 1], antennas_enu[:, 2], obstime=obstime, location=array_location
     ).transform_to(ac.ITRS(obstime=obstime, location=array_location)).earth_location
-    # add station names
-    idx = 0
-    with open('antenna_config.txt', 'w') as f:
-        f.write("#station,X,Y,Z\n")
-        for antenna in antennas:
-            antenna_label = f"dsa-{idx:04d}"
-            f.write(f"{antenna_label},{antenna.x.to('m').value},{antenna.y.to('m').value},{antenna.z.to('m').value}\n")
-            idx += 1
+    print(antennas.lat[0])
+    # # add station names
+    # idx = 0
+    # with open('antenna_config.txt', 'w') as f:
+    #     f.write("#station,X,Y,Z\n")
+    #     for antenna in antennas:
+    #         antenna_label = f"dsa-{idx:04d}"
+    #         f.write(f"{antenna_label},{antenna.x.to('m').value},{antenna.y.to('m').value},{antenna.z.to('m').value}\n")
+    #         idx += 1
 
 
 def test_mk_config():

@@ -1,5 +1,3 @@
-import atexit
-import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Any
 
@@ -9,27 +7,6 @@ import numpy as np
 __all__ = [
     'construct_threaded_pure_callback',
 ]
-
-
-class _ThreadPoolSingleton:
-    """Singleton wrapper for ThreadPoolExecutor."""
-    _instance: ThreadPoolExecutor | None = None
-    # Take the same default as threading library, but set it here for clarity
-    _num_threads = os.environ.get('JAX_PURE_CALLBACK_NUM_THREADS', min(32, (os.cpu_count() or 1) + 4))
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            cls._instance = ThreadPoolExecutor(max_workers=cls._num_threads, thread_name_prefix="jax_pure_callback_")
-            atexit.register(cls.shutdown)
-        return cls._instance
-
-    @classmethod
-    def shutdown(cls):
-        if cls._instance:
-            # wait True ensures a displaced running threadpool finishes before shutdown.
-            cls._instance.shutdown(wait=True)
-            cls._instance = None
 
 
 def _build_callback_from_kernel(cb_kernel: Callable, batch_shape_determiner: Callable, num_threads: int | None):

@@ -1,7 +1,7 @@
 import os
 from functools import partial
 
-from jaxlib.xla_extension import XlaRuntimeError
+from jaxlib.xla_client import XlaRuntimeError
 
 os.environ['JAX_PLATFORMS'] = 'cuda,cpu'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'
