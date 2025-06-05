@@ -31,10 +31,7 @@ export NUMEXPR_MAX_THREADS
 # Start Jupyter Notebook only on the head node
 JUPYTER_ROOT_DIR="$PACKAGE_DIR/notebooks"
 
-# Set the JUPYTER_TOKEN environment variable so that it can be used by Jupyter
-export JUPYTER_TOKEN
-
-jupyter notebook \
+JUPYTER_TOKEN=$JUPYTER_TOKEN jupyter notebook \
   --port=8888 --no-browser --allow-root \
   --ServerApp.allow_origin='*' \
   --ServerApp.ip='0.0.0.0' \
