@@ -95,7 +95,7 @@ def deconvolve_image(
     restored = np.zeros_like(model)
     for s in range(nstokes):
         for f in range(nfreq):
-            restored[s, f] = convolve_fft(model[s, f], kernel, allow_huge=True)
+            restored[s, f] = convolve_fft(model[s, f], kernel, allow_huge=True, normalize_kernel=False)
     restored += residual
 
     # Save outputs
