@@ -165,6 +165,7 @@ services:
       - ../../dsa2000_cal:/dsa/code/package
       - ~/.ssh:/root/.ssh_tmp:ro
       - ./prometheus/dynamic_targets:/etc/prometheus/dynamic_targets
+      - ./configs:/dsa/configs
     deploy:
       resources:
         reservations:

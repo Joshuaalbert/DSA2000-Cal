@@ -155,7 +155,8 @@ ENV DEBIAN_FRONTEND=dialog
 # === Install rest of package ===
 
 
-RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential g++ ssh git htop vim cron
+RUN apt-get update && apt-get install -y gdb lldb sudo rsync build-essential g++ ssh git htop vim cron gcc make \
+        iputils-ping graphviz graphviz-dev libzmq3-dev
 
 # Install the ducc0 package from source for best performance
 # This must be installed before requirement.txt, to avoid install from binary
@@ -187,7 +188,7 @@ COPY ./workflows/streaming_fm_distributed/jupyter/src /dsa/code/src
 RUN mkdir -p /root/.ssh_tmp
 
 # Make a persistent source code direction to mount to
-RUN mkdir -p /dsa/code/package
+RUN mkdir -p /dsa/code/package /dsa/configs
 
 # Make a persistent run directory
 RUN mkdir -p /dsa/run

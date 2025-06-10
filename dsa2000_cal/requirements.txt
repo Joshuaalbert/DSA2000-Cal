@@ -23,3 +23,4 @@ h5py
 reproject
 numba
 jaxctx
+pyzmq

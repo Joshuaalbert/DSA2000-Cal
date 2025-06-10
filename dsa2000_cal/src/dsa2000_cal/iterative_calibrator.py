@@ -14,7 +14,6 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 
 from dsa2000_cal.calibration_step import calibration_step
-from dsa2000_cal.probabilistic_models.gain_prior_models import GainPriorModel
 from dsa2000_cal.solvers.multi_step_lm import LMDiagnostic
 from dsa2000_cal.subtraction_step import subtraction_step
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, BoolArray, IntArray

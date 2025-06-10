@@ -1,0 +1,3 @@
+[]
+rep = "ipc:///tmp/backtest_perf_db_rep.ipc"
+

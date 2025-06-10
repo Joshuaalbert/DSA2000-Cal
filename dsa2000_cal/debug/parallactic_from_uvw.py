@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import numpy as np
 
 
-def parallactic_angle(u, v, w, dec, lat):
+def parallactic_angle_from_uvw(u, v, w, dec, lat):
     """
     Parallactic angle χ (radians)
 
@@ -76,6 +76,6 @@ if __name__ == "__main__":
     v = -x * jnp.cos(ra) * jnp.sin(dec) - y * jnp.sin(ra) * jnp.sin(dec) + z * jnp.cos(dec)
     w = x * jnp.cos(ra) * jnp.cos(dec) + y * jnp.sin(ra) * jnp.cos(dec) + z * jnp.sin(dec)
 
-    chi = parallactic_angle(u, v, w, dec, lat)
+    chi = parallactic_angle_from_uvw(u, v, w, dec, lat)
     chi_expected = standard_parallactic(H, lat, dec)
     np.testing.assert_allclose(chi, chi_expected, atol=1e-6)

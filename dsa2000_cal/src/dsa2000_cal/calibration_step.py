@@ -8,28 +8,33 @@ from jax._src.partition_spec import PartitionSpec
 from jax.experimental.shard_map import shard_map
 
 from dsa2000_cal.ops.residuals import compute_residual_TBC
-from dsa2000_cal.probabilistic_models.gain_prior_models import AbstractGainPriorModel
 from dsa2000_cal.solvers.multi_step_lm import lm_solver
 from dsa2000_common.common.array_types import ComplexArray, FloatArray, IntArray
 from dsa2000_common.common.jax_utils import create_mesh
+from dsa2000_fm.actors.average_utils import average_rule
 
 
 @partial(
     jax.jit,
     static_argnames=['verbose', 'num_devices', 'backend', 'maxiter', 'maxiter_cg']
 )
-def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: ComplexArray, weights: FloatArray,
+def calibration_step(params: Any | None, num_model_times: int, num_model_freqs: int, times: FloatArray,
+                     freqs: FloatArray, vis_model: ComplexArray, vis_data: ComplexArray, weights: FloatArray,
                      antenna1: IntArray, antenna2: FloatArray, gain_probabilistic_model: AbstractGainPriorModel,
                      verbose: bool = False, num_devices: int = 1, backend: str = 'cpu', maxiter: int = 100,
                      maxiter_cg: int = 100):
     """
-    Perform a single calibration step on a block of averaged data.
+    Perform Stokes-I calibration.
 
     Args:
         params: Possible initial guesses.
-        vis_model: [D, Tm, B, Cm[, 2, 2]]
-        vis_data: [Tm, B, Cm[, 2, 2]].
-        weights: [Tm, B, Cm[, 2, 2]] flagged vis imply weights of zero.
+        num_model_times: number of model times
+        num_model_freqs: number of model frequencies
+        times: [T] times of the data
+        freqs: [C] frequencies of the data
+        vis_model: [D, T, B, C, 2, 2]
+        vis_data: [T, B, C, 2, 2].
+        weights: [T, B, C, 2, 2] flagged vis imply weights of zero.
         antenna1: [B] antenna 1
         antenna2: [B] antenna 2
         gain_probabilistic_model: the gain model
@@ -46,6 +51,32 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
         params, gains, diagnostics
     """
 
+    model_times = average_rule(times, num_model_size=num_model_times, axis=0)
+    model_freqs = average_rule(freqs, num_model_size=num_model_freqs, axis=0)
+
+    vis_model = average_rule(
+        average_rule(
+            vis_model, num_model_size=num_model_times, axis=1
+        ),
+        num_model_size=num_model_freqs, axis=3
+    )  # [D, Ts, B, Cs, 2, 2]
+    vis_data = average_rule(
+        average_rule(
+            vis_data, num_model_size=num_model_times, axis=0
+        ),
+        num_model_size=num_model_freqs, axis=2
+    )  # [Ts, B, Cs, 2, 2]
+    weights = jnp.reciprocal(
+        average_rule(
+            average_rule(
+                jnp.reciprocal(weights), num_model_size=num_model_times, axis=0
+            ),
+            num_model_size=num_model_freqs, axis=2
+        )
+    ) # [Ts, B, Cs, 2, 2]
+
+    D, Ts, B, Cs, _, _ = np.shape(vis_model)
+
     if np.shape(vis_data) != np.shape(weights):
         raise ValueError(
             f"Visibilities and weights must have the same shape, got {np.shape(vis_data)} and {np.shape(weights)}")
@@ -54,7 +85,7 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
     if np.shape(vis_data)[:3] != np.shape(vis_model)[1:4]:
         raise ValueError(f"Data {np.shape(vis_data)} not compatible with model {np.shape(vis_model)}.")
 
-    D, Tm, B, Cm = np.shape(vis_model)[:4]
+    D, T, B, C = np.shape(vis_model)[:4]
     if B < num_B_shards:
         raise ValueError(f"Sharding requirement not met: B ({B}) < num_B_shards ({num_B_shards})")
 
@@ -62,8 +93,8 @@ def calibration_step(params: Any | None, vis_model: ComplexArray, vis_data: Comp
     if D != D_:
         raise ValueError(f"Number of model and gain directions mismatch {D} and {D_}")
 
-    if Ts > Tm or Cs > Cm:
-        raise ValueError(f"Model dimension ({Tm}, {Cm}) smaller than solution interval ({Ts}, {Cs}).")
+    if Ts > T or Cs > C:
+        raise ValueError(f"Model dimension ({T}, {C}) smaller than solution interval ({Ts}, {Cs}).")
 
     devices = jax.local_devices(backend=backend)[:num_devices]
     mesh = create_mesh((num_B_shards,), ('B',), devices)

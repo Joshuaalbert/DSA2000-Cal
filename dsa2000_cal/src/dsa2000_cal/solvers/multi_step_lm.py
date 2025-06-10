@@ -64,7 +64,7 @@ def lm_solver(
         residual_fn: Callable[..., CoDomainType],
         x0: DomainType,
         args: tuple = (),
-        maxiter: int = 50,
+        maxiter: int = 100,
         maxiter_cg: int = 100,
         gtol: float = 3e-5,
         p_accept: float = 0.01,
