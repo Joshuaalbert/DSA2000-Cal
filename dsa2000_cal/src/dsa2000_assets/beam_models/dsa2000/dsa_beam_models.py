@@ -39,3 +39,23 @@ class DSANominalBeamModel(BaseContent, AbstractBeamModel):
             beam_file=os.path.join(*self.content_path,
                                    'dsa2000_nominal_beam.h5')
         )
+
+@beam_model_registry(template='dsa_0deg')
+class DSA0degBeamModel(BaseContent, AbstractBeamModel):
+    def get_antenna_model(self) -> AbstractAntennaModel:
+        return H5AntennaModelV1(
+            angular_units=au.deg,
+            freq_units=au.Hz,
+            beam_file=os.path.join(*self.content_path,
+                                   'dish6p15m_nolegs_nocables_shield738mm_ang0deg.h5')
+        )
+
+@beam_model_registry(template='dsa_10deg')
+class DSA10degBeamModel(BaseContent, AbstractBeamModel):
+    def get_antenna_model(self) -> AbstractAntennaModel:
+        return H5AntennaModelV1(
+            angular_units=au.deg,
+            freq_units=au.Hz,
+            beam_file=os.path.join(*self.content_path,
+                                   'dish6p15m_nolegs_nocables_shield738mm_ang10deg.h5')
+        )
