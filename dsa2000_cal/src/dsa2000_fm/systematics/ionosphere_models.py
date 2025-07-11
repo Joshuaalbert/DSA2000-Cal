@@ -29,6 +29,23 @@ class IonosphereModel(NamedTuple):
     vtec: float  # TECU (Total electron content)
 
 
+
+class IonosphereLayerParams(NamedTuple):
+    """
+    Parameters for the ionosphere layer.
+    """
+    length_scale: FloatArray  # [km]
+    longitude_pole: FloatArray  # [rad]
+    latitude_pole: FloatArray  # [rad]
+    bottom_velocity: FloatArray  # [km/s]
+    radial_velocity: FloatArray  # [km/s]
+    bottom: FloatArray  # [km]
+    width: FloatArray  # [km]
+    fed_mu: FloatArray  # [1e10 e-/m^3]
+    fed_sigma: FloatArray  # [1e10 e-/m^3]
+
+
+
 def plot_fetched_data(data: List[IonosphereModel], savefile: str = None):
     data = jax.tree.map(lambda *x: np.stack(x), *data)
     fig, axs = plt.subplots(3, 4, figsize=(15, 10))

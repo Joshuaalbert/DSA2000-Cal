@@ -1,16 +1,18 @@
-import dataclasses
-from typing import NamedTuple, Tuple, Any, List
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxctx import transform
+import tensorflow_probability.substrates.jax as tfp
+from jaxctx import transform, CtxParams
+from jaxctx.priors.prior import Prior
 
-from dsa2000_cal.ops.residuals import compute_residual_TBC
-from dsa2000_cal.probabilistic_models.gain_prior_models import quadratic_interpolation, set_diagonal
 from dsa2000_cal.solvers.multi_step_lm import lm_solver
-from dsa2000_common.common.array_types import FloatArray, ComplexArray
-from dsa2000_common.common.pytree import Pytree
+from dsa2000_common.common.array_types import FloatArray, ComplexArray, IntArray
+from dsa2000_common.common.mixed_precision_utils import mp_policy
+from dsa2000_common.common.sum_utils import scan_sum
+
+tfpd = tfp.distributions
 
 
 class StreamData(NamedTuple):
@@ -19,163 +21,277 @@ class StreamData(NamedTuple):
     vis_model: FloatArray  # [D, T, B, C, 2, 2] model visibilities
 
 
-class IonosphereLayerParams(NamedTuple):
-    """
-    Parameters for the ionosphere layer.
-    """
-    length_scale: FloatArray  # [km]
-    longitude_pole: FloatArray  # [rad]
-    latitude_pole: FloatArray  # [rad]
-    bottom_velocity: FloatArray  # [km/s]
-    radial_velocity: FloatArray  # [km/s]
-    bottom: FloatArray  # [km]
-    width: FloatArray  # [km]
-    fed_mu: FloatArray  # [1e10 e-/m^3]
-    fed_sigma: FloatArray  # [1e10 e-/m^3]
+class ModelParams(NamedTuple):
+    tec: FloatArray  # [D, A] TEC values in mTECU
+    lna_amp: FloatArray  # [A] LNA amplitude gains
+    lna_phase: FloatArray  # [A] LNA phase gains in radians
+    gains: ComplexArray  # [D, A, C] total gains in complex form
 
 
-class GainModel(NamedTuple):
-    G_amp_model: FloatArray  # [A]
-    G_phase_model: FloatArray  # [A]
-    B_amp: FloatArray  # [A, Cm, 2]
-    B_delay: FloatArray  # [A,2]
-    tec: FloatArray  # [D, A]
-
-
-def assemble_gains(gain_model: GainModel, freqs: FloatArray, model_freqs: FloatArray) -> ComplexArray:
+def get_gain_params(freqs: FloatArray, antennas_gcrs: FloatArray, directions_radec: FloatArray,
+                    tec_stddev_mtecu: FloatArray,
+                    lna_amp_mean: FloatArray, lna_amp_stddev: FloatArray, lna_phase_mean_rad: FloatArray,
+                    lna_phase_stddev_rad: FloatArray):
+    num_directions = directions_radec.shape[0]  # Number of directions
+    num_antennas = antennas_gcrs.shape[0]  # Number of antennas
     # Build the total gains from the model
     tec_conv = -8.4479745e6 / freqs  # rad / mTECU [C]
     delay_conv = (2 * np.pi * 1e-9) * freqs  # rad / ns [C]
-    B_amp = quadratic_interpolation(freqs, model_freqs, gain_model.B_amp, axis=1)  # [A, C, 2]
-    B_phase = gain_model.B_delay[:, None, :] * delay_conv[:, None]  # [A, C, 2]
-    prop_phase = gain_model.tec[:, :, None] * tec_conv  # [D, A, C]
-    net_amp = gain_model.G_amp_model[:, None, None] * B_amp  # [A, C, 2]
-    net_phase = gain_model.G_phase_model[:, None, None] + B_phase + prop_phase[:, :, :, None]  # [D, A, C, 2]
-    gains = net_amp * jax.lax.complex(jnp.cos(net_phase), jnp.sin(net_phase))  # [D, A, C, 2]
-    gains = set_diagonal(gains)  # [D, A, C, 2, 2]
-    return gains
+    tec = Prior(
+        tfpd.Normal(
+            loc=jnp.zeros((num_directions, num_antennas), dtype=jnp.float32),
+            scale=tec_stddev_mtecu * jnp.ones((num_directions, num_antennas), dtype=jnp.float32),
+        ),
+        name='tec'
+    ).parameter()
+    g_ones = jnp.ones((num_antennas,))
+    lna_amp = Prior(
+        tfpd.LogNormal.experimental_from_mean_variance(
+            mean=g_ones * lna_amp_mean,
+            variance=g_ones * lna_amp_stddev ** 2
+        ),
+        name="G_amp"
+    ).parameter(random_init=True)
+
+    lna_phase = Prior(
+        tfpd.Normal(
+            loc=g_ones * lna_phase_mean_rad,
+            scale=g_ones * lna_phase_stddev_rad
+        ),
+        name="G_phase"
+    ).parameter(random_init=True)
+    phase = tec[:, :, None] * tec_conv + lna_phase[:, None]  # [D, A, C]
+    gains = lna_amp[:, None] * jax.lax.complex(
+        jnp.cos(phase), jnp.sin(phase)
+    )
+    return ModelParams(
+        tec=tec,  # [D, A]
+        lna_amp=lna_amp,  # [A]
+        lna_phase=lna_phase,  # [A]
+        gains=gains  # [D, A, C]
+    )
 
 
-@dataclasses.dataclass(eq=False)
-class StreamingCalibrator(Pytree):
+def residual_fn(
+        gains,
+        vis_obs: ComplexArray, vis_model: ComplexArray, weights: FloatArray,
+        antenna1: IntArray, antenna2: IntArray
+) -> FloatArray:
     """
-    A class that provides implementations of core calibration subroutines for a radio camera.
+    Compute the residual between the observed visibilities and the model visibilities, given the gains.
 
-    It holds a mutatable state that can be updated with new data, as well as transitioning and slewing capabilities.
-    The general flow would be:
-    t0: create new calibrator | slew(directions, t0)
-    t1: transition(t1) | if new data is available, update(data) | if desired, subtract(data) to get residuals.
+    Args:
+        gains: [D, A, C] total DD gains in complex form
+        vis_obs: [T, B, C, 2, 2] visibility observations
+        vis_model: [D, T, B, C, 2, 2] model visibilities, with pre-applied bandpass, and polarisation solution.
+        weights: [T, B, C, 2, 2] weights for the observations
+        antenna1: [B] indices of the first antenna in the baseline
+        antenna2: [B] indices of the second antenna in the baseline
 
-    In code like:
-
-    cal = StreamingCalibrator()
-    while True:
-      event, payload = pull.recv_multipart()
-      if event == 'new_data':
-        t, data = payload
-        cal.transition(t)
-        cal.update(data)
-        if do_subtract:
-          residuals = cal.subtract(data)
-          push.send_multipart([t, residuals])
-      if event == 'slew':
-        t, directions = payload
-        cal.slew(t, directions)
+    Returns:
+        [T, B, C, 2, 2] complex residuals, the difference between the observed visibilities and the model visibilities
     """
-    # params
-    freqs: FloatArray  # [C] frequencies of the data
-    model_freqs: FloatArray  # [Cm] model frequencies
-    antenna1: FloatArray  # [B] antenna 1 indices
-    antenna2: FloatArray  # [B] antenna 2 indices
-    x0_radius: FloatArray  # [km]
 
-    skip_post_init: bool = False
+    def accum_fn(x):
+        vis_model, gains = x
 
-    def __post_init__(self):
-        """
-        Post-initialization to register the class as a pytree.
-        """
-        if self.skip_post_init:
-            return
+        g1 = gains[antenna1, :, ...]  # [B, C]
+        g2 = gains[antenna2, :, ...]  # [B, C]
 
-    @classmethod
-    def flatten(cls, this: 'StreamingCalibrator') -> Tuple[List[Any], Tuple[Any, ...]]:
-        pass
+        mueller_coeff = (g1 * jax.lax.conj(g2))  # [B, C]
+        delta_vis = mp_policy.cast_to_vis(mueller_coeff[..., None, None] * vis_model)  # [T, B, C, 2, 2]
+        # TODO: consider F16 return type for accumulate, passing real and imaginary parts separately
 
-    @classmethod
-    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> 'StreamingCalibrator':
-        pass
+        return delta_vis
 
-    def subtract(self, data: StreamData) -> ComplexArray:
-        """
-        Subtract the model visibilities from the observed visibilities.
+    zeros = jnp.zeros(np.shape(vis_model)[1:], dtype=mp_policy.vis_dtype)
+    # TODO: consider prefix scan for performance, or vmapping the scan in chunks
+    accumulate = scan_sum(accum_fn, zeros, (vis_model, gains), unroll=2)  # [T, B, C, 2, 2]
+    residual = jax.lax.sub(vis_obs, accumulate)  # [T, B, C, 2, 2]
+    return residual * jnp.sqrt(weights)
 
-        Args:
-            data: StreamData containing the observed visibilities and model visibilities.
 
-        Returns:
-            ComplexArray: The residuals after subtracting the model visibilities from the observed visibilities.
-        """
-        ...
+def solve_dd_gains(
+        # Initial parameters
+        init_params: CtxParams | None,
+        # Data for solve
+        vis_obs: ComplexArray, vis_model: ComplexArray, weights: FloatArray,
+        antenna1: IntArray, antenna2: IntArray,
+        # Parameters for evaluating gain model
+        freqs: FloatArray, antennas_gcrs: FloatArray, directions_radec: FloatArray,
+        # Gain model prior hyperparameters
+        tec_stddev_mtecu: FloatArray, lna_amp_mean: FloatArray, lna_amp_stddev: FloatArray,
+        lna_phase_mean_rad: FloatArray,
+        lna_phase_stddev_rad: FloatArray
+):
+    """
+    Solve the gain parameters using a Levenberg-Marquardt solver.
 
-    def update(self, data: StreamData) -> None:
-        """
-        Update the calibrator with new data and perform calibration.
+    Args:
+        init_params: if None, the initial parameters will be computed from the gain model.
+        vis_obs: [T, B, C, 2, 2] visibility observations
+        vis_model: [D, T, B, C, 2, 2] model visibilities, with pre-applied bandpass, and polarisation solution.
+        weights: [T, B, C, 2, 2] weights for the observations
+        antenna1: [B] indices of the first antenna in the baseline
+        antenna2: [B] indices of the second antenna in the baseline
+        freqs: [C] frequencies in Hz
+        antennas_gcrs: [A, 3] antenna positions in GCRS coordinates
+        directions_radec: [D, 2] directions in RA/Dec coordinates
+        tec_stddev_mtecu: scalar, or [D, A] TEC standard deviation in mTECU
+        lna_amp_mean: scalar, or [A] mean LNA amplitude gain
+        lna_amp_stddev:, scalar, or [A] standard deviation of LNA amplitude gain
+        lna_phase_mean_rad: scalar, or [A] mean LNA phase gain in radians
+        lna_phase_stddev_rad: scalar, or [A] standard deviation of LNA phase gain in radians
 
-        Args:
-            data: StreamData containing the observed visibilities, weights, and model visibilities.
-        """
+    Returns:
+        params: the parameters of the gain model, as a CtxParams object.
+        gains: [D, A, C] total DD gains in complex form
+        diagnostics: diagnostics from the Levenberg-Marquardt solver
+    """
+    transformed_get_gains = transform(get_gain_params)
 
-        def build_gain_model() -> GainModel:
-            ...
-
-        transformed_gain_model = transform(build_gain_model)
-
-        init_params = transformed_gain_model.init(
-            rngs={"params": jax.random.PRNGKey(0)},
-            collections=None
-        ).collections
-
-        def get_gain_model(params) -> GainModel:
-            return transformed_gain_model.apply({"params": jax.random.PRNGKey(0)}, params, data).fn_val
-
-        def residual_fn(params, data: StreamData, freqs: FloatArray, model_freqs: FloatArray,
-                        antenna1, antenna2) -> FloatArray:
-            gain_model = get_gain_model(params)
-            gains = assemble_gains(gain_model, freqs, model_freqs)
-            return compute_residual_TBC(
-                vis_model=data.vis_model,  # [D, T, B, C, 2, 2]
-                vis_data=data.vis_obs,  # [T, B, C, 2, 2]
-                gains=gains[:, None],  # [D, 1, A, C, 2, 2]
-                antenna1=antenna1,  # [B]
-                antenna2=antenna2,  # [B]
-            )
-
-        params, diagnostics = lm_solver(
-            residual_fn=residual_fn,
-            x0=init_params,
-            args=(data,)
+    rngs = {'params': jax.random.PRNGKey(0)}
+    if init_params is None:
+        init_results = transformed_get_gains.init(
+            rngs, None,
+            # gain model args
+            freqs, antennas_gcrs, directions_radec, tec_stddev_mtecu, lna_amp_mean, lna_amp_stddev, lna_phase_mean_rad,
+            lna_phase_stddev_rad
         )
-        gain_model = get_gain_model(params)
+        init_params = init_results.collections
 
-    def transition(self, t: FloatArray) -> None:
-        """
-        Transition the calibrator state to the specified time.
+    def _residual_fn(params,
+                     # residual kwargs
+                     vis_obs, vis_model, weights, antenna1, antenna2,
+                     # gain model kwargs
+                     freqs: FloatArray, antennas_gcrs, directions_radec: FloatArray,
+                     tec_stddev_mtecu: FloatArray,
+                     lna_amp_mean: FloatArray, lna_amp_stddev: FloatArray, lna_phase_mean_rad: FloatArray,
+                     lna_phase_stddev_rad: FloatArray
+                     ):
+        model = transformed_get_gains.apply(
+            {},
+            params,
+            # gain model args
+            freqs, antennas_gcrs, directions_radec, tec_stddev_mtecu, lna_amp_mean, lna_amp_stddev, lna_phase_mean_rad,
+            lna_phase_stddev_rad
+        ).fn_val
+        gains = model.gains
+        return residual_fn(
+            gains=gains,
+            vis_obs=vis_obs,
+            vis_model=vis_model,
+            weights=weights,
+            antenna1=antenna1,
+            antenna2=antenna2
+        )
 
-        Args:
-            t: the time to which to transition.
-        """
-        pass
+    # Solve the least squares problem using the Levenberg-Marquardt algorithm
+    params, diagnostics = lm_solver(
+        residual_fn=_residual_fn,
+        x0=init_params,
+        args=(
+            # residual args
+            vis_obs, vis_model, weights, antenna1, antenna2,
+            # gain model args
+            freqs, antennas_gcrs, directions_radec, tec_stddev_mtecu, lna_amp_mean, lna_amp_stddev, lna_phase_mean_rad,
+            lna_phase_stddev_rad
+        )
+    )
 
-    def slew(self, directions: FloatArray, t: FloatArray) -> None:
-        """
-        Slew the calibrator to a new set of directions at a given time.
+    model = transformed_get_gains.apply(
+        {},
+        params,
+        # gain model args
+        freqs, antennas_gcrs, directions_radec, tec_stddev_mtecu, lna_amp_mean, lna_amp_stddev, lna_phase_mean_rad,
+        lna_phase_stddev_rad
+    ).fn_val
 
-        Args:
-            directions: FloatArray  # [D, 2] the new directions to slew to
-            t: FloatArray  # [D] the time at which to slew
-        """
-        pass
+    return params, model, diagnostics
 
 
-StreamingCalibrator.register_pytree()
+def test_residual_zero_for_unity_gains():
+    """
+    residual_fn should return zero residuals when the observed visibilities
+    exactly match the model visibilities under unity gains.
+    """
+    # Dimensions: 1 direction, 1 time, 1 baseline, 1 channel, 2x2 pol
+    D, T, B, C, A = 1, 2, 3, 4, 2
+    # Model visibilities: all ones (complex)
+    vis_model = jnp.ones((D, T, B, C, 2, 2), dtype=jnp.complex64)
+    # Unity gains
+    gains = jnp.ones((D, A, C), dtype=jnp.complex64)
+    # Observations equal the model under unity gains
+    vis_obs = vis_model[0]
+    # Unit weights
+    weights = jnp.ones((T, B, C, 2, 2), dtype=jnp.float32)
+    # Single baseline between antenna 0 and antenna 1
+    antenna1 = jnp.array([0, 0, 1], dtype=jnp.int32)
+    antenna2 = jnp.array([0, 1, 1], dtype=jnp.int32)
+
+    # Compute residuals
+    residual = residual_fn(
+        gains=gains,
+        vis_obs=vis_obs,
+        vis_model=vis_model,
+        weights=weights,
+        antenna1=antenna1,
+        antenna2=antenna2
+    )
+
+    # Check shapes and values
+    assert residual.shape == (T, B, C, 2, 2)
+    assert jnp.allclose(residual, 0.0, atol=1e-6)
+
+
+def test_solve_dd_gains_returns_model_and_params_shapes():
+    """
+    solve_dd_gains on a trivial unity-gain problem should complete without error,
+    return gains of shape [D, A, C], and approximately recover unity gains.
+    """
+    # Problem dimensions
+    D, T, B, C, A = 1, 2, 3, 4, 5
+    # Frequency axis
+    freqs = jnp.array([1e8]*C, dtype=jnp.float32)
+    # One direction at RA/Dec = (0,0)
+    directions_radec = jnp.zeros((D, 2), dtype=jnp.float32)
+    # Antenna positions (2 antennas)
+    antennas_gcrs = jnp.zeros((A, 3), dtype=jnp.float32)
+    # Hyperparameters: broad TEC prior, mild LNA priors
+    tec_stddev = jnp.ones((D, A), dtype=jnp.float32) * 1e3
+    lna_amp_mean = jnp.array(1.0, dtype=jnp.float32)
+    lna_amp_stddev = jnp.array(0.1, dtype=jnp.float32)
+    lna_phase_mean = jnp.array(0.0, dtype=jnp.float32)
+    lna_phase_stddev = jnp.array(0.1, dtype=jnp.float32)
+    # Single baseline
+    antenna1 = jnp.array([0, 0, 1], dtype=jnp.int32)
+    antenna2 = jnp.array([0, 1, 1], dtype=jnp.int32)
+    # Model and observed visibilities: unity gains -> model equals obs
+    vis_model = jnp.ones((D, T, B, C, 2, 2), dtype=jnp.complex64)
+    vis_obs = vis_model[0]
+    weights = jnp.ones((T, B, C, 2, 2), dtype=jnp.float32)
+
+    # Call the solver
+    params, model, diagnostics = solve_dd_gains(
+        init_params=None,
+        vis_obs=vis_obs,
+        vis_model=vis_model,
+        weights=weights,
+        antenna1=antenna1,
+        antenna2=antenna2,
+        freqs=freqs,
+        antennas_gcrs=antennas_gcrs,
+        directions_radec=directions_radec,
+        tec_stddev_mtecu=tec_stddev,
+        lna_amp_mean=lna_amp_mean,
+        lna_amp_stddev=lna_amp_stddev,
+        lna_phase_mean_rad=lna_phase_mean,
+        lna_phase_stddev_rad=lna_phase_stddev
+    )
+
+    # The returned gains should have shape [D, A, C]
+    assert model.gains.shape == (D, A, C)
+    # For this trivial problem, the solver should recover near-unity gains
+    print(model.gains)
+
+    print(params)

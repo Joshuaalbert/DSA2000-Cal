@@ -1,6 +1,6 @@
-import dataclasses
 from abc import ABC, abstractmethod
-from typing import Any, Tuple, List, Generic, TypeVar, NamedTuple
+from abc import ABC, abstractmethod
+from typing import Any, Generic, TypeVar, NamedTuple
 
 import jax
 import numpy as np
@@ -10,7 +10,6 @@ from jaxctx import transform
 from jaxctx.priors.prior import Prior
 
 from dsa2000_common.common.array_types import FloatArray, ComplexArray, Array
-from dsa2000_common.common.pytree import Pytree
 
 tfpd = tfp.distributions
 
@@ -64,117 +63,61 @@ class AbstractGainPriorModel(ABC, Generic[GainType]):
         ...
 
 
-class DDStokesIGains(NamedTuple):
-    G_amp: FloatArray  # [A] # scalar, LNA + electronics, slow amplitude and slow phase
-    G_phase: FloatArray  # [A] # scalar, LNA + electronics, slow amplitude and slow phase
-    B_amp: FloatArray  # [A, Cm, 2] # diagonal, freq poly, amplitude + delay
-    B_delay: FloatArray  # [A, 2] # diagonal, freq poly, amplitude + delay
+class LNAGains(NamedTuple):
+    # G, LNA + electronics gains
+    lna_amp: FloatArray  # [A] # scalar, LNA + electronics, slow amplitude and slow phase
+    lna_phase: FloatArray  # [A] # scalar, LNA + electronics, slow amplitude and slow phase
+
+
+class ParallacticAngleGains(NamedTuple):
+    # P, Parallactic angle gains
+    parallactic_angle: FloatArray  # [A] # scalar, parallactic angle, slow over time
+
+
+class LeakageGains(NamedTuple):
+    # D, Polarisation leakage gains
+    model_freqs: FloatArray  # [Cm] # frequencies at which the leakage is defined
+    leakage_amp: FloatArray  # [A, Cm, 2] # cross-diagonal, freq poly, amplitude + delay
+    leakage_phase: FloatArray  # [A, Cm, 2] # cross-diagonal, freq poly, amplitude + delay
+
+
+class BandpassGains(NamedTuple):
+    # B, Bandpass gains
+    model_freqs: FloatArray  # [Cm] # frequencies at which the bandpass is defined
+    bandpass_amp: FloatArray  # [A, Cm, 2] # diagonal, freq poly, amplitude + delay
+    bandpass_delay: FloatArray  # [A, Cm, 2] # diagonal, freq poly, amplitude + delay
+
+
+class RotationMeasureGains(NamedTuple):
+    # R, DD Stokes I gains
+    rotation_measure: FloatArray  # [D, A] # scalar, freq model, rotation measure
+
+
+class TECGains(NamedTuple):
+    # Z, DD Stokes V gains
     tec: ComplexArray  # [D, A] # scalar, freq model, TEC
-    gains: ComplexArray  # [D, A, C, 2, 2] fully constructed gains
 
 
-@dataclasses.dataclass(eq=False)
-class DDStokesIGainPriorModel(Pytree, AbstractGainPriorModel[DDStokesIGains]):
-    """
-    Solves for Stokes-I direction dependent effects.
-
-    Assumes the model visibilities include all these terms: GBDEPK,
-
-    where:
-
-        - G: scalar (LNA + electronics: slow amplitude and slow phase)
-        - B: smooth amplitude + per feed delay
-        - D: leakage and cross-polarisation terms
-        - E: PB model
-        - P: parallactic angle + offsets
-        - K: geometric delay
-
-    That is all these things have been calibrated on data and included in the model  visibilities.
-
-    The next term that is solved is TEC (Z), which is scalar and direction dependent.
-
-    Z(GBDEPK)
-    """
-    hour_angle_rad: FloatArray
-    latitude_rad: FloatArray
-    declination_rad: FloatArray
-    lna_amp_stddev: FloatArray
-    lna_phase_stddev_rad: FloatArray
-    parallactic_offset_stddev_rad: FloatArray
-    leakage_phase_stddev_rad: FloatArray
-    leakage_amp_max: FloatArray
-    rotation_measure_stddev_rad_m2: FloatArray
-    bandpass_amplitude_stddev: FloatArray
-    feed_delay_stddev_ns: FloatArray
-    tec_stddev_mtecu: FloatArray
-    skip_post_init: bool = False
-
-    def __post_init__(self):
-        if self.skip_post_init:
-            return
-
-    @classmethod
-    def flatten(cls, this: 'DDStokesIGainPriorModel') -> Tuple[List[Any], Tuple[Any, ...]]:
-        return (
-            [
-
-            ],
-            (
+class Gains(NamedTuple):
+    # Model: G @ B @ D @ E @ P @ R @ Z @ K = G * Z (B @ D @ E @ P @ R @ K)
+    lna_gains: LNAGains | None
+    parallactic_angle_gains: ParallacticAngleGains | None
+    leakage_gains: LeakageGains | None
+    bandpass_gains: BandpassGains | None
+    rotation_measure_gains: RotationMeasureGains | None
+    tec_gains: TECGains | None
 
 
-            )
-        )
-
-    @classmethod
-    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]) -> 'DDStokesIGainPriorModel':
-        [] = children
-        () = aux_data
-        return DDStokesIGainPriorModel(
-            skip_post_init=True
-        )
-
-    def build_prior_model(
-            self,
-            ra: FloatArray,
-            dec: FloatArray,
-            antennas_gcrs: FloatArray,
-            freqs: FloatArray,
-            time: FloatArray
-    ) -> DDStokesIGains:
-        terms = []
-
-        num_ant = np.shape(antennas_gcrs)[0]  # number of antennas
-
-        # G - scalar (LNA + electronics: slow amplitude and slow phase)
-        lna_gains = build_lna_model(num_ant, self.lna_amp_stddev, self.lna_phase_stddev_rad, freqs,
-                                    time)  # [1, 1, A, C, 2, 2]
-        terms.append(lna_gains)
-
-        # B - smooth amplitude + per feed delay
-        bandpass_gains = build_bandpass_model(freqs, num_ant, bandpass_amplitude_stddev=self.bandpass_amplitude_stddev,
-                                              feed_delay_stddev_ns=self.feed_delay_stddev_ns)  # [1, 1, A, C, 2, 2]
-        terms.append(bandpass_gains)
-
-        # D - leakage and Faraday rotation
-        leakage_gain = build_leakage_model(
-            num_ant, freqs,
-            leakage_phase_stddev_rad=self.leakage_phase_stddev_rad,
-            leakage_amp_max=self.leakage_amp_max
-        )  # [1, 1, A, C, 2, 2]
-        terms.append(leakage_gain)
-
-        tec_gains = build_tec_model(num_source, num_ant, freqs, times, self.rotation_measure_stddev_rad_m2,
-                                    tec_stddev_mtecu)
-        terms.append(tec_gains)
-
-        # Combine all terms with matrix multiplication
-        output = terms[0]
-        for term in terms[1:]:
-            output = output @ term  # Matrix multiplication
-        return output
-
-
-DDStokesIGainPriorModel.register_pytree()
+class PriorHyperParameters(NamedTuple):
+    lna_amp_stddev: FloatArray = 0.1
+    lna_phase_stddev_rad: FloatArray = 1.
+    parallactic_offset_stddev_rad: FloatArray = 1e-2
+    leakage_phase_stddev_rad: FloatArray = 0.1
+    leakage_amp_max: FloatArray = 0.2
+    rotation_measure_stddev_rad_m2: FloatArray = 0.2
+    bandpass_amplitude_stddev: FloatArray = 0.5
+    feed_delay_stddev_ns: FloatArray = 1.
+    tec_stddev_mtecu: FloatArray = 200.0
 
 
 def _quadratic_interpolation(x, xp, yp):
@@ -362,14 +305,9 @@ def build_faraday_model(num_source, num_ant, freqs, times, rotation_measure_stdd
     return faraday_gains
 
 
-def build_tec_model(num_source, num_ant, freqs, times, rotation_measure_stddev_rad_m2, tec_stddev_mtecu):
+def build_tec_model(num_source, num_ant, times, tec_stddev_mtecu):
     # Ionosphere TEC and faraday rotation measure, slow over time and frequency
-    T = len(times)
-    C = len(freqs)
-    model_times = times[jnp.array([0, T // 2, -1])]  # [Tm]
-    Tm = len(model_times)
-
-    tec_ones = jnp.ones((num_source, Tm, num_ant, 1), dtype=jnp.float32)  # [D, Tm, A, 1]
+    tec_ones = jnp.ones((num_source, num_ant), dtype=jnp.float32)  # [D, Tm, A, 1]
     tec_model = Prior(
         tfpd.Normal(
             loc=jnp.zeros_like(tec_ones),
@@ -378,16 +316,7 @@ def build_tec_model(num_source, num_ant, freqs, times, rotation_measure_stddev_r
         name='tec_model'
     ).parameter(random_init=True)
 
-    tec = quadratic_interpolation(
-        x=times,
-        xp=model_times,
-        yp=tec_model,
-        axis=1
-    )  # [D, T, A, 1]
-    tec_conv = -8.4479745e6 / freqs  # rad / mTECU
-    tec_phase = tec_conv * tec  # [D, T, A, C]
-    tec_gains = set_diagonal_scalar(jax.lax.complex(jnp.cos(tec_phase), jnp.sin(tec_phase)))  # [D, T, A, C, 2, 2]
-    return tec_gains  # [D, T, A, C, 2, 2]
+    return tec_model  # [D, T, A, C, 2, 2]
 
 
 def build_leakage_model(num_ant, freqs, leakage_phase_stddev_rad, leakage_amp_max):
@@ -395,7 +324,7 @@ def build_leakage_model(num_ant, freqs, leakage_phase_stddev_rad, leakage_amp_ma
     # Polarisation leakage gains
     model_freqs = freqs[jnp.array([0, C // 2, -1])]  # [Cm]
     Cm = len(model_freqs)
-    leakage_ones = jnp.ones((1, 1, num_ant, Cm, 2), dtype=jnp.float32)  # [1, 1, A, Cm, 2]
+    leakage_ones = jnp.ones((num_ant, Cm, 2), dtype=jnp.float32)  # [1, 1, A, Cm, 2]
     leakage_amp_model = Prior(
         tfpd.Uniform(
             low=jnp.zeros_like(leakage_ones),
@@ -422,9 +351,11 @@ def build_leakage_model(num_ant, freqs, leakage_phase_stddev_rad, leakage_amp_ma
         yp=leakage_phase_model,
         axis=-2
     )  # [1, 1, A, C, 2]
-    leakage_gain = leakage_amp * jax.lax.complex(jnp.cos(leakage_phase), jnp.sin(leakage_phase))  # [1, 1, A, C, 2]
-    leakage_gain = jnp.eye(2) + set_cross(leakage_gain)  # [1, 1, A, C, 2, 2]
-    return leakage_gain
+    return LeakageGains(
+        model_freqs=model_freqs,  # [Cm]
+        leakage_amp=leakage_amp,
+        leakage_phase=leakage_phase
+    )
 
 
 def build_parallactic_model(A, declination_rad, hour_angle_rad, latitude_rad, parallactic_offset_stddev_rad):
@@ -443,18 +374,19 @@ def build_parallactic_model(A, declination_rad, hour_angle_rad, latitude_rad, pa
         name='parallactic_offset'
     ).parameter(random_init=True)
     parallactic_angle = parallactic_angle + parallactic_offset  # [A]
-    parallactic_gain = jnp.stack(
-        [
-            jnp.cos(parallactic_angle), jnp.sin(parallactic_angle),
-            -jnp.sin(parallactic_angle), jnp.cos(parallactic_angle)
-        ],
-        axis=-1).reshape((A, 2, 2))  # [A, 2, 2]
-    parallactic_gain = parallactic_gain[None, None, :, None, :, :]  # [1, 1, A, 1, 2, 2]
-    return parallactic_gain
+    # parallactic_gain = jnp.stack(
+    #     [
+    #         jnp.cos(parallactic_angle), jnp.sin(parallactic_angle),
+    #         -jnp.sin(parallactic_angle), jnp.cos(parallactic_angle)
+    #     ],
+    #     axis=-1).reshape((A, 2, 2))  # [A, 2, 2]
+    return ParallacticAngleGains(
+        parallactic_angle=parallactic_angle
+    )
 
 
-def build_bandpass_model(freqs, num_ant, bandpass_amplitude_mean, bandpass_amplitude_stddev, feed_delay_mean_ns,
-                         feed_delay_stddev_ns):
+def build_bandpass_model(freqs, num_ant, bandpass_amplitude_mean, bandpass_amplitude_stddev,
+                         feed_delay_mean_ns, feed_delay_stddev_ns):
     C = np.shape(freqs)[0]
     if C <= 4:
         model_freqs = freqs[[0, -1]]
@@ -478,8 +410,7 @@ def build_bandpass_model(freqs, num_ant, bandpass_amplitude_mean, bandpass_ampli
     )
 
     # Add per feed delay
-    phase_conv = (2 * jnp.pi * 1e-9) * freqs  # rad / ns # [C]
-    feed_delay_ones = jnp.ones((num_ant, 1, 2), dtype=jnp.float32)  # [A, 1, 2]
+    feed_delay_ones = jnp.ones((num_ant, 2), dtype=jnp.float32)  # [A, 1, 2]
     feed_delay_ns = Prior(
         tfpd.Normal(
             loc=feed_delay_ones * feed_delay_mean_ns,
@@ -487,11 +418,12 @@ def build_bandpass_model(freqs, num_ant, bandpass_amplitude_mean, bandpass_ampli
         ),
         name='feed_delay_ns'
     ).parameter(random_init=True)
-    feed_phase = phase_conv[:, None] * feed_delay_ns  # [A, C, 2]
-    feed_gains = jax.lax.complex(jnp.cos(feed_phase), jnp.sin(feed_phase))  # [1, 1, A, C, 2]
-    feed_gains = set_diagonal(feed_gains)  # [1, 1, A, C, 2, 2]
-    gains = bandpass_amplitude * feed_gains  # [1, 1, A, C, 2, 2]
-    return gains
+
+    return BandpassGains(
+        model_freqs=model_freqs,  # [Cm]
+        bandpass_amp=bandpass_amplitude,  # [A, Cm, 2]
+        bandpass_delay=feed_delay_ns  # [A, Cm, 2]
+    )
 
 
 def build_lna_model(num_ant, lna_amp_mean, lna_amp_stddev, lna_phase_mean_rad, lna_phase_stddev_rad):
@@ -512,40 +444,7 @@ def build_lna_model(num_ant, lna_amp_mean, lna_amp_stddev, lna_phase_mean_rad, l
         name="G_phase"
     ).parameter(random_init=True)
 
-    G = G_amp * jax.lax.complex(
-        jnp.cos(G_phase), jnp.sin(G_phase)
+    return LNAGains(
+        lna_amp=G_amp,  # [A]
+        lna_phase=G_phase  # [A]
     )
-
-    return G
-
-
-def test_gain_prior_model():
-    num_source = 2
-    num_ant = 10
-    freqs = jnp.linspace(700e6, 800e6, 5)
-    times = jnp.linspace(0., 6, 3)
-
-    transformed = transform(gain_prior_model)
-    kwargs = dict(
-        num_source=num_source,
-        num_ant=num_ant,
-        freqs=freqs,
-        times=times,
-        hour_angle_rad=jnp.asarray(0.),  # [1]
-        latitude_rad=jnp.array(0.5),  # [A]
-        declination_rad=jnp.array(0.1),  # [D]
-        lna_amp_stddev=0.1,
-        lna_phase_stddev_rad=0.1,
-        parallactic_offset_stddev_rad=1e-2,
-        leakage_phase_stddev_rad=0.1,
-        leakage_amp_max=0.2,
-        rotation_measure_stddev_rad_m2=0.2,
-        tec_stddev_mtecu=200.0,
-        bandpass_amplitude_stddev=0.5,
-        feed_delay_stddev_ns=0.1,
-    )
-    params = transformed.init({'params': jax.random.PRNGKey(0)}, None, **kwargs).collections
-    num_params = sum(jax.tree.map(np.size, jax.tree.leaves(params)))
-    print(f"Number of parameters: {num_params}")
-
-    gains = transformed.apply({'params': jax.random.PRNGKey(0)}, params, **kwargs).fn_val
