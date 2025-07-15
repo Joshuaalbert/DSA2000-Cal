@@ -803,7 +803,6 @@ class AbstractIonosphereLayer(ABC):
                                          jitter_mtec=jitter_mtec), cache
 
 
-
 @dataclasses.dataclass(eq=False)
 class IonosphereLayer(AbstractIonosphereLayer):
     """
